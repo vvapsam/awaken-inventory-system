@@ -1014,13 +1014,18 @@ async def api_sale_create(request: Request, db: Session = Depends(get_db)):
         qty = 1
     paid = bool(data.get("paid", True))
     cid = data.get("customer_id") or None
+    up = data.get("unit_price")
+    try:
+        up = float(up) if up not in (None, "") else float(p.selling_price)
+    except (ValueError, TypeError):
+        up = float(p.selling_price)
     sale = Sale(staff_id=staff.id, sold_at=_sold_dt_from_date(data.get("date")),
                 is_credit=(not paid), customer_id=cid,
                 payment_method=(None if not paid else "cash"))
     db.add(sale)
     db.flush()
     db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty,
-                    unit_price=p.selling_price, cost_price=p.cost_price))
+                    unit_price=up, cost_price=p.cost_price))
     db.commit()
     db.refresh(sale)
     return JSONResponse(_sale_row(sale))
@@ -1057,6 +1062,11 @@ async def api_sale_update(request: Request, sid: int, db: Session = Depends(get_
     if "qty" in data and it:
         try:
             it.quantity = max(1, int(data.get("qty")))
+        except (ValueError, TypeError):
+            pass
+    if "unit_price" in data and it and data.get("unit_price") not in (None, ""):
+        try:
+            it.unit_price = float(data.get("unit_price"))
         except (ValueError, TypeError):
             pass
     db.commit()

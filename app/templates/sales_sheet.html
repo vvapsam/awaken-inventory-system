@@ -12,6 +12,8 @@
 .filter .pill2.on{background:var(--teal);border-color:var(--teal);color:#fff}
 .filter .range{display:flex;align-items:center;gap:6px;margin-left:auto;color:var(--muted);font-size:.85rem}
 .filter .range input{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
+.hint{color:var(--muted);font-size:.82rem;margin:2px 0 0}
+.hint kbd{background:#fff;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:.78rem;font-family:inherit}
 .sheet-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:8px}
 table.sheet{width:100%;border-collapse:collapse;font-size:.93rem}
 table.sheet th{background:var(--panel);color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;font-weight:600;text-align:left;padding:10px;border-bottom:1px solid var(--line)}
@@ -26,6 +28,7 @@ table.sheet th.st,table.sheet td.st{width:66px;text-align:center}
 table.sheet td input,table.sheet td select{width:100%;border:none;background:transparent;padding:10px;font-size:.93rem;color:var(--ink);outline:none}
 table.sheet td input:focus,table.sheet td select:focus{box-shadow:inset 0 0 0 2px var(--teal-tint)}
 table.sheet td.q input{text-align:center}
+table.sheet td.pr input{text-align:right}
 .cell{padding:10px}.cell.r{text-align:right;font-variant-numeric:tabular-nums}.cell.mut{color:var(--muted)}
 tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--teal)}
 .pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:.8rem;font-weight:600;cursor:pointer;border:none}
@@ -36,7 +39,7 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
 .inline-add{display:flex;gap:5px;padding:6px 8px;align-items:center}
 .inline-add input{border:1px solid var(--line)!important;border-radius:7px;padding:7px 9px!important}
 .addrow{padding:12px}
-.addrow button{display:inline-flex;align-items:center;gap:7px;background:var(--teal);color:#fff;border:none;border-radius:10px;padding:12px 18px;font-size:.95rem;font-weight:600;cursor:pointer}
+.addrow button{display:inline-flex;align-items:center;gap:7px;background:#fff;color:var(--teal-dark, #0b7d73);border:1px dashed var(--teal);border-radius:10px;padding:10px 16px;font-size:.9rem;font-weight:600;cursor:pointer}
 .savedmsg{background:#e5f5ec;border:1px solid #a9ddc0;color:#127a45;padding:9px 12px;border-radius:9px;margin:8px 0;font-size:.9rem}
 .sheet-mobile{display:none}
 @media (max-width:719px){ .sheet-desktop{display:none} .sheet-mobile{display:block} }
@@ -73,6 +76,7 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
 
 <!-- ============ DESKTOP GRID ============ -->
 <div class="sheet-desktop">
+  <p class="hint">Fill the highlighted row and press <kbd>Enter</kbd> to save the sale — a new blank row opens right away. Price is editable if you need to override it.</p>
   <div class="sheet-wrap">
     <table class="sheet">
       <thead><tr>
@@ -82,7 +86,7 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
       <tbody id="body"></tbody>
     </table>
     {% if can(staff, 'sales.create') %}
-    <div class="addrow"><button id="addbtn" type="button">＋ Add sale</button></div>
+    <div class="addrow"><button id="addbtn" type="button">＋ Add another blank row</button></div>
     {% endif %}
   </div>
 </div>
@@ -145,7 +149,7 @@ function makeRow(r){
     <td class="n"><input type="date" class="c-date" value="${r?r.date:TODAY}" ${dis}></td>
     <td><select class="c-prod" ${dis}>${prodOptions(r?r.product_id:'')}</select></td>
     <td class="q"><input type="number" class="c-qty" min="1" value="${r?r.qty:1}" ${dis}></td>
-    <td class="pr"><span class="cell r mut c-price">${r&&r.product_id?peso(r.unit_price):'—'}</span></td>
+    <td class="pr"><input type="number" step="0.01" min="0" class="c-price" placeholder="—" value="${r&&r.product_id?r.unit_price:''}" ${dis}></td>
     <td class="tt"><span class="cell r c-total">${r&&r.product_id?peso(r.total):'—'}</span></td>
     <td class="pd"><button class="pill ${(r?r.paid:true)?'yes':'no'} c-paid" ${dis}>${(r?r.paid:true)?'Yes':'No'}</button></td>
     <td class="cu c-cust"></td>
@@ -166,29 +170,31 @@ function onCustChange(tr, selEl){
     cell.innerHTML = `<div class="inline-add"><input class="c-newname" placeholder="Full name">
       <button class="addbtn c-addok">Add</button><span class="cdel c-addcancel">✕</span></div>`;
     const inp = cell.querySelector('.c-newname'); inp.focus();
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); cell.querySelector('.c-addok').click(); } });
     cell.querySelector('.c-addok').onclick = async () => {
       const name = inp.value.trim(); if(!name){ inp.focus(); return; }
       const res = await fetch('/api/customers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
       if(res.ok){ const c = await res.json();
         if(!CUSTOMERS.find(x=>x.id==c.id)){ CUSTOMERS.push(c); CUSTOMERS.sort((a,b)=>a.name.localeCompare(b.name)); }
-        renderCust(tr, c.id, ''); save(tr);
+        renderCust(tr, c.id, ''); maybeSave(tr);
       }
     };
     cell.querySelector('.c-addcancel').onclick = () => renderCust(tr, prev, '');
-  } else { tr._custPrev = selEl.value; save(tr); }
+  } else { tr._custPrev = selEl.value; maybeSave(tr); }
 }
 function recalc(tr){
-  const p = prodById(tr.querySelector('.c-prod').value);
   const qty = parseInt(tr.querySelector('.c-qty').value)||1;
-  tr.querySelector('.c-price').textContent = p ? peso(p.price) : '—';
-  tr.querySelector('.c-total').textContent = p ? peso(p.price*qty) : '—';
+  const price = parseFloat(tr.querySelector('.c-price').value);
+  tr.querySelector('.c-total').textContent = isNaN(price) ? '—' : peso(price*qty);
 }
 function rowData(tr){
   const cs = tr.querySelector('.c-custsel');
+  const pv = parseFloat(tr.querySelector('.c-price').value);
   return {
     date: tr.querySelector('.c-date').value,
     product_id: tr.querySelector('.c-prod').value ? parseInt(tr.querySelector('.c-prod').value) : null,
     qty: parseInt(tr.querySelector('.c-qty').value)||1,
+    unit_price: isNaN(pv) ? null : pv,
     paid: tr.querySelector('.c-paid').classList.contains('yes'),
     customer_id: (cs && cs.value && cs.value!=='__add__') ? parseInt(cs.value) : null,
   };
@@ -200,9 +206,10 @@ function setStat(tr, s){
 }
 let timers = new WeakMap();
 function save(tr){ clearTimeout(timers.get(tr)); timers.set(tr, setTimeout(()=>doSave(tr), 350)); }
+function maybeSave(tr){ if(tr.dataset.id) save(tr); }   // saved rows autosave; entry rows wait for Enter
 async function doSave(tr){
   const d = rowData(tr);
-  if(!d.date || !d.product_id || !d.qty) return;   // required: Date, Item, Qty
+  if(!d.date || !d.product_id || !d.qty) return;        // required: Date, Item, Qty
   setStat(tr,'saving'); flag('Saving…');
   if(!tr.dataset.id){
     if(!CAN.create) return;
@@ -212,6 +219,8 @@ async function doSave(tr){
       const del = CAN.del ? '<span class="cdel" title="Delete">✕</span>' : '';
       tr.querySelector('.st').innerHTML = '<span class="c-stat cstat">✓</span> '+del;
       wireDelete(tr); setStat(tr,'ok'); footer(); flag('All changes saved');
+      const nrow = makeRow(null); body.appendChild(nrow);   // fresh row, ready to type
+      nrow.querySelector('.c-prod').focus();
     } else flag('Save failed');
   } else {
     if(!CAN.edit) return;
@@ -219,14 +228,24 @@ async function doSave(tr){
     if(res.ok){ setStat(tr,'ok'); footer(); flag('All changes saved'); } else flag('Save failed');
   }
 }
+function commitRow(tr){
+  clearTimeout(timers.get(tr));
+  const d = rowData(tr);
+  if(!d.date || !d.product_id || !d.qty){ tr.querySelector('.c-prod').focus(); return; }
+  doSave(tr);
+}
 function wire(tr, isEntry){
-  tr.querySelector('.c-prod').addEventListener('change', ()=>{ recalc(tr); save(tr); });
-  tr.querySelector('.c-qty').addEventListener('input', ()=>{ recalc(tr); save(tr); });
-  tr.querySelector('.c-date').addEventListener('change', ()=>save(tr));
-  const paid = tr.querySelector('.c-paid');
+  const prod = tr.querySelector('.c-prod'), qty = tr.querySelector('.c-qty'),
+        price = tr.querySelector('.c-price'), date = tr.querySelector('.c-date'),
+        paid = tr.querySelector('.c-paid');
+  prod.addEventListener('change', ()=>{ const p=prodById(prod.value); if(p) price.value=p.price; recalc(tr); maybeSave(tr); });
+  qty.addEventListener('input', ()=>{ recalc(tr); maybeSave(tr); });
+  price.addEventListener('input', ()=>{ recalc(tr); maybeSave(tr); });
+  date.addEventListener('change', ()=>maybeSave(tr));
   paid.addEventListener('click', ()=>{ if(paid.disabled) return;
     const yes = paid.classList.toggle('yes'); paid.classList.toggle('no',!yes);
-    paid.textContent = yes ? 'Yes' : 'No'; save(tr); });
+    paid.textContent = yes ? 'Yes' : 'No'; maybeSave(tr); });
+  tr.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); commitRow(tr); } });
   if(!isEntry) wireDelete(tr);
 }
 function wireDelete(tr){
@@ -239,9 +258,10 @@ function footer(){
   let total=0, unpaid=0, count=0;
   body.querySelectorAll('tr').forEach(tr=>{
     if(!tr.dataset.id) return;
-    const p = prodById(tr.querySelector('.c-prod').value); if(!p) return;
     const qty = parseInt(tr.querySelector('.c-qty').value)||0;
-    const tot = p.price*qty; total+=tot; count++;
+    const price = parseFloat(tr.querySelector('.c-price').value);
+    if(isNaN(price)) return;
+    const tot = price*qty; total+=tot; count++;
     if(!tr.querySelector('.c-paid').classList.contains('yes')) unpaid+=tot;
   });
   document.getElementById('f-total').textContent = peso(total);
@@ -251,13 +271,12 @@ function footer(){
 function flag(t){ document.getElementById('saveflag-txt').textContent=t; }
 
 const addBtn = document.getElementById('addbtn');
-if(addBtn) addBtn.onclick = ()=>{
-  const tr = makeRow(null); body.appendChild(tr);
-  tr.querySelector('.c-prod').focus();
-  tr.scrollIntoView({block:'center',behavior:'smooth'});
-};
+if(addBtn) addBtn.onclick = ()=>{ const tr = makeRow(null); body.appendChild(tr);
+  tr.querySelector('.c-prod').focus(); tr.scrollIntoView({block:'center',behavior:'smooth'}); };
 
-// initial render
+// initial render: saved rows, then one ready entry row for fast keyboard entry
 for(const r of ROWS) body.appendChild(makeRow(r));
+if(CAN.create) body.appendChild(makeRow(null));
+footer();
 </script>
 {% endblock %}
