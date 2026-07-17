@@ -292,65 +292,8 @@ def find_or_create_customer(db, name):
     return c
 
 
-@app.get("/sale/new", response_class=HTMLResponse)
-def sale_form(request: Request, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, perm="sales.create")
-    if redir:
-        return redir
-    products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
-    customers = db.query(Customer).order_by(Customer.name).all()
-    return render(request, "sale_new.html", db, staff, products=products, customers=customers)
-
-
-@app.post("/sale/new")
-async def sale_create(request: Request, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, perm="sales.create")
-    if redir:
-        return redir
-    form = await request.form()
-    product_ids = form.getlist("product_id")
-    quantities = form.getlist("quantity")
-    payment_method = form.get("payment_method") or "cash"
-    note = form.get("note") or None
-    customer_name = form.get("customer_name") or ""
-    is_credit = form.get("is_credit") == "on"
-
-    def _reload(err):
-        products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
-        customers = db.query(Customer).order_by(Customer.name).all()
-        return render(request, "sale_new.html", db, staff, products=products,
-                      customers=customers, error=err)
-
-    if is_credit and not customer_name.strip():
-        return _reload("An unpaid (credit) sale needs a customer name.")
-
-    customer = find_or_create_customer(db, customer_name)
-    sale = Sale(staff_id=staff.id, payment_method=(None if is_credit else payment_method),
-                note=note, customer_id=(customer.id if customer else None),
-                is_credit=is_credit)
-    db.add(sale)
-    db.flush()
-    added = 0
-    for pid, qty in zip(product_ids, quantities):
-        if not pid or not qty:
-            continue
-        try:
-            qn = int(qty)
-        except ValueError:
-            continue
-        if qn <= 0:
-            continue
-        p = db.get(Product, int(pid))
-        if not p:
-            continue
-        db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qn,
-                        unit_price=p.selling_price, cost_price=p.cost_price))
-        added += 1
-    if added == 0:
-        db.rollback()
-        return _reload("Add at least one item with a quantity.")
-    db.commit()
-    return RedirectResponse("/dashboard", status_code=303)
+# (The single-sale form was replaced by the Sales spreadsheet at /sales.
+#  See the "Sales spreadsheet" section below for /sales, /api/sales, /sale/quick.)
 
 
 # ---------- stock movements (restock / waste / missing / adjustment / return) ----------
@@ -928,6 +871,238 @@ def payment_delete(request: Request, pid: int, db: Session = Depends(get_db)):
         db.commit()
         return RedirectResponse(f"/customer/{cid}", status_code=303)
     return RedirectResponse("/customers", status_code=303)
+
+
+# ---------- Sales spreadsheet (autosave grid) ----------
+
+def _sold_dt_from_date(date_str):
+    tz = _tz()
+    now = datetime.now(tz)
+    if not date_str:
+        return now.astimezone(timezone.utc)
+    try:
+        y, m, d = [int(x) for x in str(date_str).split("-")]
+        chosen = datetime(y, m, d, tzinfo=tz)
+    except Exception:
+        return now.astimezone(timezone.utc)
+    dt = now if chosen.date() == now.date() else chosen.replace(hour=12, minute=0)
+    return dt.astimezone(timezone.utc)
+
+
+def _sale_row(sale):
+    tz = _tz()
+    it = sale.items[0] if sale.items else None
+    local = sale.sold_at.astimezone(tz) if sale.sold_at else datetime.now(tz)
+    up = float(it.unit_price) if it else 0.0
+    qn = it.quantity if it else 0
+    return {
+        "id": sale.id,
+        "date": local.strftime("%Y-%m-%d"),
+        "product_id": it.product_id if it else None,
+        "qty": qn,
+        "unit_price": up,
+        "total": up * qn,
+        "paid": (not sale.is_credit),
+        "customer_id": sale.customer_id,
+        "staff": sale.staff.name if sale.staff else "",
+    }
+
+
+SALES_SHEET_PERMS = ["sales.create", "sales.edit", "view_reports"]
+
+
+def _parse_date(s, tz):
+    try:
+        y, m, d = [int(x) for x in str(s).split("-")]
+        return datetime(y, m, d, tzinfo=tz)
+    except Exception:
+        return None
+
+
+@app.get("/sales", response_class=HTMLResponse)
+def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, SALES_SHEET_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    tz = _tz()
+    now = datetime.now(tz)
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today = now.strftime("%Y-%m-%d")
+
+    qp = request.query_params
+    range_key = qp.get("range", "") or rng
+    from_s, to_s = qp.get("from", ""), qp.get("to", "")
+    if range_key == "7d":
+        start, end_d = today0 - timedelta(days=6), today0
+    elif range_key == "month":
+        start, end_d = today0.replace(day=1), today0
+    elif range_key == "all":
+        start, end_d = None, today0
+    elif from_s or to_s:
+        start = _parse_date(from_s, tz) or today0
+        end_d = _parse_date(to_s, tz) or today0
+    else:  # default: today
+        range_key = range_key or "today"
+        start, end_d = today0, today0
+
+    q = db.query(Sale)
+    if start is not None:
+        q = q.filter(Sale.sold_at >= start.astimezone(timezone.utc))
+    q = q.filter(Sale.sold_at < (end_d + timedelta(days=1)).astimezone(timezone.utc))
+    sales = q.order_by(Sale.sold_at.desc(), Sale.id.desc()).limit(1000).all()
+    rows = [_sale_row(s) for s in sales]
+
+    total = sum(r["total"] for r in rows)
+    unpaid = sum(r["total"] for r in rows if not r["paid"])
+
+    products = [
+        {"id": p.id, "name": p.name, "price": float(p.selling_price)}
+        for p in db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+    ]
+    customers = [
+        {"id": c.id, "name": c.name}
+        for c in db.query(Customer).order_by(Customer.name).all()
+    ]
+    return render(request, "sales_sheet.html", db, staff, products=products,
+                  customers=customers, rows=rows, today=today, total=total,
+                  unpaid=unpaid, count=len(rows), range_key=range_key,
+                  from_s=(start.strftime("%Y-%m-%d") if start else ""),
+                  to_s=end_d.strftime("%Y-%m-%d"))
+
+
+def _json_guard(request, db, perm):
+    staff = current_staff(request, db)
+    if not staff:
+        return None, JSONResponse({"error": "auth"}, status_code=401)
+    if perm and not can(staff, perm):
+        return None, JSONResponse({"error": "forbidden"}, status_code=403)
+    return staff, None
+
+
+@app.post("/api/sales")
+async def api_sale_create(request: Request, db: Session = Depends(get_db)):
+    staff, err = _json_guard(request, db, "sales.create")
+    if err:
+        return err
+    data = await request.json()
+    p = db.get(Product, data.get("product_id") or 0)
+    if not p:
+        return JSONResponse({"error": "product required"}, status_code=400)
+    try:
+        qty = max(1, int(data.get("qty") or 1))
+    except (ValueError, TypeError):
+        qty = 1
+    paid = bool(data.get("paid", True))
+    cid = data.get("customer_id") or None
+    sale = Sale(staff_id=staff.id, sold_at=_sold_dt_from_date(data.get("date")),
+                is_credit=(not paid), customer_id=cid,
+                payment_method=(None if not paid else "cash"))
+    db.add(sale)
+    db.flush()
+    db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty,
+                    unit_price=p.selling_price, cost_price=p.cost_price))
+    db.commit()
+    db.refresh(sale)
+    return JSONResponse(_sale_row(sale))
+
+
+@app.patch("/api/sales/{sid}")
+async def api_sale_update(request: Request, sid: int, db: Session = Depends(get_db)):
+    staff, err = _json_guard(request, db, "sales.edit")
+    if err:
+        return err
+    sale = db.get(Sale, sid)
+    if not sale:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    data = await request.json()
+    if "date" in data:
+        sale.sold_at = _sold_dt_from_date(data.get("date"))
+    if "paid" in data:
+        sale.is_credit = not bool(data.get("paid"))
+        sale.payment_method = None if sale.is_credit else (sale.payment_method or "cash")
+    if "customer_id" in data:
+        sale.customer_id = data.get("customer_id") or None
+    it = sale.items[0] if sale.items else None
+    if "product_id" in data and data.get("product_id"):
+        p = db.get(Product, data.get("product_id"))
+        if p:
+            if not it:
+                it = SaleItem(sale_id=sale.id, product_id=p.id, quantity=1,
+                              unit_price=p.selling_price, cost_price=p.cost_price)
+                db.add(it)
+            else:
+                it.product_id = p.id
+                it.unit_price = p.selling_price
+                it.cost_price = p.cost_price
+    if "qty" in data and it:
+        try:
+            it.quantity = max(1, int(data.get("qty")))
+        except (ValueError, TypeError):
+            pass
+    db.commit()
+    db.refresh(sale)
+    return JSONResponse(_sale_row(sale))
+
+
+@app.delete("/api/sales/{sid}")
+def api_sale_delete(request: Request, sid: int, db: Session = Depends(get_db)):
+    staff, err = _json_guard(request, db, "sales.delete")
+    if err:
+        return err
+    sale = db.get(Sale, sid)
+    if sale:
+        db.delete(sale)
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/customers")
+async def api_customer_create(request: Request, db: Session = Depends(get_db)):
+    staff, err = _json_guard(request, db, "sales.create")
+    if err:
+        return err
+    data = await request.json()
+    c = find_or_create_customer(db, data.get("name"))
+    if not c:
+        return JSONResponse({"error": "name required"}, status_code=400)
+    db.commit()
+    return JSONResponse({"id": c.id, "name": c.name})
+
+
+# Simple single-sale entry (used by the phone/stacked view; plain form, no JS)
+@app.post("/sale/quick")
+def sale_quick(request: Request, product_id: int = Form(...), quantity: int = Form(1),
+               date: str = Form(""), paid: str = Form(""), customer_id: str = Form(""),
+               customer_name: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="sales.create")
+    if redir:
+        return redir
+    p = db.get(Product, product_id)
+    if not p:
+        return RedirectResponse("/sales", status_code=303)
+    is_paid = paid == "on"
+    customer = None
+    if customer_name.strip():
+        customer = find_or_create_customer(db, customer_name)
+    elif customer_id.strip():
+        customer = db.get(Customer, int(customer_id))
+    sale = Sale(staff_id=staff.id, sold_at=_sold_dt_from_date(date),
+                is_credit=(not is_paid), customer_id=(customer.id if customer else None),
+                payment_method=(None if not is_paid else "cash"))
+    db.add(sale)
+    db.flush()
+    db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=max(1, quantity),
+                    unit_price=p.selling_price, cost_price=p.cost_price))
+    db.commit()
+    return RedirectResponse("/sales?saved=1", status_code=303)
+
+
+# old single-sale form path now points to the sheet
+@app.get("/sale/new")
+def sale_new_redirect():
+    return RedirectResponse("/sales", status_code=307)
 
 
 @app.get("/healthz")

@@ -16,7 +16,7 @@
   </a>
   <nav>
     {% if can(staff, 'view_stock') %}<a href="/stock">Stock</a>{% endif %}
-    {% if can(staff, 'sales.create') %}<a href="/sale/new">Sale</a>{% endif %}
+    {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}<a href="/sales">Sales</a>{% endif %}
     {% if can_any(staff, ['receive.create','adjust.create']) %}<a href="/movement/new">Stock&nbsp;in/out</a>{% endif %}
     {% if can_any(staff, ['items.create','items.edit','items.delete']) %}<a href="/admin/products">Items</a>{% endif %}
     {% if can(staff, 'view_reports') %}<a href="/admin/reports">Reports</a>{% endif %}

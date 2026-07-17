@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.sheet-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.saveflag{margin-left:auto;font-size:.82rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.saveflag .dot{width:8px;height:8px;border-radius:50%;background:#1a9e5f;display:inline-block}
+.sumbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0}
+.sumbar .card{padding:16px}
+.filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.filter .quick{display:flex;gap:5px}
+.filter .pill2{border:1px solid var(--line);background:#fff;color:var(--muted);padding:7px 13px;border-radius:999px;font-size:.82rem;font-weight:600;cursor:pointer;text-decoration:none}
+.filter .pill2.on{background:var(--teal);border-color:var(--teal);color:#fff}
+.filter .range{display:flex;align-items:center;gap:6px;margin-left:auto;color:var(--muted);font-size:.85rem}
+.filter .range input{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
+.sheet-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:8px}
+table.sheet{width:100%;border-collapse:collapse;font-size:.93rem}
+table.sheet th{background:var(--panel);color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;font-weight:600;text-align:left;padding:10px;border-bottom:1px solid var(--line)}
+table.sheet td{padding:0;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+table.sheet td:last-child{border-right:none}
+table.sheet th.n,table.sheet td.n{width:140px}
+table.sheet th.q,table.sheet td.q{width:66px}
+table.sheet th.pr,table.sheet td.pr,table.sheet th.tt,table.sheet td.tt{width:110px;text-align:right}
+table.sheet th.pd,table.sheet td.pd{width:84px;text-align:center}
+table.sheet th.cu,table.sheet td.cu{width:220px}
+table.sheet th.st,table.sheet td.st{width:66px;text-align:center}
+table.sheet td input,table.sheet td select{width:100%;border:none;background:transparent;padding:10px;font-size:.93rem;color:var(--ink);outline:none}
+table.sheet td input:focus,table.sheet td select:focus{box-shadow:inset 0 0 0 2px var(--teal-tint)}
+table.sheet td.q input{text-align:center}
+.cell{padding:10px}.cell.r{text-align:right;font-variant-numeric:tabular-nums}.cell.mut{color:var(--muted)}
+tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--teal)}
+.pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:.8rem;font-weight:600;cursor:pointer;border:none}
+.pill.yes{background:#e5f5ec;color:#1a9e5f}.pill.no{background:#fdece9;color:#c0392b}
+.cstat{font-size:.72rem;color:#1a9e5f}.cstat.saving{color:var(--muted)}
+.cdel{color:#c0392b;cursor:pointer;padding:6px;font-size:.95rem}
+.addbtn{background:var(--teal);color:#fff;border:none;border-radius:7px;padding:5px 9px;font-size:.78rem;font-weight:600;cursor:pointer}
+.inline-add{display:flex;gap:5px;padding:6px 8px;align-items:center}
+.inline-add input{border:1px solid var(--line)!important;border-radius:7px;padding:7px 9px!important}
+.addrow{padding:12px}
+.addrow button{display:inline-flex;align-items:center;gap:7px;background:var(--teal);color:#fff;border:none;border-radius:10px;padding:12px 18px;font-size:.95rem;font-weight:600;cursor:pointer}
+.savedmsg{background:#e5f5ec;border:1px solid #a9ddc0;color:#127a45;padding:9px 12px;border-radius:9px;margin:8px 0;font-size:.9rem}
+.sheet-mobile{display:none}
+@media (max-width:719px){ .sheet-desktop{display:none} .sheet-mobile{display:block} }
+</style>
+
+<div class="sheet-head">
+  <h1>Sales</h1>
+  <span class="saveflag" id="saveflag"><span class="dot"></span> <span id="saveflag-txt">All changes saved</span></span>
+</div>
+
+<!-- TOTAL AT TOP -->
+<div class="sumbar">
+  <div class="card stat"><div class="stat-label">Total sales (shown)</div><div class="stat-value" id="f-total">{{ peso(total) }}</div></div>
+  <div class="card stat"><div class="stat-label">Number of sales</div><div class="stat-value" id="f-count">{{ count }}</div></div>
+  <div class="card stat {% if unpaid > 0 %}warn{% endif %}"><div class="stat-label">Unpaid (shown)</div><div class="stat-value" id="f-unpaid">{{ peso(unpaid) }}</div></div>
+</div>
+
+<!-- FILTER: default today + date range -->
+<div class="filter">
+  <div class="quick">
+    <a class="pill2 {% if range_key=='today' %}on{% endif %}" href="/sales?range=today">Today</a>
+    <a class="pill2 {% if range_key=='7d' %}on{% endif %}" href="/sales?range=7d">Last 7 days</a>
+    <a class="pill2 {% if range_key=='month' %}on{% endif %}" href="/sales?range=month">This month</a>
+    <a class="pill2 {% if range_key=='all' %}on{% endif %}" href="/sales?range=all">All</a>
+  </div>
+  <form class="range" method="get" action="/sales">
+    <span>From</span><input type="date" name="from" value="{{ from_s }}">
+    <span>to</span><input type="date" name="to" value="{{ to_s }}">
+    <button class="pill2" type="submit">Show</button>
+  </form>
+</div>
+
+{% if request.query_params.get('saved') %}<div class="savedmsg">✓ Sale saved.</div>{% endif %}
+
+<!-- ============ DESKTOP GRID ============ -->
+<div class="sheet-desktop">
+  <div class="sheet-wrap">
+    <table class="sheet">
+      <thead><tr>
+        <th class="n">Date</th><th>Item</th><th class="q">Qty</th><th class="pr">Price</th>
+        <th class="tt">Total</th><th class="pd">Paid?</th><th class="cu">Customer</th><th class="st"></th>
+      </tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+    {% if can(staff, 'sales.create') %}
+    <div class="addrow"><button id="addbtn" type="button">＋ Add sale</button></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ============ MOBILE STACKED FORM ============ -->
+<div class="sheet-mobile">
+  {% if can(staff, 'sales.create') %}
+  <form method="post" action="/sale/quick" class="card">
+    <label>Date</label><input type="date" name="date" value="{{ today }}" required>
+    <label>Item</label>
+    <select name="product_id" required>
+      <option value="">— pick an item —</option>
+      {% for p in products %}<option value="{{ p.id }}">{{ p.name }} (₱{{ '%.2f'|format(p.price) }})</option>{% endfor %}
+    </select>
+    <label>Quantity</label><input type="number" name="quantity" min="1" value="1" required>
+    <label class="check"><input type="checkbox" name="paid" checked> Paid</label>
+    <label>Customer (optional)</label>
+    <select name="customer_id">
+      <option value="">— none —</option>
+      {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <label>…or add a new customer</label>
+    <input name="customer_name" placeholder="new customer name (optional)">
+    <button type="submit" class="btn primary big">Save sale</button>
+  </form>
+  {% endif %}
+  <p class="muted small" style="margin-top:12px">Showing {{ count }} sale(s) · total {{ peso(total) }}. Use a computer for the full spreadsheet view.</p>
+</div>
+
+<script>
+const PRODUCTS = {{ products|tojson }};
+let CUSTOMERS = {{ customers|tojson }};
+const ROWS = {{ rows|tojson }};
+const TODAY = {{ today|tojson }};
+const CAN = { create: {{ 'true' if can(staff,'sales.create') else 'false' }},
+              edit: {{ 'true' if can(staff,'sales.edit') else 'false' }},
+              del: {{ 'true' if can(staff,'sales.delete') else 'false' }} };
+const peso = v => "₱" + Number(v||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+const prodById = id => PRODUCTS.find(p => p.id == id);
+const body = document.getElementById('body');
+
+function prodOptions(sel){
+  let h = '<option value="">＋ item…</option>';
+  for(const p of PRODUCTS) h += `<option value="${p.id}" ${p.id==sel?'selected':''}>${p.name}</option>`;
+  return h;
+}
+function custOptions(sel){
+  let h = `<option value="">— none —</option>`;
+  for(const c of CUSTOMERS) h += `<option value="${c.id}" ${c.id==sel?'selected':''}>${c.name}</option>`;
+  h += `<option value="__add__">＋ Add new customer…</option>`;
+  return h;
+}
+function makeRow(r){
+  const isEntry = !r;
+  const tr = document.createElement('tr');
+  tr.className = isEntry ? 'entry' : '';
+  tr.dataset.id = r ? r.id : '';
+  const dis = (!isEntry && !CAN.edit) ? 'disabled' : '';
+  tr.innerHTML = `
+    <td class="n"><input type="date" class="c-date" value="${r?r.date:TODAY}" ${dis}></td>
+    <td><select class="c-prod" ${dis}>${prodOptions(r?r.product_id:'')}</select></td>
+    <td class="q"><input type="number" class="c-qty" min="1" value="${r?r.qty:1}" ${dis}></td>
+    <td class="pr"><span class="cell r mut c-price">${r&&r.product_id?peso(r.unit_price):'—'}</span></td>
+    <td class="tt"><span class="cell r c-total">${r&&r.product_id?peso(r.total):'—'}</span></td>
+    <td class="pd"><button class="pill ${(r?r.paid:true)?'yes':'no'} c-paid" ${dis}>${(r?r.paid:true)?'Yes':'No'}</button></td>
+    <td class="cu c-cust"></td>
+    <td class="st"><span class="c-stat"></span> ${(!isEntry && CAN.del)?'<span class="cdel" title="Delete">✕</span>':''}</td>`;
+  renderCust(tr, r ? r.customer_id : '', dis);
+  wire(tr, isEntry);
+  return tr;
+}
+function renderCust(tr, sel, dis){
+  const cell = tr.querySelector('.c-cust');
+  cell.innerHTML = `<select class="c-custsel" ${dis}>${custOptions(sel)}</select>`;
+  cell.querySelector('.c-custsel').addEventListener('change', e => onCustChange(tr, e.target));
+}
+function onCustChange(tr, selEl){
+  if(selEl.value === '__add__'){
+    const prev = tr._custPrev || '';
+    const cell = tr.querySelector('.c-cust');
+    cell.innerHTML = `<div class="inline-add"><input class="c-newname" placeholder="Full name">
+      <button class="addbtn c-addok">Add</button><span class="cdel c-addcancel">✕</span></div>`;
+    const inp = cell.querySelector('.c-newname'); inp.focus();
+    cell.querySelector('.c-addok').onclick = async () => {
+      const name = inp.value.trim(); if(!name){ inp.focus(); return; }
+      const res = await fetch('/api/customers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+      if(res.ok){ const c = await res.json();
+        if(!CUSTOMERS.find(x=>x.id==c.id)){ CUSTOMERS.push(c); CUSTOMERS.sort((a,b)=>a.name.localeCompare(b.name)); }
+        renderCust(tr, c.id, ''); save(tr);
+      }
+    };
+    cell.querySelector('.c-addcancel').onclick = () => renderCust(tr, prev, '');
+  } else { tr._custPrev = selEl.value; save(tr); }
+}
+function recalc(tr){
+  const p = prodById(tr.querySelector('.c-prod').value);
+  const qty = parseInt(tr.querySelector('.c-qty').value)||1;
+  tr.querySelector('.c-price').textContent = p ? peso(p.price) : '—';
+  tr.querySelector('.c-total').textContent = p ? peso(p.price*qty) : '—';
+}
+function rowData(tr){
+  const cs = tr.querySelector('.c-custsel');
+  return {
+    date: tr.querySelector('.c-date').value,
+    product_id: tr.querySelector('.c-prod').value ? parseInt(tr.querySelector('.c-prod').value) : null,
+    qty: parseInt(tr.querySelector('.c-qty').value)||1,
+    paid: tr.querySelector('.c-paid').classList.contains('yes'),
+    customer_id: (cs && cs.value && cs.value!=='__add__') ? parseInt(cs.value) : null,
+  };
+}
+function setStat(tr, s){
+  const el = tr.querySelector('.c-stat'); if(!el) return;
+  if(s==='saving'){ el.textContent='saving…'; el.className='c-stat cstat saving'; }
+  else if(s==='ok'){ el.textContent='✓'; el.className='c-stat cstat'; setTimeout(()=>{if(el.textContent==='✓')el.textContent='';},1500); }
+}
+let timers = new WeakMap();
+function save(tr){ clearTimeout(timers.get(tr)); timers.set(tr, setTimeout(()=>doSave(tr), 350)); }
+async function doSave(tr){
+  const d = rowData(tr);
+  if(!d.date || !d.product_id || !d.qty) return;   // required: Date, Item, Qty
+  setStat(tr,'saving'); flag('Saving…');
+  if(!tr.dataset.id){
+    if(!CAN.create) return;
+    const res = await fetch('/api/sales',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+    if(res.ok){ const row = await res.json();
+      tr.classList.remove('entry'); tr.dataset.id = row.id;
+      const del = CAN.del ? '<span class="cdel" title="Delete">✕</span>' : '';
+      tr.querySelector('.st').innerHTML = '<span class="c-stat cstat">✓</span> '+del;
+      wireDelete(tr); setStat(tr,'ok'); footer(); flag('All changes saved');
+    } else flag('Save failed');
+  } else {
+    if(!CAN.edit) return;
+    const res = await fetch('/api/sales/'+tr.dataset.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+    if(res.ok){ setStat(tr,'ok'); footer(); flag('All changes saved'); } else flag('Save failed');
+  }
+}
+function wire(tr, isEntry){
+  tr.querySelector('.c-prod').addEventListener('change', ()=>{ recalc(tr); save(tr); });
+  tr.querySelector('.c-qty').addEventListener('input', ()=>{ recalc(tr); save(tr); });
+  tr.querySelector('.c-date').addEventListener('change', ()=>save(tr));
+  const paid = tr.querySelector('.c-paid');
+  paid.addEventListener('click', ()=>{ if(paid.disabled) return;
+    const yes = paid.classList.toggle('yes'); paid.classList.toggle('no',!yes);
+    paid.textContent = yes ? 'Yes' : 'No'; save(tr); });
+  if(!isEntry) wireDelete(tr);
+}
+function wireDelete(tr){
+  const del = tr.querySelector('.cdel');
+  if(del) del.onclick = async ()=>{ if(!confirm('Delete this sale?')) return;
+    const res = await fetch('/api/sales/'+tr.dataset.id,{method:'DELETE'});
+    if(res.ok){ tr.remove(); footer(); } };
+}
+function footer(){
+  let total=0, unpaid=0, count=0;
+  body.querySelectorAll('tr').forEach(tr=>{
+    if(!tr.dataset.id) return;
+    const p = prodById(tr.querySelector('.c-prod').value); if(!p) return;
+    const qty = parseInt(tr.querySelector('.c-qty').value)||0;
+    const tot = p.price*qty; total+=tot; count++;
+    if(!tr.querySelector('.c-paid').classList.contains('yes')) unpaid+=tot;
+  });
+  document.getElementById('f-total').textContent = peso(total);
+  document.getElementById('f-count').textContent = count;
+  document.getElementById('f-unpaid').textContent = peso(unpaid);
+}
+function flag(t){ document.getElementById('saveflag-txt').textContent=t; }
+
+const addBtn = document.getElementById('addbtn');
+if(addBtn) addBtn.onclick = ()=>{
+  const tr = makeRow(null); body.appendChild(tr);
+  tr.querySelector('.c-prod').focus();
+  tr.scrollIntoView({block:'center',behavior:'smooth'});
+};
+
+// initial render
+for(const r of ROWS) body.appendChild(makeRow(r));
+</script>
+{% endblock %}

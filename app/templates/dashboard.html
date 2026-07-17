@@ -33,7 +33,7 @@
 
 <h2>Quick actions</h2>
 <div class="actions">
-  {% if can(staff, 'sales.create') %}<a class="btn primary big" href="/sale/new">Log a sale</a>{% endif %}
+  {% if can(staff, 'sales.create') %}<a class="btn primary big" href="/sales">Log a sale</a>{% endif %}
   {% if can(staff, 'receive.create') %}<a class="btn big" href="/movement/new?type=restock">Restock</a>{% endif %}
   {% if can(staff, 'adjust.create') %}<a class="btn big" href="/movement/new?type=waste">Waste</a>{% endif %}
   {% if can(staff, 'adjust.create') %}<a class="btn big" href="/movement/new?type=missing">Missing</a>{% endif %}
