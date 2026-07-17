@@ -164,6 +164,20 @@ tr.inactive{opacity:.5}
 .perm-matrix .cell input{width:auto;transform:scale(1.2)}
 .perm-matrix tr:hover{background:transparent}
 
+/* ================= module tabs + badges ================= */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:14px 0 2px;flex-wrap:wrap}
+.tabs a{padding:10px 16px;font-size:.9rem;font-weight:600;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs a.on{color:var(--ink);border-bottom-color:var(--teal)}
+.bdg{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.74rem;font-weight:700}
+.bdg.aff{background:var(--teal-tint);color:var(--teal-dark)}
+.bdg.ft{background:#eef1f4;color:#55606d}
+.bdg.act{background:#e5f5ec;color:#1a9e5f}
+.bdg.off{background:#eef1f4;color:#8892a0}
+.due{color:#c0392b;font-weight:700}.soon{color:#b8860b;font-weight:700}
+.gtot td{border-top:2px solid var(--ink);font-weight:800;font-size:1rem}
+.dash{color:#b6bdc6}
+.tot{font-weight:800}
+
 /* ================= ROW ACTIONS ================= */
 .actions-cell{white-space:nowrap;display:flex;gap:12px;align-items:center}
 .link-danger{background:none;border:none;color:#c0392b;cursor:pointer;font-size:.9rem;padding:0;font-weight:500;font-family:inherit}

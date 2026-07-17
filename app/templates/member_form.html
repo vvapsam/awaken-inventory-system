@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ 'Edit member' if member else 'New member' }}</h1>
+<form method="post" action="{{ '/coaches/members/%s/edit' % member.id if member else '/coaches/members/new' }}" class="card" style="max-width:560px">
+  <label>Member name</label>
+  <input name="name" value="{{ member.name if member else '' }}" required autofocus>
+
+  <label>Coach (who brought them)</label>
+  <select name="coach_id">
+    <option value="">— none —</option>
+    {% for c in coaches %}
+    <option value="{{ c.id }}" {% if member and member.coach_id==c.id %}selected{% endif %}>{{ c.name }}{% if c.coach_type=='affiliate' %} (Affiliate){% endif %}</option>
+    {% endfor %}
+  </select>
+
+  <div class="two-col">
+    <div>
+      <label>Monthly corkage rate (₱)</label>
+      <input name="corkage_rate" type="number" step="0.01" min="0"
+             value="{{ (member.corkage_rate if member and member.corkage_rate is not none else '3000') }}">
+    </div>
+    <div>
+      <label>Start date</label>
+      <input name="start_date" type="date" value="{{ member.start_date if member and member.start_date else today }}">
+    </div>
+  </div>
+
+  <label class="check" style="margin-top:14px"><input type="checkbox" name="is_active" {% if (not member) or member.is_active %}checked{% endif %}> Active</label>
+
+  <button type="submit" class="btn primary big">Save member</button>
+  <a class="btn" href="/coaches/members">Cancel</a>
+</form>
+{% endblock %}

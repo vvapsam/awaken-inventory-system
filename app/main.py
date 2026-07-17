@@ -24,6 +24,7 @@ from .models import (
     MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
+    Coach, Member, COACH_TYPES,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -1366,6 +1367,216 @@ def sale_quick(request: Request, product_id: int = Form(...), quantity: int = Fo
 @app.get("/sale/new")
 def sale_new_redirect():
     return RedirectResponse("/sales", status_code=307)
+
+
+# ================= Coaches & Corkage module =================
+
+def require_admin(request, db):
+    staff, redir = require(request, db)
+    if redir:
+        return None, redir
+    if staff.role != "admin":
+        return None, RedirectResponse("/dashboard", status_code=303)
+    return staff, None
+
+
+def _date_only(s):
+    try:
+        return datetime.strptime((s or "").strip(), "%Y-%m-%d").date()
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def coach_rows(db):
+    members = db.query(Member).filter(Member.is_active == True).all()  # noqa: E712
+    by = {}
+    for m in members:
+        by.setdefault(m.coach_id, []).append(m)
+    rows = []
+    for c in db.query(Coach).order_by(Coach.is_active.desc(), Coach.name).all():
+        ms = by.get(c.id, [])
+        corkage = sum(float(m.corkage_rate or 0) for m in ms)
+        fee = float(c.affiliate_fee or 0) if c.coach_type == "affiliate" else 0.0
+        monthly = (fee + corkage) if c.coach_type == "affiliate" else 0.0
+        rows.append({"coach": c, "clients": len(ms), "corkage": corkage,
+                     "fee": fee, "monthly": monthly})
+    return rows
+
+
+def coach_summary(rows):
+    aff = [r for r in rows if r["coach"].coach_type == "affiliate" and r["coach"].is_active]
+    return {"total_monthly": sum(r["monthly"] for r in aff),
+            "affiliate_count": len(aff),
+            "member_count": sum(r["clients"] for r in aff)}
+
+
+@app.get("/coaches", response_class=HTMLResponse)
+def coaches_page(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    rows = coach_rows(db)
+    return render(request, "coaches.html", db, staff, rows=rows,
+                  summ=coach_summary(rows), active="coaches",
+                  today=datetime.now(_tz()).date())
+
+
+@app.get("/coaches/new", response_class=HTMLResponse)
+def coach_new(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    today = datetime.now(_tz()).strftime("%Y-%m-%d")
+    return render(request, "coach_form.html", db, staff, coach=None,
+                  coach_types=COACH_TYPES, today=today)
+
+
+@app.post("/coaches/new")
+def coach_create(request: Request, name: str = Form(...), coach_type: str = Form("affiliate"),
+                 affiliate_fee: str = Form("0"), start_date: str = Form(""),
+                 next_billing: str = Form(""), is_active: str = Form(""),
+                 db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    fee = 0.0
+    try:
+        fee = float(affiliate_fee) if affiliate_fee.strip() else 0.0
+    except ValueError:
+        fee = 0.0
+    db.add(Coach(name=name.strip(), coach_type=coach_type,
+                 affiliate_fee=(fee if coach_type == "affiliate" else 0),
+                 start_date=_date_only(start_date), next_billing=_date_only(next_billing),
+                 is_active=(is_active == "on")))
+    db.commit()
+    return RedirectResponse("/coaches", status_code=303)
+
+
+@app.get("/coaches/{cid}/edit", response_class=HTMLResponse)
+def coach_edit(request: Request, cid: int, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    coach = db.get(Coach, cid)
+    if not coach:
+        return RedirectResponse("/coaches", status_code=303)
+    return render(request, "coach_form.html", db, staff, coach=coach,
+                  coach_types=COACH_TYPES, today="")
+
+
+@app.post("/coaches/{cid}/edit")
+def coach_update(request: Request, cid: int, name: str = Form(...),
+                 coach_type: str = Form("affiliate"), affiliate_fee: str = Form("0"),
+                 start_date: str = Form(""), next_billing: str = Form(""),
+                 is_active: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    coach = db.get(Coach, cid)
+    if not coach:
+        return RedirectResponse("/coaches", status_code=303)
+    try:
+        fee = float(affiliate_fee) if affiliate_fee.strip() else 0.0
+    except ValueError:
+        fee = 0.0
+    coach.name = name.strip()
+    coach.coach_type = coach_type
+    coach.affiliate_fee = fee if coach_type == "affiliate" else 0
+    coach.start_date = _date_only(start_date)
+    coach.next_billing = _date_only(next_billing)
+    coach.is_active = (is_active == "on")
+    db.commit()
+    return RedirectResponse("/coaches", status_code=303)
+
+
+@app.get("/coaches/members", response_class=HTMLResponse)
+def members_page(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    members = db.query(Member).order_by(Member.is_active.desc(), Member.name).all()
+    active = [m for m in members if m.is_active]
+    total = sum(float(m.corkage_rate or 0) for m in active)
+    avg = (total / len(active)) if active else 0.0
+    return render(request, "members.html", db, staff, members=members,
+                  total_corkage=total, member_count=len(active), avg_corkage=avg,
+                  active="members")
+
+
+@app.get("/coaches/members/new", response_class=HTMLResponse)
+def member_new(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    coaches = db.query(Coach).filter(Coach.is_active == True).order_by(Coach.name).all()  # noqa: E712
+    today = datetime.now(_tz()).strftime("%Y-%m-%d")
+    return render(request, "member_form.html", db, staff, member=None,
+                  coaches=coaches, today=today)
+
+
+@app.post("/coaches/members/new")
+def member_create(request: Request, name: str = Form(...), coach_id: str = Form(""),
+                  corkage_rate: str = Form("3000"), start_date: str = Form(""),
+                  is_active: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    try:
+        rate = float(corkage_rate) if corkage_rate.strip() else 3000.0
+    except ValueError:
+        rate = 3000.0
+    db.add(Member(name=name.strip(), coach_id=(int(coach_id) if coach_id.strip() else None),
+                  corkage_rate=rate, start_date=_date_only(start_date),
+                  is_active=(is_active == "on")))
+    db.commit()
+    return RedirectResponse("/coaches/members", status_code=303)
+
+
+@app.get("/coaches/members/{mid}/edit", response_class=HTMLResponse)
+def member_edit(request: Request, mid: int, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    member = db.get(Member, mid)
+    if not member:
+        return RedirectResponse("/coaches/members", status_code=303)
+    coaches = db.query(Coach).order_by(Coach.name).all()
+    return render(request, "member_form.html", db, staff, member=member,
+                  coaches=coaches, today="")
+
+
+@app.post("/coaches/members/{mid}/edit")
+def member_update(request: Request, mid: int, name: str = Form(...), coach_id: str = Form(""),
+                  corkage_rate: str = Form("3000"), start_date: str = Form(""),
+                  is_active: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    member = db.get(Member, mid)
+    if not member:
+        return RedirectResponse("/coaches/members", status_code=303)
+    try:
+        rate = float(corkage_rate) if corkage_rate.strip() else 3000.0
+    except ValueError:
+        rate = 3000.0
+    member.name = name.strip()
+    member.coach_id = int(coach_id) if coach_id.strip() else None
+    member.corkage_rate = rate
+    member.start_date = _date_only(start_date)
+    member.is_active = (is_active == "on")
+    db.commit()
+    return RedirectResponse("/coaches/members", status_code=303)
+
+
+@app.get("/coaches/billing", response_class=HTMLResponse)
+def coaches_billing(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    rows = [r for r in coach_rows(db) if r["coach"].coach_type == "affiliate" and r["coach"].is_active]
+    return render(request, "coaches_billing.html", db, staff, rows=rows,
+                  summ=coach_summary(coach_rows(db)), active="billing",
+                  today=datetime.now(_tz()).date())
 
 
 @app.get("/healthz")

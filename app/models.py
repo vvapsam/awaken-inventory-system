@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Boolean, CheckConstraint, Column, DateTime, ForeignKey, Integer,
+    Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
     LargeBinary, Numeric, String, Text,
 )
 from sqlalchemy.orm import relationship
@@ -136,6 +136,34 @@ class Customer(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), default=now_utc)
+
+
+COACH_TYPES = [("affiliate", "Affiliate"), ("full_time", "Full Time")]
+
+
+class Coach(Base):
+    __tablename__ = "coaches"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    coach_type = Column(String, nullable=False, default="affiliate")
+    affiliate_fee = Column(Numeric(10, 2), default=0)   # monthly, affiliates only
+    start_date = Column(Date)
+    next_billing = Column(Date)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+
+class Member(Base):
+    __tablename__ = "members"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    coach_id = Column(Integer, ForeignKey("coaches.id"))
+    corkage_rate = Column(Numeric(10, 2), default=3000)  # monthly corkage per client
+    start_date = Column(Date)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    coach = relationship("Coach")
 
 
 class Sale(Base):

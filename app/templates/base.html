@@ -11,7 +11,7 @@
 {% if staff %}
 {% set p = request.url.path %}
 {% set ns = namespace(title='AWAKEN Inventory') %}
-{% for pre,label in [('/dashboard','Dashboard'),('/sales','Sales'),('/stock','Stock'),('/movement','Stock in/out'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/customer','Customers'),('/records','Records'),('/admin/staff','Users')] %}
+{% for pre,label in [('/dashboard','Dashboard'),('/sales','Sales'),('/stock','Stock'),('/movement','Stock in/out'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/customer','Customers'),('/records','Records'),('/admin/staff','Users')] %}
   {% if p.startswith(pre) %}{% set ns.title = label %}{% endif %}
 {% endfor %}
 {% set parts = staff.name.split() %}
@@ -37,6 +37,7 @@
       {% if can_any(staff, ['items.create','items.edit','items.delete']) %}{% call nav('/admin/products', 'Items', p.startswith('/admin/products')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>{% endcall %}{% endif %}
       {% if can(staff, 'view_reports') %}{% call nav('/admin/reports', 'Reports', p.startswith('/admin/reports')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>{% endcall %}{% endif %}
       {% if can_any(staff, ['view_reports','payments.create','payments.edit','payments.delete']) %}{% call nav('/customers', 'Customers', p.startswith('/customer')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% endcall %}{% endif %}
+      {% if staff.role == 'admin' %}{% call nav('/coaches', 'Coaches', p.startswith('/coaches')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/><path d="M4 22a8 8 0 0 1 16 0"/></svg>{% endcall %}{% endif %}
       {% if can_any(staff, ['view_reports','sales.edit','sales.delete','receive.edit','receive.delete','adjust.edit','adjust.delete']) %}{% call nav('/records', 'Records', p.startswith('/records')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>{% endcall %}{% endif %}
       {% if staff.role == 'admin' %}{% call nav('/admin/staff', 'Users', p.startswith('/admin/staff')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{% endcall %}{% endif %}
     </nav>

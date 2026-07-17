@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block body %}
+<style>@media print{.sidebar,.topbar,.tabs,.no-print{display:none!important}.main{margin-left:0!important}.content{padding:0!important}}</style>
+{% include "_coach_tabs.html" %}
+
+<div class="row-between" style="margin-top:16px">
+  <div><h2 style="margin:0">Monthly billing</h2><p class="muted small" style="margin:2px 0 0">Recurring charges due each month — affiliate fees + client corkage</p></div>
+  <button class="btn no-print" type="button" onclick="window.print()">🖨 Print / PDF</button>
+</div>
+
+<table>
+  <tr><th>Coach</th><th>Next billing</th><th class="r">Affiliate fee</th><th class="r">Clients</th><th class="r">Corkage (clients × rate)</th><th class="r">Monthly total</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.coach.name }} <span class="bdg aff">Affiliate</span></td>
+    <td>{% if r.coach.next_billing %}
+        {% if r.coach.next_billing <= today %}<span class="due">{{ r.coach.next_billing.strftime('%b %d, %Y') }} · due</span>
+        {% elif (r.coach.next_billing - today).days <= 7 %}<span class="soon">{{ r.coach.next_billing.strftime('%b %d, %Y') }}</span>
+        {% else %}{{ r.coach.next_billing.strftime('%b %d, %Y') }}{% endif %}
+      {% else %}<span class="dash">—</span>{% endif %}</td>
+    <td class="r">{{ peso(r.fee) }}</td>
+    <td class="r">{{ r.clients }}</td>
+    <td class="r">{{ peso(r.corkage) }}</td>
+    <td class="r"><span class="tot">{{ peso(r.monthly) }}</span></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted" style="padding:16px">No affiliate coaches yet.</td></tr>
+  {% endfor %}
+  {% if rows %}
+  <tr class="gtot">
+    <td colspan="2">Total monthly recurring</td>
+    <td class="r">{{ peso(rows|sum(attribute='fee')) }}</td>
+    <td class="r">{{ rows|sum(attribute='clients') }}</td>
+    <td class="r">{{ peso(rows|sum(attribute='corkage')) }}</td>
+    <td class="r">{{ peso(summ.total_monthly) }}</td>
+  </tr>
+  {% endif %}
+</table>
+<p class="muted small" style="margin-top:12px">A monthly rollup you can print or save as PDF — what each affiliate coach owes and when it's next due, with the grand total of recurring revenue.</p>
+{% endblock %}

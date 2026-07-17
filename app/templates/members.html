@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block body %}
+{% include "_coach_tabs.html" %}
+
+<div class="grid" style="margin:16px 0">
+  <div class="card stat"><div class="stat-label">Corkage members</div><div class="stat-value">{{ member_count }}</div></div>
+  <div class="card stat"><div class="stat-label">Total corkage / mo</div><div class="stat-value" style="color:var(--teal-dark)">{{ peso(total_corkage) }}</div></div>
+  <div class="card stat"><div class="stat-label">Avg corkage / member</div><div class="stat-value">{{ peso(avg_corkage) }}</div></div>
+</div>
+
+<div class="row-between"><h2 style="margin:0">Members (corkage rates)</h2><a class="btn primary" href="/coaches/members/new">＋ New member</a></div>
+<table>
+  <tr><th>Member</th><th>Coach</th><th class="r">Corkage / mo</th><th>Start date</th><th>Status</th><th></th></tr>
+  {% for m in members %}
+  <tr class="{% if not m.is_active %}inactive{% endif %}">
+    <td>{{ m.name }}</td>
+    <td>{{ m.coach.name if m.coach else '—' }}</td>
+    <td class="r">{{ peso(m.corkage_rate) }}</td>
+    <td>{{ m.start_date.strftime('%b %d, %Y') if m.start_date else '—' }}</td>
+    <td>{% if m.is_active %}<span class="bdg act">Active</span>{% else %}<span class="bdg off">Inactive</span>{% endif %}</td>
+    <td class="r"><a href="/coaches/members/{{ m.id }}/edit" style="color:var(--teal-dark);font-weight:600">Edit</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted" style="padding:16px">No members yet. Add coaching clients here.</td></tr>
+  {% endfor %}
+</table>
+<p class="muted small" style="margin-top:12px">Each member is a coaching client tagged to the coach who brought them, with an editable monthly corkage rate (defaults to ₱3,000). This is your corkage-rates-per-client table.</p>
+{% endblock %}

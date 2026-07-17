@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block body %}
+{% include "_coach_tabs.html" %}
+
+<div class="grid" style="margin:16px 0">
+  <div class="card stat"><div class="stat-label">Monthly recurring</div><div class="stat-value" style="color:var(--teal-dark)">{{ peso(summ.total_monthly) }}</div></div>
+  <div class="card stat"><div class="stat-label">Affiliate coaches</div><div class="stat-value">{{ summ.affiliate_count }}</div></div>
+  <div class="card stat"><div class="stat-label">Corkage members</div><div class="stat-value">{{ summ.member_count }}</div></div>
+</div>
+
+<div class="row-between"><h2 style="margin:0">Coaches</h2><a class="btn primary" href="/coaches/new">＋ New coach</a></div>
+<table>
+  <tr><th>Coach</th><th>Type</th><th class="r">Affiliate fee / mo</th><th>Start date</th><th>Next billing</th><th class="r">Clients</th><th class="r">Monthly total</th><th></th></tr>
+  {% for r in rows %}
+  <tr class="{% if not r.coach.is_active %}inactive{% endif %}">
+    <td>{{ r.coach.name }}</td>
+    <td>{% if r.coach.coach_type=='affiliate' %}<span class="bdg aff">Affiliate</span>{% else %}<span class="bdg ft">Full Time</span>{% endif %}</td>
+    <td class="r">{% if r.coach.coach_type=='affiliate' %}{{ peso(r.fee) }}{% else %}<span class="dash">—</span>{% endif %}</td>
+    <td>{{ r.coach.start_date.strftime('%b %d, %Y') if r.coach.start_date else '—' }}</td>
+    <td>{% if r.coach.next_billing %}
+        {% if r.coach.next_billing <= today %}<span class="due">{{ r.coach.next_billing.strftime('%b %d, %Y') }} · due</span>
+        {% elif (r.coach.next_billing - today).days <= 7 %}<span class="soon">{{ r.coach.next_billing.strftime('%b %d, %Y') }}</span>
+        {% else %}{{ r.coach.next_billing.strftime('%b %d, %Y') }}{% endif %}
+      {% else %}<span class="dash">—</span>{% endif %}</td>
+    <td class="r">{% if r.coach.coach_type=='affiliate' %}{{ r.clients }}{% else %}<span class="dash">—</span>{% endif %}</td>
+    <td class="r">{% if r.coach.coach_type=='affiliate' %}<span class="tot">{{ peso(r.monthly) }}</span>{% else %}<span class="dash">—</span>{% endif %}</td>
+    <td class="r"><a href="/coaches/{{ r.coach.id }}/edit" class="edit" style="color:var(--teal-dark);font-weight:600">Edit</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted" style="padding:16px">No coaches yet. Add your first one.</td></tr>
+  {% endfor %}
+</table>
+<p class="muted small" style="margin-top:12px">Monthly total = affiliate fee + (active clients × their corkage rate). Full-time coaches are salaried, so no affiliate fee or corkage.</p>
+{% endblock %}
