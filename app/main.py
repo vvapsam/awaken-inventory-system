@@ -706,6 +706,65 @@ def reports(request: Request, period: str = "week", db: Session = Depends(get_db
                   total_rev=total_rev, total_units=total_units)
 
 
+def inventory_valuation(db, end_u):
+    """On-hand value per active product as of `end_u` (UTC upper bound, exclusive),
+       grouped by category, with cost and retail totals."""
+    mov = dict(
+        db.query(StockMovement.product_id, func.coalesce(func.sum(StockMovement.quantity), 0))
+        .filter(StockMovement.occurred_at < end_u)
+        .group_by(StockMovement.product_id).all()
+    )
+    sold = dict(
+        db.query(SaleItem.product_id, func.coalesce(func.sum(SaleItem.quantity), 0))
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .filter(Sale.sold_at < end_u)
+        .group_by(SaleItem.product_id).all()
+    )
+    cats = {}
+    tot_cost = tot_retail = 0.0
+    tot_units = skus = 0
+    for p in db.query(Product).filter(Product.is_active).order_by(Product.category, Product.name):
+        on_hand = int(mov.get(p.id, 0)) - int(sold.get(p.id, 0))
+        cost = float(p.cost_price) if p.cost_price is not None else None
+        retail = float(p.selling_price)
+        cval = (on_hand * cost) if cost is not None else None
+        rval = on_hand * retail
+        cat = p.category or "Uncategorized"
+        g = cats.setdefault(cat, {"items": [], "cost": 0.0, "retail": 0.0, "has_missing": False})
+        g["items"].append({"product": p, "on_hand": on_hand, "cost": cost,
+                           "cval": cval, "retail": retail, "rval": rval})
+        if cval is not None:
+            g["cost"] += cval
+        else:
+            g["has_missing"] = True
+        g["retail"] += rval
+        tot_cost += (cval or 0.0)
+        tot_retail += rval
+        tot_units += on_hand
+        skus += 1
+    groups = [dict(category=k, **v) for k, v in sorted(cats.items())]
+    return {"groups": groups, "tot_cost": tot_cost, "tot_retail": tot_retail,
+            "tot_units": tot_units, "skus": skus}
+
+
+@app.get("/admin/inventory-value", response_class=HTMLResponse)
+def inventory_value(request: Request, as_of: str = "", view: str = "report",
+                    db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="view_reports")
+    if redir:
+        return redir
+    tz = _tz()
+    now = datetime.now(tz)
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    d = _parse_date(as_of, tz) or today0
+    end_u = (d + timedelta(days=1)).astimezone(timezone.utc)
+    val = inventory_valuation(db, end_u)
+    is_today = d.date() == today0.date()
+    return render(request, "inventory_value.html", db, staff, view=view,
+                  as_of=d.strftime("%Y-%m-%d"),
+                  as_of_label=f"{d:%B} {d.day}, {d.year}", is_today=is_today, **val)
+
+
 @app.get("/admin/reports/sales.csv")
 def reports_csv(request: Request, period: str = "all", db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="view_reports")

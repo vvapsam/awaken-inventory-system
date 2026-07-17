@@ -2,7 +2,10 @@
 {% block body %}
 <div class="row-between">
   <h1>Reports</h1>
-  <a class="btn" href="/admin/reports/sales.csv?period=all">Export all sales (CSV)</a>
+  <span style="display:flex;gap:8px">
+    <a class="btn primary" href="/admin/inventory-value">📦 Inventory value report</a>
+    <a class="btn" href="/admin/reports/sales.csv?period=all">Export all sales (CSV)</a>
+  </span>
 </div>
 
 <div class="periods">

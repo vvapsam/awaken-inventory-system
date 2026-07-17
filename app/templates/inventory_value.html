@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.iv-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 14px}
+.iv-bar label{color:var(--muted);font-size:.82rem;font-weight:600;margin:0}
+.iv-bar form{display:flex;align-items:center;gap:8px;margin:0}
+.iv-bar input[type=date]{width:auto;padding:8px 10px;font-size:.9rem}
+.iv-bar .btn{padding:8px 14px;font-size:.88rem}
+.iv-toggle{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;margin-left:auto}
+.iv-toggle a{padding:8px 14px;font-size:.85rem;font-weight:600;color:var(--muted)}
+.iv-toggle a.on{background:var(--teal);color:#fff}
+.report{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 1px 3px rgba(16,24,32,.05);overflow:hidden}
+.rep-head{padding:24px 28px 18px;border-bottom:2px solid var(--ink);display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
+.rep-head .rtitle{font-size:1.3rem;font-weight:750;letter-spacing:-.01em}
+.rep-head .rsub{color:var(--muted);font-size:.9rem;margin-top:3px}
+.rep-asof{text-align:right}
+.rbrand{display:flex;align-items:center;justify-content:flex-end;gap:8px;color:var(--ink);font-weight:600;letter-spacing:.12em;font-size:.85rem}
+.rbrand svg{width:20px;height:20px;color:var(--ink)}
+.rep-asof .k{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;margin-top:8px}
+.rep-asof .v{font-size:1.05rem;font-weight:700}
+.rep-sum{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line)}
+.rep-sum .cell{padding:16px 28px;border-right:1px solid var(--line)}
+.rep-sum .cell:last-child{border-right:none}
+.rep-sum .k{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.rep-sum .v{font-size:1.55rem;font-weight:800;margin-top:4px;letter-spacing:-.02em}
+.rep-sum .v.teal{color:var(--teal-dark)}
+.report table{width:100%;border-collapse:collapse;font-size:.9rem;border:none;margin:0;border-radius:0}
+.report th,.report td{padding:9px 28px;text-align:left}
+.report th{background:#fff;color:var(--muted);font-weight:600;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--line)}
+.report th.r,.report td.r{text-align:right;font-variant-numeric:tabular-nums}
+.catrow td{background:var(--panel);font-weight:700;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);padding-top:11px;padding-bottom:11px}
+.itemrow td{border-bottom:1px solid #eef1f4}
+.subrow td{border-bottom:1px solid var(--line);font-weight:600;color:var(--muted);font-size:.85rem}
+.subrow td.r{color:var(--ink)}
+.grand td{padding:15px 28px;border-top:2px solid var(--ink);font-weight:800;font-size:1rem}
+.grand td.r{color:var(--teal-dark)}
+.dash{color:#b6bdc6}
+.foot-note{color:var(--muted);font-size:.78rem;padding:12px 28px 20px}
+@media print{
+  .sidebar,.topbar,.iv-bar,h1{display:none!important}
+  .main{margin-left:0!important}.content{padding:0!important}
+  .report{border:none;box-shadow:none}
+}
+</style>
+
+<h1>Inventory value</h1>
+
+<div class="iv-bar">
+  <label for="as_of">As of</label>
+  <form method="get" action="/admin/inventory-value">
+    <input type="date" id="as_of" name="as_of" value="{{ as_of }}">
+    <input type="hidden" name="view" value="{{ view }}">
+    <button class="btn primary" type="submit">Show</button>
+  </form>
+  <a class="btn" href="/admin/inventory-value?view={{ view }}">Today</a>
+  <button class="btn" type="button" onclick="window.print()">🖨 Print / PDF</button>
+  <span class="iv-toggle">
+    <a class="{% if view != 'table' %}on{% endif %}" href="/admin/inventory-value?as_of={{ as_of }}&view=report">Report</a>
+    <a class="{% if view == 'table' %}on{% endif %}" href="/admin/inventory-value?as_of={{ as_of }}&view=table">Table</a>
+  </span>
+</div>
+
+{% if view == 'table' %}
+<table>
+  <tr>
+    <th>SKU</th><th>Product</th><th>Category</th><th class="r">On hand</th>
+    <th class="r">Unit cost</th><th class="r">Value (cost)</th><th class="r">Unit price</th><th class="r">Value (retail)</th>
+  </tr>
+  {% for g in groups %}{% for it in g['items'] %}
+  <tr>
+    <td class="mono">{{ it.product.sku }}</td><td>{{ it.product.name }}</td><td>{{ g.category }}</td>
+    <td class="r">{{ it.on_hand }}</td>
+    <td class="r">{% if it.cost is not none %}{{ peso(it.cost) }}{% else %}<span class="dash">—</span>{% endif %}</td>
+    <td class="r">{% if it.cval is not none %}{{ peso(it.cval) }}{% else %}<span class="dash">—</span>{% endif %}</td>
+    <td class="r">{{ peso(it.retail) }}</td><td class="r">{{ peso(it.rval) }}</td>
+  </tr>
+  {% endfor %}{% endfor %}
+  <tr class="grand"><td colspan="5">Total inventory value</td><td class="r">{{ peso(tot_cost) }}</td><td></td><td class="r">{{ peso(tot_retail) }}</td></tr>
+</table>
+{% else %}
+<div class="report">
+  <div class="rep-head">
+    <div>
+      <div class="rtitle">Inventory Valuation Report</div>
+      <div class="rsub">Value of goods on hand · grouped by category</div>
+    </div>
+    <div class="rep-asof">
+      <div class="rbrand"><svg viewBox="0 0 200 210" fill="currentColor" aria-hidden="true"><path d="M100 10 L174 196 L150 196 L100 74 L50 196 L26 196 Z"/><path d="M100 88 L116 112 L100 136 L84 112 Z"/></svg>AWAKEN</div>
+      <div class="k">As of</div><div class="v">{{ as_of_label }}{% if is_today %} (today){% endif %}</div>
+    </div>
+  </div>
+  <div class="rep-sum">
+    <div class="cell"><div class="k">Total value (at cost)</div><div class="v teal">{{ peso(tot_cost) }}</div></div>
+    <div class="cell"><div class="k">Total value (at retail)</div><div class="v">{{ peso(tot_retail) }}</div></div>
+    <div class="cell"><div class="k">Units on hand · SKUs</div><div class="v">{{ tot_units }} · {{ skus }}</div></div>
+  </div>
+  <table>
+    <tr>
+      <th>SKU</th><th>Product</th><th class="r">On hand</th>
+      <th class="r">Unit cost</th><th class="r">Value (cost)</th><th class="r">Unit price</th><th class="r">Value (retail)</th>
+    </tr>
+    {% for g in groups %}
+    <tr class="catrow"><td colspan="7">{{ g.category }}</td></tr>
+    {% for it in g['items'] %}
+    <tr class="itemrow">
+      <td class="mono">{{ it.product.sku }}</td><td>{{ it.product.name }}</td>
+      <td class="r">{{ it.on_hand }}</td>
+      <td class="r">{% if it.cost is not none %}{{ peso(it.cost) }}{% else %}<span class="dash">—</span>{% endif %}</td>
+      <td class="r">{% if it.cval is not none %}{{ peso(it.cval) }}{% else %}<span class="dash">—</span>{% endif %}</td>
+      <td class="r">{{ peso(it.retail) }}</td><td class="r">{{ peso(it.rval) }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="subrow"><td colspan="4">Subtotal — {{ g.category }}{% if g.has_missing %} *{% endif %}</td>
+      <td class="r">{{ peso(g.cost) }}</td><td></td><td class="r">{{ peso(g.retail) }}</td></tr>
+    {% else %}
+    <tr><td colspan="7" class="muted" style="padding:16px 28px">No active products.</td></tr>
+    {% endfor %}
+    <tr class="grand"><td colspan="4">Total inventory value</td>
+      <td class="r">{{ peso(tot_cost) }}</td><td></td><td class="r">{{ peso(tot_retail) }}</td></tr>
+  </table>
+  <div class="foot-note">Values are on-hand quantity × unit cost / price, calculated from every stock movement and sale up to {{ as_of_label }}.
+    {% if groups | selectattr('has_missing') | list %}Items marked <b>*</b> include products without a cost price, which are excluded from the cost total.{% endif %}</div>
+</div>
+{% endif %}
+{% endblock %}

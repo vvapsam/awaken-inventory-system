@@ -11,7 +11,7 @@
 {% if staff %}
 {% set p = request.url.path %}
 {% set ns = namespace(title='AWAKEN Inventory') %}
-{% for pre,label in [('/dashboard','Dashboard'),('/sales','Sales'),('/stock','Stock'),('/movement','Stock in/out'),('/admin/products','Items'),('/admin/reports','Reports'),('/customer','Customers'),('/records','Records'),('/admin/staff','Users')] %}
+{% for pre,label in [('/dashboard','Dashboard'),('/sales','Sales'),('/stock','Stock'),('/movement','Stock in/out'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/customer','Customers'),('/records','Records'),('/admin/staff','Users')] %}
   {% if p.startswith(pre) %}{% set ns.title = label %}{% endif %}
 {% endfor %}
 {% set parts = staff.name.split() %}
