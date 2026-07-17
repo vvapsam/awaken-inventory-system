@@ -20,17 +20,6 @@
 </div>
 {% endif %}
 
-<div class="grid">
-  <div class="card stat">
-    <div class="stat-label">Active products</div>
-    <div class="stat-value">{{ product_count }}</div>
-  </div>
-  <div class="card stat {% if low %}warn{% endif %}">
-    <div class="stat-label">Low stock items</div>
-    <div class="stat-value">{{ low|length }}</div>
-  </div>
-</div>
-
 <h2>Quick actions</h2>
 <div class="actions">
   {% if can(staff, 'sales.create') %}<a class="btn primary big" href="/sales">Log a sale</a>{% endif %}
@@ -41,14 +30,36 @@
   {% if can(staff, 'view_stock') %}<a class="btn big" href="/stock">View stock</a>{% endif %}
 </div>
 
-{% if low and can(staff, 'view_stock') %}
-<h2>Needs reordering</h2>
-<table>
-  <tr><th>Product</th><th>On hand</th><th>Reorder at</th></tr>
-  {% for r in low %}
-  <tr class="low"><td>{{ r.product.name }}</td><td>{{ r.on_hand }}</td><td>{{ r.product.reorder_point }}</td></tr>
-  {% endfor %}
-</table>
+<style>
+.glance{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.tile{display:block;padding:18px 20px;text-decoration:none;color:var(--ink);transition:border-color .12s,box-shadow .12s}
+.tile:hover{border-color:var(--teal);box-shadow:0 4px 14px rgba(16,24,32,.07)}
+.tile-top{display:flex;align-items:center;gap:9px;color:var(--muted)}
+.tile-ico{font-size:1.05rem}.tile-label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.tile-top .arrow{margin-left:auto;color:var(--muted);font-size:1.15rem}
+.tile:hover .arrow{color:var(--teal-dark)}
+.tile-num{font-size:2.4rem;font-weight:800;letter-spacing:-.02em;margin:8px 0 4px}
+.tile-num.red{color:#c0392b}.tile-num.teal{color:var(--teal-dark)}
+.tile-sub{color:var(--muted);font-size:.85rem}
+</style>
+{% if (can(staff, 'view_stock')) or can_customers %}
+<h2>At a glance</h2>
+<div class="glance">
+  {% if can(staff, 'view_stock') %}
+  <a class="card tile" href="/stock">
+    <div class="tile-top"><span class="tile-ico">🔔</span><span class="tile-label">Reminders</span><span class="arrow">→</span></div>
+    <div class="tile-num {% if low %}red{% endif %}">{{ low|length }}</div>
+    <div class="tile-sub">{% if low %}items at or below reorder level — tap to view &amp; restock{% else %}nothing needs restocking right now{% endif %}</div>
+  </a>
+  {% endif %}
+  {% if can_customers %}
+  <a class="card tile" href="/customers">
+    <div class="tile-top"><span class="tile-ico">💳</span><span class="tile-label">Unpaid sales</span><span class="arrow">→</span></div>
+    <div class="tile-num {% if unpaid_total > 0 %}teal{% endif %}">{{ peso(unpaid_total) }}</div>
+    <div class="tile-sub">{% if unpaid_count %}owed across {{ unpaid_count }} customer{{ '' if unpaid_count == 1 else 's' }} — tap to see balances &amp; take payments{% else %}no outstanding balances{% endif %}</div>
+  </a>
+  {% endif %}
+</div>
 {% endif %}
 
 {% if can_reports and summary %}

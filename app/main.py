@@ -257,9 +257,15 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     low = [r for r in levels if r["low"]]
     can_reports = can(staff, "view_reports")
     summary = sales_summary(db, "today") if can_reports else None
+    can_customers = can_any(staff, ["view_reports", "payments.create",
+                                    "payments.edit", "payments.delete"])
+    owing = [r for r in customer_balances(db) if r["balance"] > 0.005] if can_customers else []
+    unpaid_total = sum(r["balance"] for r in owing)
     return render(request, "dashboard.html", db, staff, low=low,
                   product_count=len(levels), can_reports=can_reports,
-                  summary=summary, sales_ranges=SALES_RANGES)
+                  summary=summary, sales_ranges=SALES_RANGES,
+                  can_customers=can_customers, unpaid_total=unpaid_total,
+                  unpaid_count=len(owing))
 
 
 @app.get("/api/sales_summary")
