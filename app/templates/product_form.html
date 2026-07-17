@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ 'Edit product' if product else 'New product' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="post" action="{{ '/admin/products/%s/edit' % product.id if product else '/admin/products/new' }}" class="card">
+  <label>SKU</label>
+  {% if product %}
+    <input value="{{ product.sku }}" disabled>
+  {% else %}
+    <input name="sku" placeholder="e.g. BEV-LAT-16" required>
+  {% endif %}
+
+  <label>Name</label>
+  <input name="name" value="{{ product.name if product else '' }}" required>
+
+  <label>Category</label>
+  <select name="category">
+    {% for c in CATEGORIES %}
+    <option value="{{ c }}" {% if product and product.category == c %}selected{% endif %}>{{ c }}</option>
+    {% endfor %}
+  </select>
+
+  <label>Unit</label>
+  <select name="unit">
+    {% for u in UNITS %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+  </select>
+
+  <label>Selling price (₱)</label>
+  <input name="selling_price" type="number" step="0.01" value="{{ product.selling_price if product else '' }}" required>
+
+  <label>Cost price (₱) — admin only, for margins</label>
+  <input name="cost_price" type="number" step="0.01" value="{{ product.cost_price if product and product.cost_price is not none else '' }}">
+
+  <label>Reorder point (alert at or below)</label>
+  <input name="reorder_point" type="number" min="0" value="{{ product.reorder_point if product else 0 }}">
+
+  {% if product %}
+  <label class="check"><input type="checkbox" name="is_active" {% if product.is_active %}checked{% endif %}> Active</label>
+  {% endif %}
+
+  <button type="submit" class="btn primary big">Save</button>
+  <a class="btn" href="/admin/products">Cancel</a>
+</form>
+{% endblock %}

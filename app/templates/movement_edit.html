@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Edit movement</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="post" action="/movement/{{ m.id }}/edit" class="card">
+  <div class="muted small">
+    {{ m.movement_type }} · {{ m.product.name if m.product else '' }} ·
+    {{ m.occurred_at.strftime('%Y-%m-%d %H:%M') if m.occurred_at else '' }}
+  </div>
+
+  {% if m.movement_type == 'adjustment' %}
+  <label>Direction</label>
+  <select name="direction">
+    <option value="add" {% if m.quantity >= 0 %}selected{% endif %}>Add to stock (+)</option>
+    <option value="remove" {% if m.quantity < 0 %}selected{% endif %}>Remove from stock (−)</option>
+  </select>
+  {% endif %}
+
+  <label>Quantity</label>
+  <input name="quantity" type="number" min="1" value="{{ m.quantity | abs }}" required>
+
+  {% if m.movement_type == 'restock' %}
+  <label>Unit cost (optional)</label>
+  <input name="unit_cost" type="number" step="0.01" value="{{ m.unit_cost if m.unit_cost is not none else '' }}">
+  {% endif %}
+
+  <label>Note</label>
+  <input name="note" value="{{ m.note or '' }}">
+
+  <button type="submit" class="btn primary big">Save</button>
+  <a class="btn" href="/records">Cancel</a>
+</form>
+{% endblock %}

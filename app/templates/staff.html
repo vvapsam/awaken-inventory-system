@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <h1>Users</h1>
+  <a class="btn primary" href="/admin/staff/new">＋ New user</a>
+</div>
+<table>
+  <tr><th>Username</th><th>Name</th><th>Role</th><th>Permissions</th><th>Status</th><th></th></tr>
+  {% for p in people %}
+  <tr class="{% if not p.is_active %}inactive{% endif %}">
+    <td class="mono">{{ p.username }}</td>
+    <td>{{ p.name }}</td>
+    <td>{% if p.role == 'admin' %}<span class="tag">admin</span>{% else %}staff{% endif %}</td>
+    <td class="perm-cell">
+      {% if p.role == 'admin' %}<span class="muted">Full access</span>
+      {% else %}
+        {% set keys = (p.permissions or '').split(',') | select | list %}
+        {% if keys %}{% for k in keys %}<span class="chip">{{ k.replace('.', ' ') }}</span>{% endfor %}
+        {% else %}<span class="muted">none</span>{% endif %}
+      {% endif %}
+    </td>
+    <td>{{ 'active' if p.is_active else 'inactive' }}</td>
+    <td><a href="/admin/staff/{{ p.id }}/edit">Edit</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

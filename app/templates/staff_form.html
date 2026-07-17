@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ 'Edit user' if person else 'New user' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+{% set current = (person.permissions or '').split(',') if person else [] %}
+<form method="post" action="{{ '/admin/staff/%s/edit' % person.id if person else '/admin/staff/new' }}" class="card">
+  <div class="two-col">
+    <div>
+      <label>Display name</label>
+      <input name="name" value="{{ person.name if person else '' }}" required>
+    </div>
+    <div>
+      <label>Username (for login)</label>
+      <input name="username" value="{{ person.username if person else '' }}"
+             autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="e.g. maria" required>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <label>Role</label>
+      <select name="role" id="role" onchange="toggleRole()">
+        {% for r in ROLES %}
+        <option value="{{ r }}" {% if (person and person.role == r) or (not person and r == 'staff') %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>PIN {% if person %}(blank = keep current){% endif %}</label>
+      <input name="pin" type="password" inputmode="numeric" placeholder="at least 4 digits" {% if not person %}required{% endif %}>
+    </div>
+  </div>
+
+  <label>Phone for WhatsApp (optional, for later)</label>
+  <input name="phone" value="{{ person.phone if person and person.phone else '' }}" placeholder="+63...">
+
+  <div id="perm-block">
+    <label>Permissions</label>
+    <p class="muted small">Admins automatically have everything. For staff, tick exactly what they can do.</p>
+
+    <table class="perm-matrix">
+      <tr>
+        <th>Module</th>
+        {% for akey, alabel in ACTIONS %}<th>{{ alabel }}</th>{% endfor %}
+      </tr>
+      {% for mkey, mlabel in MODULES %}
+      <tr>
+        <td class="mod-name">{{ mlabel }}</td>
+        {% for akey, alabel in ACTIONS %}
+        {% set pk = mkey ~ '.' ~ akey %}
+        <td class="cell">
+          <input type="checkbox" name="permissions" value="{{ pk }}"
+            {% if person and pk in current %}checked{% elif not person and pk in ['sales.create','receive.create','adjust.create'] %}checked{% endif %}>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+
+    <div class="perm-group">
+      <div class="perm-group-title">Reports & access</div>
+      {% for akey, alabel in ACCESS_DEFS %}
+      <label class="check perm-check">
+        <input type="checkbox" name="permissions" value="{{ akey }}"
+          {% if person and akey in current %}checked{% elif not person and akey == 'view_stock' %}checked{% endif %}>
+        <span>{{ alabel }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if person %}
+  <label class="check"><input type="checkbox" name="is_active" {% if person.is_active %}checked{% endif %}> Active</label>
+  {% endif %}
+
+  <button type="submit" class="btn primary big">Save</button>
+  <a class="btn" href="/admin/staff">Cancel</a>
+</form>
+
+<script>
+function toggleRole(){
+  var isAdmin = document.getElementById('role').value === 'admin';
+  document.getElementById('perm-block').style.opacity = isAdmin ? .4 : 1;
+  document.querySelectorAll('#perm-block input[type=checkbox]').forEach(function(c){ c.disabled = isAdmin; });
+}
+toggleRole();
+</script>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Hi, {{ staff.name }}</h1>
+
+{% if can_reports and summary %}
+<div class="card sales-widget">
+  <div class="sw-head">
+    <div>
+      <div class="sw-label">Sales · <span id="sw-range">{{ summary.label }}</span></div>
+      <div class="sw-value" id="sw-value">{{ peso(summary.revenue) }}</div>
+      <div class="sw-sub"><span id="sw-units">{{ summary.units }}</span> units sold</div>
+    </div>
+    <div class="pills" id="sw-pills">
+      {% for key, label in sales_ranges %}
+      <button type="button" class="pill {% if key=='today' %}active{% endif %}" data-range="{{ key }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="sw-chart" id="sw-chart"></div>
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="card stat">
+    <div class="stat-label">Active products</div>
+    <div class="stat-value">{{ product_count }}</div>
+  </div>
+  <div class="card stat {% if low %}warn{% endif %}">
+    <div class="stat-label">Low stock items</div>
+    <div class="stat-value">{{ low|length }}</div>
+  </div>
+</div>
+
+<h2>Quick actions</h2>
+<div class="actions">
+  {% if can(staff, 'sales.create') %}<a class="btn primary big" href="/sale/new">Log a sale</a>{% endif %}
+  {% if can(staff, 'receive.create') %}<a class="btn big" href="/movement/new?type=restock">Restock</a>{% endif %}
+  {% if can(staff, 'adjust.create') %}<a class="btn big" href="/movement/new?type=waste">Waste</a>{% endif %}
+  {% if can(staff, 'adjust.create') %}<a class="btn big" href="/movement/new?type=missing">Missing</a>{% endif %}
+  {% if can(staff, 'adjust.create') %}<a class="btn big" href="/movement/new?type=adjustment">Adjust</a>{% endif %}
+  {% if can(staff, 'view_stock') %}<a class="btn big" href="/stock">View stock</a>{% endif %}
+</div>
+
+{% if low and can(staff, 'view_stock') %}
+<h2>Needs reordering</h2>
+<table>
+  <tr><th>Product</th><th>On hand</th><th>Reorder at</th></tr>
+  {% for r in low %}
+  <tr class="low"><td>{{ r.product.name }}</td><td>{{ r.on_hand }}</td><td>{{ r.product.reorder_point }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if can_reports and summary %}
+<script>
+const fmt = v => "₱" + Number(v).toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+function drawChart(buckets){
+  const el = document.getElementById('sw-chart');
+  el.innerHTML = '';
+  const max = Math.max(1, ...buckets.map(b => b.value));
+  const n = buckets.length;
+  const showEvery = Math.ceil(n / 8);
+  buckets.forEach((b, i) => {
+    const col = document.createElement('div');
+    col.className = 'sw-col';
+    const h = Math.round((b.value / max) * 100);
+    const bar = document.createElement('div');
+    bar.className = 'sw-bar' + (b.value > 0 ? '' : ' empty');
+    bar.style.height = '0%';
+    bar.title = b.label + ' · ' + fmt(b.value);
+    col.appendChild(bar);
+    const lab = document.createElement('div');
+    lab.className = 'sw-x';
+    lab.textContent = (i % showEvery === 0 || i === n - 1) ? b.label : '';
+    col.appendChild(lab);
+    el.appendChild(col);
+    requestAnimationFrame(() => { setTimeout(() => { bar.style.height = h + '%'; }, 20 + i * 12); });
+  });
+}
+
+function animateValue(node, to){
+  const from = 0, dur = 500, t0 = performance.now();
+  function step(t){
+    const p = Math.min(1, (t - t0) / dur);
+    node.textContent = fmt(from + (to - from) * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+async function loadRange(range){
+  const res = await fetch('/api/sales_summary?range=' + range);
+  if (!res.ok) return;
+  const d = await res.json();
+  document.getElementById('sw-range').textContent = d.label;
+  document.getElementById('sw-units').textContent = d.units;
+  animateValue(document.getElementById('sw-value'), d.revenue);
+  drawChart(d.buckets);
+}
+
+document.querySelectorAll('#sw-pills .pill').forEach(p => {
+  p.addEventListener('click', () => {
+    document.querySelectorAll('#sw-pills .pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    loadRange(p.dataset.range);
+  });
+});
+
+drawChart({{ summary.buckets | tojson }});
+</script>
+{% endif %}
+{% endblock %}

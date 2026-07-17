@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Edit sale</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="post" action="/sale/{{ sale.id }}/edit" class="card">
+  <div class="muted small">
+    {{ sale.sold_at.strftime('%Y-%m-%d %H:%M') if sale.sold_at else '' }} ·
+    {% for it in sale.items %}{{ it.quantity }}× {{ it.product.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+  </div>
+
+  <label>Payment method</label>
+  <select name="payment_method">
+    {% for m in PAYMENT_METHODS %}<option value="{{ m }}" {% if sale.payment_method == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+  </select>
+
+  <label>Note</label>
+  <input name="note" value="{{ sale.note or '' }}">
+
+  <p class="muted small">To change the items or quantities, delete this sale and log it again.</p>
+  <button type="submit" class="btn primary big">Save</button>
+  <a class="btn" href="/records">Cancel</a>
+</form>
+{% endblock %}

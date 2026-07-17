@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AWAKEN — Sign in</title>
+  <link rel="icon" href="/static/logo.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-page">
+  <form class="login-card" method="post" action="/login">
+    <div class="mark"><svg viewBox="0 0 200 210" fill="currentColor" aria-label="AWAKEN"><path d="M100 10 L174 196 L150 196 L100 74 L50 196 L26 196 Z"/><path d="M100 88 L116 112 L100 136 L84 112 Z"/></svg></div>
+    <div class="wm">AWAKEN</div>
+    <div class="sub">Inventory &amp; Sales</div>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <label>Username</label>
+    <input name="username" placeholder="your username" autocapitalize="none"
+           autocorrect="off" spellcheck="false" required autofocus>
+    <label>PIN</label>
+    <input name="pin" type="password" inputmode="numeric" placeholder="••••" required>
+    <button type="submit" class="btn primary big">Sign in</button>
+  </form>
+</body>
+</html>

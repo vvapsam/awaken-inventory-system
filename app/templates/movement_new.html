@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Stock in / out</h1>
+<form method="post" action="/movement/new" class="card">
+  <label>Type</label>
+  <select name="movement_type" id="mtype" onchange="toggleDir()">
+    {% for m in allowed_types %}
+    <option value="{{ m }}" {% if m == mtype %}selected{% endif %}>{{ m }}</option>
+    {% endfor %}
+  </select>
+
+  <label>Product</label>
+  <select name="product_id" required>
+    {% for p in products %}<option value="{{ p.id }}">{{ p.name }} ({{ p.sku }})</option>{% endfor %}
+  </select>
+
+  <div id="dirwrap" style="display:none">
+    <label>Direction</label>
+    <select name="direction">
+      <option value="add">Add to stock (+)</option>
+      <option value="remove">Remove from stock (−)</option>
+    </select>
+  </div>
+
+  <label>Quantity</label>
+  <input name="quantity" type="number" min="1" value="1" required>
+
+  <div id="costwrap">
+    <label>Unit cost (optional — for restocks)</label>
+    <input name="unit_cost" type="number" step="0.01" placeholder="e.g. 55.00">
+  </div>
+
+  <label>Note (optional)</label>
+  <input name="note" placeholder="e.g. supplier delivery, expired, miscount">
+
+  <button type="submit" class="btn primary big">Save</button>
+</form>
+<script>
+function toggleDir(){
+  var t = document.getElementById('mtype').value;
+  document.getElementById('dirwrap').style.display = (t === 'adjustment') ? 'block' : 'none';
+  document.getElementById('costwrap').style.display = (t === 'restock') ? 'block' : 'none';
+}
+toggleDir();
+</script>
+{% endblock %}

@@ -1,0 +1,770 @@
+import csv
+import io
+import os
+from datetime import datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover
+    ZoneInfo = None
+
+from fastapi import Depends, FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, text
+from sqlalchemy.orm import Session
+from starlette.middleware.sessions import SessionMiddleware
+
+from .auth import current_staff, hash_pin, verify_pin
+from .db import Base, engine, get_db
+from .models import (
+    CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
+    MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
+    DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
+    Product, Sale, SaleItem, Staff, StockMovement,
+)
+
+APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
+
+
+def _tz():
+    if ZoneInfo:
+        try:
+            return ZoneInfo(APP_TZ)
+        except Exception:
+            pass
+    return timezone(timedelta(hours=8))  # Manila fallback
+
+BASE_DIR = os.path.dirname(__file__)
+app = FastAPI(title="AWAKEN Inventory")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SECRET_KEY", "dev-insecure-change-me"),
+    max_age=60 * 60 * 12,  # 12h sessions
+)
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+templates.env.globals["peso"] = lambda v: "₱{:,.2f}".format(float(v or 0))
+templates.env.globals["can"] = can
+templates.env.globals["can_any"] = can_any
+
+
+def _slugify(s):
+    return "".join(c for c in (s or "").lower() if c.isalnum()) or "user"
+
+
+@app.on_event("startup")
+def startup():
+    Base.metadata.create_all(bind=engine)
+    # Lightweight migrations for databases created before these columns existed.
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS permissions TEXT NOT NULL DEFAULT ''"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS username TEXT"))
+    db = next(get_db())
+    try:
+        # Backfill usernames for any rows missing one, keeping them unique.
+        taken = set(u for (u,) in db.query(Staff.username).all() if u)
+        for st in db.query(Staff).filter((Staff.username == None) | (Staff.username == "")).all():  # noqa: E711
+            base = _slugify(st.name)
+            u, i = base, 1
+            while u in taken:
+                i += 1
+                u = f"{base}{i}"
+            st.username = u
+            taken.add(u)
+        db.commit()
+        with engine.begin() as conn:
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS staff_username_uq ON staff (username)"))
+        # Bootstrap a first admin if none exists.
+        if not db.query(Staff).filter(Staff.role == "admin").first():
+            pin = os.environ.get("ADMIN_INITIAL_PIN", "123456")
+            h, s = hash_pin(pin)
+            db.add(Staff(username="admin", name="Admin", role="admin",
+                         pin_hash=h, pin_salt=s, permissions=""))
+            db.commit()
+    finally:
+        db.close()
+
+
+# ---------- helpers ----------
+
+def render(request, template, db, staff, **ctx):
+    base = {"request": request, "staff": staff, "CATEGORIES": CATEGORIES,
+            "UNITS": UNITS, "MOVEMENT_TYPES": MOVEMENT_TYPES,
+            "PAYMENT_METHODS": PAYMENT_METHODS, "ROLES": ROLES,
+            "MODULES": MODULES, "ACTIONS": ACTIONS, "ACCESS_DEFS": ACCESS_DEFS,
+            "RECEIVE_TYPES": RECEIVE_TYPES, "ADJUST_TYPES": ADJUST_TYPES}
+    base.update(ctx)
+    return templates.TemplateResponse(template, base)
+
+
+def require(request, db, admin=False, perm=None):
+    """Return (staff, None) if allowed, else (None, RedirectResponse).
+
+    - not logged in  -> login page
+    - admin=True and not admin -> dashboard
+    - perm set and user lacks it (and isn't admin) -> dashboard
+    """
+    staff = current_staff(request, db)
+    if not staff:
+        return None, RedirectResponse("/login", status_code=303)
+    if admin and staff.role != "admin":
+        return None, RedirectResponse("/dashboard", status_code=303)
+    if perm and not can(staff, perm):
+        return None, RedirectResponse("/dashboard", status_code=303)
+    return staff, None
+
+
+def stock_levels(db):
+    """on_hand per active product = sum(stock_movements) - sum(sale_items)."""
+    mov = dict(
+        db.query(StockMovement.product_id, func.coalesce(func.sum(StockMovement.quantity), 0))
+        .group_by(StockMovement.product_id).all()
+    )
+    sold = dict(
+        db.query(SaleItem.product_id, func.coalesce(func.sum(SaleItem.quantity), 0))
+        .group_by(SaleItem.product_id).all()
+    )
+    rows = []
+    for p in db.query(Product).filter(Product.is_active).order_by(Product.category, Product.name):
+        on_hand = int(mov.get(p.id, 0)) - int(sold.get(p.id, 0))
+        rows.append({"product": p, "on_hand": on_hand, "low": on_hand <= p.reorder_point})
+    return rows
+
+
+def signed_qty(movement_type: str, qty: int, direction: str = "add") -> int:
+    if movement_type in ("restock", "return"):
+        return abs(qty)
+    if movement_type in ("waste", "missing"):
+        return -abs(qty)
+    # adjustment: user chooses
+    return abs(qty) if direction == "add" else -abs(qty)
+
+
+# ---------- auth ----------
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request, db: Session = Depends(get_db)):
+    staff = current_staff(request, db)
+    return RedirectResponse("/dashboard" if staff else "/login", status_code=303)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_form(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+
+@app.post("/login", response_class=HTMLResponse)
+def login(request: Request, username: str = Form(...), pin: str = Form(...), db: Session = Depends(get_db)):
+    uname = (username or "").strip().lower()
+    staff = db.query(Staff).filter(func.lower(Staff.username) == uname, Staff.is_active).first()
+    if not staff or not verify_pin(pin, staff.pin_hash, staff.pin_salt):
+        return templates.TemplateResponse(
+            "login.html", {"request": request, "error": "Wrong username or PIN."}
+        )
+    request.session["staff_id"] = staff.id
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
+
+
+# ---------- dashboard + stock ----------
+
+SALES_RANGES = [
+    ("today", "Today"), ("yesterday", "Yesterday"), ("7d", "7 days"),
+    ("30d", "30 days"), ("month", "This month"),
+]
+
+
+def _range_bounds(key):
+    tz = _tz()
+    now = datetime.now(tz)
+    t0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = t0 + timedelta(days=1)
+    if key == "today":
+        return t0, end, "hour"
+    if key == "yesterday":
+        return t0 - timedelta(days=1), t0, "hour"
+    if key == "7d":
+        return t0 - timedelta(days=6), end, "day"
+    if key == "30d":
+        return t0 - timedelta(days=29), end, "day"
+    if key == "month":
+        return t0.replace(day=1), end, "day"
+    return t0, end, "hour"
+
+
+def _hour_label(h):
+    suffix = "a" if h < 12 else "p"
+    return f"{(h % 12) or 12}{suffix}"
+
+
+def sales_summary(db, key):
+    tz = _tz()
+    start, end, gran = _range_bounds(key)
+    start_u, end_u = start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+    rows = (
+        db.query(Sale.sold_at, SaleItem.quantity, SaleItem.unit_price)
+        .join(SaleItem, SaleItem.sale_id == Sale.id)
+        .filter(Sale.sold_at >= start_u, Sale.sold_at < end_u).all()
+    )
+    # build ordered empty buckets
+    buckets, index = [], {}
+    if gran == "hour":
+        for h in range(24):
+            k = h
+            index[k] = len(buckets)
+            buckets.append({"label": _hour_label(h), "value": 0.0})
+    else:
+        d = start
+        while d < end:
+            k = d.date()
+            index[k] = len(buckets)
+            buckets.append({"label": f"{d.month}/{d.day}", "value": 0.0})
+            d += timedelta(days=1)
+    revenue = 0.0
+    units = 0
+    for sold_at, qty, price in rows:
+        amt = float(qty) * float(price)
+        revenue += amt
+        units += int(qty)
+        local = sold_at.astimezone(tz) if sold_at.tzinfo else sold_at.replace(tzinfo=timezone.utc).astimezone(tz)
+        k = local.hour if gran == "hour" else local.date()
+        if k in index:
+            buckets[index[k]]["value"] += amt
+    label = dict(SALES_RANGES).get(key, "Today")
+    return {"range": key, "label": label, "revenue": round(revenue, 2),
+            "units": units, "granularity": gran, "buckets": buckets}
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    levels = stock_levels(db)
+    low = [r for r in levels if r["low"]]
+    can_reports = can(staff, "view_reports")
+    summary = sales_summary(db, "today") if can_reports else None
+    return render(request, "dashboard.html", db, staff, low=low,
+                  product_count=len(levels), can_reports=can_reports,
+                  summary=summary, sales_ranges=SALES_RANGES)
+
+
+@app.get("/api/sales_summary")
+def api_sales_summary(request: Request, range: str = "today", db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="view_reports")
+    if redir:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    if range not in dict(SALES_RANGES):
+        range = "today"
+    return JSONResponse(sales_summary(db, range))
+
+
+@app.get("/stock", response_class=HTMLResponse)
+def stock(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="view_stock")
+    if redir:
+        return redir
+    return render(request, "stock.html", db, staff, levels=stock_levels(db))
+
+
+# ---------- log a sale ----------
+
+@app.get("/sale/new", response_class=HTMLResponse)
+def sale_form(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="sales.create")
+    if redir:
+        return redir
+    products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+    return render(request, "sale_new.html", db, staff, products=products)
+
+
+@app.post("/sale/new")
+async def sale_create(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="sales.create")
+    if redir:
+        return redir
+    form = await request.form()
+    product_ids = form.getlist("product_id")
+    quantities = form.getlist("quantity")
+    payment_method = form.get("payment_method") or "cash"
+    note = form.get("note") or None
+
+    sale = Sale(staff_id=staff.id, payment_method=payment_method, note=note)
+    db.add(sale)
+    db.flush()
+    added = 0
+    for pid, qty in zip(product_ids, quantities):
+        if not pid or not qty:
+            continue
+        try:
+            qn = int(qty)
+        except ValueError:
+            continue
+        if qn <= 0:
+            continue
+        p = db.get(Product, int(pid))
+        if not p:
+            continue
+        db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qn,
+                        unit_price=p.selling_price, cost_price=p.cost_price))
+        added += 1
+    if added == 0:
+        db.rollback()
+        products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+        return render(request, "sale_new.html", db, staff, products=products,
+                      error="Add at least one item with a quantity.")
+    db.commit()
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+# ---------- stock movements (restock / waste / missing / adjustment / return) ----------
+
+@app.get("/movement/new", response_class=HTMLResponse)
+def movement_form(request: Request, type: str = "restock", db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if type not in MOVEMENT_TYPES:
+        type = "restock"
+    # pick a type the user is actually allowed to create
+    if not can(staff, f"{module_for_type(type)}.create"):
+        allowed = [t for t in MOVEMENT_TYPES if can(staff, f"{module_for_type(t)}.create")]
+        if not allowed:
+            return RedirectResponse("/dashboard", status_code=303)
+        type = allowed[0]
+    # only offer the movement types this user may create
+    allowed_types = [t for t in MOVEMENT_TYPES if can(staff, f"{module_for_type(t)}.create")]
+    products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+    return render(request, "movement_new.html", db, staff, products=products,
+                  mtype=type, allowed_types=allowed_types)
+
+
+@app.post("/movement/new")
+def movement_create(request: Request, movement_type: str = Form(...),
+                    product_id: int = Form(...), quantity: int = Form(...),
+                    direction: str = Form("add"), unit_cost: str = Form(""),
+                    note: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm=f"{module_for_type(movement_type)}.create")
+    if redir:
+        return redir
+    if movement_type not in MOVEMENT_TYPES:
+        return RedirectResponse("/movement/new", status_code=303)
+    q = signed_qty(movement_type, quantity, direction)
+    uc = None
+    if unit_cost.strip():
+        try:
+            uc = float(unit_cost)
+        except ValueError:
+            uc = None
+    db.add(StockMovement(product_id=product_id, movement_type=movement_type,
+                         quantity=q, unit_cost=uc, note=note or None, staff_id=staff.id))
+    db.commit()
+    return RedirectResponse("/stock", status_code=303)
+
+
+@app.get("/movement/{mid}/edit", response_class=HTMLResponse)
+def movement_edit(request: Request, mid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    m = db.get(StockMovement, mid)
+    if not m:
+        return RedirectResponse("/records", status_code=303)
+    if not can(staff, f"{module_for_type(m.movement_type)}.edit"):
+        return RedirectResponse("/records", status_code=303)
+    return render(request, "movement_edit.html", db, staff, m=m, error=None)
+
+
+@app.post("/movement/{mid}/edit")
+def movement_update(request: Request, mid: int, quantity: int = Form(...),
+                    direction: str = Form("add"), unit_cost: str = Form(""),
+                    note: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    m = db.get(StockMovement, mid)
+    if not m:
+        return RedirectResponse("/records", status_code=303)
+    if not can(staff, f"{module_for_type(m.movement_type)}.edit"):
+        return RedirectResponse("/records", status_code=303)
+    m.quantity = signed_qty(m.movement_type, quantity, direction)
+    m.unit_cost = float(unit_cost) if unit_cost.strip() else None
+    m.note = note or None
+    db.commit()
+    return RedirectResponse("/records", status_code=303)
+
+
+@app.post("/movement/{mid}/delete")
+def movement_delete(request: Request, mid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    m = db.get(StockMovement, mid)
+    if not m:
+        return RedirectResponse("/records", status_code=303)
+    if not can(staff, f"{module_for_type(m.movement_type)}.delete"):
+        return RedirectResponse("/records", status_code=303)
+    db.delete(m)
+    db.commit()
+    return RedirectResponse("/records", status_code=303)
+
+
+# ---------- sales: edit / delete ----------
+
+@app.get("/sale/{sid}/edit", response_class=HTMLResponse)
+def sale_edit(request: Request, sid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="sales.edit")
+    if redir:
+        return redir
+    sale = db.get(Sale, sid)
+    if not sale:
+        return RedirectResponse("/records", status_code=303)
+    return render(request, "sale_edit.html", db, staff, sale=sale, error=None)
+
+
+@app.post("/sale/{sid}/edit")
+def sale_update(request: Request, sid: int, payment_method: str = Form("cash"),
+                note: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="sales.edit")
+    if redir:
+        return redir
+    sale = db.get(Sale, sid)
+    if not sale:
+        return RedirectResponse("/records", status_code=303)
+    sale.payment_method = payment_method
+    sale.note = note or None
+    db.commit()
+    return RedirectResponse("/records", status_code=303)
+
+
+@app.post("/sale/{sid}/delete")
+def sale_delete(request: Request, sid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="sales.delete")
+    if redir:
+        return redir
+    sale = db.get(Sale, sid)
+    if sale:
+        db.delete(sale)  # cascades to sale_items
+        db.commit()
+    return RedirectResponse("/records", status_code=303)
+
+
+# ---------- admin: products ----------
+
+@app.get("/admin/products", response_class=HTMLResponse)
+
+@app.get("/admin/products", response_class=HTMLResponse)
+def products_list(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, ["items.create", "items.edit", "items.delete"]):
+        return RedirectResponse("/dashboard", status_code=303)
+    products = db.query(Product).order_by(Product.is_active.desc(), Product.category, Product.name).all()
+    return render(request, "products.html", db, staff, products=products)
+
+
+@app.get("/admin/products/new", response_class=HTMLResponse)
+def product_new(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="items.create")
+    if redir:
+        return redir
+    return render(request, "product_form.html", db, staff, product=None, error=None)
+
+
+@app.post("/admin/products/new")
+def product_create(request: Request, sku: str = Form(...), name: str = Form(...),
+                   category: str = Form(...), unit: str = Form("each"),
+                   selling_price: float = Form(...), cost_price: str = Form(""),
+                   reorder_point: int = Form(0), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="items.create")
+    if redir:
+        return redir
+    if category not in CATEGORIES or unit not in UNITS:
+        return render(request, "product_form.html", db, staff, product=None,
+                      error="Invalid category or unit.")
+    if db.query(Product).filter(Product.sku == sku).first():
+        return render(request, "product_form.html", db, staff, product=None,
+                      error=f"SKU '{sku}' already exists.")
+    cp = float(cost_price) if cost_price.strip() else None
+    db.add(Product(sku=sku.strip(), name=name.strip(), category=category, unit=unit,
+                   selling_price=selling_price, cost_price=cp, reorder_point=reorder_point))
+    db.commit()
+    return RedirectResponse("/admin/products", status_code=303)
+
+
+@app.get("/admin/products/{pid}/edit", response_class=HTMLResponse)
+def product_edit(request: Request, pid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="items.edit")
+    if redir:
+        return redir
+    product = db.get(Product, pid)
+    return render(request, "product_form.html", db, staff, product=product, error=None)
+
+
+@app.post("/admin/products/{pid}/edit")
+def product_update(request: Request, pid: int, name: str = Form(...),
+                   category: str = Form(...), unit: str = Form("each"),
+                   selling_price: float = Form(...), cost_price: str = Form(""),
+                   reorder_point: int = Form(0), is_active: str = Form("on"),
+                   db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="items.edit")
+    if redir:
+        return redir
+    product = db.get(Product, pid)
+    if not product:
+        return RedirectResponse("/admin/products", status_code=303)
+    product.name = name.strip()
+    product.category = category
+    product.unit = unit
+    product.selling_price = selling_price
+    product.cost_price = float(cost_price) if cost_price.strip() else None
+    product.reorder_point = reorder_point
+    product.is_active = is_active == "on"
+    db.commit()
+    return RedirectResponse("/admin/products", status_code=303)
+
+
+@app.post("/admin/products/{pid}/delete")
+def product_delete(request: Request, pid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="items.delete")
+    if redir:
+        return redir
+    product = db.get(Product, pid)
+    if not product:
+        return RedirectResponse("/admin/products", status_code=303)
+    referenced = (
+        db.query(SaleItem).filter(SaleItem.product_id == pid).first()
+        or db.query(StockMovement).filter(StockMovement.product_id == pid).first()
+    )
+    if referenced:
+        # keep history intact — deactivate instead of hard delete
+        product.is_active = False
+    else:
+        db.delete(product)
+    db.commit()
+    return RedirectResponse("/admin/products", status_code=303)
+
+
+# ---------- admin: staff ----------
+
+@app.get("/admin/staff", response_class=HTMLResponse)
+def staff_list(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    people = db.query(Staff).order_by(Staff.is_active.desc(), Staff.name).all()
+    return render(request, "staff.html", db, staff, people=people)
+
+
+@app.get("/admin/staff/new", response_class=HTMLResponse)
+def staff_new(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    return render(request, "staff_form.html", db, staff, person=None, error=None)
+
+
+def _clean_perms(values):
+    return ",".join(v for v in values if v in PERMISSION_KEYS)
+
+
+def _norm_username(u):
+    return "".join(c for c in (u or "").strip().lower() if c.isalnum() or c in "._-")
+
+
+@app.post("/admin/staff/new")
+async def staff_create(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    username = _norm_username(form.get("username"))
+    role = form.get("role") if form.get("role") in ROLES else "staff"
+    pin = form.get("pin") or ""
+    phone = (form.get("phone") or "").strip()
+    perms = _clean_perms(form.getlist("permissions"))
+    if not name or not username:
+        return render(request, "staff_form.html", db, staff, person=None,
+                      error="Name and username are required.")
+    if db.query(Staff).filter(func.lower(Staff.username) == username).first():
+        return render(request, "staff_form.html", db, staff, person=None,
+                      error=f"Username '{username}' is already taken.")
+    if len(pin) < 4:
+        return render(request, "staff_form.html", db, staff, person=None,
+                      error="PIN must be at least 4 digits.")
+    h, s = hash_pin(pin)
+    db.add(Staff(username=username, name=name, role=role, pin_hash=h, pin_salt=s,
+                 permissions=perms, phone=phone or None))
+    db.commit()
+    return RedirectResponse("/admin/staff", status_code=303)
+
+
+@app.get("/admin/staff/{sid}/edit", response_class=HTMLResponse)
+def staff_edit(request: Request, sid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    person = db.get(Staff, sid)
+    return render(request, "staff_form.html", db, staff, person=person, error=None)
+
+
+@app.post("/admin/staff/{sid}/edit")
+async def staff_update(request: Request, sid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    person = db.get(Staff, sid)
+    if not person:
+        return RedirectResponse("/admin/staff", status_code=303)
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    username = _norm_username(form.get("username"))
+    pin = form.get("pin") or ""
+    if username and username != person.username:
+        if db.query(Staff).filter(func.lower(Staff.username) == username,
+                                  Staff.id != person.id).first():
+            return render(request, "staff_form.html", db, staff, person=person,
+                          error=f"Username '{username}' is already taken.")
+        person.username = username
+    person.name = name or person.name
+    person.role = form.get("role") if form.get("role") in ROLES else "staff"
+    person.phone = (form.get("phone") or "").strip() or None
+    person.is_active = form.get("is_active") == "on"
+    person.permissions = _clean_perms(form.getlist("permissions"))
+    if pin.strip():
+        if len(pin) < 4:
+            return render(request, "staff_form.html", db, staff, person=person,
+                          error="PIN must be at least 4 digits.")
+        person.pin_hash, person.pin_salt = hash_pin(pin)
+    db.commit()
+    return RedirectResponse("/admin/staff", status_code=303)
+
+
+# ---------- admin: reports ----------
+
+def _range(period: str):
+    now = datetime.now(timezone.utc)
+    if period == "today":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start = now - timedelta(days=7)
+    elif period == "month":
+        start = now - timedelta(days=30)
+    else:
+        start = now - timedelta(days=3650)
+    return start, now
+
+
+@app.get("/admin/reports", response_class=HTMLResponse)
+def reports(request: Request, period: str = "week", db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="view_reports")
+    if redir:
+        return redir
+    start, end = _range(period)
+
+    daily = (
+        db.query(func.date(Sale.sold_at).label("day"),
+                 func.sum(SaleItem.quantity).label("units"),
+                 func.sum(SaleItem.quantity * SaleItem.unit_price).label("revenue"))
+        .join(SaleItem, SaleItem.sale_id == Sale.id)
+        .filter(Sale.sold_at >= start)
+        .group_by(func.date(Sale.sold_at)).order_by(func.date(Sale.sold_at).desc()).all()
+    )
+    sellers = (
+        db.query(Product.name,
+                 func.sum(SaleItem.quantity).label("units"),
+                 func.sum(SaleItem.quantity * SaleItem.unit_price).label("revenue"))
+        .join(SaleItem, SaleItem.product_id == Product.id)
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .filter(Sale.sold_at >= start)
+        .group_by(Product.name).order_by(func.sum(SaleItem.quantity).desc()).all()
+    )
+    margins = (
+        db.query(
+            Product.name,
+            func.sum(SaleItem.quantity * SaleItem.unit_price).label("revenue"),
+            func.sum(SaleItem.quantity * func.coalesce(SaleItem.cost_price, Product.cost_price, 0)).label("cost"),
+        )
+        .join(SaleItem, SaleItem.product_id == Product.id)
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .filter(Sale.sold_at >= start)
+        .group_by(Product.name).all()
+    )
+    margin_rows = []
+    for name, rev, cost in margins:
+        rev = float(rev or 0)
+        cost = float(cost or 0)
+        gp = rev - cost
+        pct = (gp / rev * 100) if rev else 0
+        margin_rows.append({"name": name, "revenue": rev, "cost": cost, "gp": gp, "pct": pct})
+    margin_rows.sort(key=lambda r: r["gp"], reverse=True)
+
+    total_rev = sum(float(d.revenue or 0) for d in daily)
+    total_units = sum(int(d.units or 0) for d in daily)
+
+    return render(request, "reports.html", db, staff, period=period, daily=daily,
+                  sellers=sellers, margins=margin_rows, levels=stock_levels(db),
+                  total_rev=total_rev, total_units=total_units)
+
+
+@app.get("/admin/reports/sales.csv")
+def reports_csv(request: Request, period: str = "all", db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="view_reports")
+    if redir:
+        return redir
+    start, end = _range(period)
+    rows = (
+        db.query(Sale.sold_at, Staff.name, Sale.payment_method, Product.sku,
+                 Product.name, SaleItem.quantity, SaleItem.unit_price)
+        .join(SaleItem, SaleItem.sale_id == Sale.id)
+        .join(Product, Product.id == SaleItem.product_id)
+        .outerjoin(Staff, Staff.id == Sale.staff_id)
+        .filter(Sale.sold_at >= start).order_by(Sale.sold_at.desc()).all()
+    )
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["sold_at", "staff", "payment", "sku", "product", "qty", "unit_price", "line_total"])
+    for sold_at, sname, pay, sku, pname, qty, price in rows:
+        w.writerow([sold_at, sname or "", pay or "", sku, pname, qty, price, float(qty) * float(price)])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]), media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=awaken_sales.csv"},
+    )
+
+
+RECORD_PERMS = ["view_reports", "sales.edit", "sales.delete",
+                "receive.edit", "receive.delete", "adjust.edit", "adjust.delete"]
+
+
+@app.get("/records", response_class=HTMLResponse)
+def records(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, RECORD_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    movements = (
+        db.query(StockMovement).order_by(StockMovement.occurred_at.desc()).limit(100).all()
+    )
+    sales = db.query(Sale).order_by(Sale.sold_at.desc()).limit(50).all()
+    return render(request, "records.html", db, staff, movements=movements, sales=sales)
+
+
+# keep the old path working
+@app.get("/admin/history")
+def history_redirect():
+    return RedirectResponse("/records", status_code=307)
+
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}

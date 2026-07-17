@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Records</h1>
+
+<h2>Recent sales</h2>
+<table>
+  <tr><th>When</th><th>By</th><th>Payment</th><th>Items</th><th>Total</th><th></th></tr>
+  {% for s in sales %}
+  <tr>
+    <td>{{ s.sold_at.strftime('%Y-%m-%d %H:%M') if s.sold_at else '' }}</td>
+    <td>{{ s.staff.name if s.staff else '' }}</td>
+    <td>{{ s.payment_method }}</td>
+    <td>{% for it in s.items %}{{ it.quantity }}× {{ it.product.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    <td>
+      {% set ns = namespace(t=0) %}
+      {% for it in s.items %}{% set ns.t = ns.t + it.quantity * it.unit_price %}{% endfor %}
+      {{ peso(ns.t) }}
+    </td>
+    <td class="actions-cell">
+      {% if can(staff, 'sales.edit') %}<a href="/sale/{{ s.id }}/edit">Edit</a>{% endif %}
+      {% if can(staff, 'sales.delete') %}
+      <form method="post" action="/sale/{{ s.id }}/delete" style="display:inline"
+            onsubmit="return confirm('Delete this sale? This cannot be undone.');">
+        <button type="submit" class="link-danger">Delete</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="6" class="muted">No sales yet.</td></tr>{% endfor %}
+</table>
+
+<h2>Recent stock movements</h2>
+<table>
+  <tr><th>When</th><th>Type</th><th>Product</th><th>Qty</th><th>By</th><th>Note</th><th></th></tr>
+  {% for m in movements %}
+  {% set mod = 'receive' if m.movement_type in RECEIVE_TYPES else 'adjust' %}
+  <tr>
+    <td>{{ m.occurred_at.strftime('%Y-%m-%d %H:%M') if m.occurred_at else '' }}</td>
+    <td>{{ m.movement_type }}</td>
+    <td>{{ m.product.name if m.product else '' }}</td>
+    <td>{{ m.quantity }}</td>
+    <td>{{ m.staff.name if m.staff else '' }}</td>
+    <td>{{ m.note or '' }}</td>
+    <td class="actions-cell">
+      {% if can(staff, mod ~ '.edit') %}<a href="/movement/{{ m.id }}/edit">Edit</a>{% endif %}
+      {% if can(staff, mod ~ '.delete') %}
+      <form method="post" action="/movement/{{ m.id }}/delete" style="display:inline"
+            onsubmit="return confirm('Delete this movement? Stock will be recalculated.');">
+        <button type="submit" class="link-danger">Delete</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">Nothing yet.</td></tr>{% endfor %}
+</table>
+{% endblock %}

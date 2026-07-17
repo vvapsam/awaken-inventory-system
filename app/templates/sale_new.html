@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Log a sale</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form method="post" action="/sale/new" class="card">
+  <div id="rows">
+    <div class="sale-row">
+      <select name="product_id" class="prod">
+        <option value="">— pick a product —</option>
+        {% for p in products %}
+        <option value="{{ p.id }}">{{ p.name }} ({{ peso(p.selling_price) }})</option>
+        {% endfor %}
+      </select>
+      <input name="quantity" type="number" min="1" value="1" class="qty">
+    </div>
+  </div>
+  <button type="button" class="btn" onclick="addRow()">＋ Add another item</button>
+
+  <label>Payment method</label>
+  <select name="payment_method">
+    {% for m in PAYMENT_METHODS %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+  </select>
+
+  <label>Note (optional)</label>
+  <input name="note" placeholder="e.g. table 4">
+
+  <button type="submit" class="btn primary big">Save sale</button>
+</form>
+
+<template id="rowtpl">
+  <div class="sale-row">
+    <select name="product_id" class="prod">
+      <option value="">— pick a product —</option>
+      {% for p in products %}
+      <option value="{{ p.id }}">{{ p.name }} ({{ peso(p.selling_price) }})</option>
+      {% endfor %}
+    </select>
+    <input name="quantity" type="number" min="1" value="1" class="qty">
+  </div>
+</template>
+<script>
+function addRow(){
+  var t = document.getElementById('rowtpl');
+  document.getElementById('rows').appendChild(t.content.cloneNode(true));
+}
+</script>
+{% endblock %}

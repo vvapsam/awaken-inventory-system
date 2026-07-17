@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Current stock</h1>
+<table>
+  <tr>
+    <th>SKU</th><th>Product</th><th>Category</th><th>On hand</th><th>Reorder at</th>
+    <th>Price</th>{% if can(staff, 'view_costs') %}<th>Cost</th>{% endif %}
+  </tr>
+  {% for r in levels %}
+  <tr class="{% if r.low %}low{% endif %}">
+    <td class="mono">{{ r.product.sku }}</td>
+    <td>{{ r.product.name }}</td>
+    <td>{{ r.product.category }}</td>
+    <td><strong>{{ r.on_hand }}</strong>{% if r.low %} <span class="tag">LOW</span>{% endif %}</td>
+    <td>{{ r.product.reorder_point }}</td>
+    <td>{{ peso(r.product.selling_price) }}</td>
+    {% if can(staff, 'view_costs') %}<td>{{ peso(r.product.cost_price) }}</td>{% endif %}
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

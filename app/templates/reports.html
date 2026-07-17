@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <h1>Reports</h1>
+  <a class="btn" href="/admin/reports/sales.csv?period=all">Export all sales (CSV)</a>
+</div>
+
+<div class="periods">
+  {% for p in ['today','week','month','all'] %}
+  <a class="btn {% if period == p %}primary{% endif %}" href="/admin/reports?period={{ p }}">{{ p }}</a>
+  {% endfor %}
+</div>
+
+<div class="grid">
+  <div class="card stat"><div class="stat-label">Revenue ({{ period }})</div><div class="stat-value">{{ peso(total_rev) }}</div></div>
+  <div class="card stat"><div class="stat-label">Units sold</div><div class="stat-value">{{ total_units }}</div></div>
+</div>
+
+<h2>Sales by day</h2>
+<table>
+  <tr><th>Day</th><th>Units</th><th>Revenue</th></tr>
+  {% for d in daily %}
+  <tr><td>{{ d.day }}</td><td>{{ d.units }}</td><td>{{ peso(d.revenue) }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">No sales in this period.</td></tr>{% endfor %}
+</table>
+
+<h2>Best sellers</h2>
+<table>
+  <tr><th>Product</th><th>Units</th><th>Revenue</th></tr>
+  {% for s in sellers %}
+  <tr><td>{{ s.name }}</td><td>{{ s.units }}</td><td>{{ peso(s.revenue) }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">No sales in this period.</td></tr>{% endfor %}
+</table>
+
+{% if can(staff, 'view_costs') %}
+<h2>Profit margins</h2>
+<table>
+  <tr><th>Product</th><th>Revenue</th><th>Cost</th><th>Gross profit</th><th>Margin %</th></tr>
+  {% for m in margins %}
+  <tr><td>{{ m.name }}</td><td>{{ peso(m.revenue) }}</td><td>{{ peso(m.cost) }}</td>
+      <td>{{ peso(m.gp) }}</td><td>{{ '%.1f'|format(m.pct) }}%</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">No sales in this period.</td></tr>{% endfor %}
+</table>
+{% endif %}
+
+<h2>Stock levels</h2>
+<table>
+  <tr><th>Product</th><th>On hand</th><th>Reorder at</th></tr>
+  {% for r in levels %}
+  <tr class="{% if r.low %}low{% endif %}"><td>{{ r.product.name }}</td><td>{{ r.on_hand }}</td><td>{{ r.product.reorder_point }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
