@@ -10,6 +10,12 @@
 <body>
 {% if staff %}
 {% set p = request.url.path %}
+{% set ns = namespace(title='AWAKEN Inventory') %}
+{% for pre,label in [('/dashboard','Dashboard'),('/sales','Sales'),('/stock','Stock'),('/movement','Stock in/out'),('/admin/products','Items'),('/admin/reports','Reports'),('/customer','Customers'),('/records','Records'),('/admin/staff','Users')] %}
+  {% if p.startswith(pre) %}{% set ns.title = label %}{% endif %}
+{% endfor %}
+{% set parts = staff.name.split() %}
+{% set initials = (parts[0][0] ~ (parts[1][0] if parts|length > 1 else ''))|upper %}
 {% macro nav(href, label, active) -%}
   <a href="{{ href }}" class="nav-item {% if active %}active{% endif %}" title="{{ label }}">
     <span class="nav-ico">{{ caller() }}</span><span class="nav-label">{{ label }}</span>
@@ -17,17 +23,17 @@
 {%- endmacro %}
 <div class="app" id="app">
   <aside class="sidebar">
-    <div class="side-head">
-      <a href="/dashboard" class="brand">
-        <svg class="logo" viewBox="0 0 200 210" fill="currentColor" aria-hidden="true"><path d="M100 10 L174 196 L150 196 L100 74 L50 196 L26 196 Z"/><path d="M100 88 L116 112 L100 136 L84 112 Z"/></svg>
-        <span class="wm">AWAKEN</span>
-      </a>
-    </div>
+    {% if can(staff, 'sales.create') %}
+    <a href="/sales" class="side-create" title="New sale">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span class="nav-label">New</span>
+    </a>
+    {% endif %}
     <nav class="side-nav">
-      {% call nav('/dashboard', 'Dashboard', p == '/dashboard' or p == '/') %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>{% endcall %}
+      {% call nav('/dashboard', 'Home', p == '/dashboard' or p == '/') %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>{% endcall %}
       {% if can(staff, 'view_stock') %}{% call nav('/stock', 'Stock', p.startswith('/stock')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>{% endcall %}{% endif %}
       {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}{% call nav('/sales', 'Sales', p.startswith('/sales')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg>{% endcall %}{% endif %}
-      {% if can_any(staff, ['receive.create','adjust.create']) %}{% call nav('/movement/new', 'Stock in/out', p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
+      {% if can_any(staff, ['receive.create','adjust.create']) %}{% call nav('/movement/new', 'In/Out', p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
       {% if can_any(staff, ['items.create','items.edit','items.delete']) %}{% call nav('/admin/products', 'Items', p.startswith('/admin/products')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>{% endcall %}{% endif %}
       {% if can(staff, 'view_reports') %}{% call nav('/admin/reports', 'Reports', p.startswith('/admin/reports')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>{% endcall %}{% endif %}
       {% if can_any(staff, ['view_reports','payments.create','payments.edit','payments.delete']) %}{% call nav('/customers', 'Customers', p.startswith('/customer')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% endcall %}{% endif %}
@@ -35,8 +41,7 @@
       {% if staff.role == 'admin' %}{% call nav('/admin/staff', 'Users', p.startswith('/admin/staff')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{% endcall %}{% endif %}
     </nav>
     <div class="side-foot">
-      <div class="side-user"><div class="avatar">{{ staff.name[0]|upper }}</div><div class="su-meta"><div class="su-name">{{ staff.name }}</div><div class="su-role">{{ staff.role }}</div></div></div>
-      <a href="/logout" class="side-logout" title="Logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg><span class="nav-label">Logout</span></a>
+      <a href="/logout" class="nav-item" title="Logout"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span><span class="nav-label">Logout</span></a>
     </div>
   </aside>
 
@@ -47,9 +52,17 @@
       <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
       </button>
-      <a href="/dashboard" class="topbrand"><svg class="logo" viewBox="0 0 200 210" fill="currentColor" aria-hidden="true"><path d="M100 10 L174 196 L150 196 L100 74 L50 196 L26 196 Z"/><path d="M100 88 L116 112 L100 136 L84 112 Z"/></svg><span class="wm">AWAKEN</span></a>
+      <a href="/dashboard" class="logobox" title="AWAKEN">
+        <svg class="logo" viewBox="0 0 200 210" fill="currentColor" aria-hidden="true"><path d="M100 10 L174 196 L150 196 L100 74 L50 196 L26 196 Z"/><path d="M100 88 L116 112 L100 136 L84 112 Z"/></svg>
+      </a>
+      <span class="page-title">{{ ns.title }}</span>
       <span class="top-spacer"></span>
-      <span class="who">{{ staff.name }} · {{ staff.role }}</span>
+      {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}
+      <a href="/sales" class="topsearch" title="Search customers / sales">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      </a>
+      {% endif %}
+      <span class="avatar-chip" title="{{ staff.name }} · {{ staff.role }}">{{ initials }}</span>
     </header>
     <div class="content">
       {% block body %}{% endblock %}
