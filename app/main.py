@@ -1,7 +1,7 @@
 import csv
 import io
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 try:
     from zoneinfo import ZoneInfo
 except ImportError:  # pragma: no cover
@@ -1387,6 +1387,27 @@ def _date_only(s):
         return None
 
 
+# Volume policy: the first N clients per coach bill at their set rate;
+# every client beyond that is discounted to TIER_CORKAGE.
+FIRST_TIER_CLIENTS = 5
+TIER_CORKAGE = 2500.0
+
+
+def _member_sort_key(m):
+    return (m.start_date or date(2100, 1, 1), m.id)
+
+
+def coach_corkage(members):
+    """Tiered corkage total for one coach's active members (first 5 at their rate,
+       the 6th onward capped at TIER_CORKAGE)."""
+    ordered = sorted(members, key=_member_sort_key)
+    total = 0.0
+    for i, m in enumerate(ordered):
+        base = float(m.corkage_rate or 0)
+        total += base if i < FIRST_TIER_CLIENTS else min(base, TIER_CORKAGE)
+    return total
+
+
 def coach_rows(db):
     members = db.query(Member).filter(Member.is_active == True).all()  # noqa: E712
     by = {}
@@ -1395,11 +1416,12 @@ def coach_rows(db):
     rows = []
     for c in db.query(Coach).order_by(Coach.is_active.desc(), Coach.name).all():
         ms = by.get(c.id, [])
-        corkage = sum(float(m.corkage_rate or 0) for m in ms)
+        corkage = coach_corkage(ms)
         fee = float(c.affiliate_fee or 0) if c.coach_type == "affiliate" else 0.0
         monthly = (fee + corkage) if c.coach_type == "affiliate" else 0.0
         rows.append({"coach": c, "clients": len(ms), "corkage": corkage,
-                     "fee": fee, "monthly": monthly})
+                     "fee": fee, "monthly": monthly,
+                     "discounted": max(0, len(ms) - FIRST_TIER_CLIENTS)})
     return rows
 
 

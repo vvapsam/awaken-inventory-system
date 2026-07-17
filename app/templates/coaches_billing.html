@@ -9,7 +9,7 @@
 </div>
 
 <table>
-  <tr><th>Coach</th><th>Next billing</th><th class="r">Affiliate fee</th><th class="r">Clients</th><th class="r">Corkage (clients × rate)</th><th class="r">Monthly total</th></tr>
+  <tr><th>Coach</th><th>Next billing</th><th class="r">Affiliate fee</th><th class="r">Clients</th><th class="r">Corkage</th><th class="r">Monthly total</th></tr>
   {% for r in rows %}
   <tr>
     <td>{{ r.coach.name }} <span class="bdg aff">Affiliate</span></td>
@@ -20,7 +20,7 @@
       {% else %}<span class="dash">—</span>{% endif %}</td>
     <td class="r">{{ peso(r.fee) }}</td>
     <td class="r">{{ r.clients }}</td>
-    <td class="r">{{ peso(r.corkage) }}</td>
+    <td class="r">{{ peso(r.corkage) }}{% if r.discounted %}<div class="muted" style="font-size:.72rem">incl. {{ r.discounted }} at ₱2,500</div>{% endif %}</td>
     <td class="r"><span class="tot">{{ peso(r.monthly) }}</span></td>
   </tr>
   {% else %}
@@ -36,5 +36,5 @@
   </tr>
   {% endif %}
 </table>
-<p class="muted small" style="margin-top:12px">A monthly rollup you can print or save as PDF — what each affiliate coach owes and when it's next due, with the grand total of recurring revenue.</p>
+<p class="muted small" style="margin-top:12px">A monthly rollup you can print or save as PDF — what each affiliate coach owes and when it's next due, with the grand total of recurring revenue. <b>Volume policy:</b> a coach's first {{ 5 }} clients bill at their set corkage rate; every client beyond that is billed at ₱2,500.</p>
 {% endblock %}
