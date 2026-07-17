@@ -28,8 +28,10 @@
 .filter .range input{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.85rem}
 .hint{color:var(--muted);font-size:.82rem;margin:2px 0 0}
 .hint kbd{background:#fff;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:.78rem;font-family:inherit}
-.sheet-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:8px}
-table.sheet{width:100%;border-collapse:collapse;font-size:.93rem}
+.sheet-wrap{margin-top:8px}
+.scrollbox{max-height:56vh;overflow:auto;border:1px solid var(--line);border-radius:12px}
+table.sheet{width:100%;border-collapse:separate;border-spacing:0;font-size:.93rem;overflow:visible;border:0;border-radius:0;margin:0;background:transparent}
+table.sheet thead th{position:sticky;top:0;z-index:3}
 table.sheet th{background:var(--panel);color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;font-weight:600;text-align:left;padding:10px;border-bottom:1px solid var(--line)}
 table.sheet td{padding:0;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
 table.sheet td:last-child{border-right:none}
@@ -44,7 +46,7 @@ table.sheet td input:focus,table.sheet td select:focus{box-shadow:inset 0 0 0 2p
 table.sheet td.q input{text-align:center}
 table.sheet td.pr input{text-align:right}
 .cell{padding:10px}.cell.r{text-align:right;font-variant-numeric:tabular-nums}.cell.mut{color:var(--muted)}
-tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--teal)}
+tr.entry td{background:var(--teal-tint);border-bottom:2px solid var(--teal);z-index:2}
 .pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:.8rem;font-weight:600;cursor:pointer;border:none}
 .pill.yes{background:#e5f5ec;color:#1a9e5f}.pill.no{background:#fdece9;color:#c0392b}
 .cstat{font-size:.72rem;color:#1a9e5f}.cstat.saving{color:var(--muted)}
@@ -112,6 +114,7 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
 <div class="sheet-desktop">
   {% if not cust %}<p class="hint">Fill the highlighted row and press <kbd>Enter</kbd> to save the sale — a new blank row opens right away. Price is editable if you need to override it.</p>{% endif %}
   <div class="sheet-wrap">
+    <div class="scrollbox">
     <table class="sheet">
       <thead><tr>
         <th class="n">Date</th><th>Item</th><th class="q">Qty</th><th class="pr">Price</th>
@@ -119,8 +122,9 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
       </tr></thead>
       <tbody id="body"></tbody>
     </table>
+    </div>
     {% if can(staff, 'sales.create') and not cust %}
-    <div class="addrow"><button id="addbtn" type="button">＋ Add another blank row</button></div>
+    <div class="addrow"><button id="addbtn" type="button">＋ New sale row (top)</button></div>
     {% endif %}
   </div>
 </div>
@@ -147,7 +151,6 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
     <button type="submit" class="btn primary big">Save sale</button>
   </form>
   {% endif %}
-  <p class="muted small" style="margin-top:12px">Showing {{ count }} sale(s) · total {{ peso(total) }}. Use a computer for the full spreadsheet view.</p>
 </div>
 
 <script>
@@ -251,10 +254,11 @@ async function doSave(tr){
     const res = await fetch('/api/sales',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
     if(res.ok){ const row = await res.json();
       tr.classList.remove('entry'); tr.dataset.id = row.id;
+      tr.querySelectorAll('td').forEach(td=>{ td.style.position=''; td.style.top=''; });  // unstick old entry
       const del = CAN.del ? '<span class="cdel" title="Delete">✕</span>' : '';
       tr.querySelector('.st').innerHTML = '<span class="c-stat cstat">✓</span> '+del;
       wireDelete(tr); setStat(tr,'ok'); footer(); flag('All changes saved');
-      const nrow = makeRow(null); body.appendChild(nrow);   // fresh row, ready to type
+      const nrow = makeRow(null); body.prepend(nrow); stickEntry(nrow);   // fresh row pinned on top
       nrow.querySelector('.c-prod').focus();
     } else flag('Save failed');
   } else {
@@ -304,6 +308,12 @@ function footer(){
   if(!CUST) document.getElementById('f-unpaid').textContent = peso(unpaid);  // customer view shows all-time balance
 }
 function flag(t){ document.getElementById('saveflag-txt').textContent=t; }
+function stickEntry(tr){
+  if(!tr) return;
+  const thead = document.querySelector('table.sheet thead');
+  const h = thead ? Math.round(thead.getBoundingClientRect().height) : 37;
+  tr.querySelectorAll('td').forEach(td=>{ td.style.position='sticky'; td.style.top=h+'px'; td.style.zIndex='2'; });
+}
 
 // ---- customer search ----
 const sInput = document.getElementById('custsearch');
@@ -338,12 +348,14 @@ if(sInput){
 }
 
 const addBtn = document.getElementById('addbtn');
-if(addBtn) addBtn.onclick = ()=>{ const tr = makeRow(null); body.appendChild(tr);
-  tr.querySelector('.c-prod').focus(); tr.scrollIntoView({block:'center',behavior:'smooth'}); };
+if(addBtn) addBtn.onclick = ()=>{ const e = body.querySelector('tr.entry');
+  const sb = document.querySelector('.scrollbox'); if(sb) sb.scrollTop = 0;
+  if(e) e.querySelector('.c-prod').focus(); };
 
-// initial render: saved rows, then one ready entry row for fast keyboard entry
+// initial render: entry row pinned at top, then saved rows (newest first) scroll beneath
+if(CAN.create && !CUST) body.appendChild(makeRow(null));
 for(const r of ROWS) body.appendChild(makeRow(r));
-if(CAN.create && !CUST) body.appendChild(makeRow(null));   // no entry row in customer-search view
+if(CAN.create && !CUST) stickEntry(body.querySelector('tr.entry'));
 footer();
 </script>
 {% endblock %}

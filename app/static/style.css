@@ -71,8 +71,9 @@ h2{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em
 .topsearch:hover{background:var(--teal-dark)}.topsearch svg{width:19px;height:19px}
 .avatar-chip{display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;
   background:#334357;color:#fff;border-radius:var(--radius-sm);font-weight:700;font-size:.82rem;letter-spacing:.02em}
-.content{padding:22px 26px 72px;max-width:1300px;width:100%}
+.content{padding:22px 26px 40px;max-width:1300px;width:100%}
 main.bare{max-width:1040px;margin:0 auto;padding:24px 20px}
+.app-foot{margin-top:40px;padding:18px 0 6px;text-align:center;color:var(--muted);font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;border-top:1px solid var(--line)}
 
 .scrim{display:none;position:fixed;inset:0;background:rgba(15,22,30,.4);z-index:35}
 
