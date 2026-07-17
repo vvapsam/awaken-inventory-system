@@ -166,6 +166,72 @@ class Member(Base):
     coach = relationship("Coach")
 
 
+# ---- Invoices (Transactions → Invoices) ----
+class Invoice(Base):
+    __tablename__ = "invoices"
+    id = Column(Integer, primary_key=True)
+    number = Column(String, unique=True, nullable=False)      # INV-0001
+    bill_to_type = Column(String, default="other")            # coach / customer / other
+    coach_id = Column(Integer, ForeignKey("coaches.id"))
+    customer_id = Column(Integer, ForeignKey("customers.id"))
+    bill_to_name = Column(String, nullable=False)             # snapshot name
+    issue_date = Column(Date)
+    due_date = Column(Date)
+    period = Column(String)                                   # e.g. "August 2026"
+    note = Column(Text)
+    is_void = Column(Boolean, nullable=False, default=False)
+    staff_id = Column(Integer, ForeignKey("staff.id"))
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    items = relationship("InvoiceItem", cascade="all, delete-orphan", backref="invoice")
+    ipayments = relationship("InvoicePayment", cascade="all, delete-orphan", backref="invoice")
+    coach = relationship("Coach")
+    customer = relationship("Customer")
+
+    @property
+    def total(self):
+        return sum(float(i.amount or 0) for i in self.items)
+
+    @property
+    def paid(self):
+        return sum(float(p.amount or 0) for p in self.ipayments)
+
+    @property
+    def balance(self):
+        return self.total - self.paid
+
+    @property
+    def status(self):
+        if self.is_void:
+            return "void"
+        if self.total > 0 and self.balance <= 0.005:
+            return "paid"
+        if self.paid > 0.005:
+            return "partial"
+        return "unpaid"
+
+
+class InvoiceItem(Base):
+    __tablename__ = "invoice_items"
+    id = Column(Integer, primary_key=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
+    description = Column(String, nullable=False)
+    qty = Column(Numeric(10, 2), default=1)
+    rate = Column(Numeric(10, 2), default=0)
+    amount = Column(Numeric(10, 2), default=0)
+
+
+class InvoicePayment(Base):
+    __tablename__ = "invoice_payments"
+    id = Column(Integer, primary_key=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    method = Column(String)
+    note = Column(Text)
+    paid_at = Column(DateTime(timezone=True), default=now_utc)
+    staff_id = Column(Integer, ForeignKey("staff.id"))
+
+
 class Sale(Base):
     __tablename__ = "sales"
     id = Column(Integer, primary_key=True)

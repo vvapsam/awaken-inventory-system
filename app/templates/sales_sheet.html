@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block body %}
+{% if not cust %}{% include "_txn_tabs.html" %}{% endif %}
 <style>
 .sheet-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .saveflag{margin-left:auto;font-size:.82rem;color:var(--muted);display:flex;align-items:center;gap:6px}
@@ -62,7 +63,7 @@ tr.entry td{background:var(--teal-tint);border-bottom:2px solid var(--teal);z-in
 </style>
 
 <div class="sheet-head">
-  <h1>Sales</h1>
+  <h2 style="margin:0;font-size:1.05rem">{{ cust.name + ' — transactions' if cust else 'Retail sales' }}</h2>
   <span class="saveflag" id="saveflag"><span class="dot"></span> <span id="saveflag-txt">All changes saved</span></span>
 </div>
 

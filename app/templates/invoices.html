@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+{% include "_txn_tabs.html" %}
+<style>
+.ist{font-size:.74rem;font-weight:700}
+.ist.paid{color:#1a9e5f}.ist.unpaid{color:#c0392b}.ist.partial{color:#b8860b}.ist.void{color:#8892a0;text-decoration:line-through}
+</style>
+
+<div class="grid" style="margin:16px 0">
+  <div class="card stat"><div class="stat-label">Invoiced (this month)</div><div class="stat-value">{{ peso(inv_month) }}</div></div>
+  <div class="card stat {% if outstanding > 0 %}warn{% endif %}"><div class="stat-label">Outstanding</div><div class="stat-value" style="color:#c0392b">{{ peso(outstanding) }}</div></div>
+  <div class="card stat"><div class="stat-label">Paid</div><div class="stat-value" style="color:var(--teal-dark)">{{ peso(paid_total) }}</div></div>
+</div>
+
+<div class="row-between"><h2 style="margin:0">Invoices</h2>{% if can_edit %}<a class="btn primary" href="/invoices/new">＋ New invoice</a>{% endif %}</div>
+<table>
+  <tr><th>Invoice #</th><th>Date</th><th>Bill to</th><th>Due</th><th class="r">Amount</th><th class="r">Balance</th><th>Status</th><th></th></tr>
+  {% for i in invoices %}
+  <tr>
+    <td class="mono">{{ i.number }}</td>
+    <td>{{ i.issue_date.strftime('%b %d, %Y') if i.issue_date else '—' }}</td>
+    <td>{{ i.bill_to_name }}{% if i.bill_to_type != 'other' %} <span class="mono">{{ i.bill_to_type }}</span>{% endif %}</td>
+    <td>{{ i.due_date.strftime('%b %d, %Y') if i.due_date else '—' }}</td>
+    <td class="r">{{ peso(i.total) }}</td>
+    <td class="r">{{ peso(i.balance) }}</td>
+    <td><span class="ist {{ i.status }}">{{ i.status|capitalize }}</span></td>
+    <td class="r"><a href="/invoices/{{ i.id }}" style="color:var(--teal-dark);font-weight:600">View</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted" style="padding:16px">No invoices yet.{% if can_edit %} Create one, or generate from Coaches → Monthly billing.{% endif %}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

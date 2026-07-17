@@ -9,7 +9,7 @@
 </div>
 
 <table>
-  <tr><th>Coach</th><th>Next billing</th><th class="r">Affiliate fee</th><th class="r">Clients</th><th class="r">Corkage</th><th class="r">Monthly total</th></tr>
+  <tr><th>Coach</th><th>Next billing</th><th class="r">Affiliate fee</th><th class="r">Clients</th><th class="r">Corkage</th><th class="r">Monthly total</th><th class="no-print"></th></tr>
   {% for r in rows %}
   <tr>
     <td>{{ r.coach.name }} <span class="bdg aff">Affiliate</span></td>
@@ -22,9 +22,10 @@
     <td class="r">{{ r.clients }}</td>
     <td class="r">{{ peso(r.corkage) }}{% if r.discounted %}<div class="muted" style="font-size:.72rem">incl. {{ r.discounted }} at ₱2,500</div>{% endif %}</td>
     <td class="r"><span class="tot">{{ peso(r.monthly) }}</span></td>
+    <td class="r no-print"><form method="post" action="/coaches/billing/bill/{{ r.coach.id }}" style="margin:0" onsubmit="return confirm('Generate this month&#39;s invoice for {{ r.coach.name }}?')"><button class="btn primary" style="padding:6px 12px" type="submit">Bill</button></form></td>
   </tr>
   {% else %}
-  <tr><td colspan="6" class="muted" style="padding:16px">No affiliate coaches yet.</td></tr>
+  <tr><td colspan="7" class="muted" style="padding:16px">No affiliate coaches yet.</td></tr>
   {% endfor %}
   {% if rows %}
   <tr class="gtot">
@@ -33,6 +34,7 @@
     <td class="r">{{ rows|sum(attribute='clients') }}</td>
     <td class="r">{{ peso(rows|sum(attribute='corkage')) }}</td>
     <td class="r">{{ peso(summ.total_monthly) }}</td>
+    <td class="no-print"></td>
   </tr>
   {% endif %}
 </table>

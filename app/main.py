@@ -24,7 +24,7 @@ from .models import (
     MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
-    Coach, Member, COACH_TYPES,
+    Coach, Member, COACH_TYPES, Invoice, InvoiceItem, InvoicePayment,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -1599,6 +1599,225 @@ def coaches_billing(request: Request, db: Session = Depends(get_db)):
     return render(request, "coaches_billing.html", db, staff, rows=rows,
                   summ=coach_summary(coach_rows(db)), active="billing",
                   today=datetime.now(_tz()).date())
+
+
+# ================= Transactions → Invoices & Payments =================
+
+def can_invoices(staff):
+    return staff.role == "admin" or can_any(
+        staff, ["view_reports", "payments.create", "payments.edit", "payments.delete"])
+
+
+def can_invoice_edit(staff):
+    return staff.role == "admin" or can(staff, "payments.create")
+
+
+def next_invoice_number(db):
+    nums = []
+    for (n,) in db.query(Invoice.number).all():
+        try:
+            nums.append(int(str(n).split("-")[-1]))
+        except (ValueError, TypeError):
+            pass
+    return "INV-%04d" % ((max(nums) + 1) if nums else 1)
+
+
+def _add_month(d):
+    m = d.month + 1
+    y = d.year + (1 if m > 12 else 0)
+    m = 1 if m > 12 else m
+    return date(y, m, min(d.day, 28))
+
+
+@app.get("/invoices", response_class=HTMLResponse)
+def invoices_page(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_invoices(staff):
+        return RedirectResponse("/dashboard", status_code=303)
+    invoices = db.query(Invoice).order_by(Invoice.created_at.desc(), Invoice.id.desc()).limit(500).all()
+    now = datetime.now(_tz())
+    inv_month = sum(i.total for i in invoices if not i.is_void and i.issue_date
+                    and i.issue_date.year == now.year and i.issue_date.month == now.month)
+    outstanding = sum(i.balance for i in invoices if not i.is_void)
+    paid_total = sum(i.paid for i in invoices if not i.is_void)
+    return render(request, "invoices.html", db, staff, invoices=invoices,
+                  inv_month=inv_month, outstanding=outstanding, paid_total=paid_total,
+                  can_edit=can_invoice_edit(staff))
+
+
+@app.get("/invoices/new", response_class=HTMLResponse)
+def invoice_new(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_invoice_edit(staff):
+        return RedirectResponse("/invoices", status_code=303)
+    tz = _tz()
+    today = datetime.now(tz).date()
+    coaches = db.query(Coach).filter(Coach.is_active == True).order_by(Coach.name).all()  # noqa: E712
+    customers = db.query(Customer).order_by(Customer.name).all()
+    return render(request, "invoice_form.html", db, staff, coaches=coaches,
+                  customers=customers, number=next_invoice_number(db),
+                  today=today.strftime("%Y-%m-%d"),
+                  due=(today + timedelta(days=7)).strftime("%Y-%m-%d"))
+
+
+@app.post("/invoices/new")
+async def invoice_create(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_invoice_edit(staff):
+        return RedirectResponse("/invoices", status_code=303)
+    form = await request.form()
+    bill_to = (form.get("bill_to_name") or "").strip()
+    party = form.get("party") or ""  # "coach:3" / "customer:5" / ""
+    coach_id = customer_id = None
+    bill_type = "other"
+    if party.startswith("coach:"):
+        coach_id = int(party.split(":")[1]); bill_type = "coach"
+        c = db.get(Coach, coach_id)
+        if c and not bill_to:
+            bill_to = c.name
+    elif party.startswith("customer:"):
+        customer_id = int(party.split(":")[1]); bill_type = "customer"
+        c = db.get(Customer, customer_id)
+        if c and not bill_to:
+            bill_to = c.name
+    if not bill_to:
+        bill_to = "—"
+    inv = Invoice(number=next_invoice_number(db), bill_to_type=bill_type,
+                  coach_id=coach_id, customer_id=customer_id, bill_to_name=bill_to,
+                  issue_date=_date_only(form.get("issue_date")),
+                  due_date=_date_only(form.get("due_date")),
+                  period=(form.get("period") or None), note=(form.get("note") or None),
+                  staff_id=staff.id)
+    db.add(inv)
+    db.flush()
+    for desc, qty, rate in zip(form.getlist("description"), form.getlist("qty"), form.getlist("rate")):
+        if not (desc or "").strip():
+            continue
+        try:
+            q = float(qty) if qty else 1
+            r = float(rate) if rate else 0
+        except ValueError:
+            q, r = 1, 0
+        db.add(InvoiceItem(invoice_id=inv.id, description=desc.strip(), qty=q, rate=r, amount=q * r))
+    db.commit()
+    return RedirectResponse(f"/invoices/{inv.id}", status_code=303)
+
+
+@app.get("/invoices/{iid}", response_class=HTMLResponse)
+def invoice_view(request: Request, iid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_invoices(staff):
+        return RedirectResponse("/dashboard", status_code=303)
+    inv = db.get(Invoice, iid)
+    if not inv:
+        return RedirectResponse("/invoices", status_code=303)
+    return render(request, "invoice_view.html", db, staff, inv=inv,
+                  methods=PAYMENT_METHODS, can_edit=can_invoice_edit(staff),
+                  is_admin=(staff.role == "admin"),
+                  today=datetime.now(_tz()).strftime("%Y-%m-%d"))
+
+
+@app.post("/invoices/{iid}/pay")
+def invoice_pay(request: Request, iid: int, amount: str = Form(...), method: str = Form("cash"),
+                note: str = Form(""), date: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_invoice_edit(staff):
+        return RedirectResponse("/invoices", status_code=303)
+    inv = db.get(Invoice, iid)
+    if not inv:
+        return RedirectResponse("/invoices", status_code=303)
+    try:
+        amt = float(amount)
+    except ValueError:
+        amt = 0
+    if amt > 0:
+        when = _sold_dt_from_date(date) if date else datetime.now(timezone.utc)
+        db.add(InvoicePayment(invoice_id=inv.id, amount=amt, method=method,
+                              note=note or None, paid_at=when, staff_id=staff.id))
+        db.commit()
+    return RedirectResponse(f"/invoices/{iid}", status_code=303)
+
+
+@app.post("/invoices/{iid}/void")
+def invoice_void(request: Request, iid: int, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    inv = db.get(Invoice, iid)
+    if inv:
+        inv.is_void = True
+        db.commit()
+    return RedirectResponse(f"/invoices/{iid}", status_code=303)
+
+
+@app.get("/payments", response_class=HTMLResponse)
+def payments_page(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_invoices(staff):
+        return RedirectResponse("/dashboard", status_code=303)
+    rows = []
+    for p in db.query(Payment).order_by(Payment.paid_at.desc()).limit(300).all():
+        rows.append({"at": p.paid_at, "kind": "Customer payment",
+                     "party": (p.customer.name if p.customer else "—"),
+                     "amount": float(p.amount or 0), "method": p.method or "",
+                     "link": f"/customer/{p.customer_id}"})
+    for p in db.query(InvoicePayment).order_by(InvoicePayment.paid_at.desc()).limit(300).all():
+        rows.append({"at": p.paid_at, "kind": "Invoice payment",
+                     "party": (p.invoice.bill_to_name if p.invoice else "—"),
+                     "amount": float(p.amount or 0), "method": p.method or "",
+                     "link": f"/invoices/{p.invoice_id}"})
+    tz = _tz()
+    rows.sort(key=lambda r: r["at"] or datetime.now(timezone.utc), reverse=True)
+    for r in rows:
+        r["local"] = (r["at"].astimezone(tz) if r["at"] else datetime.now(tz))
+    total = sum(r["amount"] for r in rows)
+    return render(request, "payments.html", db, staff, rows=rows[:400], total=total)
+
+
+@app.post("/coaches/billing/bill/{cid}")
+def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
+    staff, redir = require_admin(request, db)
+    if redir:
+        return redir
+    coach = db.get(Coach, cid)
+    if not coach or coach.coach_type != "affiliate":
+        return RedirectResponse("/coaches/billing", status_code=303)
+    tz = _tz()
+    today = datetime.now(tz).date()
+    period = today.strftime("%B %Y")
+    members = sorted(
+        db.query(Member).filter(Member.coach_id == coach.id, Member.is_active == True).all(),  # noqa: E712
+        key=_member_sort_key)
+    inv = Invoice(number=next_invoice_number(db), bill_to_type="coach", coach_id=coach.id,
+                  bill_to_name=coach.name, issue_date=today,
+                  due_date=today + timedelta(days=7), period=period,
+                  note="Auto-generated from Monthly billing", staff_id=staff.id)
+    db.add(inv)
+    db.flush()
+    fee = float(coach.affiliate_fee or 0)
+    if fee > 0:
+        db.add(InvoiceItem(invoice_id=inv.id, description=f"Affiliate fee — {period}",
+                           qty=1, rate=fee, amount=fee))
+    for i, m in enumerate(members):
+        base = float(m.corkage_rate or 0)
+        rate = base if i < FIRST_TIER_CLIENTS else min(base, TIER_CORKAGE)
+        db.add(InvoiceItem(invoice_id=inv.id, description=f"Corkage — {m.name}",
+                           qty=1, rate=rate, amount=rate))
+    coach.next_billing = _add_month(coach.next_billing or today)
+    db.commit()
+    return RedirectResponse(f"/invoices/{inv.id}", status_code=303)
 
 
 @app.get("/healthz")

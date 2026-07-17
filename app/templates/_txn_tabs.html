@@ -1,0 +1,9 @@
+{% set tp = request.url.path %}
+<h1 style="margin-bottom:.15em">Transactions</h1>
+<div class="tabs">
+  {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}<a href="/sales" class="{{ 'on' if tp.startswith('/sales') }}">Retail</a>{% endif %}
+  {% if staff.role=='admin' or can_any(staff, ['view_reports','payments.create','payments.edit','payments.delete']) %}
+  <a href="/invoices" class="{{ 'on' if tp.startswith('/invoices') }}">Invoices</a>
+  <a href="/payments" class="{{ 'on' if tp.startswith('/payments') }}">Payments</a>
+  {% endif %}
+</div>

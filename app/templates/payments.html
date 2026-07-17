@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block body %}
+{% include "_txn_tabs.html" %}
+<style>.pk{display:inline-block;padding:2px 10px;border-radius:6px;font-size:.72rem;font-weight:700}
+.pk.cust{background:#eef1f4;color:#55606d}.pk.inv{background:#e5f5ec;color:#1a9e5f}</style>
+
+<div class="grid" style="margin:16px 0;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+  <div class="card stat"><div class="stat-label">Payments received (shown)</div><div class="stat-value" style="color:var(--teal-dark)">{{ peso(total) }}</div></div>
+  <div class="card stat"><div class="stat-label">Count</div><div class="stat-value">{{ rows|length }}</div></div>
+</div>
+
+<h2>Payments</h2>
+<table>
+  <tr><th>Date</th><th>Type</th><th>Party</th><th>Method</th><th class="r">Amount</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.local.strftime('%b %d, %Y') }}</td>
+    <td>{% if r.kind=='Invoice payment' %}<span class="pk inv">Invoice</span>{% else %}<span class="pk cust">Customer</span>{% endif %}</td>
+    <td>{{ r.party }}</td>
+    <td>{{ r.method or '—' }}</td>
+    <td class="r">{{ peso(r.amount) }}</td>
+    <td class="r"><a href="{{ r.link }}" style="color:var(--teal-dark);font-weight:600">Open</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted" style="padding:16px">No payments yet.</td></tr>
+  {% endfor %}
+</table>
+<p class="muted small" style="margin-top:12px">Includes customer (utang) payments and invoice payments. Record invoice payments from an invoice's page; customer payments from the Customers page.</p>
+{% endblock %}

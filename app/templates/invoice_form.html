@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.li-row{display:grid;grid-template-columns:1fr 90px 130px 130px 34px;gap:8px;margin-bottom:8px;align-items:center}
+.li-row .amt{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.li-head{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+.rmv{color:#c0392b;cursor:pointer;text-align:center;font-weight:700}
+.li-total{display:flex;justify-content:flex-end;gap:16px;align-items:baseline;margin-top:8px;font-weight:800;font-size:1.1rem}
+</style>
+<h1>New invoice <span class="mono" style="color:var(--muted);font-size:.9rem">{{ number }}</span></h1>
+<form method="post" action="/invoices/new" class="card" style="max-width:780px">
+  <div class="two-col">
+    <div>
+      <label>Bill to</label>
+      <select name="party" id="party" onchange="fillName()">
+        <option value="">— other (type a name) —</option>
+        <optgroup label="Coaches">
+          {% for c in coaches %}<option value="coach:{{ c.id }}" data-name="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+        </optgroup>
+        <optgroup label="Customers">
+          {% for c in customers %}<option value="customer:{{ c.id }}" data-name="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+        </optgroup>
+      </select>
+    </div>
+    <div>
+      <label>Bill-to name</label>
+      <input name="bill_to_name" id="billname" placeholder="name on the invoice">
+    </div>
+  </div>
+  <div class="two-col">
+    <div><label>Issue date</label><input type="date" name="issue_date" value="{{ today }}"></div>
+    <div><label>Due date</label><input type="date" name="due_date" value="{{ due }}"></div>
+  </div>
+  <label>Period (optional)</label>
+  <input name="period" placeholder="e.g. August 2026">
+
+  <label style="margin-top:16px">Line items</label>
+  <div class="li-row li-head"><span>Description</span><span>Qty</span><span>Rate</span><span style="text-align:right">Amount</span><span></span></div>
+  <div id="items"></div>
+  <a id="additem" style="color:var(--teal-dark);font-weight:600;cursor:pointer">＋ Add line</a>
+  <div class="li-total">Total <span id="gtotal">₱0.00</span></div>
+
+  <label style="margin-top:12px">Note (optional)</label>
+  <input name="note" placeholder="internal note">
+
+  <button type="submit" class="btn primary big">Save invoice</button>
+  <a class="btn" href="/invoices">Cancel</a>
+</form>
+<script>
+const peso = v => "₱" + Number(v||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+const items = document.getElementById('items');
+function addRow(desc='',qty='1',rate=''){
+  const row = document.createElement('div'); row.className='li-row';
+  row.innerHTML = `<input name="description" placeholder="description" value="${desc}">
+    <input name="qty" type="number" step="0.01" value="${qty}">
+    <input name="rate" type="number" step="0.01" placeholder="0.00" value="${rate}">
+    <span class="amt">₱0.00</span><span class="rmv">✕</span>`;
+  const [d,q,r,amt,rm] = row.querySelectorAll('input, .amt, .rmv');
+  function calc(){ const a=(parseFloat(q.value)||0)*(parseFloat(r.value)||0); amt.textContent=peso(a); total(); }
+  q.addEventListener('input',calc); r.addEventListener('input',calc);
+  rm.addEventListener('click',()=>{ row.remove(); total(); });
+  items.appendChild(row); calc();
+}
+function total(){ let t=0; items.querySelectorAll('.li-row').forEach(row=>{
+  const q=parseFloat(row.querySelectorAll('input')[1].value)||0, r=parseFloat(row.querySelectorAll('input')[2].value)||0; t+=q*r; });
+  document.getElementById('gtotal').textContent=peso(t); }
+document.getElementById('additem').onclick=()=>addRow();
+function fillName(){ const o=document.getElementById('party').selectedOptions[0];
+  const n=o.getAttribute('data-name'); if(n && !document.getElementById('billname').value) document.getElementById('billname').value=n; }
+addRow(); addRow();
+</script>
+{% endblock %}

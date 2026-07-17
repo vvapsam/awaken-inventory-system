@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.inv-wrap{max-width:760px}
+.report{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 1px 3px rgba(16,24,32,.05);overflow:hidden}
+.ihead{display:flex;justify-content:space-between;padding:24px 28px 16px;border-bottom:2px solid var(--ink);gap:20px;flex-wrap:wrap}
+.ihead .big{font-size:1.5rem;font-weight:800;letter-spacing:.02em;margin-top:8px}
+.ibrand{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.12em}.ibrand svg{width:22px;height:22px;color:var(--ink)}
+.imeta{color:var(--muted);font-size:.85rem;text-align:right}.imeta b{color:var(--ink)}
+.iparties{display:flex;justify-content:space-between;padding:16px 28px;gap:20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.iparties .k{color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em}.iparties .v{font-weight:600;margin-top:3px}
+.itable{width:100%;border-collapse:collapse;font-size:.92rem;border:none;border-radius:0;margin:0}
+.itable th,.itable td{padding:9px 28px;border:none;border-bottom:1px solid #eef1f4;background:#fff;text-align:left}
+.itable th{text-transform:uppercase;font-size:.68rem;letter-spacing:.06em;color:var(--muted)}
+.itable td.r,.itable th.r{text-align:right}
+.isum{padding:12px 28px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.isum .row{display:flex;gap:26px;font-size:.95rem}.isum .row .lbl{color:var(--muted)}
+.isum .row.tot{border-top:2px solid var(--ink);padding-top:8px;margin-top:4px;font-weight:800;font-size:1.1rem}
+.isum .row.tot .lbl{color:var(--ink)}
+.badge{padding:3px 12px;border-radius:999px;font-size:.78rem;font-weight:700}
+.badge.unpaid{background:#fdece9;color:#c0392b}.badge.paid{background:#e5f5ec;color:#1a9e5f}
+.badge.partial{background:#fff3e0;color:#b8860b}.badge.void{background:#eef1f4;color:#8892a0}
+.pay-card{max-width:760px;margin-top:16px}
+@media print{.sidebar,.topbar,.no-print{display:none!important}.main{margin-left:0!important}.content{padding:0!important}.report{border:none;box-shadow:none}}
+</style>
+
+<div class="row-between no-print" style="max-width:760px">
+  <a href="/invoices" style="color:var(--teal-dark);font-weight:600">← All invoices</a>
+  <span style="display:flex;gap:8px">
+    <button class="btn" onclick="window.print()">🖨 Print / PDF</button>
+    {% if is_admin and not inv.is_void %}
+    <form method="post" action="/invoices/{{ inv.id }}/void" onsubmit="return confirm('Void this invoice?')" style="margin:0">
+      <button class="btn" style="border-color:#c0392b;color:#c0392b" type="submit">Void</button></form>
+    {% endif %}
+  </span>
+</div>
+
+<div class="inv-wrap" style="margin-top:12px">
+<div class="report">
+  <div class="ihead">
+    <div>
+      <div class="ibrand"><svg viewBox="0 0 200 200" fill="currentColor" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>AWAKEN</div>
+      <div class="big">INVOICE</div>
+    </div>
+    <div class="imeta"><div><b>{{ inv.number }}</b></div>
+      <div>Issued: {{ inv.issue_date.strftime('%b %d, %Y') if inv.issue_date else '—' }}</div>
+      <div>Due: {{ inv.due_date.strftime('%b %d, %Y') if inv.due_date else '—' }}</div>
+      {% if inv.period %}<div>Period: {{ inv.period }}</div>{% endif %}</div>
+  </div>
+  <div class="iparties">
+    <div><div class="k">Bill to</div><div class="v">{{ inv.bill_to_name }}</div>
+      {% if inv.bill_to_type != 'other' %}<div class="mono">{{ inv.bill_to_type }}</div>{% endif %}</div>
+    <div style="text-align:right"><div class="k">Status</div><div class="v"><span class="badge {{ inv.status }}">{{ inv.status|capitalize }}</span></div></div>
+  </div>
+  <table class="itable">
+    <tr><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr>
+    {% for it in inv.items %}
+    <tr><td>{{ it.description }}</td><td class="r">{{ '%g'|format(it.qty) }}</td><td class="r">{{ peso(it.rate) }}</td><td class="r">{{ peso(it.amount) }}</td></tr>
+    {% endfor %}
+  </table>
+  <div class="isum">
+    <div class="row"><span class="lbl">Subtotal</span><span>{{ peso(inv.total) }}</span></div>
+    {% if inv.paid > 0 %}<div class="row"><span class="lbl">Paid</span><span>− {{ peso(inv.paid) }}</span></div>{% endif %}
+    <div class="row tot"><span class="lbl">{{ 'Total due' if inv.balance > 0.005 else 'Total' }}</span><span>{{ peso(inv.balance if inv.balance > 0.005 else inv.total) }}</span></div>
+  </div>
+</div>
+
+{% if inv.ipayments %}
+<h2 style="margin-top:22px">Payments received</h2>
+<table style="max-width:760px">
+  <tr><th>Date</th><th>Method</th><th class="r">Amount</th><th>Note</th></tr>
+  {% for p in inv.ipayments %}
+  <tr><td>{{ p.paid_at.strftime('%b %d, %Y') if p.paid_at else '—' }}</td><td>{{ p.method or '—' }}</td><td class="r">{{ peso(p.amount) }}</td><td class="muted">{{ p.note or '' }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if can_edit and not inv.is_void and inv.balance > 0.005 %}
+<div class="card pay-card no-print">
+  <h2 style="margin-top:0">Record payment</h2>
+  <form method="post" action="/invoices/{{ inv.id }}/pay">
+    <div class="two-col">
+      <div><label>Amount (₱)</label><input name="amount" type="number" step="0.01" value="{{ '%.2f'|format(inv.balance) }}" required></div>
+      <div><label>Method</label><select name="method">{% for m in methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="two-col">
+      <div><label>Date</label><input type="date" name="date" value="{{ today }}"></div>
+      <div><label>Note (optional)</label><input name="note" placeholder="ref / remarks"></div>
+    </div>
+    <button type="submit" class="btn primary big">Record payment</button>
+  </form>
+</div>
+{% endif %}
+</div>
+{% endblock %}
