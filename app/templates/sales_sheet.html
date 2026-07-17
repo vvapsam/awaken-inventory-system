@@ -4,6 +4,20 @@
 .sheet-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .saveflag{margin-left:auto;font-size:.82rem;color:var(--muted);display:flex;align-items:center;gap:6px}
 .saveflag .dot{width:8px;height:8px;border-radius:50%;background:#1a9e5f;display:inline-block}
+.searchbar{margin:16px 0 6px}
+.searchbox{position:relative;max-width:440px}
+.searchbox input{width:100%;padding:11px 34px 11px 38px;border:1px solid var(--line);border-radius:10px;font-size:.95rem;background:#fff}
+.searchbox .ic{position:absolute;left:12px;top:10px;color:var(--muted)}
+.searchbox .clr{position:absolute;right:10px;top:9px;color:var(--muted);cursor:pointer;font-size:1rem;display:none}
+.searchbox .drop{position:absolute;top:46px;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.14);overflow:hidden;z-index:20;display:none;max-height:300px;overflow-y:auto}
+.searchbox .drop div{padding:10px 14px;font-size:.92rem;cursor:pointer;border-bottom:1px solid var(--line)}
+.searchbox .drop div:last-child{border-bottom:none}
+.searchbox .drop div:hover,.searchbox .drop div.hi{background:var(--teal-tint);color:var(--teal-dark)}
+.searchbox .drop small{color:var(--muted);float:right;font-weight:400}
+.searchbox .drop .none{color:var(--muted);cursor:default}
+.ctx{display:flex;align-items:center;gap:8px;background:var(--teal-tint);border:1px solid #bfe6e0;border-radius:10px;padding:10px 14px;font-size:.9rem;color:var(--teal-dark);margin:8px 0 2px}
+.ctx b{color:var(--ink)}
+.ctx a.x{margin-left:auto;color:var(--teal-dark);font-weight:700;text-decoration:none;border:1px solid #bfe6e0;border-radius:7px;padding:3px 10px;background:#fff}
 .sumbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0}
 .sumbar .card{padding:16px}
 .filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
@@ -50,11 +64,31 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
   <span class="saveflag" id="saveflag"><span class="dot"></span> <span id="saveflag-txt">All changes saved</span></span>
 </div>
 
-<!-- TOTAL AT TOP -->
+<!-- CUSTOMER SEARCH -->
+<div class="searchbar">
+  <div class="searchbox">
+    <span class="ic">🔍</span>
+    <input id="custsearch" type="text" autocomplete="off" placeholder="Search a customer's transactions…"
+           value="{{ cust.name if cust else '' }}">
+    <span class="clr" id="custclear" title="Clear">✕</span>
+    <div class="drop" id="custdrop"></div>
+  </div>
+</div>
+
+{% if cust %}
+<div class="ctx">Showing transactions for <b>&nbsp;{{ cust.name }}</b> &nbsp;·&nbsp; {{ count }} found
+  <a class="x" href="/sales">✕ Clear search</a></div>
+{% endif %}
+
+<!-- TOTALS AT TOP (switch to the customer when searching) -->
 <div class="sumbar">
-  <div class="card stat"><div class="stat-label">Total sales (shown)</div><div class="stat-value" id="f-total">{{ peso(total) }}</div></div>
-  <div class="card stat"><div class="stat-label">Number of sales</div><div class="stat-value" id="f-count">{{ count }}</div></div>
+  <div class="card stat"><div class="stat-label">{{ (cust.name + "’s total purchases") if cust else "Total sales (shown)" }}</div><div class="stat-value" id="f-total">{{ peso(total) }}</div></div>
+  <div class="card stat"><div class="stat-label">{{ "Transactions" if cust else "Number of sales" }}</div><div class="stat-value" id="f-count">{{ count }}</div></div>
+  {% if cust %}
+  <div class="card stat {% if cust.balance > 0 %}warn{% endif %}"><div class="stat-label">Outstanding balance</div><div class="stat-value" id="f-unpaid">{{ peso(cust.balance) }}</div></div>
+  {% else %}
   <div class="card stat {% if unpaid > 0 %}warn{% endif %}"><div class="stat-label">Unpaid (shown)</div><div class="stat-value" id="f-unpaid">{{ peso(unpaid) }}</div></div>
+  {% endif %}
 </div>
 
 <!-- FILTER: default today + date range -->
@@ -76,7 +110,7 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
 
 <!-- ============ DESKTOP GRID ============ -->
 <div class="sheet-desktop">
-  <p class="hint">Fill the highlighted row and press <kbd>Enter</kbd> to save the sale — a new blank row opens right away. Price is editable if you need to override it.</p>
+  {% if not cust %}<p class="hint">Fill the highlighted row and press <kbd>Enter</kbd> to save the sale — a new blank row opens right away. Price is editable if you need to override it.</p>{% endif %}
   <div class="sheet-wrap">
     <table class="sheet">
       <thead><tr>
@@ -85,7 +119,7 @@ tr.entry{background:var(--teal-tint)}tr.entry td{border-bottom:1px solid var(--t
       </tr></thead>
       <tbody id="body"></tbody>
     </table>
-    {% if can(staff, 'sales.create') %}
+    {% if can(staff, 'sales.create') and not cust %}
     <div class="addrow"><button id="addbtn" type="button">＋ Add another blank row</button></div>
     {% endif %}
   </div>
@@ -124,6 +158,7 @@ const TODAY = {{ today|tojson }};
 const CAN = { create: {{ 'true' if can(staff,'sales.create') else 'false' }},
               edit: {{ 'true' if can(staff,'sales.edit') else 'false' }},
               del: {{ 'true' if can(staff,'sales.delete') else 'false' }} };
+const CUST = {{ cust|tojson }};   // set when viewing one customer's transactions
 const peso = v => "₱" + Number(v||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const prodById = id => PRODUCTS.find(p => p.id == id);
 const body = document.getElementById('body');
@@ -266,9 +301,41 @@ function footer(){
   });
   document.getElementById('f-total').textContent = peso(total);
   document.getElementById('f-count').textContent = count;
-  document.getElementById('f-unpaid').textContent = peso(unpaid);
+  if(!CUST) document.getElementById('f-unpaid').textContent = peso(unpaid);  // customer view shows all-time balance
 }
 function flag(t){ document.getElementById('saveflag-txt').textContent=t; }
+
+// ---- customer search ----
+const sInput = document.getElementById('custsearch');
+const sDrop = document.getElementById('custdrop');
+const sClear = document.getElementById('custclear');
+function goCustomer(id){ window.location = '/sales?customer=' + id; }
+function renderDrop(term){
+  const t = term.trim().toLowerCase();
+  let list = CUSTOMERS.slice();
+  if(t) list = list.filter(c => c.name.toLowerCase().includes(t));
+  list = list.sort((a,b)=> (b.owed||0)-(a.owed||0) || a.name.localeCompare(b.name)).slice(0,8);
+  if(!list.length){ sDrop.innerHTML = '<div class="none">No matching customer</div>'; sDrop.style.display='block'; return; }
+  sDrop.innerHTML = list.map(c => {
+    const owed = c.owed>0.005 ? ('₱'+c.owed.toLocaleString('en-PH',{minimumFractionDigits:2})+' owed') : 'paid up';
+    return `<div data-id="${c.id}">${c.name} <small>${owed} · ${c.sales} sale${c.sales==1?'':'s'}</small></div>`;
+  }).join('');
+  sDrop.querySelectorAll('div[data-id]').forEach(el => el.onclick = ()=>goCustomer(el.dataset.id));
+  sDrop.style.display='block';
+}
+if(sInput){
+  const refreshClear = ()=>{ sClear.style.display = sInput.value ? 'block' : 'none'; };
+  refreshClear();
+  sInput.addEventListener('focus', ()=>renderDrop(CUST ? '' : sInput.value));
+  sInput.addEventListener('input', ()=>{ refreshClear(); renderDrop(sInput.value); });
+  sInput.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault();
+      const first = sDrop.querySelector('div[data-id]'); if(first) goCustomer(first.dataset.id); }
+    if(e.key==='Escape'){ sDrop.style.display='none'; }
+  });
+  sClear.onclick = ()=>{ window.location = '/sales'; };
+  document.addEventListener('click', e=>{ if(!e.target.closest('.searchbox')) sDrop.style.display='none'; });
+}
 
 const addBtn = document.getElementById('addbtn');
 if(addBtn) addBtn.onclick = ()=>{ const tr = makeRow(null); body.appendChild(tr);
@@ -276,7 +343,7 @@ if(addBtn) addBtn.onclick = ()=>{ const tr = makeRow(null); body.appendChild(tr)
 
 // initial render: saved rows, then one ready entry row for fast keyboard entry
 for(const r of ROWS) body.appendChild(makeRow(r));
-if(CAN.create) body.appendChild(makeRow(null));
+if(CAN.create && !CUST) body.appendChild(makeRow(null));   // no entry row in customer-search view
 footer();
 </script>
 {% endblock %}

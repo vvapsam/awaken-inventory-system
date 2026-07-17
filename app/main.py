@@ -950,8 +950,18 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
     today = now.strftime("%Y-%m-%d")
 
     qp = request.query_params
+
+    # Optional customer search: show one customer's transactions.
+    selected_customer = None
+    if qp.get("customer"):
+        try:
+            selected_customer = db.get(Customer, int(qp.get("customer")))
+        except (ValueError, TypeError):
+            selected_customer = None
+
     range_key = qp.get("range", "") or rng
     from_s, to_s = qp.get("from", ""), qp.get("to", "")
+    explicit_date = bool(qp.get("range") or from_s or to_s)
     if range_key == "7d":
         start, end_d = today0 - timedelta(days=6), today0
     elif range_key == "month":
@@ -961,11 +971,15 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
     elif from_s or to_s:
         start = _parse_date(from_s, tz) or today0
         end_d = _parse_date(to_s, tz) or today0
+    elif selected_customer:  # customer view defaults to all their history
+        range_key, start, end_d = "all", None, today0
     else:  # default: today
         range_key = range_key or "today"
         start, end_d = today0, today0
 
     q = db.query(Sale)
+    if selected_customer:
+        q = q.filter(Sale.customer_id == selected_customer.id)
     if start is not None:
         q = q.filter(Sale.sold_at >= start.astimezone(timezone.utc))
     q = q.filter(Sale.sold_at < (end_d + timedelta(days=1)).astimezone(timezone.utc))
@@ -975,17 +989,31 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
     total = sum(r["total"] for r in rows)
     unpaid = sum(r["total"] for r in rows if not r["paid"])
 
+    # Balances + sale counts, for the customer search dropdown hints.
+    bal_by_id = {r["customer"].id: r for r in customer_balances(db)}
+    counts = dict(
+        db.query(Sale.customer_id, func.count(Sale.id))
+        .filter(Sale.customer_id != None)  # noqa: E711
+        .group_by(Sale.customer_id).all()
+    )
     products = [
         {"id": p.id, "name": p.name, "price": float(p.selling_price)}
         for p in db.query(Product).filter(Product.is_active).order_by(Product.name).all()
     ]
     customers = [
-        {"id": c.id, "name": c.name}
+        {"id": c.id, "name": c.name,
+         "owed": round(float(bal_by_id.get(c.id, {}).get("balance", 0.0)), 2),
+         "sales": int(counts.get(c.id, 0))}
         for c in db.query(Customer).order_by(Customer.name).all()
     ]
+    cust_ctx = None
+    if selected_customer:
+        cust_ctx = {"id": selected_customer.id, "name": selected_customer.name,
+                    "balance": float(bal_by_id.get(selected_customer.id, {}).get("balance", 0.0))}
+
     return render(request, "sales_sheet.html", db, staff, products=products,
                   customers=customers, rows=rows, today=today, total=total,
-                  unpaid=unpaid, count=len(rows), range_key=range_key,
+                  unpaid=unpaid, count=len(rows), range_key=range_key, cust=cust_ctx,
                   from_s=(start.strftime("%Y-%m-%d") if start else ""),
                   to_s=end_d.strftime("%Y-%m-%d"))
 
