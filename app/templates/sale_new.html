@@ -16,16 +16,36 @@
   </div>
   <button type="button" class="btn" onclick="addRow()">＋ Add another item</button>
 
-  <label>Payment method</label>
-  <select name="payment_method">
-    {% for m in PAYMENT_METHODS %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
-  </select>
+  <label>Customer (optional)</label>
+  <input name="customer_name" list="customerlist" autocomplete="off"
+         placeholder="type a name — new ones are added automatically">
+  <datalist id="customerlist">
+    {% for c in customers %}<option value="{{ c.name }}">{% endfor %}
+  </datalist>
+
+  <label class="check" style="margin-top:14px">
+    <input type="checkbox" name="is_credit" id="is_credit" onchange="toggleCredit()">
+    <span>Unpaid — put on this customer's balance (credit / utang)</span>
+  </label>
+
+  <div id="paymethod-wrap">
+    <label>Payment method</label>
+    <select name="payment_method">
+      {% for m in PAYMENT_METHODS %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+    </select>
+  </div>
 
   <label>Note (optional)</label>
   <input name="note" placeholder="e.g. table 4">
 
   <button type="submit" class="btn primary big">Save sale</button>
 </form>
+<script>
+function toggleCredit(){
+  var credit = document.getElementById('is_credit').checked;
+  document.getElementById('paymethod-wrap').style.display = credit ? 'none' : 'block';
+}
+</script>
 
 <template id="rowtpl">
   <div class="sale-row">

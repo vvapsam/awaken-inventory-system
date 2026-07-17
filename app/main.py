@@ -7,8 +7,10 @@ try:
 except ImportError:  # pragma: no cover
     ZoneInfo = None
 
-from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi import Depends, FastAPI, Form, Request, UploadFile
+from fastapi.responses import (
+    HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, text
@@ -21,7 +23,7 @@ from .models import (
     CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
     MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
-    Product, Sale, SaleItem, Staff, StockMovement,
+    Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -60,6 +62,8 @@ def startup():
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS permissions TEXT NOT NULL DEFAULT ''"))
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS username TEXT"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_credit BOOLEAN NOT NULL DEFAULT FALSE"))
     db = next(get_db())
     try:
         # Backfill usernames for any rows missing one, keeping them unique.
@@ -275,13 +279,27 @@ def stock(request: Request, db: Session = Depends(get_db)):
 
 # ---------- log a sale ----------
 
+def find_or_create_customer(db, name):
+    name = (name or "").strip()
+    if not name:
+        return None
+    existing = db.query(Customer).filter(func.lower(Customer.name) == name.lower()).first()
+    if existing:
+        return existing
+    c = Customer(name=name)
+    db.add(c)
+    db.flush()
+    return c
+
+
 @app.get("/sale/new", response_class=HTMLResponse)
 def sale_form(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="sales.create")
     if redir:
         return redir
     products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
-    return render(request, "sale_new.html", db, staff, products=products)
+    customers = db.query(Customer).order_by(Customer.name).all()
+    return render(request, "sale_new.html", db, staff, products=products, customers=customers)
 
 
 @app.post("/sale/new")
@@ -294,8 +312,22 @@ async def sale_create(request: Request, db: Session = Depends(get_db)):
     quantities = form.getlist("quantity")
     payment_method = form.get("payment_method") or "cash"
     note = form.get("note") or None
+    customer_name = form.get("customer_name") or ""
+    is_credit = form.get("is_credit") == "on"
 
-    sale = Sale(staff_id=staff.id, payment_method=payment_method, note=note)
+    def _reload(err):
+        products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+        customers = db.query(Customer).order_by(Customer.name).all()
+        return render(request, "sale_new.html", db, staff, products=products,
+                      customers=customers, error=err)
+
+    if is_credit and not customer_name.strip():
+        return _reload("An unpaid (credit) sale needs a customer name.")
+
+    customer = find_or_create_customer(db, customer_name)
+    sale = Sale(staff_id=staff.id, payment_method=(None if is_credit else payment_method),
+                note=note, customer_id=(customer.id if customer else None),
+                is_credit=is_credit)
     db.add(sale)
     db.flush()
     added = 0
@@ -316,9 +348,7 @@ async def sale_create(request: Request, db: Session = Depends(get_db)):
         added += 1
     if added == 0:
         db.rollback()
-        products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
-        return render(request, "sale_new.html", db, staff, products=products,
-                      error="Add at least one item with a quantity.")
+        return _reload("Add at least one item with a quantity.")
     db.commit()
     return RedirectResponse("/dashboard", status_code=303)
 
@@ -763,6 +793,141 @@ def records(request: Request, db: Session = Depends(get_db)):
 @app.get("/admin/history")
 def history_redirect():
     return RedirectResponse("/records", status_code=307)
+
+
+# ---------- customers & payments ----------
+
+CUSTOMER_VIEW_PERMS = ["view_reports", "payments.create", "payments.edit", "payments.delete"]
+
+
+def customer_balances(db):
+    """Per-customer: charges from credit sales, payments made, and balance."""
+    charges = {}
+    credit_sales = (
+        db.query(Sale).filter(Sale.is_credit == True, Sale.customer_id != None).all()  # noqa: E712,E711
+    )
+    for s in credit_sales:
+        charges[s.customer_id] = charges.get(s.customer_id, 0.0) + s.total
+    paid = dict(
+        db.query(Payment.customer_id, func.coalesce(func.sum(Payment.amount), 0))
+        .group_by(Payment.customer_id).all()
+    )
+    rows = []
+    for c in db.query(Customer).order_by(Customer.name).all():
+        ch = charges.get(c.id, 0.0)
+        pd = float(paid.get(c.id, 0) or 0)
+        rows.append({"customer": c, "charges": ch, "paid": pd, "balance": ch - pd})
+    return rows
+
+
+@app.get("/customers", response_class=HTMLResponse)
+def customers_list(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, CUSTOMER_VIEW_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    rows = customer_balances(db)
+    outstanding = [r for r in rows if r["balance"] > 0.005]
+    total_out = sum(r["balance"] for r in rows)
+    return render(request, "customers.html", db, staff, rows=rows,
+                  outstanding=outstanding, total_out=total_out)
+
+
+@app.get("/customer/{cid}", response_class=HTMLResponse)
+def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, CUSTOMER_VIEW_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    customer = db.get(Customer, cid)
+    if not customer:
+        return RedirectResponse("/customers", status_code=303)
+    sales = (
+        db.query(Sale).filter(Sale.customer_id == cid, Sale.is_credit == True)  # noqa: E712
+        .order_by(Sale.sold_at.desc()).all()
+    )
+    payments = (
+        db.query(Payment).filter(Payment.customer_id == cid)
+        .order_by(Payment.paid_at.desc()).all()
+    )
+    charges = sum(s.total for s in sales)
+    paid = sum(float(p.amount) for p in payments)
+    return render(request, "customer_detail.html", db, staff, customer=customer,
+                  sales=sales, payments=payments, charges=charges, paid=paid,
+                  balance=charges - paid)
+
+
+@app.get("/customer/{cid}/pay", response_class=HTMLResponse)
+def pay_form(request: Request, cid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="payments.create")
+    if redir:
+        return redir
+    customer = db.get(Customer, cid)
+    if not customer:
+        return RedirectResponse("/customers", status_code=303)
+    rows = {r["customer"].id: r for r in customer_balances(db)}
+    balance = rows.get(cid, {}).get("balance", 0.0)
+    return render(request, "customer_pay.html", db, staff, customer=customer,
+                  balance=balance, error=None)
+
+
+@app.post("/customer/{cid}/pay")
+async def pay_create(request: Request, cid: int, amount: str = Form(...),
+                     method: str = Form("cash"), note: str = Form(""),
+                     screenshot: UploadFile = None, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="payments.create")
+    if redir:
+        return redir
+    customer = db.get(Customer, cid)
+    if not customer:
+        return RedirectResponse("/customers", status_code=303)
+    try:
+        amt = float(amount)
+    except (ValueError, TypeError):
+        amt = 0
+    if amt <= 0:
+        return render(request, "customer_pay.html", db, staff, customer=customer,
+                      balance=0, error="Enter a payment amount greater than zero.")
+    img_bytes, img_mime = None, None
+    if screenshot is not None and screenshot.filename:
+        img_bytes = await screenshot.read()
+        img_mime = screenshot.content_type or "image/jpeg"
+        if len(img_bytes) > 8 * 1024 * 1024:  # 8 MB cap
+            return render(request, "customer_pay.html", db, staff, customer=customer,
+                          balance=0, error="Screenshot is too large (max 8 MB).")
+    db.add(Payment(customer_id=cid, amount=amt, method=method, note=note or None,
+                   screenshot=img_bytes, screenshot_mime=img_mime, staff_id=staff.id))
+    db.commit()
+    return RedirectResponse(f"/customer/{cid}", status_code=303)
+
+
+@app.get("/payment/{pid}/screenshot")
+def payment_screenshot(request: Request, pid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, CUSTOMER_VIEW_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    p = db.get(Payment, pid)
+    if not p or not p.screenshot:
+        return Response(status_code=404)
+    return Response(content=p.screenshot, media_type=p.screenshot_mime or "image/jpeg")
+
+
+@app.post("/payment/{pid}/delete")
+def payment_delete(request: Request, pid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, perm="payments.delete")
+    if redir:
+        return redir
+    p = db.get(Payment, pid)
+    if p:
+        cid = p.customer_id
+        db.delete(p)
+        db.commit()
+        return RedirectResponse(f"/customer/{cid}", status_code=303)
+    return RedirectResponse("/customers", status_code=303)
 
 
 @app.get("/healthz")

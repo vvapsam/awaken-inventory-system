@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <h1>{{ customer.name }}</h1>
+  {% if can(staff, 'payments.create') %}
+  <a class="btn primary" href="/customer/{{ customer.id }}/pay">Pay</a>
+  {% endif %}
+</div>
+
+<div class="grid">
+  <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(charges) }}</div></div>
+  <div class="card stat"><div class="stat-label">Paid</div><div class="stat-value">{{ peso(paid) }}</div></div>
+  <div class="card stat {% if balance > 0.005 %}warn{% endif %}"><div class="stat-label">Balance</div><div class="stat-value">{{ peso(balance) }}</div></div>
+</div>
+
+<h2>Unpaid (credit) sales</h2>
+<table>
+  <tr><th>When</th><th>Items</th><th>Amount</th></tr>
+  {% for s in sales %}
+  <tr>
+    <td>{{ s.sold_at.strftime('%Y-%m-%d %H:%M') if s.sold_at else '' }}</td>
+    <td>{% for it in s.items %}{{ it.quantity }}× {{ it.product.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    <td>{{ peso(s.total) }}</td>
+  </tr>
+  {% else %}<tr><td colspan="3" class="muted">No credit sales.</td></tr>{% endfor %}
+</table>
+
+<h2>Payments</h2>
+<table>
+  <tr><th>When</th><th>Amount</th><th>Method</th><th>By</th><th>Proof</th><th>Note</th><th></th></tr>
+  {% for p in payments %}
+  <tr>
+    <td>{{ p.paid_at.strftime('%Y-%m-%d %H:%M') if p.paid_at else '' }}</td>
+    <td>{{ peso(p.amount) }}</td>
+    <td>{{ p.method or '' }}</td>
+    <td>{{ p.staff.name if p.staff else '' }}</td>
+    <td>{% if p.screenshot_mime %}<a href="/payment/{{ p.id }}/screenshot" target="_blank">View</a>{% else %}—{% endif %}</td>
+    <td>{{ p.note or '' }}</td>
+    <td class="actions-cell">
+      {% if can(staff, 'payments.delete') %}
+      <form method="post" action="/payment/{{ p.id }}/delete" style="display:inline"
+            onsubmit="return confirm('Void this payment?');">
+        <button type="submit" class="link-danger">Void</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">No payments yet.</td></tr>{% endfor %}
+</table>
+{% endblock %}

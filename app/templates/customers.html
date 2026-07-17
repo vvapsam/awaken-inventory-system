@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Customer balances</h1>
+
+<div class="grid">
+  <div class="card stat">
+    <div class="stat-label">Total outstanding</div>
+    <div class="stat-value">{{ peso(total_out) }}</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">Customers owing</div>
+    <div class="stat-value">{{ outstanding|length }}</div>
+  </div>
+</div>
+
+<table>
+  <tr><th>Customer</th><th>Charged</th><th>Paid</th><th>Balance</th><th></th></tr>
+  {% for r in rows %}
+  <tr class="{% if r.balance > 0.005 %}low{% endif %}">
+    <td><a href="/customer/{{ r.customer.id }}">{{ r.customer.name }}</a></td>
+    <td>{{ peso(r.charges) }}</td>
+    <td>{{ peso(r.paid) }}</td>
+    <td><strong>{{ peso(r.balance) }}</strong></td>
+    <td class="actions-cell">
+      <a href="/customer/{{ r.customer.id }}">View</a>
+      {% if can(staff, 'payments.create') and r.balance > 0.005 %}
+      <a class="btn primary" style="padding:5px 12px" href="/customer/{{ r.customer.id }}/pay">Pay</a>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="5" class="muted">No customers yet.</td></tr>{% endfor %}
+</table>
+{% endblock %}

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, DateTime, ForeignKey, Integer,
-    Numeric, String, Text,
+    LargeBinary, Numeric, String, Text,
 )
 from sqlalchemy.orm import relationship
 from .db import Base
@@ -24,6 +24,7 @@ MODULES = [
     ("items", "Items"),
     ("receive", "Receive Inventory"),
     ("adjust", "Adjustment"),
+    ("payments", "Payments"),
 ]
 ACTIONS = [("create", "Create"), ("edit", "Edit"), ("delete", "Delete")]
 
@@ -132,17 +133,31 @@ class StockMovement(Base):
     )
 
 
+class Customer(Base):
+    __tablename__ = "customers"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+
 class Sale(Base):
     __tablename__ = "sales"
     id = Column(Integer, primary_key=True)
     sold_at = Column(DateTime(timezone=True), default=now_utc)
     staff_id = Column(Integer, ForeignKey("staff.id"))
+    customer_id = Column(Integer, ForeignKey("customers.id"))  # optional
+    is_credit = Column(Boolean, nullable=False, default=False)  # unpaid / on credit
     payment_method = Column(String)
     note = Column(Text)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     staff = relationship("Staff")
+    customer = relationship("Customer")
     items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
+
+    @property
+    def total(self):
+        return sum(float(i.quantity) * float(i.unit_price) for i in self.items)
 
 
 class SaleItem(Base):
@@ -156,3 +171,19 @@ class SaleItem(Base):
 
     sale = relationship("Sale", back_populates="items")
     product = relationship("Product")
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+    id = Column(Integer, primary_key=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    note = Column(Text)
+    method = Column(String)  # cash / gcash / etc.
+    screenshot = Column(LargeBinary)         # proof-of-payment image bytes
+    screenshot_mime = Column(String)         # e.g. image/jpeg
+    paid_at = Column(DateTime(timezone=True), default=now_utc)
+    staff_id = Column(Integer, ForeignKey("staff.id"))
+
+    customer = relationship("Customer")
+    staff = relationship("Staff")

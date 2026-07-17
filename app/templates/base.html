@@ -20,6 +20,7 @@
     {% if can_any(staff, ['receive.create','adjust.create']) %}<a href="/movement/new">Stock&nbsp;in/out</a>{% endif %}
     {% if can_any(staff, ['items.create','items.edit','items.delete']) %}<a href="/admin/products">Items</a>{% endif %}
     {% if can(staff, 'view_reports') %}<a href="/admin/reports">Reports</a>{% endif %}
+    {% if can_any(staff, ['view_reports','payments.create','payments.edit','payments.delete']) %}<a href="/customers">Customers</a>{% endif %}
     {% if can_any(staff, ['view_reports','sales.edit','sales.delete','receive.edit','receive.delete','adjust.edit','adjust.delete']) %}<a href="/records">Records</a>{% endif %}
     {% if staff.role == 'admin' %}<a href="/admin/staff">Users</a>{% endif %}
   </nav>

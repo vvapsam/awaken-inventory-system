@@ -4,12 +4,13 @@
 
 <h2>Recent sales</h2>
 <table>
-  <tr><th>When</th><th>By</th><th>Payment</th><th>Items</th><th>Total</th><th></th></tr>
+  <tr><th>When</th><th>By</th><th>Customer</th><th>Payment</th><th>Items</th><th>Total</th><th></th></tr>
   {% for s in sales %}
   <tr>
     <td>{{ s.sold_at.strftime('%Y-%m-%d %H:%M') if s.sold_at else '' }}</td>
     <td>{{ s.staff.name if s.staff else '' }}</td>
-    <td>{{ s.payment_method }}</td>
+    <td>{{ s.customer.name if s.customer else '—' }}</td>
+    <td>{% if s.is_credit %}<span class="tag">UNPAID</span>{% else %}{{ s.payment_method }}{% endif %}</td>
     <td>{% for it in s.items %}{{ it.quantity }}× {{ it.product.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
     <td>
       {% set ns = namespace(t=0) %}
@@ -25,7 +26,7 @@
       {% endif %}
     </td>
   </tr>
-  {% else %}<tr><td colspan="6" class="muted">No sales yet.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="7" class="muted">No sales yet.</td></tr>{% endfor %}
 </table>
 
 <h2>Recent stock movements</h2>
