@@ -9,26 +9,68 @@
 </head>
 <body>
 {% if staff %}
-<header class="topbar">
-  <a href="/dashboard" class="brand">
-    <svg viewBox="0 0 200 210" fill="currentColor" aria-hidden="true"><path d="M100 10 L174 196 L150 196 L100 74 L50 196 L26 196 Z"/><path d="M100 88 L116 112 L100 136 L84 112 Z"/></svg>
-    <span class="wm">AWAKEN</span>
+{% set p = request.url.path %}
+{% macro nav(href, label, active) -%}
+  <a href="{{ href }}" class="nav-item {% if active %}active{% endif %}" title="{{ label }}">
+    <span class="nav-ico">{{ caller() }}</span><span class="nav-label">{{ label }}</span>
   </a>
-  <nav>
-    {% if can(staff, 'view_stock') %}<a href="/stock">Stock</a>{% endif %}
-    {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}<a href="/sales">Sales</a>{% endif %}
-    {% if can_any(staff, ['receive.create','adjust.create']) %}<a href="/movement/new">Stock&nbsp;in/out</a>{% endif %}
-    {% if can_any(staff, ['items.create','items.edit','items.delete']) %}<a href="/admin/products">Items</a>{% endif %}
-    {% if can(staff, 'view_reports') %}<a href="/admin/reports">Reports</a>{% endif %}
-    {% if can_any(staff, ['view_reports','payments.create','payments.edit','payments.delete']) %}<a href="/customers">Customers</a>{% endif %}
-    {% if can_any(staff, ['view_reports','sales.edit','sales.delete','receive.edit','receive.delete','adjust.edit','adjust.delete']) %}<a href="/records">Records</a>{% endif %}
-    {% if staff.role == 'admin' %}<a href="/admin/staff">Users</a>{% endif %}
-  </nav>
-  <span class="who">{{ staff.name }} ({{ staff.role }}) · <a href="/logout">Logout</a></span>
-</header>
+{%- endmacro %}
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="side-head">
+      <a href="/dashboard" class="brand">
+        <svg class="logo" viewBox="0 0 200 210" fill="currentColor" aria-hidden="true"><path d="M100 10 L174 196 L150 196 L100 74 L50 196 L26 196 Z"/><path d="M100 88 L116 112 L100 136 L84 112 Z"/></svg>
+        <span class="wm">AWAKEN</span>
+      </a>
+    </div>
+    <nav class="side-nav">
+      {% call nav('/dashboard', 'Dashboard', p == '/dashboard' or p == '/') %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>{% endcall %}
+      {% if can(staff, 'view_stock') %}{% call nav('/stock', 'Stock', p.startswith('/stock')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>{% endcall %}{% endif %}
+      {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}{% call nav('/sales', 'Sales', p.startswith('/sales')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg>{% endcall %}{% endif %}
+      {% if can_any(staff, ['receive.create','adjust.create']) %}{% call nav('/movement/new', 'Stock in/out', p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
+      {% if can_any(staff, ['items.create','items.edit','items.delete']) %}{% call nav('/admin/products', 'Items', p.startswith('/admin/products')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>{% endcall %}{% endif %}
+      {% if can(staff, 'view_reports') %}{% call nav('/admin/reports', 'Reports', p.startswith('/admin/reports')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>{% endcall %}{% endif %}
+      {% if can_any(staff, ['view_reports','payments.create','payments.edit','payments.delete']) %}{% call nav('/customers', 'Customers', p.startswith('/customer')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% endcall %}{% endif %}
+      {% if can_any(staff, ['view_reports','sales.edit','sales.delete','receive.edit','receive.delete','adjust.edit','adjust.delete']) %}{% call nav('/records', 'Records', p.startswith('/records')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>{% endcall %}{% endif %}
+      {% if staff.role == 'admin' %}{% call nav('/admin/staff', 'Users', p.startswith('/admin/staff')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{% endcall %}{% endif %}
+    </nav>
+    <div class="side-foot">
+      <div class="side-user"><div class="avatar">{{ staff.name[0]|upper }}</div><div class="su-meta"><div class="su-name">{{ staff.name }}</div><div class="su-role">{{ staff.role }}</div></div></div>
+      <a href="/logout" class="side-logout" title="Logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg><span class="nav-label">Logout</span></a>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+      <a href="/dashboard" class="topbrand"><svg class="logo" viewBox="0 0 200 210" fill="currentColor" aria-hidden="true"><path d="M100 10 L174 196 L150 196 L100 74 L50 196 L26 196 Z"/><path d="M100 88 L116 112 L100 136 L84 112 Z"/></svg><span class="wm">AWAKEN</span></a>
+      <span class="top-spacer"></span>
+      <span class="who">{{ staff.name }} · {{ staff.role }}</span>
+    </header>
+    <div class="content">
+      {% block body %}{% endblock %}
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var app=document.getElementById('app'), t=document.getElementById('sidebar-toggle'), scrim=document.getElementById('scrim');
+  function mobile(){ return window.matchMedia('(max-width:820px)').matches; }
+  try{ if(localStorage.getItem('awk-collapsed')==='1' && !mobile()) app.classList.add('collapsed'); }catch(e){}
+  t.addEventListener('click', function(){
+    if(mobile()){ app.classList.toggle('mobile-open'); }
+    else{ app.classList.toggle('collapsed');
+      try{ localStorage.setItem('awk-collapsed', app.classList.contains('collapsed')?'1':'0'); }catch(e){} }
+  });
+  scrim.addEventListener('click', function(){ app.classList.remove('mobile-open'); });
+})();
+</script>
+{% else %}
+<main class="bare">{{ self.body() }}</main>
 {% endif %}
-<main>
-  {% block body %}{% endblock %}
-</main>
 </body>
 </html>
