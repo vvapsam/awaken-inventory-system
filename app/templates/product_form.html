@@ -13,12 +13,14 @@
   <label>Name</label>
   <input name="name" value="{{ product.name if product else '' }}" required>
 
-  <label>Category</label>
-  <select name="category">
-    {% for c in CATEGORIES %}
-    <option value="{{ c }}" {% if product and product.category == c %}selected{% endif %}>{{ c }}</option>
-    {% endfor %}
-  </select>
+  <label>Supplier (optional)</label>
+  <input name="supplier" value="{{ product.supplier if product and product.supplier else '' }}" placeholder="e.g. Pacific Synergy">
+
+  <label>Category (optional — type any, or pick a suggestion)</label>
+  <input name="category" list="cat-list" value="{{ product.category if product and product.category else '' }}" placeholder="e.g. Water, Fruits, Sports Drink">
+  <datalist id="cat-list">
+    {% for c in category_suggestions %}<option value="{{ c }}">{% endfor %}
+  </datalist>
 
   <label>Unit</label>
   <select name="unit">

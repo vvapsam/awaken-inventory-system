@@ -93,7 +93,8 @@ class Product(Base):
     id = Column(Integer, primary_key=True)
     sku = Column(String, unique=True, nullable=False)
     name = Column(String, nullable=False)
-    category = Column(String, nullable=False)
+    supplier = Column(String)                    # optional supplier / source
+    category = Column(String)                    # free-form category (optional)
     unit = Column(String, nullable=False, default="each")
     selling_price = Column(Numeric(10, 2), nullable=False)
     cost_price = Column(Numeric(10, 2))
@@ -103,9 +104,6 @@ class Product(Base):
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
     __table_args__ = (
-        CheckConstraint(
-            "category IN ('Food&Beverage','Merchandise')", name="products_category_check"
-        ),
         CheckConstraint("unit IN ('each')", name="products_unit_check"),
     )
 

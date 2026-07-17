@@ -64,6 +64,9 @@ def startup():
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS username TEXT"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_credit BOOLEAN NOT NULL DEFAULT FALSE"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier VARCHAR"))
+        conn.execute(text("ALTER TABLE products DROP CONSTRAINT IF EXISTS products_category_check"))
+        conn.execute(text("ALTER TABLE products ALTER COLUMN category DROP NOT NULL"))
     db = next(get_db())
     try:
         # Backfill usernames for any rows missing one, keeping them unique.
@@ -443,31 +446,44 @@ def products_list(request: Request, db: Session = Depends(get_db)):
     return render(request, "products.html", db, staff, products=products)
 
 
+def _category_suggestions(db):
+    rows = db.query(Product.category).distinct().all()
+    cats = sorted({(c or "").strip() for (c,) in rows if c and c.strip()})
+    for base in CATEGORIES:
+        if base not in cats:
+            cats.append(base)
+    return cats
+
+
 @app.get("/admin/products/new", response_class=HTMLResponse)
 def product_new(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="items.create")
     if redir:
         return redir
-    return render(request, "product_form.html", db, staff, product=None, error=None)
+    return render(request, "product_form.html", db, staff, product=None, error=None,
+                  category_suggestions=_category_suggestions(db))
 
 
 @app.post("/admin/products/new")
 def product_create(request: Request, sku: str = Form(...), name: str = Form(...),
-                   category: str = Form(...), unit: str = Form("each"),
+                   category: str = Form(""), supplier: str = Form(""), unit: str = Form("each"),
                    selling_price: float = Form(...), cost_price: str = Form(""),
                    reorder_point: int = Form(0), db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="items.create")
     if redir:
         return redir
-    if category not in CATEGORIES or unit not in UNITS:
+    if unit not in UNITS:
         return render(request, "product_form.html", db, staff, product=None,
-                      error="Invalid category or unit.")
+                      error="Invalid unit.", category_suggestions=_category_suggestions(db))
     if db.query(Product).filter(Product.sku == sku).first():
         return render(request, "product_form.html", db, staff, product=None,
-                      error=f"SKU '{sku}' already exists.")
+                      error=f"SKU '{sku}' already exists.",
+                      category_suggestions=_category_suggestions(db))
     cp = float(cost_price) if cost_price.strip() else None
-    db.add(Product(sku=sku.strip(), name=name.strip(), category=category, unit=unit,
-                   selling_price=selling_price, cost_price=cp, reorder_point=reorder_point))
+    db.add(Product(sku=sku.strip(), name=name.strip(),
+                   category=(category.strip() or None), supplier=(supplier.strip() or None),
+                   unit=unit, selling_price=selling_price, cost_price=cp,
+                   reorder_point=reorder_point))
     db.commit()
     return RedirectResponse("/admin/products", status_code=303)
 
@@ -478,12 +494,13 @@ def product_edit(request: Request, pid: int, db: Session = Depends(get_db)):
     if redir:
         return redir
     product = db.get(Product, pid)
-    return render(request, "product_form.html", db, staff, product=product, error=None)
+    return render(request, "product_form.html", db, staff, product=product, error=None,
+                  category_suggestions=_category_suggestions(db))
 
 
 @app.post("/admin/products/{pid}/edit")
 def product_update(request: Request, pid: int, name: str = Form(...),
-                   category: str = Form(...), unit: str = Form("each"),
+                   category: str = Form(""), supplier: str = Form(""), unit: str = Form("each"),
                    selling_price: float = Form(...), cost_price: str = Form(""),
                    reorder_point: int = Form(0), is_active: str = Form("on"),
                    db: Session = Depends(get_db)):
@@ -494,7 +511,8 @@ def product_update(request: Request, pid: int, name: str = Form(...),
     if not product:
         return RedirectResponse("/admin/products", status_code=303)
     product.name = name.strip()
-    product.category = category
+    product.category = category.strip() or None
+    product.supplier = supplier.strip() or None
     product.unit = unit
     product.selling_price = selling_price
     product.cost_price = float(cost_price) if cost_price.strip() else None

@@ -5,13 +5,14 @@
   {% if can(staff, 'items.create') %}<a class="btn primary" href="/admin/products/new">＋ New item</a>{% endif %}
 </div>
 <table>
-  <tr><th>SKU</th><th>Name</th><th>Category</th><th>Price</th>
+  <tr><th>SKU</th><th>Name</th><th>Supplier</th><th>Category</th><th>Price</th>
     {% if can(staff, 'view_costs') %}<th>Cost</th>{% endif %}<th>Reorder</th><th>Status</th><th></th></tr>
   {% for p in products %}
   <tr class="{% if not p.is_active %}inactive{% endif %}">
     <td class="mono">{{ p.sku }}</td>
     <td>{{ p.name }}</td>
-    <td>{{ p.category }}</td>
+    <td>{{ p.supplier or '—' }}</td>
+    <td>{{ p.category or '—' }}</td>
     <td>{{ peso(p.selling_price) }}</td>
     {% if can(staff, 'view_costs') %}<td>{{ peso(p.cost_price) }}</td>{% endif %}
     <td>{{ p.reorder_point }}</td>
