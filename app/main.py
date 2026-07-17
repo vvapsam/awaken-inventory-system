@@ -765,6 +765,114 @@ def inventory_value(request: Request, as_of: str = "", view: str = "report",
                   as_of_label=f"{d:%B} {d.day}, {d.year}", is_today=is_today, **val)
 
 
+# ===== TEMPORARY: dummy-data import / wipe (admin only). Safe to remove later. =====
+_DUMMY_PRODUCTS = {
+    "BANANA": ("Banana", "Fruits", "Market", 25, None),
+    "POCARI-500": ("Pocari 500ml", "Sports Drink", "Otsuka Solar Philippines Inc", 90, 44),
+    "EGG": ("Egg", None, "Market", 20, None),
+    "SIP-WATER-500": ("Sip Water 500ml", "Water", "Pacific synergy", 25, 6),
+    "SIP-YELLOW-500": ("Sip Yellow 500ml", "Water", "Pacific synergy", 75, 31),
+    "SIP-PINK-500": ("Sip Pink 500ml", "Water", "Pacific synergy", 75, 31),
+    "SIP-BLUE-500": ("Sip Blue 500ml", "Water", "Pacific synergy", 75, 31),
+}
+
+
+def _wipe_transactions(db):
+    db.query(SaleItem).delete()
+    db.query(Sale).delete()
+    db.query(Payment).delete()
+    db.query(StockMovement).delete()
+    db.query(Customer).delete()
+    db.commit()
+
+
+@app.get("/admin/dummy", response_class=HTMLResponse)
+def dummy_home(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if staff.role != "admin":
+        return RedirectResponse("/dashboard", status_code=303)
+    done = request.query_params.get("done", "")
+    msg = ""
+    if done == "imported":
+        msg = f"<div class='savedmsg' style='background:#e5f5ec;border:1px solid #a9ddc0;color:#127a45;padding:10px 12px;border-radius:8px;margin:10px 0'>✓ Imported {request.query_params.get('n','')} records from the CSV.</div>"
+    elif done == "wiped":
+        msg = "<div class='savedmsg' style='background:#fdecea;border:1px solid #e6a49b;color:#9c2c1e;padding:10px 12px;border-radius:8px;margin:10px 0'>✓ All sales, stock movements, payments and customers were deleted.</div>"
+    body = f"""<h1>Dummy data tools</h1>{msg}
+    <p class="muted">Temporary tools for loading test data. Both actions affect the live database.</p>
+    <div class="card"><h2 style="margin-top:0">Load dummy data</h2>
+      <p class="muted small">Clears existing sales/movements/customers, then loads the AWAKEN Retail 2026 log (restocks + sales + credit customers).</p>
+      <form method="post" action="/admin/import-dummy" onsubmit="return confirm('This wipes current transactions and loads the CSV data. Continue?')">
+        <button class="btn primary" type="submit">Load dummy data from CSV</button></form></div>
+    <div class="card"><h2 style="margin-top:0">Wipe everything</h2>
+      <p class="muted small">Deletes ALL sales, stock movements, payments and customers (keeps your product catalog). Use this after testing.</p>
+      <form method="post" action="/admin/wipe-dummy" onsubmit="return confirm('Delete ALL sales, movements, payments and customers? This cannot be undone.')">
+        <button class="btn" style="border-color:#c0392b;color:#c0392b" type="submit">Wipe all transactions</button></form></div>"""
+    return render(request, "dummy.html", db, staff, body_html=body)
+
+
+@app.post("/admin/import-dummy")
+def dummy_import(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if staff.role != "admin":
+        return RedirectResponse("/dashboard", status_code=303)
+    import json as _json
+    path = os.path.join(os.path.dirname(__file__), "seed_dummy.json")
+    with open(path) as fh:
+        recs = _json.load(fh)
+    # ensure products exist
+    prods = {}
+    for sku, (name, cat, sup, price, cost) in _DUMMY_PRODUCTS.items():
+        p = db.query(Product).filter(Product.sku == sku).first()
+        if not p:
+            p = Product(sku=sku, name=name, category=cat, supplier=sup,
+                        unit="each", selling_price=price, cost_price=cost, reorder_point=0)
+            db.add(p)
+            db.flush()
+        prods[sku] = p
+    _wipe_transactions(db)
+    n = 0
+    for r in recs:
+        p = prods.get(r["sku"])
+        if not p:
+            continue
+        when = _sold_dt_from_date(r["date"])
+        if r["kind"] == "in":
+            db.add(StockMovement(product_id=p.id, movement_type="restock",
+                                 quantity=int(r["qty"]), occurred_at=when, created_at=when,
+                                 unit_cost=p.cost_price, note=r.get("note") or None, staff_id=staff.id))
+        else:
+            paid = r.get("paid", True)
+            cust = None
+            if r.get("customer"):
+                cust = find_or_create_customer(db, r["customer"])
+            sale = Sale(staff_id=staff.id, sold_at=when, is_credit=(not paid),
+                        customer_id=(cust.id if cust else None), note=r.get("note") or None,
+                        payment_method=(r.get("payment") or "cash") if paid else None)
+            db.add(sale)
+            db.flush()
+            db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=int(r["qty"]),
+                            unit_price=p.selling_price, cost_price=p.cost_price))
+        n += 1
+    db.commit()
+    return RedirectResponse(f"/admin/dummy?done=imported&n={n}", status_code=303)
+
+
+@app.post("/admin/wipe-dummy")
+def dummy_wipe(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if staff.role != "admin":
+        return RedirectResponse("/dashboard", status_code=303)
+    _wipe_transactions(db)
+    return RedirectResponse("/admin/dummy?done=wiped", status_code=303)
+# ===== end temporary dummy-data tools =====
+
+
 @app.get("/admin/reports/sales.csv")
 def reports_csv(request: Request, period: str = "all", db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="view_reports")
