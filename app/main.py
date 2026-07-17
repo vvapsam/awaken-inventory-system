@@ -774,7 +774,7 @@ def inventory_value(request: Request, as_of: str = "", view: str = "report",
 # ===== TEMPORARY: dummy-data import / wipe (admin only). Safe to remove later. =====
 _DUMMY_PRODUCTS = {
     "BANANA": ("Banana", "Fruits", "Market", 25, None),
-    "POCARI-500": ("Pocari 500ml", "Sports Drink", "Otsuka Solar Philippines Inc", 90, 44),
+    "POCARI-500": ("Pocari 500ml", "Sports Drink", "Otsuka Solar Philippines Inc", 80, 44),
     "EGG": ("Egg", None, "Market", 20, None),
     "SIP-WATER-500": ("Sip Water 500ml", "Water", "Pacific synergy", 25, 6),
     "SIP-YELLOW-500": ("Sip Yellow 500ml", "Water", "Pacific synergy", 75, 31),
@@ -805,12 +805,24 @@ def dummy_home(request: Request, db: Session = Depends(get_db)):
         msg = f"<div class='savedmsg' style='background:#e5f5ec;border:1px solid #a9ddc0;color:#127a45;padding:10px 12px;border-radius:8px;margin:10px 0'>✓ Imported {request.query_params.get('n','')} records from the CSV.</div>"
     elif done == "wiped":
         msg = "<div class='savedmsg' style='background:#fdecea;border:1px solid #e6a49b;color:#9c2c1e;padding:10px 12px;border-radius:8px;margin:10px 0'>✓ All sales, stock movements, payments and customers were deleted.</div>"
+    elif done == "repriced":
+        msg = f"<div class='savedmsg' style='background:#e5f5ec;border:1px solid #a9ddc0;color:#127a45;padding:10px 12px;border-radius:8px;margin:10px 0'>✓ Repriced {request.query_params.get('sku','')} — updated {request.query_params.get('n','0')} past sale line(s).</div>"
+    elif done == "noitem":
+        msg = "<div class='savedmsg' style='background:#fdecea;border:1px solid #e6a49b;color:#9c2c1e;padding:10px 12px;border-radius:8px;margin:10px 0'>No item with that SKU.</div>"
     body = f"""<h1>Dummy data tools</h1>{msg}
     <p class="muted">Temporary tools for loading test data. Both actions affect the live database.</p>
     <div class="card"><h2 style="margin-top:0">Load dummy data</h2>
       <p class="muted small">Clears existing sales/movements/customers, then loads the AWAKEN Retail 2026 log (restocks + sales + credit customers).</p>
       <form method="post" action="/admin/import-dummy" onsubmit="return confirm('This wipes current transactions and loads the CSV data. Continue?')">
         <button class="btn primary" type="submit">Load dummy data from CSV</button></form></div>
+    <div class="card"><h2 style="margin-top:0">Reprice an item</h2>
+      <p class="muted small">Sets a new selling price on an item, and (optionally) rewrites that price onto every past sale of it.</p>
+      <form method="post" action="/admin/reprice" class="two-col" style="align-items:end">
+        <div><label>SKU</label><input name="sku" value="POCARI-500"></div>
+        <div><label>New selling price (₱)</label><input name="price" type="number" step="0.01" value="80"></div>
+        <label class="check" style="grid-column:1/-1"><input type="checkbox" name="apply_all" checked> Also update all past transactions of this item</label>
+        <button class="btn primary" type="submit" style="grid-column:1/-1;justify-self:start">Apply new price</button>
+      </form></div>
     <div class="card"><h2 style="margin-top:0">Wipe everything</h2>
       <p class="muted small">Deletes ALL sales, stock movements, payments and customers (keeps your product catalog). Use this after testing.</p>
       <form method="post" action="/admin/wipe-dummy" onsubmit="return confirm('Delete ALL sales, movements, payments and customers? This cannot be undone.')">
@@ -865,6 +877,28 @@ def dummy_import(request: Request, db: Session = Depends(get_db)):
         n += 1
     db.commit()
     return RedirectResponse(f"/admin/dummy?done=imported&n={n}", status_code=303)
+
+
+@app.post("/admin/reprice")
+def dummy_reprice(request: Request, sku: str = Form(...), price: float = Form(...),
+                  apply_all: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if staff.role != "admin":
+        return RedirectResponse("/dashboard", status_code=303)
+    p = db.query(Product).filter(Product.sku == sku.strip()).first()
+    if not p:
+        return RedirectResponse("/admin/dummy?done=noitem", status_code=303)
+    p.selling_price = price
+    n = 0
+    if apply_all == "on":
+        items = db.query(SaleItem).filter(SaleItem.product_id == p.id).all()
+        for it in items:
+            it.unit_price = price
+            n += 1
+    db.commit()
+    return RedirectResponse(f"/admin/dummy?done=repriced&sku={p.sku}&n={n}", status_code=303)
 
 
 @app.post("/admin/wipe-dummy")
