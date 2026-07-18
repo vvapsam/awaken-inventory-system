@@ -194,6 +194,25 @@ def order_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("order.html", {"request": request})
 
 
+@router.get("/ocr-health")
+def ocr_health():
+    """Ops check: confirms the OCR engine that validates payment screenshots is
+    live on this server. No user data involved."""
+    out = {"ocr_available": False}
+    try:
+        import pytesseract
+        out["tesseract_version"] = str(pytesseract.get_tesseract_version())
+        out["ocr_available"] = True
+    except Exception as e:
+        out["error"] = str(e)
+    try:
+        import PIL
+        out["pillow"] = PIL.__version__
+    except Exception as e:
+        out["pillow_error"] = str(e)
+    return out
+
+
 @router.get("/api/order/bootstrap")
 def order_bootstrap(db: Session = Depends(get_db)):
     products = [
