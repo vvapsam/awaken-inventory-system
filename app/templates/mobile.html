@@ -74,25 +74,22 @@ input.txt,select.txt{width:100%;padding:13px 14px;border:1px solid var(--line);b
   background:var(--white);outline:none}
 input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
 
-/* product list — clean rows, minimal colour */
-.plist{display:flex;flex-direction:column;gap:8px}
-.prow{position:relative;background:var(--white);border:1px solid var(--line);border-radius:14px;
-  padding:10px 12px;text-align:left;display:flex;align-items:center;gap:12px;width:100%}
-.prow:active{transform:scale(.99)}
-.prow.picked{border-color:var(--green);background:var(--green-tint)}
-.prow .thumb{width:44px;height:44px;flex:none;border-radius:10px;background:#EEF0F2;display:flex;
-  align-items:center;justify-content:center;overflow:hidden;font-family:Poppins;font-weight:600;
-  color:#9aa0a8;font-size:.82rem}
-.prow .thumb img{width:100%;height:100%;object-fit:cover}
-.prow .pmid{flex:1;min-width:0}
-.prow .pn{font-weight:600;font-size:.94rem;line-height:1.25}
-.prow .psub{font-size:.78rem;color:var(--muted);margin-top:1px}
-.prow .psub .out{color:var(--owed);font-weight:600}
-.prow .pp{font-family:Poppins;font-weight:600;font-size:.92rem;white-space:nowrap}
-.prow .padd{width:30px;height:30px;flex:none;border-radius:9px;border:1px solid var(--line);
-  background:var(--white);font-size:1.2rem;line-height:1;color:var(--ink);display:flex;align-items:center;justify-content:center}
-.qbadge{min-width:26px;height:30px;flex:none;background:var(--green);color:#fff;font-weight:700;
-  border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:.85rem;padding:0 8px}
+/* product tiles — big tap targets, calm palette */
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ptile{position:relative;background:var(--white);border:1px solid var(--line);border-radius:16px;
+  padding:10px;text-align:left;display:flex;flex-direction:column;gap:7px}
+.ptile:active{transform:scale(.97)}
+.ptile.picked{border-color:var(--green);box-shadow:0 0 0 2px rgba(24,190,124,.3);background:var(--green-tint)}
+.ptile .thumb{aspect-ratio:1/1;border-radius:12px;background:#EEF0F2;display:flex;align-items:center;
+  justify-content:center;overflow:hidden;font-family:Poppins;font-weight:600;color:#9aa0a8;font-size:1.35rem}
+.ptile .thumb img{width:100%;height:100%;object-fit:cover}
+.ptile .pn{font-weight:600;font-size:.92rem;line-height:1.2}
+.ptile .pp{font-family:Poppins;font-weight:600;font-size:.95rem}
+.ptile .ps{font-size:.73rem;color:var(--muted)}
+.ptile .ps.out{color:var(--owed);font-weight:600}
+.qbadge{position:absolute;top:8px;right:8px;background:var(--green);color:#fff;font-weight:700;
+  min-width:26px;height:26px;border-radius:999px;display:flex;align-items:center;justify-content:center;
+  font-size:.82rem;padding:0 7px;box-shadow:0 2px 6px rgba(24,190,124,.35)}
 
 /* bottom sheet (cart) */
 .sheet{position:fixed;left:0;right:0;bottom:0;background:var(--white);border-radius:22px 22px 0 0;
@@ -212,7 +209,7 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 <section id="s-sell" class="screen">
   <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">Sell</h2></div>
   <div class="section-label">Tap a product to add</div>
-  <div class="plist" id="sell-grid"></div>
+  <div class="pgrid" id="sell-grid"></div>
   <div style="height:8px"></div>
 
   <!-- cart bottom sheet -->
@@ -257,9 +254,9 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     <button data-adj="loss">▲ Loss</button>
   </div>
 
-  <div class="field-label">Item</div>
-  <select class="txt" id="adj-item"></select>
-  <div class="muted" id="adj-onhand" style="font-size:.82rem;margin:6px 2px"></div>
+  <div class="field-label">Item — tap to pick</div>
+  <div class="pgrid" id="adj-grid"></div>
+  <div class="muted" id="adj-onhand" style="font-size:.82rem;margin:10px 2px 0"></div>
 
   <div class="field-label">Quantity</div>
   <div style="display:flex;justify-content:center;margin:4px 0">
@@ -403,12 +400,11 @@ function initSell(){
   clearProof(); $('#cust-choose-lbl').textContent='Choose a customer…'; $('#cust-choose .cav').textContent='?';
   const g=$('#sell-grid'); g.innerHTML='';
   DATA.products.forEach(p=>{
-    const t=document.createElement('button'); t.className='prow'; t.dataset.pid=p.id;
+    const t=document.createElement('button'); t.className='ptile'; t.dataset.pid=p.id;
     const thumb=p.has_image?`<span class="thumb"><img src="/product-image/${p.id}" alt=""></span>`
       :`<span class="thumb">${p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()}</span>`;
-    t.innerHTML=`${thumb}<span class="pmid"><span class="pn">${p.name}</span>
-      <span class="psub"><span class="${p.on_hand<=0?'out':''}">${p.on_hand} in stock</span></span></span>
-      <span class="pp">${peso(p.price)}</span><span class="padd">+</span><span class="qbadge hide"></span>`;
+    t.innerHTML=`${thumb}<span class="pn">${p.name}</span><span class="pp">${peso(p.price)}</span>
+      <span class="ps ${p.on_hand<=0?'out':''}">${p.on_hand} in stock</span><span class="qbadge hide"></span>`;
     t.onclick=()=>addToCart(p.id);
     g.appendChild(t);
   });
@@ -417,11 +413,11 @@ function initSell(){
 function addToCart(pid){ cart[pid]=(cart[pid]||0)+1; renderCart(); }
 function setQty(pid,q){ if(q<=0) delete cart[pid]; else cart[pid]=q; renderCart(); }
 function renderCart(){
-  // row state: show qty badge when picked, else the + button
-  $$('#sell-grid .prow').forEach(t=>{
-    const q=cart[t.dataset.pid], b=$('.qbadge',t), add=$('.padd',t);
-    if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');add.classList.add('hide');}
-    else{t.classList.remove('picked');b.classList.add('hide');add.classList.remove('hide');}
+  // tile state: green qty badge when picked
+  $$('#sell-grid .ptile').forEach(t=>{
+    const q=cart[t.dataset.pid], b=$('.qbadge',t);
+    if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');}
+    else{t.classList.remove('picked');b.classList.add('hide');}
   });
   const lines=$('#cart-lines'); lines.innerHTML=''; let total=0;
   const ids=Object.keys(cart);
@@ -482,14 +478,24 @@ $('#sell-submit').onclick=async()=>{
 };
 
 // ================= ADJUST =================
-let adjMode='receive', adjQty=1, lossMemo='';
+let adjMode='receive', adjQty=1, lossMemo='', adjProductId=null;
 function initAdjust(){
   adjMode='receive'; adjQty=1; lossMemo='';
   $$('#adj-seg button').forEach(x=>x.classList.remove('on','g','c'));
   $('#adj-seg button[data-adj=receive]').classList.add('on','g');
-  const sel=$('#adj-item'); sel.innerHTML='';
-  DATA.products.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=`${p.name} · ${p.on_hand} in stock`;sel.appendChild(o);});
-  sel.onchange=refreshAdj;
+  // item tiles (single-select)
+  adjProductId = DATA.products.length ? DATA.products[0].id : null;
+  const g=$('#adj-grid'); g.innerHTML='';
+  DATA.products.forEach(p=>{
+    const t=document.createElement('button'); t.className='ptile'; t.dataset.pid=p.id;
+    const thumb=p.has_image?`<span class="thumb"><img src="/product-image/${p.id}" alt=""></span>`
+      :`<span class="thumb">${p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()}</span>`;
+    t.innerHTML=`${thumb}<span class="pn">${p.name}</span>
+      <span class="ps ${p.on_hand<=0?'out':''}">${p.on_hand} in stock</span>`;
+    t.onclick=()=>selectAdjItem(p.id);
+    g.appendChild(t);
+  });
+  paintAdjPick();
   $('#adj-amount').value=''; $('#adj-memo').value='';
   const chips=$('#loss-chips'); chips.innerHTML='';
   (DATA.loss_chips||[]).forEach(c=>{const b=document.createElement('button');b.type='button';b.textContent=c;
@@ -514,7 +520,9 @@ function renderAdjQty(){ $('#adj-qty').textContent=(adjMode==='receive'?'+':'−
   $('#adj-qty').style.color=adjMode==='receive'?'var(--green-dark)':'var(--ink)'; }
 $('#adj-amount').oninput=()=>{refreshAdj();updateAdjBtn();};
 $('#adj-memo').oninput=()=>{lossMemo=$('#adj-memo').value;updateAdjBtn();};
-function curAdjProduct(){ return DATA.products.find(p=>p.id==$('#adj-item').value); }
+function selectAdjItem(pid){ adjProductId=pid; paintAdjPick(); refreshAdj(); updateAdjBtn(); }
+function paintAdjPick(){ $$('#adj-grid .ptile').forEach(t=>t.classList.toggle('picked', t.dataset.pid==adjProductId)); }
+function curAdjProduct(){ return DATA.products.find(p=>p.id==adjProductId); }
 function refreshAdj(){
   const p=curAdjProduct(); if(!p) return;
   $('#adj-onhand').textContent=`Currently ${p.on_hand} in stock`;
@@ -528,6 +536,7 @@ function refreshAdj(){
 }
 function updateAdjBtn(){
   const btn=$('#adj-submit'); let ok=true,label;
+  if(!adjProductId){ btn.textContent='Choose an item'; btn.disabled=true; return; }
   if(adjMode==='receive'){ const amt=parseFloat($('#adj-amount').value);
     if(!(amt>=0)){label='Enter amount to save';ok=false;} else label='Save receipt'; }
   else { if(!$('#adj-memo').value.trim()){label='Add a memo to save';ok=false;} else label='Save loss'; }
