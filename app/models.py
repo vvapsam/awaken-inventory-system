@@ -270,6 +270,57 @@ class SaleItem(Base):
     product = relationship("Product")
 
 
+class Order(Base):
+    """A customer self-checkout order placed from the public /order page."""
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True)
+    number = Column(String, unique=True, nullable=False)       # ORD-0001
+    customer_name = Column(String, nullable=False)
+    customer_phone = Column(String)
+    payment_method = Column(String, nullable=False)            # cash | bank
+    proof = Column(LargeBinary)                                # payment screenshot (bank)
+    proof_mime = Column(String)
+    amount = Column(Numeric(10, 2), nullable=False, default=0)  # snapshot total
+    status = Column(String, nullable=False, default="pending")  # pending|confirmed|rejected
+    # Automated screenshot checks (best-effort OCR; staff still confirm)
+    check_amount_ok = Column(Boolean)          # True/False/None(unknown)
+    check_detected_amount = Column(Numeric(10, 2))
+    check_date_ok = Column(Boolean)
+    check_detected_date = Column(String)
+    check_note = Column(Text)
+    staff_id = Column(Integer, ForeignKey("staff.id"))         # who confirmed/rejected
+    sale_id = Column(Integer, ForeignKey("sales.id", ondelete="SET NULL"))  # created on confirm
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    decided_at = Column(DateTime(timezone=True))
+
+    items = relationship("OrderItem", cascade="all, delete-orphan", backref="order")
+
+    @property
+    def total(self):
+        return sum(float(i.qty) * float(i.unit_price) for i in self.items)
+
+
+class OrderItem(Base):
+    __tablename__ = "order_items"
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"))
+    name = Column(String, nullable=False)      # snapshot name
+    qty = Column(Integer, nullable=False, default=1)
+    unit_price = Column(Numeric(10, 2), nullable=False, default=0)
+
+
+class PaymentSetting(Base):
+    """Singleton (id=1): bank details + payment QR shown on the customer page."""
+    __tablename__ = "payment_settings"
+    id = Column(Integer, primary_key=True)
+    bank_name = Column(String)
+    account_name = Column(String)
+    qr = Column(LargeBinary)
+    qr_mime = Column(String)
+    updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
 class Payment(Base):
     __tablename__ = "payments"
     id = Column(Integer, primary_key=True)
