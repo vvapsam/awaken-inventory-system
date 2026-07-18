@@ -16,8 +16,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#0F0F0F; --green:#2EAD57; --indigo:#3D37C4; --coral:#EF6C4D;
-  --paper:#F6F6F7; --line:#E6E6EA; --muted:#71717A; --white:#fff;
+  --ink:#0F0F0F; --ink-soft:#1b1b1d;
+  --green:#18BE7C; --green-dark:#12a56b; --green-tint:#e8f8f1;
+  --paper:#F5F6F6; --line:#E7E8EA; --muted:#868b93; --white:#fff;
+  --owed:#e2683f;                 /* used sparingly, for amounts owed only */
   --safe-b:env(safe-area-inset-bottom,0px);
   --safe-t:env(safe-area-inset-top,0px);
 }
@@ -29,7 +31,7 @@ h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;font-weight:700;letter-spacing
 button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
 input,select{font-family:inherit;font-size:16px}
 .muted{color:var(--muted)}
-.coral{color:var(--coral)}.green{color:var(--green)}.indigo{color:var(--indigo)}
+.green{color:var(--green)}.owed{color:var(--owed)}
 .hide{display:none!important}
 
 /* screens */
@@ -56,39 +58,41 @@ input,select{font-family:inherit;font-size:16px}
   border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:10px;text-align:center;box-shadow:0 4px 16px rgba(15,15,15,.05);padding:20px;overflow:hidden}
 .navcard:active{transform:scale(.98)}
-.navcard .ic{width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center}
-.navcard .ic svg{width:28px;height:28px;stroke-width:2}
-.navcard h3{font-size:1.4rem}
-.navcard p{margin:0;font-size:.92rem;color:var(--muted);font-weight:500}
-.navcard.sell .ic{background:rgba(46,173,87,.14);color:var(--green)}
-.navcard.adjust .ic{background:rgba(61,55,196,.12);color:var(--indigo)}
-.navcard.bal .ic{background:rgba(239,108,77,.14);color:var(--coral)}
-.badge{position:absolute;top:14px;right:14px;background:var(--coral);color:#fff;font-weight:700;
-  font-size:.8rem;border-radius:999px;padding:3px 10px;box-shadow:0 2px 8px rgba(239,108,77,.4)}
+.navcard .ic{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  background:var(--paper);color:var(--ink)}
+.navcard .ic svg{width:26px;height:26px;stroke-width:1.8}
+.navcard h3{font-size:1.35rem;font-weight:600}
+.navcard p{margin:0;font-size:.9rem;color:var(--muted);font-weight:500}
+.navcard.bal .ic{background:var(--green-tint);color:var(--green-dark)}
+.badge{position:absolute;top:14px;right:14px;background:var(--ink);color:#fff;font-weight:700;
+  font-size:.78rem;border-radius:999px;padding:3px 10px}
 
 /* generic bits */
 .section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted);margin:2px 2px 10px}
 .field-label{display:block;font-weight:600;font-size:.86rem;margin:16px 2px 7px}
 input.txt,select.txt{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;
   background:var(--white);outline:none}
-input.txt:focus,select.txt:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(61,55,196,.14)}
+input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
 
-/* product grid */
-.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.ptile{position:relative;background:var(--white);border:1px solid var(--line);border-radius:18px;
-  padding:12px;text-align:left;display:flex;flex-direction:column;gap:8px;min-height:132px}
-.ptile:active{transform:scale(.97)}
-.ptile.picked{border-color:var(--green);box-shadow:0 0 0 2px rgba(46,173,87,.35)}
-.ptile .thumb{height:64px;border-radius:12px;background:#EEF0F2;display:flex;align-items:center;justify-content:center;
-  overflow:hidden;font-family:Poppins;font-weight:700;color:#9aa0a8;font-size:1.2rem}
-.ptile .thumb img{width:100%;height:100%;object-fit:cover}
-.ptile .pn{font-weight:600;font-size:.9rem;line-height:1.2}
-.ptile .pp{font-family:Poppins;font-weight:700;font-size:.95rem}
-.ptile .ps{font-size:.72rem;color:var(--muted)}
-.ptile .ps.out{color:var(--coral);font-weight:600}
-.qbadge{position:absolute;top:8px;right:8px;background:var(--green);color:#fff;font-weight:700;
-  min-width:24px;height:24px;border-radius:999px;display:flex;align-items:center;justify-content:center;
-  font-size:.82rem;padding:0 6px;box-shadow:0 2px 6px rgba(46,173,87,.4)}
+/* product list — clean rows, minimal colour */
+.plist{display:flex;flex-direction:column;gap:8px}
+.prow{position:relative;background:var(--white);border:1px solid var(--line);border-radius:14px;
+  padding:10px 12px;text-align:left;display:flex;align-items:center;gap:12px;width:100%}
+.prow:active{transform:scale(.99)}
+.prow.picked{border-color:var(--green);background:var(--green-tint)}
+.prow .thumb{width:44px;height:44px;flex:none;border-radius:10px;background:#EEF0F2;display:flex;
+  align-items:center;justify-content:center;overflow:hidden;font-family:Poppins;font-weight:600;
+  color:#9aa0a8;font-size:.82rem}
+.prow .thumb img{width:100%;height:100%;object-fit:cover}
+.prow .pmid{flex:1;min-width:0}
+.prow .pn{font-weight:600;font-size:.94rem;line-height:1.25}
+.prow .psub{font-size:.78rem;color:var(--muted);margin-top:1px}
+.prow .psub .out{color:var(--owed);font-weight:600}
+.prow .pp{font-family:Poppins;font-weight:600;font-size:.92rem;white-space:nowrap}
+.prow .padd{width:30px;height:30px;flex:none;border-radius:9px;border:1px solid var(--line);
+  background:var(--white);font-size:1.2rem;line-height:1;color:var(--ink);display:flex;align-items:center;justify-content:center}
+.qbadge{min-width:26px;height:30px;flex:none;background:var(--green);color:#fff;font-weight:700;
+  border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:.85rem;padding:0 8px}
 
 /* bottom sheet (cart) */
 .sheet{position:fixed;left:0;right:0;bottom:0;background:var(--white);border-radius:22px 22px 0 0;
@@ -115,15 +119,13 @@ input.txt:focus,select.txt:focus{border-color:var(--indigo);box-shadow:0 0 0 3px
   font-weight:600;font-size:.92rem}
 .seg button:active{transform:scale(.97)}
 .seg button.on{border-color:var(--ink);background:var(--ink);color:#fff}
-.seg button.on.g{border-color:var(--green);background:var(--green)}
-.seg button.on.c{border-color:var(--coral);background:var(--coral)}
-.seg button.on.i{border-color:var(--indigo);background:var(--indigo)}
+.seg button.on.g,.seg button.on.c,.seg button.on.i{border-color:var(--ink);background:var(--ink);color:#fff}
 
 /* note banner */
 .note{border-radius:14px;padding:12px 14px;font-size:.86rem;font-weight:500;margin:12px 0}
-.note.warn{background:rgba(239,108,77,.1);color:#a83b22;border:1px solid rgba(239,108,77,.35)}
-.note.info{background:rgba(61,55,196,.08);color:#2c288f;border:1px solid rgba(61,55,196,.25)}
-.note.ok{background:rgba(46,173,87,.1);color:#1c7a3c;border:1px solid rgba(46,173,87,.3)}
+.note.warn{background:var(--paper);color:#4a4f57;border:1px solid var(--line)}
+.note.info{background:var(--paper);color:#4a4f57;border:1px solid var(--line)}
+.note.ok{background:var(--green-tint);color:var(--green-dark);border:1px solid rgba(24,190,124,.3)}
 
 /* photo picker */
 .photo{margin:10px 0}
@@ -138,12 +140,12 @@ input.txt:focus,select.txt:focus{border-color:var(--indigo);box-shadow:0 0 0 3px
 /* sticky action button */
 .actionbar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + var(--safe-b));
   background:linear-gradient(180deg,rgba(246,246,247,0),var(--paper) 26%);z-index:50}
-.bigbtn{width:100%;padding:16px;border-radius:16px;font-family:Poppins;font-weight:700;font-size:1.05rem;
-  background:var(--indigo);color:#fff;box-shadow:0 6px 18px rgba(61,55,196,.28)}
+.bigbtn{width:100%;padding:16px;border-radius:14px;font-family:Poppins;font-weight:600;font-size:1.05rem;
+  background:var(--green);color:#fff}
 .bigbtn:active{transform:scale(.99)}
-.bigbtn.g{background:var(--green);box-shadow:0 6px 18px rgba(46,173,87,.28)}
-.bigbtn.c{background:var(--coral);box-shadow:0 6px 18px rgba(239,108,77,.28)}
-.bigbtn:disabled{background:#D6D6DB;color:#8b8b93;box-shadow:none}
+.bigbtn.g{background:var(--green)}
+.bigbtn.c{background:var(--ink)}
+.bigbtn:disabled{background:#E1E2E5;color:#9a9ba1}
 
 /* customer picker */
 .clist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
@@ -154,13 +156,13 @@ input.txt:focus,select.txt:focus{border-color:var(--indigo);box-shadow:0 0 0 3px
   justify-content:center;font-weight:700;color:var(--muted);font-size:.85rem}
 .crow .cnm{flex:1;font-weight:600}
 .crow .cnm small{display:block;color:var(--muted);font-weight:500;font-size:.8rem}
-.crow .cbal{font-family:Poppins;font-weight:700;color:var(--coral)}
+.crow .cbal{font-family:Poppins;font-weight:600;color:var(--ink)}
 
 /* balances */
-.summary{background:var(--ink);color:#fff;border-radius:20px;padding:18px 20px;margin-bottom:14px}
-.summary .lbl{font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:#b9b9c2;font-weight:600}
-.summary .amt{font-family:Poppins;font-weight:700;font-size:2rem;color:var(--coral);margin:6px 0 2px}
-.summary .sub{color:#c9c9d2;font-size:.86rem}
+.summary{background:var(--ink);color:#fff;border-radius:18px;padding:18px 20px;margin-bottom:14px}
+.summary .lbl{font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:#9a9ba3;font-weight:600}
+.summary .amt{font-family:Poppins;font-weight:700;font-size:2rem;color:#fff;margin:6px 0 2px}
+.summary .sub{color:#b7b8c0;font-size:.86rem}
 
 /* detail order card */
 .ocard{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
@@ -210,7 +212,7 @@ input.txt:focus,select.txt:focus{border-color:var(--indigo);box-shadow:0 0 0 3px
 <section id="s-sell" class="screen">
   <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">Sell</h2></div>
   <div class="section-label">Tap a product to add</div>
-  <div class="pgrid" id="sell-grid"></div>
+  <div class="plist" id="sell-grid"></div>
   <div style="height:8px"></div>
 
   <!-- cart bottom sheet -->
@@ -323,7 +325,7 @@ input.txt:focus,select.txt:focus{border-color:var(--indigo);box-shadow:0 0 0 3px
 <section id="s-cust" class="screen">
   <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Back</button><h2 class="hd">Customer</h2></div>
   <input class="txt" id="cust-search" placeholder="🔍 Search…" style="margin-bottom:12px">
-  <button class="crow" id="cust-add-btn" type="button" style="border-style:dashed;color:var(--indigo);font-weight:700;justify-content:center">＋ Add new customer</button>
+  <button class="crow" id="cust-add-btn" type="button" style="border-style:dashed;color:var(--green-dark);font-weight:700;justify-content:center">＋ Add new customer</button>
   <div class="clist" id="cust-list" style="margin-top:10px"></div>
   <!-- add form -->
   <div id="cust-add-form" class="hide" style="margin-top:14px">
@@ -401,11 +403,12 @@ function initSell(){
   clearProof(); $('#cust-choose-lbl').textContent='Choose a customer…'; $('#cust-choose .cav').textContent='?';
   const g=$('#sell-grid'); g.innerHTML='';
   DATA.products.forEach(p=>{
-    const t=document.createElement('button'); t.className='ptile'; t.dataset.pid=p.id;
-    const thumb=p.has_image?`<div class="thumb"><img src="/product-image/${p.id}" alt=""></div>`
-      :`<div class="thumb">${p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()}</div>`;
-    t.innerHTML=`${thumb}<div class="pn">${p.name}</div><div class="pp">${peso(p.price)}</div>
-      <div class="ps ${p.on_hand<=0?'out':''}">${p.on_hand} in stock</div><span class="qbadge hide"></span>`;
+    const t=document.createElement('button'); t.className='prow'; t.dataset.pid=p.id;
+    const thumb=p.has_image?`<span class="thumb"><img src="/product-image/${p.id}" alt=""></span>`
+      :`<span class="thumb">${p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()}</span>`;
+    t.innerHTML=`${thumb}<span class="pmid"><span class="pn">${p.name}</span>
+      <span class="psub"><span class="${p.on_hand<=0?'out':''}">${p.on_hand} in stock</span></span></span>
+      <span class="pp">${peso(p.price)}</span><span class="padd">+</span><span class="qbadge hide"></span>`;
     t.onclick=()=>addToCart(p.id);
     g.appendChild(t);
   });
@@ -414,11 +417,11 @@ function initSell(){
 function addToCart(pid){ cart[pid]=(cart[pid]||0)+1; renderCart(); }
 function setQty(pid,q){ if(q<=0) delete cart[pid]; else cart[pid]=q; renderCart(); }
 function renderCart(){
-  // tile badges
-  $$('#sell-grid .ptile').forEach(t=>{
-    const q=cart[t.dataset.pid], b=$('.qbadge',t);
-    if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');}
-    else{t.classList.remove('picked');b.classList.add('hide');}
+  // row state: show qty badge when picked, else the + button
+  $$('#sell-grid .prow').forEach(t=>{
+    const q=cart[t.dataset.pid], b=$('.qbadge',t), add=$('.padd',t);
+    if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');add.classList.add('hide');}
+    else{t.classList.remove('picked');b.classList.add('hide');add.classList.remove('hide');}
   });
   const lines=$('#cart-lines'); lines.innerHTML=''; let total=0;
   const ids=Object.keys(cart);
@@ -508,7 +511,7 @@ function setAdjMode(m){
 $('#adj-minus').onclick=()=>{if(adjQty>1)adjQty--;renderAdjQty();refreshAdj();};
 $('#adj-plus').onclick=()=>{adjQty++;renderAdjQty();refreshAdj();};
 function renderAdjQty(){ $('#adj-qty').textContent=(adjMode==='receive'?'+':'−')+adjQty;
-  $('#adj-qty').style.color=adjMode==='receive'?'var(--green)':'var(--coral)'; }
+  $('#adj-qty').style.color=adjMode==='receive'?'var(--green-dark)':'var(--ink)'; }
 $('#adj-amount').oninput=()=>{refreshAdj();updateAdjBtn();};
 $('#adj-memo').oninput=()=>{lossMemo=$('#adj-memo').value;updateAdjBtn();};
 function curAdjProduct(){ return DATA.products.find(p=>p.id==$('#adj-item').value); }
@@ -635,7 +638,7 @@ function showDone(kind,d){
   let ico,accent,h;
   if(kind==='sale'){
     accent='var(--green)';
-    h=`<div class="cico" style="background:rgba(46,173,87,.14);color:var(--green)">${CHECK}</div><h2>Sale logged</h2>
+    h=`<div class="cico" style="background:var(--green-tint);color:var(--green-dark)">${CHECK}</div><h2>Sale logged</h2>
       <div class="recap">`;
     d.lines.forEach(l=>{h+=`<div class="rl"><span>${l.n} ×${l.q}</span><span>${peso(l.sub)}</span></div>`;});
     h+=`<div class="rl"><span class="muted">Payment</span><span>${d.payMode[0].toUpperCase()+d.payMode.slice(1)}</span></div>`;
@@ -643,14 +646,14 @@ function showDone(kind,d){
     h+=`<div class="rl tot"><span>Total</span><span>${peso(d.total)}</span></div></div>`;
   } else if(kind==='adjust'){
     const isr=d.mode==='receive';
-    h=`<div class="cico" style="background:${isr?'rgba(46,173,87,.14)':'rgba(239,108,77,.14)'};color:${isr?'var(--green)':'var(--coral)'}">${CHECK}</div>
+    h=`<div class="cico" style="background:var(--green-tint);color:var(--green-dark)">${CHECK}</div>
       <h2>${isr?'Stock received':'Loss recorded'}</h2><div class="recap">
       <div class="rl"><span>${d.name}</span><span>${isr?'+':'−'}${d.qty}</span></div>`;
     if(isr) h+=`<div class="rl"><span class="muted">Amount paid</span><span>${peso(d.amount)}</span></div>`;
     else h+=`<div class="rl"><span class="muted">Reason</span><span>${d.memo}</span></div>`;
     h+=`<div class="rl tot"><span>New stock</span><span>${d.newOn}</span></div></div>`;
   } else if(kind==='settle'){
-    h=`<div class="cico" style="background:rgba(46,173,87,.14);color:var(--green)">${CHECK}</div><h2>Balance settled</h2>
+    h=`<div class="cico" style="background:var(--green-tint);color:var(--green-dark)">${CHECK}</div><h2>Balance settled</h2>
       <div class="recap"><div class="rl"><span>${d.name}</span><span></span></div>
       <div class="rl"><span class="muted">Paid</span><span>${peso(d.paid)}</span></div>
       <div class="rl"><span class="muted">Method</span><span>${d.method[0].toUpperCase()+d.method.slice(1)}</span></div>
