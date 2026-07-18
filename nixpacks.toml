@@ -1,0 +1,3 @@
+# Install the Tesseract OCR engine so the app can read payment screenshots.
+[phases.setup]
+aptPkgs = ["tesseract-ocr"]

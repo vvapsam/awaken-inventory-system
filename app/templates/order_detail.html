@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.od{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;margin-top:10px}
+@media(max-width:820px){.od{grid-template-columns:1fr}}
+.chkbox{border-radius:12px;padding:14px 16px;margin:12px 0;border:1px solid}
+.chkbox.ok{background:#e7f7ef;border-color:#b6e3 cc}.chkbox.ok{border-color:#b6e3cc}
+.chkbox.bad{background:#fdeee8;border-color:#f0c3b2}
+.chkbox.unk{background:#f4f6f8;border-color:var(--line)}
+.chkline{display:flex;align-items:center;gap:8px;font-size:.9rem;font-weight:600;padding:3px 0}
+.chkline .i{width:20px}.ok .i{color:#137a4c}.bad .i{color:#a4331a}.unk .i{color:#6b7683}
+.proofimg{width:100%;border-radius:12px;border:1px solid var(--line);display:block}
+.noproof{padding:30px;text-align:center;color:var(--muted);background:var(--panel);border-radius:12px}
+.mtag{display:inline-block;font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:6px;text-transform:uppercase;vertical-align:middle}
+.mtag.bank{background:#eaf1f8;color:#1f4e79}.mtag.cash{background:#fdf5e3;color:#8a6d1f}
+.stat{font-size:.74rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase}
+.stat.pending{background:#fdf5e3;color:#8a6d1f}.stat.confirmed{background:#e7f7ef;color:#137a4c}.stat.rejected{background:#f3f4f6;color:#8b8f96}
+.acts{display:flex;gap:10px;margin-top:16px}
+.btn.reject{border-color:#e6a49b;color:#9c2c1e}.btn.reject:hover{background:#fdecea}
+</style>
+
+<a href="/orders" class="muted" style="font-size:.85rem">‹ Back to orders</a>
+<div class="row-between" style="margin-top:6px">
+  <h1 style="margin:0">{{ o.number }} <span class="mtag {{ o.payment_method }}">{{ 'Bank transfer' if o.payment_method=='bank' else 'Cash at counter' }}</span></h1>
+  <span class="stat {{ o.status }}">{{ o.status }}</span>
+</div>
+<p class="muted small" style="margin-top:2px">Placed {{ o.created_at.astimezone(tz).strftime('%b %d, %Y · %I:%M %p') if o.created_at }}</p>
+
+<div class="od">
+  <div>
+    <table>
+      <tr><th>Item</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Amount</th></tr>
+      {% for it in o.items %}
+      <tr><td>{{ it.name }}</td><td class="r">{{ it.qty }}</td><td class="r">{{ peso(it.unit_price) }}</td><td class="r">{{ peso(it.qty * it.unit_price) }}</td></tr>
+      {% endfor %}
+      <tr class="gtot"><td colspan="3"><b>Total due</b></td><td class="r"><b>{{ peso(o.amount) }}</b></td></tr>
+    </table>
+
+    <div class="card" style="margin-top:14px">
+      <div class="paydetail" style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">Customer</span><b>{{ o.customer_name }}</b></div>
+      {% if o.customer_phone %}<div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">Phone</span><b>{{ o.customer_phone }}</b></div>{% endif %}
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">Payment</span><b>{{ 'Bank transfer' if o.payment_method=='bank' else 'Cash at counter' }}</b></div>
+    </div>
+
+    {% if o.payment_method=='bank' %}
+      {% set amt = o.check_amount_ok %}{% set dt = o.check_date_ok %}
+      {% set cls = 'ok' if (amt and dt) else ('bad' if (amt==False or dt==False) else 'unk') %}
+      <div class="chkbox {{ cls }}">
+        <div style="font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Automated screenshot check</div>
+        <div class="chkline {{ 'ok' if amt else ('bad' if amt==False else 'unk') }}"><span class="i">{{ '✓' if amt else ('✗' if amt==False else '?') }}</span>
+          <span>{% if amt %}Amount paid ≥ total{% elif amt==False %}Amount looks short{% else %}Amount not detected{% endif %}{% if o.check_detected_amount is not none %} — read ₱{{ '%.2f'|format(o.check_detected_amount|float) }}{% endif %}</span></div>
+        <div class="chkline {{ 'ok' if dt else ('bad' if dt==False else 'unk') }}"><span class="i">{{ '✓' if dt else ('✗' if dt==False else '?') }}</span>
+          <span>{% if dt %}Dated today{% elif dt==False %}Not dated today{% else %}Date not detected{% endif %}{% if o.check_detected_date %} — read {{ o.check_detected_date }}{% endif %}</span></div>
+        <div class="muted" style="font-size:.78rem;margin-top:7px">Automated reading is a guide only — always confirm against the screenshot yourself.</div>
+      </div>
+    {% endif %}
+
+    {% if o.status=='pending' %}
+    <div class="acts">
+      <form method="post" action="/orders/{{ o.id }}/confirm" onsubmit="return confirm('Confirm this order? It becomes a paid sale and deducts stock.')">
+        <button class="btn primary" type="submit">✓ Confirm &amp; record sale</button></form>
+      <form method="post" action="/orders/{{ o.id }}/reject" onsubmit="return confirm('Reject this order?')">
+        <button class="btn reject" type="submit">Reject</button></form>
+    </div>
+    {% elif o.status=='confirmed' %}
+    <p class="muted" style="margin-top:14px">✓ Confirmed and recorded as a sale{% if o.decided_at %} on {{ o.decided_at.astimezone(tz).strftime('%b %d, %I:%M %p') }}{% endif %}.</p>
+    {% else %}
+    <p class="muted" style="margin-top:14px">This order was rejected{% if o.decided_at %} on {{ o.decided_at.astimezone(tz).strftime('%b %d, %I:%M %p') }}{% endif %}.</p>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="section-label" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted);margin-bottom:8px">Payment proof</div>
+    {% if o.payment_method=='bank' and o.proof %}
+      <img class="proofimg" src="/order-proof/{{ o.id }}" alt="payment screenshot">
+    {% elif o.payment_method=='cash' %}
+      <div class="noproof">💵 Cash — collect ₱{{ '%.2f'|format(o.amount|float) }} at the counter, then confirm.</div>
+    {% else %}
+      <div class="noproof">No screenshot attached.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

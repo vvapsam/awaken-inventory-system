@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F0F0F">
+<title>AWAKEN — Order &amp; Pay</title>
+<link rel="icon" href="/static/logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F0F0F;--green:#18BE7C;--green-d:#12a56b;--tint:#e8f8f1;--paper:#F5F6F6;--line:#E7E8EA;--muted:#868b93;--owed:#e2683f;--blue-t:#eaf1f8}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{font-family:Inter,system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:16px;line-height:1.4}
+h1,h2,h3,.hd{font-family:Poppins;font-weight:700;letter-spacing:-.01em;margin:0}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+input{font-family:inherit;font-size:16px}
+.muted{color:var(--muted)}.hide{display:none!important}
+.screen{display:none;min-height:100vh;flex-direction:column;padding:14px 18px 110px}
+.screen.active{display:flex}
+.top{display:flex;align-items:center;gap:10px;padding:6px 2px 14px}
+.brand{display:flex;align-items:center;gap:8px;font-family:Poppins;font-weight:700;letter-spacing:.14em;font-size:.95rem}
+.brand svg{width:22px;height:22px}
+.back{margin-right:2px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 13px 8px 10px;font-weight:600;font-size:.86rem;display:inline-flex;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(15,15,15,.06)}
+.hero{margin:2px 2px 14px}.hero h1{font-size:1.4rem}.hero p{color:var(--muted);font-size:.9rem;margin-top:3px}
+.section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted);margin:4px 2px 10px}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ptile{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;text-align:left;display:flex;flex-direction:column;gap:5px}
+.ptile:active{transform:scale(.97)}
+.ptile.picked{border-color:var(--green);box-shadow:0 0 0 2px rgba(24,190,124,.3);background:var(--tint)}
+.ptile .thumb{height:66px;border-radius:10px;background:#EEF0F2;display:flex;align-items:center;justify-content:center;overflow:hidden;font-family:Poppins;font-weight:600;color:#9aa0a8;font-size:1.05rem}
+.ptile .thumb img{width:100%;height:100%;object-fit:cover}
+.ptile .pn{font-weight:600;font-size:.86rem;line-height:1.2}.ptile .pp{font-family:Poppins;font-weight:600;font-size:.88rem}
+.qbadge{position:absolute;top:6px;right:6px;background:var(--green);color:#fff;font-weight:700;min-width:23px;height:23px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:.78rem;padding:0 6px;box-shadow:0 2px 6px rgba(24,190,124,.35)}
+.cartbar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(245,246,246,0),var(--paper) 30%)}
+.cta{width:100%;padding:15px 20px;border-radius:14px;font-family:Poppins;font-weight:600;font-size:1rem;background:var(--green);color:#fff;display:flex;justify-content:space-between;align-items:center}
+.cta:disabled{background:#E1E2E5;color:#9a9ba1}.cta .amt{font-weight:700}.cta.block{justify-content:center}
+.cartline{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+.cartline:last-of-type{border-bottom:0}.cartline .cn{flex:1;font-weight:600;font-size:.92rem}.cartline .cn small{display:block;color:var(--muted);font-weight:500}
+.stepper{display:flex;align-items:center;gap:2px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px}
+.stepper button{width:30px;height:30px;border-radius:999px;background:var(--paper);font-size:1.15rem;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
+.stepper .q{min-width:24px;text-align:center;font-weight:700}
+.csub{width:74px;text-align:right;font-family:Poppins;font-weight:600;font-size:.9rem}
+.tot{display:flex;justify-content:space-between;font-family:Poppins;font-weight:700;font-size:1.25rem;margin:14px 2px 2px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:12px 0}
+.field-label{display:block;font-weight:600;font-size:.85rem;margin:14px 2px 7px}
+.txt{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;outline:none}
+.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0}
+.seg button{padding:14px;border-radius:14px;border:1px solid var(--line);background:#fff;font-weight:600}
+.seg button.on{border-color:var(--ink);background:var(--ink);color:#fff}
+.note{border-radius:14px;padding:13px 15px;font-size:.88rem;font-weight:500;margin:12px 0;line-height:1.45}
+.note.info{background:var(--paper);color:#4a4f57;border:1px solid var(--line)}
+.note.err{background:#fdeee8;color:#9c3b1e;border:1px solid #f0c3b2}
+.qrwrap{text-align:center;margin:14px 0}
+.qrbox{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 4px 16px rgba(16,24,32,.06)}
+.qrbox img{width:210px;height:210px;display:block;border-radius:6px;object-fit:contain}
+.qrbox .lbl{margin-top:8px;font-weight:600;font-size:.85rem}.qrbox .lbl b{font-family:Poppins}
+.paydetail{display:flex;justify-content:space-between;font-size:.88rem;padding:6px 2px;border-bottom:1px dashed var(--line)}
+.paydetail:last-child{border-bottom:0}.paydetail b{font-weight:600}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:14px;padding:20px;text-align:center;color:var(--muted);font-weight:600;background:#fff;margin:6px 0}
+.thumbwrap{position:relative;display:inline-block;margin:6px 2px}
+.thumbwrap img{max-height:150px;border-radius:12px;border:1px solid var(--line);display:block}
+.thumbwrap .rm{position:absolute;top:-8px;right:-8px;width:26px;height:26px;border-radius:999px;background:var(--ink);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center}
+.conf{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;padding-bottom:60px}
+.conf .cico{width:82px;height:82px;border-radius:999px;background:var(--tint);color:var(--green-d);display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+.conf .cico svg{width:44px;height:44px;stroke-width:2.4}
+.conf h2{font-size:1.5rem}
+.conf .ordno{font-family:Poppins;font-weight:700;font-size:1.1rem;background:var(--ink);color:#fff;padding:8px 18px;border-radius:12px;letter-spacing:.03em;margin:6px 0}
+.conf .recap{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;width:100%;max-width:340px;text-align:left;margin:8px 0}
+.conf .rl{display:flex;justify-content:space-between;padding:5px 0;font-size:.9rem}
+.conf .rl.t{font-family:Poppins;font-weight:700;border-top:1px solid var(--line);margin-top:5px;padding-top:9px}
+.pendtag{display:inline-flex;align-items:center;gap:6px;color:#8a6d1f;background:#fdf5e3;border:1px solid #ecd9a6;padding:6px 12px;border-radius:999px;font-size:.82rem;font-weight:600}
+.foot{margin-top:auto;text-align:center;color:var(--muted);font-size:.7rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;padding-top:20px}
+.spin{width:20px;height:20px;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:999px;display:inline-block;animation:sp .7s linear infinite;vertical-align:-4px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.loader{padding:50px;text-align:center;color:var(--muted)}
+</style></head>
+<body>
+
+<section id="s-store" class="screen active">
+  <div class="top"><span class="brand"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>AWAKEN</span></div>
+  <div class="hero"><h1>Order &amp; Pay</h1><p>Welcome to AWAKEN Fitness Center — tap what you'd like.</p></div>
+  <div class="section-label">Menu</div>
+  <div class="pgrid" id="store-grid"><div class="loader">Loading…</div></div>
+  <div class="cartbar"><button class="cta" id="to-review" disabled><span id="cta1-l">Add items</span><span class="amt" id="cta1-amt"></span></button></div>
+</section>
+
+<section id="s-review" class="screen">
+  <div class="top"><button class="back" data-go="store">‹ Menu</button><span class="brand" style="margin-left:auto"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>AWAKEN</span></div>
+  <div class="hero"><h1>Your order</h1></div>
+  <div class="card" id="review-lines"></div>
+  <div class="tot"><span>Total</span><span id="review-total">₱0.00</span></div>
+  <label class="field-label">Your name</label>
+  <input class="txt" id="cust-name" placeholder="e.g. Vanessa S.">
+  <label class="field-label">Phone (optional)</label>
+  <input class="txt" id="cust-phone" type="tel" placeholder="09xx xxx xxxx">
+  <div class="cartbar"><button class="cta block" id="to-pay">Continue to payment</button></div>
+</section>
+
+<section id="s-pay" class="screen">
+  <div class="top"><button class="back" data-go="review">‹ Back</button><span class="brand" style="margin-left:auto"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>AWAKEN</span></div>
+  <div class="hero"><h1>How would you like to pay?</h1><p id="pay-total-line">Total due ₱0.00</p></div>
+  <div class="seg" id="pay-seg"><button data-m="cash">💵 Cash</button><button data-m="bank">🏦 Bank transfer</button></div>
+
+  <div id="pay-cash" class="hide">
+    <div class="note info">Pay <b id="cash-amt">₱0.00</b> in cash at the counter. Staff will confirm your order when you pay.</div>
+  </div>
+
+  <div id="pay-bank" class="hide">
+    <div class="qrwrap" id="qr-wrap" style="margin-top:12px">
+      <div class="qrbox"><img id="qr-img" src="/order-qr" alt="payment QR"><div class="lbl">Scan to pay <b id="qr-amt">₱0.00</b></div></div>
+    </div>
+    <div class="card" id="bank-card"></div>
+    <label class="field-label">Upload your payment screenshot</label>
+    <label class="drop" id="proof-drop">📷 Tap to attach proof of payment
+      <input type="file" accept="image/*" id="proof-input" class="hide">
+    </label>
+    <div class="thumbwrap hide" id="proof-thumb"><img id="proof-img"><button class="rm" id="proof-rm" type="button">×</button></div>
+    <div class="note err hide" id="pay-err"></div>
+  </div>
+
+  <div class="cartbar"><button class="cta block" id="place" disabled>Choose a payment method</button></div>
+</section>
+
+<section id="s-done" class="screen">
+  <div class="conf">
+    <div class="cico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+    <h2>Order placed!</h2>
+    <div class="ordno" id="done-ord">ORD-0000</div>
+    <div class="recap" id="done-recap"></div>
+    <div class="pendtag" id="done-tag">● Waiting for staff to confirm your payment</div>
+    <p class="muted" style="font-size:.85rem;margin-top:10px;max-width:300px">Show this screen to the counter — they'll confirm and hand over your items.</p>
+  </div>
+  <div class="foot">AWAKEN Fitness Center</div>
+</section>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const peso=v=>"₱"+Number(v||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+let PRODUCTS=[],PAY={},cart={},payMode=null,proofFile=null;
+function show(id){$$('.screen').forEach(s=>s.classList.remove('active'));$('#s-'+id).classList.add('active');window.scrollTo(0,0);}
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g)show(g.dataset.go);});
+function total(){return Object.entries(cart).reduce((s,[id,q])=>s+PRODUCTS.find(p=>p.id==id).price*q,0);}
+
+async function boot(){
+  const r=await fetch('/api/order/bootstrap');const d=await r.json();
+  PRODUCTS=d.products||[];PAY=d.pay||{};
+  const g=$('#store-grid');g.innerHTML='';
+  if(!PRODUCTS.length){g.innerHTML='<div class="loader">No items available right now.</div>';return;}
+  PRODUCTS.forEach(p=>{const t=document.createElement('button');t.className='ptile';t.dataset.pid=p.id;
+    const thumb=p.has_image?`<span class="thumb"><img src="/product-image/${p.id}"></span>`
+      :`<span class="thumb">${p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()}</span>`;
+    t.innerHTML=`${thumb}<span class="pn">${p.name}</span><span class="pp">${peso(p.price)}</span><span class="qbadge hide"></span>`;
+    t.onclick=()=>{cart[p.id]=(cart[p.id]||0)+1;paintStore();};g.appendChild(t);});
+  paintStore();
+  // bank card details
+  let bc='';if(PAY.bank_name)bc+=`<div class="paydetail"><span class="muted">Bank</span><b>${PAY.bank_name}</b></div>`;
+  if(PAY.account_name)bc+=`<div class="paydetail"><span class="muted">Account name</span><b>${PAY.account_name}</b></div>`;
+  $('#bank-card').innerHTML=bc; if(!bc)$('#bank-card').classList.add('hide');
+  if(!PAY.has_qr)$('#qr-wrap').classList.add('hide');
+}
+function paintStore(){$$('#store-grid .ptile').forEach(t=>{const q=cart[t.dataset.pid],b=$('.qbadge',t);
+  if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');}else{t.classList.remove('picked');b.classList.add('hide');}});
+  const n=Object.keys(cart).length;$('#to-review').disabled=!n;
+  $('#cta1-l').textContent=n?'Review order':'Add items';$('#cta1-amt').textContent=n?peso(total()):'';}
+$('#to-review').onclick=()=>{initReview();show('review');};
+function initReview(){const c=$('#review-lines');c.innerHTML='';Object.entries(cart).forEach(([id,q])=>{
+  const p=PRODUCTS.find(x=>x.id==id);const row=document.createElement('div');row.className='cartline';
+  row.innerHTML=`<div class="cn">${p.name}<small>${peso(p.price)} each</small></div>
+   <div class="stepper"><button data-m>−</button><span class="q">${q}</span><button data-p>+</button></div>
+   <div class="csub">${peso(p.price*q)}</div>`;
+  $('[data-m]',row).onclick=()=>{cart[id]=q-1;if(cart[id]<=0)delete cart[id];if(Object.keys(cart).length)initReview();else show('store');paintStore();};
+  $('[data-p]',row).onclick=()=>{cart[id]=q+1;initReview();paintStore();};c.appendChild(row);});
+  $('#review-total').textContent=peso(total());}
+$('#to-pay').onclick=()=>{if(!$('#cust-name').value.trim()){$('#cust-name').focus();return;}initPay();show('pay');};
+function initPay(){payMode=null;proofFile=null;$$('#pay-seg button').forEach(b=>b.classList.remove('on'));
+  $('#pay-cash').classList.add('hide');$('#pay-bank').classList.add('hide');$('#pay-err').classList.add('hide');
+  $('#proof-thumb').classList.add('hide');$('#proof-drop').classList.remove('hide');$('#proof-input').value='';
+  $('#pay-total-line').textContent='Total due '+peso(total());$('#cash-amt').textContent=peso(total());$('#qr-amt').textContent=peso(total());
+  $('#qr-img').src='/order-qr?ts='+Date.now();updatePlace();}
+$$('#pay-seg button').forEach(b=>b.onclick=()=>{payMode=b.dataset.m;$$('#pay-seg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  $('#pay-cash').classList.toggle('hide',payMode!=='cash');$('#pay-bank').classList.toggle('hide',payMode!=='bank');$('#pay-err').classList.add('hide');updatePlace();});
+$('#proof-input').onchange=e=>{const f=e.target.files[0];if(f){proofFile=f;$('#proof-img').src=URL.createObjectURL(f);
+  $('#proof-thumb').classList.remove('hide');$('#proof-drop').classList.add('hide');updatePlace();}};
+$('#proof-rm').onclick=()=>{proofFile=null;$('#proof-input').value='';$('#proof-thumb').classList.add('hide');$('#proof-drop').classList.remove('hide');updatePlace();};
+function updatePlace(){const btn=$('#place');let ok=true,l='Place order';
+  if(!payMode){l='Choose a payment method';ok=false;}
+  else if(payMode==='bank'&&!proofFile){l='Attach proof to place order';ok=false;}
+  btn.textContent=l;btn.disabled=!ok;}
+$('#place').onclick=async()=>{
+  const btn=$('#place');btn.disabled=true;const old=btn.textContent;btn.innerHTML='<span class="spin"></span>';
+  $('#pay-err').classList.add('hide');
+  const fd=new FormData();
+  fd.append('items',JSON.stringify(Object.entries(cart).map(([product_id,qty])=>({product_id,qty}))));
+  fd.append('name',$('#cust-name').value.trim());fd.append('phone',$('#cust-phone').value.trim());
+  fd.append('method',payMode);if(payMode==='bank')fd.append('proof',proofFile);
+  let j;try{const r=await fetch('/api/order',{method:'POST',body:fd});j=await r.json();}catch(e){j={ok:false,error:'Network error, please try again.'};}
+  if(!j.ok){$('#pay-err').textContent=j.error||'Could not place the order.';$('#pay-err').classList.remove('hide');
+    btn.textContent=old;btn.disabled=false;window.scrollTo(0,document.body.scrollHeight);return;}
+  // confirmation
+  let h='';Object.entries(cart).forEach(([id,q])=>{const p=PRODUCTS.find(x=>x.id==id);
+    h+=`<div class="rl"><span>${p.name} ×${q}</span><span>${peso(p.price*q)}</span></div>`;});
+  h+=`<div class="rl"><span class="muted">Name</span><span>${$('#cust-name').value.trim()||'—'}</span></div>`;
+  h+=`<div class="rl"><span class="muted">Payment</span><span>${payMode==='cash'?'Cash at counter':'Bank transfer'}</span></div>`;
+  h+=`<div class="rl t"><span>Total</span><span>${peso(j.total)}</span></div>`;
+  $('#done-recap').innerHTML=h;$('#done-ord').textContent=j.number;
+  $('#done-tag').textContent=payMode==='cash'?'● Pay at the counter — staff will confirm':'● Waiting for staff to confirm your payment';
+  show('done');};
+boot();
+</script>
+</body></html>

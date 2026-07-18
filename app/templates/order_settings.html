@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.oset{max-width:560px}
+.qrprev{width:180px;height:180px;border:1px solid var(--line);border-radius:12px;object-fit:contain;background:#fff;display:block;margin-top:6px}
+.noqr{width:180px;height:180px;border:1px dashed var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.85rem;text-align:center;padding:10px}
+</style>
+<a href="/orders" class="muted" style="font-size:.85rem">‹ Back to orders</a>
+<h1 style="margin-top:6px">Payment settings</h1>
+<p class="muted small">These appear on the customer self-checkout page when they choose <b>Bank transfer</b>. The public order link is <a href="/order" target="_blank">/order</a>.</p>
+
+<form class="oset" method="post" action="/admin/order-settings" enctype="multipart/form-data">
+  <label>Bank name</label>
+  <input name="bank_name" value="{{ ps.bank_name or '' }}" placeholder="e.g. BPI">
+  <label>Account name</label>
+  <input name="account_name" value="{{ ps.account_name or '' }}" placeholder="e.g. AWAKEN Fitness Center">
+
+  <label style="margin-top:18px">Payment QR image</label>
+  <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+    <div>
+      {% if ps.qr %}<img class="qrprev" src="/order-qr?ts={{ ps.updated_at }}" alt="current QR">
+      {% else %}<div class="noqr">No QR uploaded yet</div>{% endif %}
+    </div>
+    <div style="flex:1;min-width:220px">
+      <input type="file" name="qr" accept="image/*">
+      <p class="muted small" style="margin-top:8px">Upload your bank/e-wallet QR (PNG or JPG). Customers scan this to pay. Leave empty to keep the current one.</p>
+    </div>
+  </div>
+
+  <button class="btn primary" type="submit" style="margin-top:20px">Save settings</button>
+</form>
+{% endblock %}

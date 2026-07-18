@@ -55,6 +55,10 @@ templates.env.globals["can_any"] = can_any
 from .mobile import router as mobile_router  # noqa: E402
 app.include_router(mobile_router)
 
+# Self-checkout: public /order page + staff order queue
+from .order import router as order_router  # noqa: E402
+app.include_router(order_router)
+
 
 def _slugify(s):
     return "".join(c for c in (s or "").lower() if c.isalnum()) or "user"

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.oq{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.ocard{display:flex;align-items:center;gap:14px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;text-decoration:none;color:var(--ink)}
+.ocard:hover{border-color:var(--teal)}
+.ocard .num{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:.8rem;color:var(--muted);width:78px;flex:none}
+.ocard .mid{flex:1;min-width:0}
+.ocard .nm{font-weight:600}
+.ocard .sub{color:var(--muted);font-size:.82rem;margin-top:2px}
+.ocard .amt{font-weight:700;font-size:1.05rem;white-space:nowrap}
+.chk{display:inline-flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:2px 8px;border-radius:999px;margin-right:5px}
+.chk.ok{background:#e7f7ef;color:#137a4c}.chk.bad{background:#fdeee8;color:#a4331a}.chk.unk{background:#eef0f2;color:#6b7683}
+.mtag{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:6px;text-transform:uppercase}
+.mtag.bank{background:#eaf1f8;color:#1f4e79}.mtag.cash{background:#fdf5e3;color:#8a6d1f}
+.stat{font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.stat.confirmed{background:#e7f7ef;color:#137a4c}.stat.rejected{background:#f3f4f6;color:#8b8f96}
+.empty{padding:26px;text-align:center;color:var(--muted);background:var(--bg);border:1px dashed var(--line);border-radius:12px}
+</style>
+
+<div class="row-between">
+  <div><h1 style="margin:0">Orders</h1><p class="muted small" style="margin:2px 0 0">Customer self-checkout orders — review the payment and confirm.</p></div>
+  {% if staff.role=='admin' %}<a class="btn" href="/admin/order-settings">⚙ Payment settings</a>{% endif %}
+</div>
+
+<h2>Pending{% if pending %} · {{ pending|length }}{% endif %}</h2>
+<div class="oq">
+  {% for o in pending %}
+  <a class="ocard" href="/orders/{{ o.id }}">
+    <span class="num">{{ o.number }}</span>
+    <span class="mid">
+      <div class="nm">{{ o.customer_name }} <span class="mtag {{ o.payment_method }}">{{ 'Bank' if o.payment_method=='bank' else 'Cash' }}</span></div>
+      <div class="sub">
+        {% if o.payment_method=='bank' %}
+          {% if o.check_amount_ok %}<span class="chk ok">✓ amount</span>{% elif o.check_amount_ok==False %}<span class="chk bad">✗ amount</span>{% else %}<span class="chk unk">? amount</span>{% endif %}
+          {% if o.check_date_ok %}<span class="chk ok">✓ date</span>{% elif o.check_date_ok==False %}<span class="chk bad">✗ date</span>{% else %}<span class="chk unk">? date</span>{% endif %}
+        {% else %}pay at counter{% endif %}
+        · {{ o.created_at.astimezone(tz).strftime('%b %d, %I:%M %p') if o.created_at }}
+      </div>
+    </span>
+    <span class="amt">{{ peso(o.amount) }}</span>
+  </a>
+  {% else %}
+  <div class="empty">No pending orders right now.</div>
+  {% endfor %}
+</div>
+
+{% if recent %}
+<h2>Recently decided</h2>
+<div class="oq">
+  {% for o in recent %}
+  <a class="ocard" href="/orders/{{ o.id }}">
+    <span class="num">{{ o.number }}</span>
+    <span class="mid"><div class="nm">{{ o.customer_name }}</div>
+      <div class="sub">{{ o.decided_at.astimezone(tz).strftime('%b %d, %I:%M %p') if o.decided_at }}</div></span>
+    <span class="stat {{ o.status }}">{{ o.status }}</span>
+    <span class="amt">{{ peso(o.amount) }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
