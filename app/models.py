@@ -100,6 +100,8 @@ class Product(Base):
     cost_price = Column(Numeric(10, 2))
     reorder_point = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
+    image = Column(LargeBinary)
+    image_mime = Column(String)
     created_at = Column(DateTime(timezone=True), default=now_utc)
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
@@ -241,6 +243,8 @@ class Sale(Base):
     is_credit = Column(Boolean, nullable=False, default=False)  # unpaid / on credit
     payment_method = Column(String)
     note = Column(Text)
+    proof = Column(LargeBinary)
+    proof_mime = Column(String)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     staff = relationship("Staff")

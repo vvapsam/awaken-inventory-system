@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import current_staff, hash_pin, verify_pin
+from . import mobile as mobile_mod
 from .db import Base, engine, get_db
 from .models import (
     CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
@@ -68,6 +69,7 @@ def startup():
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier VARCHAR"))
         conn.execute(text("ALTER TABLE products DROP CONSTRAINT IF EXISTS products_category_check"))
         conn.execute(text("ALTER TABLE products ALTER COLUMN category DROP NOT NULL"))
+    mobile_mod.ensure_mobile_columns()
     db = next(get_db())
     try:
         # Backfill usernames for any rows missing one, keeping them unique.
@@ -1823,3 +1825,7 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+# ---------- mobile PWA (additive: /m and /api/m/*) ----------
+app.include_router(mobile_mod.router)
