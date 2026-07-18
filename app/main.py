@@ -51,6 +51,10 @@ templates.env.globals["peso"] = lambda v: "₱{:,.2f}".format(float(v or 0))
 templates.env.globals["can"] = can
 templates.env.globals["can_any"] = can_any
 
+# Mobile PWA (additive: new routes only, existing desktop pages untouched)
+from .mobile import router as mobile_router  # noqa: E402
+app.include_router(mobile_router)
+
 
 def _slugify(s):
     return "".join(c for c in (s or "").lower() if c.isalnum()) or "user"
@@ -68,6 +72,12 @@ def startup():
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier VARCHAR"))
         conn.execute(text("ALTER TABLE products DROP CONSTRAINT IF EXISTS products_category_check"))
         conn.execute(text("ALTER TABLE products ALTER COLUMN category DROP NOT NULL"))
+        # Mobile PWA additions
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS image BYTEA"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_mime VARCHAR"))
+        conn.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone VARCHAR"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof BYTEA"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR"))
     db = next(get_db())
     try:
         # Backfill usernames for any rows missing one, keeping them unique.

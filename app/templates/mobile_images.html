@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.imgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-top:14px}
+.imgcard{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.imgcard .ph{height:150px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted);font-weight:700;font-size:1.4rem}
+.imgcard .ph img{width:100%;height:100%;object-fit:cover}
+.imgcard .nm{font-weight:600;font-size:.92rem}
+.imgcard .nm small{display:block;color:var(--muted);font-weight:500}
+.imgcard .up{font-size:.82rem}
+.imgcard form{margin:0}
+.imgcard .row{display:flex;gap:8px;align-items:center}
+</style>
+
+<h1>Product photos</h1>
+<p class="muted small">Upload one photo per item — these appear on the mobile Sell screen tiles. JPG or PNG, up to ~4&nbsp;MB. Items without a photo show their initials instead.</p>
+
+<div class="imgrid">
+  {% for p in products %}
+  <div class="imgcard">
+    <div class="ph">
+      {% if p.image %}<img src="/product-image/{{ p.id }}?v={{ p.updated_at }}" alt="{{ p.name }}">
+      {% else %}{{ (p.name.split()|map('first')|join)[:2]|upper }}{% endif %}
+    </div>
+    <div class="nm">{{ p.name }}<small>{{ p.sku }}</small></div>
+    <form method="post" action="/admin/product-images/{{ p.id }}" enctype="multipart/form-data">
+      <div class="row">
+        <input class="up" type="file" name="photo" accept="image/*" required style="padding:6px">
+        <button class="btn primary" type="submit" style="padding:8px 12px">Save</button>
+      </div>
+    </form>
+    {% if p.image %}
+    <form method="post" action="/admin/product-images/{{ p.id }}/delete">
+      <button class="btn" type="submit" style="padding:6px 12px;font-size:.8rem">Remove photo</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
