@@ -99,6 +99,8 @@ class Product(Base):
     selling_price = Column(Numeric(10, 2), nullable=False)
     cost_price = Column(Numeric(10, 2))
     reorder_point = Column(Integer, nullable=False, default=0)
+    image = Column(LargeBinary)              # product photo bytes (mobile tiles)
+    image_mime = Column(String)              # e.g. image/jpeg
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
@@ -135,6 +137,7 @@ class Customer(Base):
     __tablename__ = "customers"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
+    phone = Column(String)                    # optional contact number
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
 
@@ -240,6 +243,8 @@ class Sale(Base):
     customer_id = Column(Integer, ForeignKey("customers.id"))  # optional
     is_credit = Column(Boolean, nullable=False, default=False)  # unpaid / on credit
     payment_method = Column(String)
+    proof = Column(LargeBinary)              # proof-of-payment image (cash/bank sales)
+    proof_mime = Column(String)
     note = Column(Text)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
