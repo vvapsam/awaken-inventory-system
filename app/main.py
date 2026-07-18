@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import current_staff, hash_pin, verify_pin
-from . import mobile as mobile_mod
 from .db import Base, engine, get_db
 from .models import (
     CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
@@ -1834,7 +1833,3 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
-
-
-# ---------- mobile PWA (additive: /m and /api/m/*) ----------
-app.include_router(mobile_mod.router)
