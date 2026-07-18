@@ -190,6 +190,7 @@ def verify_proof(image_bytes, amount_due, today):
 
 # ================================================================= PUBLIC
 @router.get("/order", response_class=HTMLResponse)
+@router.get("/pay/retail", response_class=HTMLResponse)   # branded path alias
 def order_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("order.html", {"request": request})
 
