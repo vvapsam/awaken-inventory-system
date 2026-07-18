@@ -102,6 +102,8 @@ class Product(Base):
     image = Column(LargeBinary)              # product photo bytes (mobile tiles)
     image_mime = Column(String)              # e.g. image/jpeg
     is_active = Column(Boolean, nullable=False, default=True)
+    image = Column(LargeBinary)
+    image_mime = Column(String)
     created_at = Column(DateTime(timezone=True), default=now_utc)
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
@@ -246,6 +248,8 @@ class Sale(Base):
     proof = Column(LargeBinary)              # proof-of-payment image (cash/bank sales)
     proof_mime = Column(String)
     note = Column(Text)
+    proof = Column(LargeBinary)
+    proof_mime = Column(String)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     staff = relationship("Staff")
