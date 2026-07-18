@@ -1,68 +1,77 @@
 {% extends "base.html" %}
 {% block body %}
-<h1>Hi, {{ staff.name }}</h1>
 
-<style>
-.glance{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
-.tile{display:block;padding:18px 20px;text-decoration:none;color:var(--ink);transition:border-color .12s,box-shadow .12s}
-.tile:hover{border-color:var(--teal);box-shadow:0 4px 14px rgba(16,24,32,.07)}
-.tile-top{display:flex;align-items:center;gap:9px;color:var(--muted)}
-.tile-ico{font-size:1.05rem}.tile-label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
-.tile-top .arrow{margin-left:auto;color:var(--muted);font-size:1.15rem}
-.tile:hover .arrow{color:var(--teal-dark)}
-.tile-num{font-size:2.4rem;font-weight:800;letter-spacing:-.02em;margin:8px 0 4px}
-.tile-num.red{color:#c0392b}.tile-num.teal{color:var(--teal-dark)}
-.tile-sub{color:var(--muted);font-size:.85rem}
-</style>
+{% set show_kpi = can(staff, 'view_stock') or can_customers %}
 
-{% if (can(staff, 'view_stock')) or can_customers %}
-<h2>At a glance</h2>
-<div class="glance">
-  {% if can(staff, 'view_stock') %}
-  <a class="card tile" href="/stock">
-    <div class="tile-top"><span class="tile-ico">🔔</span><span class="tile-label">Reminders</span><span class="arrow">→</span></div>
-    <div class="tile-num {% if low %}red{% endif %}">{{ low|length }}</div>
-    <div class="tile-sub">{% if low %}items at or below reorder level — tap to view &amp; restock{% else %}nothing needs restocking right now{% endif %}</div>
-  </a>
-  {% endif %}
-  {% if can_customers %}
-  <a class="card tile" href="/customers">
-    <div class="tile-top"><span class="tile-ico">💳</span><span class="tile-label">Unpaid sales</span><span class="arrow">→</span></div>
-    <div class="tile-num {% if unpaid_total > 0 %}teal{% endif %}">{{ peso(unpaid_total) }}</div>
-    <div class="tile-sub">{% if unpaid_count %}owed across {{ unpaid_count }} customer{{ '' if unpaid_count == 1 else 's' }} — tap to see balances &amp; take payments{% else %}no outstanding balances{% endif %}</div>
-  </a>
-  {% endif %}
-</div>
-{% endif %}
+<div class="dashgrid">
+  <div class="col">
 
-<h2>Quick actions</h2>
-<div class="actions">
-  {% if can(staff, 'sales.create') %}<a class="btn primary big" href="/sales">Log a sale</a>{% endif %}
-  {% if can(staff, 'receive.create') %}<a class="btn big" href="/movement/new?type=restock">Restock</a>{% endif %}
-  {% if can(staff, 'adjust.create') %}<a class="btn big" href="/movement/new?type=waste">Waste</a>{% endif %}
-  {% if can(staff, 'adjust.create') %}<a class="btn big" href="/movement/new?type=missing">Missing</a>{% endif %}
-  {% if can(staff, 'adjust.create') %}<a class="btn big" href="/movement/new?type=adjustment">Adjust</a>{% endif %}
-  {% if can(staff, 'view_stock') %}<a class="btn big" href="/stock">View stock</a>{% endif %}
-</div>
-
-{% if can_reports and summary %}
-<h2>Sales</h2>
-<div class="card sales-widget">
-  <div class="sw-head">
-    <div>
-      <div class="sw-label">Sales · <span id="sw-range">{{ summary.label }}</span></div>
-      <div class="sw-value" id="sw-value">{{ peso(summary.revenue) }}</div>
-      <div class="sw-sub"><span id="sw-units">{{ summary.units }}</span> units sold</div>
+    {% if show_kpi %}
+    <div class="portlet">
+      <div class="pl-head"><span class="pl-ico">📊</span><h3>Key indicators</h3></div>
+      <div class="pl-body tight">
+        <div class="kpi-row">
+          {% if can(staff, 'view_stock') %}
+          <a class="kpi" href="/stock" style="text-decoration:none;color:inherit">
+            <div class="k-label"><span>🔔</span> Reminders</div>
+            <div class="k-num {% if low %}red{% endif %}">{{ low|length }}</div>
+            <div class="k-sub">{% if low %}at/below reorder — tap to restock{% else %}nothing to restock{% endif %}</div>
+          </a>
+          {% endif %}
+          {% if can_customers %}
+          <a class="kpi" href="/customers" style="text-decoration:none;color:inherit">
+            <div class="k-label"><span>💳</span> Unpaid sales</div>
+            <div class="k-num {% if unpaid_total > 0 %}teal{% endif %}">{{ peso(unpaid_total) }}</div>
+            <div class="k-sub">{% if unpaid_count %}{{ unpaid_count }} customer{{ '' if unpaid_count == 1 else 's' }} owing — tap for balances{% else %}no balances due{% endif %}</div>
+          </a>
+          {% endif %}
+        </div>
+      </div>
     </div>
-    <div class="pills" id="sw-pills">
-      {% for key, label in sales_ranges %}
-      <button type="button" class="pill {% if key=='today' %}active{% endif %}" data-range="{{ key }}">{{ label }}</button>
-      {% endfor %}
+    {% endif %}
+
+    <div class="portlet">
+      <div class="pl-head"><span class="pl-ico">⚡</span><h3>Quick actions</h3></div>
+      <div class="pl-body">
+        <div class="pl-actions">
+          {% if can(staff, 'sales.create') %}<a href="/sales"><span class="qi">🧾</span> Log a sale</a>{% endif %}
+          {% if can(staff, 'receive.create') %}<a href="/movement/new?type=restock"><span class="qi">📦</span> Restock</a>{% endif %}
+          {% if can(staff, 'adjust.create') %}<a href="/movement/new?type=waste"><span class="qi">🗑️</span> Waste</a>{% endif %}
+          {% if can(staff, 'adjust.create') %}<a href="/movement/new?type=missing"><span class="qi">❓</span> Missing</a>{% endif %}
+          {% if can(staff, 'adjust.create') %}<a href="/movement/new?type=adjustment"><span class="qi">⚙️</span> Adjust</a>{% endif %}
+          {% if can(staff, 'view_stock') %}<a href="/stock"><span class="qi">📋</span> View stock</a>{% endif %}
+        </div>
+      </div>
     </div>
+
   </div>
-  <div class="sw-chart" id="sw-chart"></div>
+  <div class="col">
+
+    {% if can_reports and summary %}
+    <div class="portlet">
+      <div class="pl-head"><span class="pl-ico">📈</span><h3>Sales</h3><a class="pl-link" href="/admin/reports">Reports →</a></div>
+      <div class="pl-body">
+        <div class="sales-widget" style="padding:0">
+          <div class="sw-head">
+            <div>
+              <div class="sw-label">Sales · <span id="sw-range">{{ summary.label }}</span></div>
+              <div class="sw-value" id="sw-value">{{ peso(summary.revenue) }}</div>
+              <div class="sw-sub"><span id="sw-units">{{ summary.units }}</span> units sold</div>
+            </div>
+            <div class="pills" id="sw-pills">
+              {% for key, label in sales_ranges %}
+              <button type="button" class="pill {% if key=='today' %}active{% endif %}" data-range="{{ key }}">{{ label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="sw-chart" id="sw-chart"></div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
 </div>
-{% endif %}
 
 {% if can_reports and summary %}
 <script>
