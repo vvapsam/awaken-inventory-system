@@ -167,6 +167,11 @@ def signed_qty(movement_type: str, qty: int, direction: str = "add") -> int:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db)):
+    # On the public payments subdomain (pay.awakengym.com), the root IS the
+    # customer self-checkout menu — no staff login shown there.
+    host = (request.headers.get("host") or "").split(":")[0].lower()
+    if host.startswith("pay."):
+        return templates.TemplateResponse("order.html", {"request": request})
     staff = current_staff(request, db)
     return RedirectResponse("/dashboard" if staff else "/login", status_code=303)
 
