@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    Customer, Product, StockMovement, Staff, PricingGroup, can, can_any,
-    Transaction, TransactionItem, TX_CASH_SALE, TX_PAYMENT,
+    Product, Staff, PricingGroup, can, can_any,
+    Transaction, TransactionItem, TX_CASH_SALE, TX_PAYMENT, TX_INVENTORY,
 )
 
 router = APIRouter()
@@ -85,9 +85,11 @@ def _read_image(upload: UploadFile):
 
 def _on_hand_map(db):
     mov = dict(
-        db.query(StockMovement.product_id,
-                 func.coalesce(func.sum(StockMovement.quantity), 0))
-        .group_by(StockMovement.product_id).all()
+        db.query(TransactionItem.product_id,
+                 func.coalesce(func.sum(TransactionItem.qty), 0))
+        .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .filter(Transaction.type == TX_INVENTORY, TransactionItem.product_id != None)  # noqa: E711
+        .group_by(TransactionItem.product_id).all()
     )
     sold = dict(
         db.query(TransactionItem.product_id,
@@ -146,7 +148,7 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
 
     customers = [
         {"id": c.id, "name": c.name, "phone": c.phone or ""}
-        for c in db.query(Customer).order_by(Customer.name).all()
+        for c in db.query(Staff).filter(Staff.person_type == "customer").order_by(Staff.name).all()
     ]
 
     balances = {"total": 0.0, "count": 0, "customers": []}
@@ -326,7 +328,7 @@ async def create_sale(
     if is_credit:
         if not customer_id:
             return _err("An unpaid sale needs a customer")
-        cust = db.get(Customer, int(customer_id))
+        cust = db.get(Staff, int(customer_id))
         if not cust:
             return _err("Customer not found")
         proof_bytes = proof_mime = None
@@ -427,9 +429,10 @@ async def create_movement(
         if amt < 0:
             return _err("Amount can't be negative")
         unit_cost = round(amt / qty, 2) if qty else 0
-        mv = StockMovement(product_id=p.id, movement_type="restock",
-                           quantity=abs(qty), unit_cost=unit_cost,
-                           note=None, staff_id=staff.id)
+        mv = Transaction(type=TX_INVENTORY, subtype="restock", status="done", staff_id=staff.id)
+        db.add(mv); db.flush()
+        db.add(TransactionItem(transaction_id=mv.id, product_id=p.id, name=p.name,
+                               qty=abs(qty), unit_price=unit_cost))
     elif kind == "loss":
         if not can_loss(staff):
             return _err("You don't have permission to record losses", 403)
@@ -438,12 +441,14 @@ async def create_movement(
         if not memo:
             return _err("Add a memo/reason for the loss")
         mtype = "missing" if memo.lower() == "missing" else "waste"
-        mv = StockMovement(product_id=p.id, movement_type=mtype,
-                           quantity=-abs(qty), note=memo, staff_id=staff.id)
+        mv = Transaction(type=TX_INVENTORY, subtype=mtype, status="done",
+                         note=memo, staff_id=staff.id)
+        db.add(mv); db.flush()
+        db.add(TransactionItem(transaction_id=mv.id, product_id=p.id, name=p.name,
+                               qty=-abs(qty), unit_price=None))
     else:
         return _err("Unknown movement type")
 
-    db.add(mv)
     db.commit()
     maps = _on_hand_map(db)
     return {"ok": True, "new_on_hand": _on_hand(maps, p.id)}
@@ -465,7 +470,7 @@ async def add_customer(
     name = (name or "").strip()
     if not name:
         return _err("Customer name is required")
-    c = Customer(name=name, phone=(phone or "").strip() or None)
+    c = Staff(name=name, phone=(phone or "").strip() or None, person_type="customer", has_access=False, role="staff", permissions="")
     db.add(c)
     db.commit()
     db.refresh(c)
@@ -480,7 +485,7 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
         return _err("Not signed in", 401)
     if not (can_settle(staff) or can(staff, "view_reports")):
         return _err("Not allowed", 403)
-    c = db.get(Customer, cid)
+    c = db.get(Staff, cid)
     if not c:
         return _err("Customer not found", 404)
 
@@ -548,7 +553,7 @@ async def settle(
     if not can_settle(staff):
         return _err("You don't have permission to take payments", 403)
 
-    c = db.get(Customer, int(customer_id)) if customer_id else None
+    c = db.get(Staff, int(customer_id)) if customer_id else None
     if not c:
         return _err("Customer not found")
     method = (method or "").lower().strip()

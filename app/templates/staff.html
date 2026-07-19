@@ -5,6 +5,8 @@
 .typetag.employee{background:#eaf1f8;color:#1f4e79}
 .typetag.affiliate{background:#f3ecfa;color:#6b3fa0}
 .typetag.coach{background:#fdf0e6;color:#9a5518}
+.typetag.customer{background:#eef1f4;color:#3a4654}
+.typetag.member{background:#fef3f5;color:#9a1f4b}
 .typetag.supplier{background:#eaf6ec;color:#1f6b34}
 .codecell{font-family:ui-monospace,Menlo,monospace;font-weight:600}
 .codecell .used{font-family:inherit;font-weight:400;color:var(--muted);font-size:.78rem;margin-left:6px}
@@ -24,9 +26,11 @@
 
 <div class="tfilter">
   <a href="/admin/staff" class="{{ 'on' if not ftype }}">All</a>
+  <a href="/admin/staff?type=customer" class="{{ 'on' if ftype == 'customer' }}">Customers</a>
   <a href="/admin/staff?type=employee" class="{{ 'on' if ftype == 'employee' }}">Employees</a>
   <a href="/admin/staff?type=affiliate" class="{{ 'on' if ftype == 'affiliate' }}">Affiliates</a>
   <a href="/admin/staff?type=coach" class="{{ 'on' if ftype == 'coach' }}">Coaches</a>
+  <a href="/admin/staff?type=member" class="{{ 'on' if ftype == 'member' }}">Members</a>
   <a href="/admin/staff?type=supplier" class="{{ 'on' if ftype == 'supplier' }}">Suppliers</a>
 </div>
 

@@ -23,11 +23,11 @@ from .models import (
     CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
     MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
-    Customer, Product, Staff, StockMovement, Member,
+    Product, Staff,
     PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
     ENTITY_TYPES, DISCOUNT_TYPES, Role,
     Transaction, TransactionItem,
-    TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE, TX_PAYMENT,
+    TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE, TX_PAYMENT, TX_INVENTORY,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -69,11 +69,19 @@ def _slugify(s):
 
 @app.on_event("startup")
 def startup():
+    # The `staff` table was renamed to `entity`. Do it BEFORE create_all so
+    # create_all doesn't make a fresh empty `entity` table (which would block the
+    # rename). Guarded so a fresh DB (no staff table) just creates `entity`.
+    with engine.begin() as conn:
+        conn.execute(text(
+            "DO $$ BEGIN IF to_regclass('public.staff') IS NOT NULL "
+            "AND to_regclass('public.entity') IS NULL THEN "
+            "ALTER TABLE staff RENAME TO entity; END IF; END $$;"))
     Base.metadata.create_all(bind=engine)
     # Lightweight migrations for databases created before these columns existed.
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS permissions TEXT NOT NULL DEFAULT ''"))
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS username TEXT"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS permissions TEXT NOT NULL DEFAULT ''"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS username TEXT"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id); END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_credit BOOLEAN NOT NULL DEFAULT FALSE; END IF; END $$;"))
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier VARCHAR"))
@@ -82,7 +90,7 @@ def startup():
         # Mobile PWA additions
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS image BYTEA"))
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_mime VARCHAR"))
-        conn.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone VARCHAR"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.customers') IS NOT NULL THEN ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone VARCHAR; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof BYTEA; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR; END IF; END $$;"))
         conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo BYTEA"))
@@ -93,22 +101,22 @@ def startup():
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0; END IF; END $$;"))
         # Unified people: staff table also holds employees/affiliates (may have no login)
-        conn.execute(text("ALTER TABLE staff ALTER COLUMN username DROP NOT NULL"))
-        conn.execute(text("ALTER TABLE staff ALTER COLUMN pin_hash DROP NOT NULL"))
-        conn.execute(text("ALTER TABLE staff ALTER COLUMN pin_salt DROP NOT NULL"))
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS person_type VARCHAR"))
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS discount_code VARCHAR"))
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS staff_discount_code_uq ON staff (discount_code)"))
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS has_access BOOLEAN NOT NULL DEFAULT TRUE"))
-        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_person_id INTEGER REFERENCES staff(id) ON DELETE SET NULL; END IF; END $$;"))
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL"))
+        conn.execute(text("ALTER TABLE entity ALTER COLUMN username DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE entity ALTER COLUMN pin_hash DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE entity ALTER COLUMN pin_salt DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS person_type VARCHAR"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS discount_code VARCHAR"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS entity_discount_code_uq ON entity (discount_code)"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS has_access BOOLEAN NOT NULL DEFAULT TRUE"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_person_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; END IF; END $$;"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL"))
         # Coaches merged into the entity table: affiliate/coach billing lives on staff.
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS affiliate_fee NUMERIC(10,2)"))
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS start_date DATE"))
-        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS next_billing DATE"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS affiliate_fee NUMERIC(10,2)"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS start_date DATE"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS next_billing DATE"))
         # members.coach_id / invoices.coach_id now point at staff(id). Drop the old
         # FKs to coaches so we can remap the values in the data migration below.
-        conn.execute(text("ALTER TABLE members DROP CONSTRAINT IF EXISTS members_coach_id_fkey"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.members') IS NOT NULL THEN ALTER TABLE members DROP CONSTRAINT IF EXISTS members_coach_id_fkey; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.invoices') IS NOT NULL THEN ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_coach_id_fkey; END IF; END $$;"))
         # Only touch the legacy coaches table if it still exists.
         conn.execute(text(
@@ -119,6 +127,7 @@ def startup():
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.orders') IS NOT NULL THEN ALTER TABLE orders ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.invoices') IS NOT NULL THEN ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.payments') IS NOT NULL THEN ALTER TABLE payments ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.stock_movements') IS NOT NULL THEN ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
     db = next(get_db())
     try:
         # Backfill usernames only for people WITH system access who are missing one.
@@ -135,7 +144,7 @@ def startup():
             taken.add(u)
         db.commit()
         with engine.begin() as conn:
-            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS staff_username_uq ON staff (username)"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS entity_username_uq ON entity (username)"))
         # Seed the two built-in roles (Admin = full, Staff = default perms).
         admin_role = db.query(Role).filter(Role.name == "Admin").first()
         if not admin_role:
@@ -217,9 +226,10 @@ def startup():
                            {"sid": ent.id, "cid": cid})
             db.commit()
             # remap references (read old coach id -> write new staff id)
-            for m in db.query(Member).all():
-                if m.coach_id in mapping:
-                    m.coach_id = mapping[m.coach_id]
+            if db.execute(text("SELECT to_regclass('public.members')")).scalar():
+                for old, new in mapping.items():
+                    db.execute(text("UPDATE members SET coach_id = :new WHERE coach_id = :old"),
+                               {"new": new, "old": old})
             if db.execute(text("SELECT to_regclass('public.invoices')")).scalar():
                 for old, new in mapping.items():
                     db.execute(text("UPDATE invoices SET coach_id = :new "
@@ -234,8 +244,49 @@ def startup():
             conn.execute(text("DROP TABLE IF EXISTS coaches"))
         # Fold sales, orders and invoices into the unified transactions table.
         _migrate_transactions(db)
+        # Fold customers and members into the unified entity table.
+        _migrate_entities(db)
     finally:
         db.close()
+
+
+def _migrate_entities(db):
+    """Fold the legacy customers + members tables into the unified `entity` table
+    (person_type customer / member), remap transactions.customer_id, then drop
+    the old tables. Read via raw SQL so no ORM models are needed for them."""
+    # customers -> entity(person_type='customer'), remap transactions.customer_id
+    if _has_table(db, "customers"):
+        # Drop the customer_id FK first so the remap can't transiently violate it.
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_customer_id_fkey"))
+        cust_map = {}
+        for r in db.execute(text(
+                "SELECT id, name, phone FROM customers")).fetchall():
+            e = Staff(name=r.name, person_type="customer", has_access=False,
+                      role="staff", permissions="", phone=r.phone)
+            db.add(e); db.flush()
+            cust_map[r.id] = e.id
+        db.commit()
+        # remap each transaction's customer_id (old customer id -> new entity id);
+        # single pass reading the original value, so id overlaps are safe.
+        for tx in db.query(Transaction).filter(Transaction.customer_id != None).all():  # noqa: E711
+            if tx.customer_id in cust_map:
+                tx.customer_id = cust_map[tx.customer_id]
+        db.commit()
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS customers CASCADE"))
+
+    # members -> entity(person_type='member', affiliate_id + corkage_rate)
+    if _has_table(db, "members"):
+        for r in db.execute(text(
+                "SELECT name, coach_id, corkage_rate, start_date, is_active "
+                "FROM members")).fetchall():
+            db.add(Staff(name=r.name, person_type="member", has_access=False, role="staff",
+                         permissions="", affiliate_id=r.coach_id, corkage_rate=r.corkage_rate,
+                         start_date=r.start_date, is_active=bool(r.is_active)))
+        db.commit()
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS members CASCADE"))
 
 
 def _dt(d, fallback=None):
@@ -361,10 +412,28 @@ def _migrate_transactions(db):
             db.execute(text("UPDATE payments SET tx_id = :t WHERE id = :p"), {"t": pay.id, "p": r.id})
         db.commit()
 
-    # 5) drop the now-redundant legacy tables (children first for FK safety)
+    # 5) stock_movements -> inventory_adjustment transactions (signed line-item qty)
+    if _has_table(db, "stock_movements"):
+        for r in db.execute(text(
+                "SELECT id, product_id, movement_type, quantity, unit_cost, note, "
+                "staff_id, occurred_at, created_at FROM stock_movements WHERE tx_id IS NULL")).fetchall():
+            tx = Transaction(type=TX_INVENTORY, subtype=r.movement_type, status="done",
+                             occurred_at=r.occurred_at, created_at=r.created_at or r.occurred_at,
+                             staff_id=r.staff_id, note=r.note)
+            db.add(tx); db.flush()
+            pname = db.execute(text("SELECT name FROM products WHERE id = :p"),
+                               {"p": r.product_id}).scalar()
+            db.add(TransactionItem(transaction_id=tx.id, product_id=r.product_id,
+                                   name=pname or "Item", qty=r.quantity, unit_price=r.unit_cost))
+            db.execute(text("UPDATE stock_movements SET tx_id = :t WHERE id = :m"),
+                       {"t": tx.id, "m": r.id})
+        db.commit()
+
+    # 6) drop the now-redundant legacy tables (children first for FK safety)
     with engine.begin() as conn:
         for tbl in ("sale_items", "sales", "order_items", "orders",
-                    "invoice_items", "invoice_payments", "invoices", "payments"):
+                    "invoice_items", "invoice_payments", "invoices", "payments",
+                    "stock_movements"):
             conn.execute(text(f"DROP TABLE IF EXISTS {tbl} CASCADE"))
 
 
@@ -397,22 +466,29 @@ def require(request, db, admin=False, perm=None):
     return staff, None
 
 
-def _sold_qty_map(db, before=None):
-    """product_id -> units sold via cash-sale transactions (optionally before a datetime)."""
+def _tx_qty_map(db, tx_type, before=None):
+    """product_id -> summed line-item qty for transactions of `tx_type`."""
     q = (db.query(TransactionItem.product_id, func.coalesce(func.sum(TransactionItem.qty), 0))
          .join(Transaction, Transaction.id == TransactionItem.transaction_id)
-         .filter(Transaction.type == TX_CASH_SALE, TransactionItem.product_id != None))  # noqa: E711
+         .filter(Transaction.type == tx_type, TransactionItem.product_id != None))  # noqa: E711
     if before is not None:
         q = q.filter(Transaction.occurred_at < before)
     return dict(q.group_by(TransactionItem.product_id).all())
 
 
+def _sold_qty_map(db, before=None):
+    """product_id -> units sold via cash-sale transactions."""
+    return _tx_qty_map(db, TX_CASH_SALE, before)
+
+
+def _adjust_qty_map(db, before=None):
+    """product_id -> net signed qty from inventory-adjustment transactions."""
+    return _tx_qty_map(db, TX_INVENTORY, before)
+
+
 def stock_levels(db):
-    """on_hand per active product = sum(stock_movements) - units sold."""
-    mov = dict(
-        db.query(StockMovement.product_id, func.coalesce(func.sum(StockMovement.quantity), 0))
-        .group_by(StockMovement.product_id).all()
-    )
+    """on_hand per active product = signed inventory adjustments − units sold."""
+    mov = _adjust_qty_map(db)
     sold = _sold_qty_map(db)
     rows = []
     for p in db.query(Product).filter(Product.is_active).order_by(Product.category, Product.name):
@@ -581,10 +657,11 @@ def find_or_create_customer(db, name):
     name = (name or "").strip()
     if not name:
         return None
-    existing = db.query(Customer).filter(func.lower(Customer.name) == name.lower()).first()
+    existing = (db.query(Staff).filter(Staff.person_type == "customer",
+                func.lower(Staff.name) == name.lower()).first())
     if existing:
         return existing
-    c = Customer(name=name)
+    c = Staff(name=name, person_type="customer", has_access=False, role="staff", permissions="")
     db.add(c)
     db.flush()
     return c
@@ -633,8 +710,12 @@ def movement_create(request: Request, movement_type: str = Form(...),
             uc = float(unit_cost)
         except ValueError:
             uc = None
-    db.add(StockMovement(product_id=product_id, movement_type=movement_type,
-                         quantity=q, unit_cost=uc, note=note or None, staff_id=staff.id))
+    p = db.get(Product, product_id)
+    tx = Transaction(type=TX_INVENTORY, subtype=movement_type, status="done",
+                     staff_id=staff.id, note=note or None)
+    db.add(tx); db.flush()
+    db.add(TransactionItem(transaction_id=tx.id, product_id=product_id,
+                           name=(p.name if p else "Item"), qty=q, unit_price=uc))
     db.commit()
     return RedirectResponse("/stock", status_code=303)
 
@@ -644,8 +725,8 @@ def movement_edit(request: Request, mid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db)
     if redir:
         return redir
-    m = db.get(StockMovement, mid)
-    if not m:
+    m = db.get(Transaction, mid)
+    if not m or m.type != TX_INVENTORY:
         return RedirectResponse("/records", status_code=303)
     if not can(staff, f"{module_for_type(m.movement_type)}.edit"):
         return RedirectResponse("/records", status_code=303)
@@ -659,13 +740,14 @@ def movement_update(request: Request, mid: int, quantity: int = Form(...),
     staff, redir = require(request, db)
     if redir:
         return redir
-    m = db.get(StockMovement, mid)
-    if not m:
+    m = db.get(Transaction, mid)
+    if not m or m.type != TX_INVENTORY:
         return RedirectResponse("/records", status_code=303)
     if not can(staff, f"{module_for_type(m.movement_type)}.edit"):
         return RedirectResponse("/records", status_code=303)
-    m.quantity = signed_qty(m.movement_type, quantity, direction)
-    m.unit_cost = float(unit_cost) if unit_cost.strip() else None
+    if m.items:
+        m.items[0].qty = signed_qty(m.movement_type, quantity, direction)
+        m.items[0].unit_price = float(unit_cost) if unit_cost.strip() else None
     m.note = note or None
     db.commit()
     return RedirectResponse("/records", status_code=303)
@@ -676,8 +758,8 @@ def movement_delete(request: Request, mid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db)
     if redir:
         return redir
-    m = db.get(StockMovement, mid)
-    if not m:
+    m = db.get(Transaction, mid)
+    if not m or m.type != TX_INVENTORY:
         return RedirectResponse("/records", status_code=303)
     if not can(staff, f"{module_for_type(m.movement_type)}.delete"):
         return RedirectResponse("/records", status_code=303)
@@ -827,7 +909,7 @@ def product_delete(request: Request, pid: int, db: Session = Depends(get_db)):
         return RedirectResponse("/admin/products", status_code=303)
     referenced = (
         db.query(TransactionItem).filter(TransactionItem.product_id == pid).first()
-        or db.query(StockMovement).filter(StockMovement.product_id == pid).first()
+        or db.query(TransactionItem).filter(TransactionItem.product_id == pid).first()
     )
     if referenced:
         # keep history intact — deactivate instead of hard delete
@@ -848,7 +930,7 @@ def staff_list(request: Request, type: str = "", db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    ftype = type if type in ("employee", "affiliate", "coach", "supplier") else ""
+    ftype = type if type in ("customer", "employee", "affiliate", "coach", "member", "supplier") else ""
     q = db.query(Staff)
     if ftype:
         q = q.filter(Staff.person_type == ftype)
@@ -874,7 +956,7 @@ def staff_new(request: Request, type: str = "", db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    preset = type if type in ("employee", "affiliate", "coach", "supplier") else ""
+    preset = type if type in ("customer", "employee", "affiliate", "coach", "member", "supplier") else ""
     return _form(request, db, staff, person=None, preset_type=preset)
 
 
@@ -985,7 +1067,7 @@ async def staff_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     name = (form.get("name") or "").strip()
     person_type = form.get("person_type") or ""
-    if person_type not in ("employee", "affiliate", "coach", "supplier"):
+    if person_type not in ("customer", "employee", "affiliate", "coach", "member", "supplier"):
         person_type = ""
     has_access = form.get("has_access") == "on"
 
@@ -1029,7 +1111,7 @@ async def staff_update(request: Request, sid: int, db: Session = Depends(get_db)
     form = await request.form()
     name = (form.get("name") or "").strip()
     person_type = form.get("person_type") or ""
-    if person_type not in ("employee", "affiliate", "coach", "supplier"):
+    if person_type not in ("customer", "employee", "affiliate", "coach", "member", "supplier"):
         person_type = ""
     has_access = form.get("has_access") == "on"
 
@@ -1225,11 +1307,7 @@ def reports(request: Request, period: str = "week", db: Session = Depends(get_db
 def inventory_valuation(db, end_u):
     """On-hand value per active product as of `end_u` (UTC upper bound, exclusive),
        grouped by category, with cost and retail totals."""
-    mov = dict(
-        db.query(StockMovement.product_id, func.coalesce(func.sum(StockMovement.quantity), 0))
-        .filter(StockMovement.occurred_at < end_u)
-        .group_by(StockMovement.product_id).all()
-    )
+    mov = _adjust_qty_map(db, before=end_u)
     sold = _sold_qty_map(db, before=end_u)
     cats = {}
     tot_cost = tot_retail = 0.0
@@ -1291,8 +1369,8 @@ _DUMMY_PRODUCTS = {
 def _wipe_transactions(db):
     db.query(TransactionItem).delete()
     db.query(Transaction).delete()
-    db.query(StockMovement).delete()
-    db.query(Customer).delete()
+    db.query(Transaction).filter(Transaction.type == TX_INVENTORY).delete()
+    db.query(Staff).filter(Staff.person_type == "customer").delete()
     db.commit()
 
 
@@ -1363,9 +1441,12 @@ def dummy_import(request: Request, db: Session = Depends(get_db)):
             continue
         when = _sold_dt_from_date(r["date"])
         if r["kind"] == "in":
-            db.add(StockMovement(product_id=p.id, movement_type="restock",
-                                 quantity=int(r["qty"]), occurred_at=when, created_at=when,
-                                 unit_cost=p.cost_price, note=r.get("note") or None, staff_id=staff.id))
+            mv = Transaction(type=TX_INVENTORY, subtype="restock", status="done",
+                             occurred_at=when, created_at=when, staff_id=staff.id,
+                             note=r.get("note") or None)
+            db.add(mv); db.flush()
+            db.add(TransactionItem(transaction_id=mv.id, product_id=p.id, name=p.name,
+                                   qty=int(r["qty"]), unit_price=p.cost_price))
         else:
             paid = r.get("paid", True)
             cust = None
@@ -1457,7 +1538,8 @@ def records(request: Request, db: Session = Depends(get_db)):
     if not can_any(staff, RECORD_PERMS):
         return RedirectResponse("/dashboard", status_code=303)
     movements = (
-        db.query(StockMovement).order_by(StockMovement.occurred_at.desc()).limit(100).all()
+        db.query(Transaction).filter(Transaction.type == TX_INVENTORY)
+        .order_by(Transaction.occurred_at.desc()).limit(100).all()
     )
     sales = (db.query(Transaction).filter(Transaction.type == TX_CASH_SALE)
              .order_by(Transaction.occurred_at.desc()).limit(50).all())
@@ -1494,7 +1576,7 @@ def customer_balances(db):
         .group_by(Transaction.customer_id).all()
     )
     rows = []
-    for c in db.query(Customer).order_by(Customer.name).all():
+    for c in db.query(Staff).filter(Staff.person_type == "customer").order_by(Staff.name).all():
         ch = charges.get(c.id, 0.0)
         pd = float(paid.get(c.id, 0) or 0)
         rows.append({"customer": c, "charges": ch, "paid": pd, "balance": ch - pd})
@@ -1522,7 +1604,7 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
         return redir
     if not can_any(staff, CUSTOMER_VIEW_PERMS):
         return RedirectResponse("/dashboard", status_code=303)
-    customer = db.get(Customer, cid)
+    customer = db.get(Staff, cid)
     if not customer:
         return RedirectResponse("/customers", status_code=303)
     sales = (
@@ -1549,7 +1631,7 @@ def pay_form(request: Request, cid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="payments.create")
     if redir:
         return redir
-    customer = db.get(Customer, cid)
+    customer = db.get(Staff, cid)
     if not customer:
         return RedirectResponse("/customers", status_code=303)
     rows = {r["customer"].id: r for r in customer_balances(db)}
@@ -1565,7 +1647,7 @@ async def pay_create(request: Request, cid: int, amount: str = Form(...),
     staff, redir = require(request, db, perm="payments.create")
     if redir:
         return redir
-    customer = db.get(Customer, cid)
+    customer = db.get(Staff, cid)
     if not customer:
         return RedirectResponse("/customers", status_code=303)
     try:
@@ -1684,7 +1766,7 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
     selected_customer = None
     if qp.get("customer"):
         try:
-            selected_customer = db.get(Customer, int(qp.get("customer")))
+            selected_customer = db.get(Staff, int(qp.get("customer")))
         except (ValueError, TypeError):
             selected_customer = None
 
@@ -1733,7 +1815,7 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
         {"id": c.id, "name": c.name,
          "owed": round(float(bal_by_id.get(c.id, {}).get("balance", 0.0)), 2),
          "sales": int(counts.get(c.id, 0))}
-        for c in db.query(Customer).order_by(Customer.name).all()
+        for c in db.query(Staff).filter(Staff.person_type == "customer").order_by(Staff.name).all()
     ]
     cust_ctx = None
     if selected_customer:
@@ -1873,7 +1955,7 @@ def sale_quick(request: Request, product_id: int = Form(...), quantity: int = Fo
     if customer_name.strip():
         customer = find_or_create_customer(db, customer_name)
     elif customer_id.strip():
-        customer = db.get(Customer, int(customer_id))
+        customer = db.get(Staff, int(customer_id))
     sale = Transaction(type=TX_CASH_SALE, status=("credit" if not is_paid else "paid"),
                 staff_id=staff.id, occurred_at=_sold_dt_from_date(date),
                 is_credit=(not is_paid), customer_id=(customer.id if customer else None),
@@ -1933,10 +2015,10 @@ def coach_corkage(members):
 
 def coach_rows(db):
     """Affiliate/coach entities with their member counts + monthly totals."""
-    members = db.query(Member).filter(Member.is_active == True).all()  # noqa: E712
+    members = db.query(Staff).filter(Staff.person_type == "member", Staff.is_active == True).all()  # noqa: E712
     by = {}
     for m in members:
-        by.setdefault(m.coach_id, []).append(m)
+        by.setdefault(m.affiliate_id, []).append(m)
     rows = []
     for c in (db.query(Staff)
               .filter(Staff.person_type.in_(["affiliate", "coach"]))
@@ -1975,7 +2057,8 @@ def members_page(request: Request, db: Session = Depends(get_db)):
     staff, redir = require_admin(request, db)
     if redir:
         return redir
-    members = db.query(Member).order_by(Member.is_active.desc(), Member.name).all()
+    members = (db.query(Staff).filter(Staff.person_type == "member")
+               .order_by(Staff.is_active.desc(), Staff.name).all())
     active = [m for m in members if m.is_active]
     total = sum(float(m.corkage_rate or 0) for m in active)
     avg = (total / len(active)) if active else 0.0
@@ -2008,9 +2091,10 @@ def member_create(request: Request, name: str = Form(...), coach_id: str = Form(
         rate = float(corkage_rate) if corkage_rate.strip() else 3000.0
     except ValueError:
         rate = 3000.0
-    db.add(Member(name=name.strip(), coach_id=(int(coach_id) if coach_id.strip() else None),
-                  corkage_rate=rate, start_date=_date_only(start_date),
-                  is_active=(is_active == "on")))
+    db.add(Staff(name=name.strip(), person_type="member", has_access=False, role="staff",
+                 permissions="", affiliate_id=(int(coach_id) if coach_id.strip() else None),
+                 corkage_rate=rate, start_date=_date_only(start_date),
+                 is_active=(is_active == "on")))
     db.commit()
     return RedirectResponse("/coaches/members", status_code=303)
 
@@ -2020,7 +2104,7 @@ def member_edit(request: Request, mid: int, db: Session = Depends(get_db)):
     staff, redir = require_admin(request, db)
     if redir:
         return redir
-    member = db.get(Member, mid)
+    member = db.get(Staff, mid)
     if not member:
         return RedirectResponse("/coaches/members", status_code=303)
     coaches = (db.query(Staff)
@@ -2037,7 +2121,7 @@ def member_update(request: Request, mid: int, name: str = Form(...), coach_id: s
     staff, redir = require_admin(request, db)
     if redir:
         return redir
-    member = db.get(Member, mid)
+    member = db.get(Staff, mid)
     if not member:
         return RedirectResponse("/coaches/members", status_code=303)
     try:
@@ -2045,7 +2129,7 @@ def member_update(request: Request, mid: int, name: str = Form(...), coach_id: s
     except ValueError:
         rate = 3000.0
     member.name = name.strip()
-    member.coach_id = int(coach_id) if coach_id.strip() else None
+    member.affiliate_id = int(coach_id) if coach_id.strip() else None
     member.corkage_rate = rate
     member.start_date = _date_only(start_date)
     member.is_active = (is_active == "on")
@@ -2123,7 +2207,7 @@ def invoice_new(request: Request, db: Session = Depends(get_db)):
     coaches = (db.query(Staff)
                .filter(Staff.person_type == "affiliate", Staff.is_active == True)  # noqa: E712
                .order_by(Staff.name).all())
-    customers = db.query(Customer).order_by(Customer.name).all()
+    customers = db.query(Staff).filter(Staff.person_type == "customer").order_by(Staff.name).all()
     return render(request, "invoice_form.html", db, staff, coaches=coaches,
                   customers=customers, number=next_invoice_number(db),
                   today=today.strftime("%Y-%m-%d"),
@@ -2149,7 +2233,7 @@ async def invoice_create(request: Request, db: Session = Depends(get_db)):
             bill_to = c.name
     elif party.startswith("customer:"):
         customer_id = int(party.split(":")[1]); bill_type = "customer"
-        c = db.get(Customer, customer_id)
+        c = db.get(Staff, customer_id)
         if c and not bill_to:
             bill_to = c.name
     if not bill_to:
@@ -2274,7 +2358,7 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
     today = datetime.now(tz).date()
     period = today.strftime("%B %Y")
     members = sorted(
-        db.query(Member).filter(Member.coach_id == coach.id, Member.is_active == True).all(),  # noqa: E712
+        db.query(Staff).filter(Staff.person_type == "member", Staff.affiliate_id == coach.id, Staff.is_active == True).all(),  # noqa: E712
         key=_member_sort_key)
     inv = Transaction(type=TX_INVOICE, status="unpaid", number=next_invoice_number(db),
                   bill_to_type="coach", coach_id=coach.id, customer_name=coach.name,
