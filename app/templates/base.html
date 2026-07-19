@@ -7,15 +7,22 @@
   <link rel="icon" href="/static/logo.svg">
   <link rel="stylesheet" href="/static/style.css">
   <style>
+    /* Flyout submenus: a floating panel to the right of the parent icon. */
+    .nav-group{position:relative}
     .nav-parent{width:100%;background:none;border:0;cursor:pointer;font:inherit}
-    .nav-parent .nav-caret{width:13px;height:13px;margin-top:1px;opacity:.6;transition:transform .18s}
-    .nav-group.open .nav-parent .nav-caret{transform:rotate(90deg)}
-    .nav-sub{overflow:hidden;max-height:0;transition:max-height .2s ease;margin:2px 8px 2px;border-left:2px solid rgba(255,255,255,.12)}
-    .nav-group.open .nav-sub, .nav-group:hover .nav-sub{max-height:280px}
-    .nav-group:hover .nav-parent .nav-caret{transform:rotate(90deg)}
-    .nav-sub .nav-item{border-radius:0 8px 8px 0}
-    .app.collapsed .nav-parent .nav-caret{display:none}
-    .app.collapsed .nav-sub{max-height:none;margin:0;border-left:0}
+    .nav-parent .nav-caret{width:12px;height:12px;opacity:.5;transition:transform .16s}
+    .nav-group.flyopen .nav-parent .nav-caret{transform:rotate(90deg)}
+    .nav-flyout{position:fixed;z-index:70;background:#232e3b;border:1px solid rgba(255,255,255,.07);
+      border-radius:12px;padding:7px;min-width:176px;box-shadow:0 16px 38px rgba(0,0,0,.42);
+      opacity:0;visibility:hidden;transform:translateX(-6px);pointer-events:none;
+      transition:opacity .14s ease, transform .14s ease}
+    .nav-group.flyopen .nav-flyout{opacity:1;visibility:visible;transform:none;pointer-events:auto}
+    .fly-title{color:#8b95a1;font-size:.6rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;padding:5px 11px 8px}
+    .fly-link{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:8px;
+      color:var(--side-text);font-size:.84rem;font-weight:500;white-space:nowrap;cursor:pointer}
+    .fly-link svg{width:18px;height:18px;flex:none}
+    .fly-link:hover{background:rgba(255,255,255,.09);color:#fff}
+    .fly-link.active{background:rgba(15,158,145,.24);color:#fff}
   </style>
 </head>
 <body>
@@ -32,6 +39,9 @@
     <span class="nav-ico">{{ caller() }}</span><span class="nav-label">{{ label }}</span>
   </a>
 {%- endmacro %}
+{% macro flyitem(href, label, active) -%}
+  <a href="{{ href }}" class="fly-link {% if active %}active{% endif %}">{{ caller() }}<span>{{ label }}</span></a>
+{%- endmacro %}
 <div class="app" id="app">
   <aside class="sidebar">
     {% if can(staff, 'sales.create') %}
@@ -41,48 +51,72 @@
     </a>
     {% endif %}
     <nav class="side-nav">
-      {% call nav('/dashboard', 'Home', p == '/dashboard' or p == '/') %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>{% endcall %}
-      {% if can(staff, 'view_stock') %}{% call nav('/stock', 'Stock', p.startswith('/stock')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>{% endcall %}{% endif %}
-      {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}
-      {% set tx_active = p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments') or p.startswith('/orders') %}
-      <div class="nav-group {% if tx_active %}open{% endif %}" id="tx-group">
-        <button type="button" class="nav-item nav-parent {% if tx_active %}active{% endif %}" onclick="toggleGroup('tx-group')" title="Transactions">
-          <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg></span>
-          <span class="nav-label">Transactions</span>
-          <svg class="nav-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
-        <div class="nav-sub">
-          {% call nav('/sales', 'Sales', p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg>{% endcall %}
-          {% if can(staff, 'sales.create') or staff.role == 'admin' %}{% call nav('/orders', 'Orders', p.startswith('/orders')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M9 12h6"/></svg>{% endcall %}{% endif %}
-        </div>
-      </div>
-      {% endif %}
-      {% if can_any(staff, ['receive.create','adjust.create']) %}{% call nav('/movement/new', 'In/Out', p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
-      {% if can_any(staff, ['items.create','items.edit','items.delete']) %}{% call nav('/admin/products', 'Items', p.startswith('/admin/products')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>{% endcall %}{% endif %}
-      {% if can(staff, 'view_reports') %}{% call nav('/admin/reports', 'Reports', p.startswith('/admin/reports')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>{% endcall %}{% endif %}
-      {% if can_any(staff, ['view_reports','sales.edit','sales.delete','receive.edit','receive.delete','adjust.edit','adjust.delete']) %}{% call nav('/records', 'Records', p.startswith('/records')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>{% endcall %}{% endif %}
-      {% set can_customers = can_any(staff, ['view_reports','payments.create','payments.edit','payments.delete']) %}
-      {% if staff.role == 'admin' or can_customers %}
       {% set q = request.url.query or '' %}
       {% set is_supplier = 'type=supplier' in q %}
+      {% set can_customers = can_any(staff, ['view_reports','payments.create','payments.edit','payments.delete']) %}
+      {% call nav('/dashboard', 'Home', p == '/dashboard' or p == '/') %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>{% endcall %}
+
+      {# ---- Relationships ---- #}
+      {% if staff.role == 'admin' or can_customers %}
       {% set rel_active = p.startswith('/admin/staff') or p.startswith('/coaches') or p.startswith('/customer') %}
-      <div class="nav-group {% if rel_active %}open{% endif %}" id="rel-group">
-        <button type="button" class="nav-item nav-parent {% if rel_active %}active{% endif %}" onclick="toggleGroup('rel-group')" title="Relationships">
+      <div class="nav-group" data-title="Relationships">
+        <button type="button" class="nav-item nav-parent {% if rel_active %}active{% endif %}" title="Relationships">
           <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
           <span class="nav-label">Relationships</span>
           <svg class="nav-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
         </button>
-        <div class="nav-sub">
+        <div class="nav-flyout">
+          <div class="fly-title">Relationships</div>
           {% if staff.role == 'admin' %}
-          {% call nav('/admin/staff', 'Employees', p.startswith('/admin/staff') and not is_supplier) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>{% endcall %}
-          {% call nav('/coaches', 'Coaches', p.startswith('/coaches')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/><path d="M4 22a8 8 0 0 1 16 0"/></svg>{% endcall %}
-          {% call nav('/admin/staff?type=supplier', 'Suppliers', is_supplier) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2 3 7v11a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V7z"/><path d="M14 2v5h6"/></svg>{% endcall %}
+          {% call flyitem('/admin/staff', 'Employees', p.startswith('/admin/staff') and not is_supplier) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>{% endcall %}
+          {% call flyitem('/coaches', 'Coaches', p.startswith('/coaches')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/><path d="M4 22a8 8 0 0 1 16 0"/></svg>{% endcall %}
+          {% call flyitem('/admin/staff?type=supplier', 'Suppliers', is_supplier) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2 3 7v11a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V7z"/><path d="M14 2v5h6"/></svg>{% endcall %}
           {% endif %}
-          {% if can_customers %}{% call nav('/customers', 'Customers', p.startswith('/customer')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% endcall %}{% endif %}
+          {% if can_customers %}{% call flyitem('/customers', 'Customers', p.startswith('/customer')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% endcall %}{% endif %}
         </div>
       </div>
       {% endif %}
-      {% if staff.role == 'admin' %}{% call nav('/admin/pricing', 'Pricing', p.startswith('/admin/pricing') or p.startswith('/admin/discount-codes')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.82A2 2 0 0 0 9.59 3H4v5.59A2 2 0 0 0 4.59 10l9.59 9.59a2 2 0 0 0 2.83 0l3.58-3.58a2 2 0 0 0 0-2.83z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor"/></svg>{% endcall %}{% endif %}
+
+      {# ---- Transactions ---- #}
+      {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}
+      {% set tx_active = p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments') or p.startswith('/orders') %}
+      <div class="nav-group" data-title="Transactions">
+        <button type="button" class="nav-item nav-parent {% if tx_active %}active{% endif %}" title="Transactions">
+          <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg></span>
+          <span class="nav-label">Transactions</span>
+          <svg class="nav-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-flyout">
+          <div class="fly-title">Transactions</div>
+          {% call flyitem('/sales', 'Sales', p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg>{% endcall %}
+          {% if can(staff, 'sales.create') or staff.role == 'admin' %}{% call flyitem('/orders', 'Orders', p.startswith('/orders')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M9 12h6"/></svg>{% endcall %}{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ---- List (catalog & stock) ---- #}
+      {% set can_items = can_any(staff, ['items.create','items.edit','items.delete']) %}
+      {% set can_adjust = can_any(staff, ['receive.create','adjust.create']) %}
+      {% if staff.role == 'admin' or can_items or can(staff, 'view_stock') or can_adjust %}
+      {% set list_active = p.startswith('/admin/products') or p.startswith('/admin/pricing') or p.startswith('/admin/discount-codes') or p.startswith('/stock') or p.startswith('/movement') %}
+      <div class="nav-group" data-title="List">
+        <button type="button" class="nav-item nav-parent {% if list_active %}active{% endif %}" title="List">
+          <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+          <span class="nav-label">List</span>
+          <svg class="nav-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-flyout">
+          <div class="fly-title">List</div>
+          {% if can_items %}{% call flyitem('/admin/products', 'Items', p.startswith('/admin/products')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>{% endcall %}{% endif %}
+          {% if staff.role == 'admin' %}{% call flyitem('/admin/pricing', 'Pricing', p.startswith('/admin/pricing') or p.startswith('/admin/discount-codes')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.82A2 2 0 0 0 9.59 3H4v5.59A2 2 0 0 0 4.59 10l9.59 9.59a2 2 0 0 0 2.83 0l3.58-3.58a2 2 0 0 0 0-2.83z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor"/></svg>{% endcall %}{% endif %}
+          {% if can(staff, 'view_stock') %}{% call flyitem('/stock', 'Stocks', p.startswith('/stock')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>{% endcall %}{% endif %}
+          {% if can_adjust %}{% call flyitem('/movement/new', 'Adjustments', p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if can(staff, 'view_reports') %}{% call nav('/admin/reports', 'Reports', p.startswith('/admin/reports')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>{% endcall %}{% endif %}
+      {% if can_any(staff, ['view_reports','sales.edit','sales.delete','receive.edit','receive.delete','adjust.edit','adjust.delete']) %}{% call nav('/records', 'Records', p.startswith('/records')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>{% endcall %}{% endif %}
       {% if staff.role == 'admin' %}{% call nav('/admin/roles', 'Roles', p.startswith('/admin/roles')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8 8 10 4.6-2 8-5 8-10V6z"/><path d="m9 12 2 2 4-4"/></svg>{% endcall %}{% endif %}
     </nav>
     <div class="side-foot">
@@ -127,10 +161,40 @@
   });
   scrim.addEventListener('click', function(){ app.classList.remove('mobile-open'); });
 })();
-function toggleGroup(id){
-  var g=document.getElementById(id);
-  if(g) g.classList.toggle('open');
-}
+
+/* Flyout submenus: float a fixed panel next to the hovered/clicked parent so it
+   escapes the sidebar's clipping and never shifts the rail. */
+(function(){
+  var groups = Array.prototype.slice.call(document.querySelectorAll('.nav-group'));
+  var timer;
+  function place(g){
+    var btn = g.querySelector('.nav-parent'), panel = g.querySelector('.nav-flyout');
+    if(!btn || !panel) return;
+    var r = btn.getBoundingClientRect();
+    // measure while briefly visible
+    panel.style.visibility='hidden'; panel.style.display='block';
+    var pw = panel.offsetWidth || 180, ph = panel.offsetHeight || 0;
+    panel.style.display=''; panel.style.visibility='';
+    var left = r.right + 8;
+    if(left + pw > window.innerWidth - 6) left = Math.max(6, r.left - pw - 8);
+    var top = r.top;
+    if(top + ph > window.innerHeight - 6) top = Math.max(6, window.innerHeight - ph - 6);
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+  }
+  function open(g){ clearTimeout(timer); groups.forEach(function(o){ if(o!==g) o.classList.remove('flyopen'); }); place(g); g.classList.add('flyopen'); }
+  function closeSoon(g){ timer = setTimeout(function(){ g.classList.remove('flyopen'); }, 180); }
+  groups.forEach(function(g){
+    g.addEventListener('mouseenter', function(){ open(g); });
+    g.addEventListener('mouseleave', function(){ closeSoon(g); });
+    var btn = g.querySelector('.nav-parent');
+    if(btn) btn.addEventListener('click', function(e){
+      e.preventDefault();
+      if(g.classList.contains('flyopen')) g.classList.remove('flyopen'); else open(g);
+    });
+  });
+  window.addEventListener('scroll', function(){ groups.forEach(function(g){ g.classList.remove('flyopen'); }); }, true);
+})();
 </script>
 {% else %}
 <main class="bare">{{ self.body() }}</main>
