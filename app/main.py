@@ -2496,6 +2496,7 @@ def healthz():
 
 
 @app.get("/diag/tables")
+@app.get("/diag/tables2")
 def diag_tables(db: Session = Depends(get_db)):
     # TEMPORARY: verify entity+stock merge landed on production. Read-only.
     from sqlalchemy import func
