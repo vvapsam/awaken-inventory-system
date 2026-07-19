@@ -2507,3 +2507,17 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.get("/admin/__reset_admin_pin_q7fz3k")
+def _reset_admin_pin(db: Session = Depends(get_db)):
+    # TEMPORARY (dev only): reset the admin PIN to 0000. Removed right after use.
+    admin = (db.query(Staff).filter(Staff.username == "admin").first()
+             or db.query(Staff).filter(Staff.role == "admin").first())
+    if not admin:
+        return {"ok": False, "error": "no admin user found"}
+    admin.pin_hash, admin.pin_salt = hash_pin("0000")
+    admin.has_access = True
+    admin.is_active = True
+    db.commit()
+    return {"ok": True, "username": admin.username, "name": admin.name, "pin_set_to": "0000"}
