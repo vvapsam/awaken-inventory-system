@@ -2409,3 +2409,19 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.get("/diag/tables")
+def diag_tables(db: Session = Depends(get_db)):
+    """Temporary read-only check: which tables exist, and are the legacy ones gone."""
+    rows = db.execute(text(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='public' ORDER BY table_name")).fetchall()
+    present = [r[0] for r in rows]
+    legacy = ["sales", "sale_items", "orders", "order_items",
+              "invoices", "invoice_items", "invoice_payments", "payments"]
+    tx_count = db.execute(text("SELECT count(*) FROM transactions")).scalar()
+    ti_count = db.execute(text("SELECT count(*) FROM transaction_items")).scalar()
+    return {"tables": present,
+            "legacy_still_present": [t for t in legacy if t in present],
+            "transactions": tx_count, "transaction_items": ti_count}
