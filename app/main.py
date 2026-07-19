@@ -2554,21 +2554,3 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
-
-
-@app.get("/admin/__reclass_q7fz3k")
-def _reclass(db: Session = Depends(get_db)):
-    # TEMPORARY one-off: reclassify a few entities. They can still buy retail
-    # since the mobile buyer picker now lists all entities.
-    changes = {"Anjo Resurreccion": "affiliate", "AR Manlapaz": "employee",
-               "Joseph Junsay": "employee", "Vanessa Sampang": "employee"}
-    done = []
-    for name, ptype in changes.items():
-        rows = db.query(Staff).filter(Staff.name == name).all()
-        for p in rows:
-            p.person_type = ptype
-            done.append({"id": p.id, "name": name, "type": ptype})
-        if not rows:
-            done.append({"name": name, "type": ptype, "note": "not found"})
-    db.commit()
-    return {"ok": True, "changed": done}
