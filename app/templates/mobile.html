@@ -119,6 +119,15 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 .seg button.on.g,.seg button.on.c,.seg button.on.i{border-color:var(--ink);background:var(--ink);color:#fff}
 
 /* note banner */
+.disc-entry{display:flex;gap:8px;margin:2px 0}
+.disc-entry .txt{flex:1;text-transform:uppercase}
+.btn-apply{flex:none;padding:0 18px;border-radius:12px;background:var(--ink);color:#fff;font-weight:700;font-size:.9rem}
+.btn-apply:active{transform:scale(.97)}
+.disc-chip{display:flex;align-items:center;gap:10px;background:var(--green-tint);border:1px solid rgba(24,190,124,.35);border-radius:12px;padding:10px 12px;margin:8px 0 4px}
+.disc-chip .kt{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:5px;background:#fff;color:var(--green-d)}
+.disc-chip .who{flex:1;font-weight:600;font-size:.9rem;min-width:0}
+.disc-chip .who small{display:block;color:var(--muted);font-weight:500}
+.disc-chip .rm{width:24px;height:24px;border-radius:999px;background:var(--ink);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
 .note{border-radius:14px;padding:12px 14px;font-size:.86rem;font-weight:500;margin:12px 0}
 .note.warn{background:var(--paper);color:#4a4f57;border:1px solid var(--line)}
 .note.info{background:var(--paper);color:#4a4f57;border:1px solid var(--line)}
@@ -217,6 +226,17 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     <div class="grip"></div>
     <div id="cart-lines"></div>
     <div class="carttot"><span>Total</span><span id="cart-total">₱0.00</span></div>
+
+    <div id="disc-wrap" class="hide">
+      <div class="section-label" style="margin-top:12px">Discount code <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)">— optional</span></div>
+      <div class="disc-entry" id="disc-entry">
+        <input class="txt" id="disc-input" placeholder="Employee / affiliate code" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase">
+        <button class="btn-apply" id="disc-apply" type="button">Apply</button>
+      </div>
+      <div class="disc-chip hide" id="disc-chip"></div>
+      <div class="note warn hide" id="disc-err"></div>
+      <div class="note ok hide" id="price-note"></div>
+    </div>
 
     <div class="section-label" style="margin-top:14px">Payment</div>
     <div class="seg" id="pay-seg">
@@ -392,9 +412,47 @@ function renderHomeBal(){
 }
 
 // ================= SELL =================
-let cart={}, payMode=null, proofFile=null, sellCustomer=null;
+let cart={}, payMode=null, proofFile=null, sellCustomer=null, appliedCode=null;
+function eligibleP(p){ return appliedCode && appliedCode.product_ids.includes(Number(p.id)); }
+function discUnitPrice(p){ const raw=p.price*(1-appliedCode.discount/100);
+  return appliedCode.round_up ? Math.ceil(raw-1e-9) : Math.round(raw*100)/100; }
+function allocate(){
+  // Spread the discount across eligible units, respecting the code's daily cap.
+  let remaining = appliedCode ? (appliedCode.remaining==null?Infinity:appliedCode.remaining) : 0;
+  let total=0, saved=0, capHit=false; const rows=[];
+  Object.keys(cart).forEach(pid=>{
+    const p=DATA.products.find(x=>x.id==pid), q=cart[pid];
+    let dn=0, dPrice=p.price;
+    if(eligibleP(p)){ dPrice=discUnitPrice(p); dn=Math.min(q,remaining); remaining-=dn; if(dn<q) capHit=true; }
+    const sub=dn*dPrice+(q-dn)*p.price; total+=sub; saved+=dn*(p.price-dPrice);
+    rows.push({p,q,dn,dPrice,sub});
+  });
+  return {rows,total,saved,capHit};
+}
+async function applyCode(){
+  const code=$('#disc-input').value.trim(); if(!code) return;
+  $('#disc-err').classList.add('hide');
+  const fd=new FormData(); fd.append('code',code);
+  const r=await fetch('/api/m/discount-code',{method:'POST',body:fd}); const j=await r.json();
+  if(!j.ok){ $('#disc-err').textContent=j.error||'Invalid code'; $('#disc-err').classList.remove('hide'); return; }
+  appliedCode=j; showCodeChip(); renderCart();
+}
+function showCodeChip(){
+  $('#disc-entry').classList.add('hide');
+  const chip=$('#disc-chip'); chip.classList.remove('hide');
+  const cap = appliedCode.daily_limit ? ` · ${appliedCode.remaining} of ${appliedCode.daily_limit} left today` : '';
+  chip.innerHTML=`<span class="kt">${appliedCode.kind}</span><span class="who">${appliedCode.holder}<small>${appliedCode.tier} · −${appliedCode.discount}%${cap}</small></span><button class="rm" id="disc-rm" type="button">×</button>`;
+  $('#disc-rm').onclick=clearCode;
+}
+function clearCode(){ appliedCode=null; $('#disc-entry').classList.remove('hide'); $('#disc-input').value='';
+  $('#disc-chip').classList.add('hide'); $('#price-note').classList.add('hide'); $('#disc-err').classList.add('hide'); renderCart(); }
+$('#disc-apply').onclick=applyCode;
+$('#disc-input').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); applyCode(); }});
 function initSell(){
-  cart={}; payMode=null; proofFile=null; sellCustomer=null;
+  cart={}; payMode=null; proofFile=null; sellCustomer=null; appliedCode=null;
+  $('#disc-wrap').classList.toggle('hide', !DATA.has_codes);
+  $('#disc-entry').classList.remove('hide'); $('#disc-chip').classList.add('hide');
+  $('#disc-input').value=''; $('#disc-err').classList.add('hide'); $('#price-note').classList.add('hide');
   $$('#pay-seg button').forEach(x=>x.classList.remove('on'));
   $('#pay-proof').classList.add('hide'); $('#pay-cust').classList.add('hide');
   clearProof(); $('#cust-choose-lbl').textContent='Choose a customer…'; $('#cust-choose .cav').textContent='?';
@@ -419,19 +477,28 @@ function renderCart(){
     if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');}
     else{t.classList.remove('picked');b.classList.add('hide');}
   });
-  const lines=$('#cart-lines'); lines.innerHTML=''; let total=0;
+  const lines=$('#cart-lines'); lines.innerHTML='';
   const ids=Object.keys(cart);
-  ids.forEach(pid=>{
-    const p=DATA.products.find(x=>x.id==pid), q=cart[pid], sub=p.price*q; total+=sub;
+  const al=allocate();
+  al.rows.forEach(({p,q,dn,dPrice,sub})=>{
+    let lbl;
+    if(dn===q && dn>0) lbl=`<s>${peso(p.price)}</s> ${peso(dPrice)} each`;
+    else if(dn>0) lbl=`${dn}×${peso(dPrice)} + ${q-dn}×${peso(p.price)}`;
+    else lbl=`${peso(p.price)} each`;
     const row=document.createElement('div'); row.className='cartline';
-    row.innerHTML=`<div class="cn">${p.name}<small>${peso(p.price)} each</small></div>
+    row.innerHTML=`<div class="cn">${p.name}<small>${lbl}</small></div>
       <div class="stepper"><button data-m>−</button><span class="q">${q}</span><button data-p>+</button></div>
       <div class="cartsub">${peso(sub)}</div>`;
-    $('[data-m]',row).onclick=()=>setQty(pid,q-1);
-    $('[data-p]',row).onclick=()=>setQty(pid,q+1);
+    $('[data-m]',row).onclick=()=>setQty(p.id,q-1);
+    $('[data-p]',row).onclick=()=>setQty(p.id,q+1);
     lines.appendChild(row);
   });
-  $('#cart-total').textContent=peso(total);
+  $('#cart-total').textContent=peso(al.total);
+  const note=$('#price-note');
+  if(appliedCode){ let msg = al.saved>0.005 ? `Saves ${peso(al.saved)} on eligible items` : 'No eligible items in this cart';
+    if(al.capHit) msg += ' · daily cap reached — extra at full price';
+    note.textContent=msg; note.classList.remove('hide');
+  } else note.classList.add('hide');
   $('#cart-sheet').classList.toggle('open', ids.length>0);
   updateSellBtn();
 }
@@ -468,11 +535,12 @@ $('#sell-submit').onclick=async()=>{
   const fd=new FormData();
   fd.append('items', JSON.stringify(Object.entries(cart).map(([product_id,quantity])=>({product_id,quantity}))));
   fd.append('payment', payMode);
+  if(appliedCode) fd.append('discount_code', appliedCode.code);
   if(payMode==='unpaid') fd.append('customer_id', sellCustomer.id);
   else fd.append('proof', proofFile);
   const r=await fetch('/api/m/sale',{method:'POST',body:fd}); const j=await r.json();
   if(!j.ok){ alert(j.error||'Could not save'); btn.textContent=old; btn.disabled=false; return; }
-  const lines=Object.entries(cart).map(([pid,q])=>{const p=DATA.products.find(x=>x.id==pid);return {n:p.name,q,sub:p.price*q};});
+  const lines=allocate().rows.map(({p,q,sub})=>({n:p.name,q,sub}));
   await boot();
   showDone('sale',{total:j.total,payMode,customer:sellCustomer,lines});
 };

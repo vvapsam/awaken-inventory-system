@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
@@ -245,6 +246,9 @@ class Sale(Base):
     payment_method = Column(String)
     proof = Column(LargeBinary)              # proof-of-payment image (cash/bank sales)
     proof_mime = Column(String)
+    pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))  # tier applied
+    discount_code_id = Column(Integer, ForeignKey("discount_codes.id", ondelete="SET NULL"))  # code used
+    discounted_qty = Column(Integer, nullable=False, default=0)   # item-units that got the tier discount
     note = Column(Text)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
@@ -321,6 +325,61 @@ class PaymentSetting(Base):
     logo = Column(LargeBinary)                 # storefront logo (customer /order header)
     logo_mime = Column(String)
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+PRICING_KINDS = [("employee", "Employee"), ("affiliate", "Affiliate")]
+
+
+class PricingGroup(Base):
+    """A price tier (Employee / Affiliate) giving a % discount on selected products.
+
+    Base price = the product's normal selling price (no tier). Employee tiers round
+    the discounted price UP to a whole peso and can cap discounted items per day.
+    """
+    __tablename__ = "pricing_groups"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=False, default="employee")   # employee | affiliate
+    discount_percent = Column(Numeric(5, 2), nullable=False, default=0)  # e.g. 15.00
+    round_up = Column(Boolean, nullable=False, default=False)   # ceil price to whole peso
+    daily_item_limit = Column(Integer)                          # NULL = unlimited (e.g. 2)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    items = relationship("PricingGroupItem", cascade="all, delete-orphan", backref="group")
+
+    def eligible_ids(self):
+        return {i.product_id for i in self.items}
+
+    def price_for(self, product):
+        """Discounted price if the product is eligible, else its normal price."""
+        base = float(product.selling_price or 0)
+        if product.id in self.eligible_ids():
+            raw = base * (1 - float(self.discount_percent or 0) / 100.0)
+            if self.round_up:
+                return float(math.ceil(raw - 1e-9))       # always round up to whole peso
+            return round(raw, 2)
+        return round(base, 2)
+
+
+class PricingGroupItem(Base):
+    __tablename__ = "pricing_group_items"
+    id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+
+
+class DiscountCode(Base):
+    """A per-person code (employee or affiliate) that unlocks a pricing tier."""
+    __tablename__ = "discount_codes"
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, nullable=False)          # stored uppercase
+    holder_name = Column(String, nullable=False)               # the employee / affiliate
+    group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="CASCADE"), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    group = relationship("PricingGroup")
 
 
 class Payment(Base):

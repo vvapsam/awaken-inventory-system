@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.kindtag{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:6px}
+.kindtag.employee{background:#eaf1f8;color:#1f4e79}.kindtag.affiliate{background:#f3ecfa;color:#6b3fa0}
+.code{font-family:ui-monospace,Menlo,monospace;font-weight:700;letter-spacing:.02em}
+.newform{max-width:720px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:16px;margin:6px 0 22px}
+.inline{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.inline .fld{flex:1;min-width:150px}
+tr.off{opacity:.5}
+.miniform{display:inline;margin:0}
+.usebar{font-size:.8rem;color:var(--muted)}
+</style>
+
+<div class="row-between">
+  <div><h1 style="margin:0">Discount codes</h1><p class="muted small" style="margin:2px 0 0">One code per person. Staff enter the code at checkout to apply that person's tier.</p></div>
+  <a class="btn" href="/admin/pricing">‹ Pricing tiers</a>
+</div>
+
+<h2>Add a code</h2>
+<form class="newform" method="post" action="/admin/discount-codes/new">
+  <div class="inline">
+    <div class="fld"><label>Person's name</label><input name="holder_name" placeholder="e.g. Juan Dela Cruz" required></div>
+    <div class="fld" style="flex:0;min-width:170px"><label>Tier</label>
+      <select name="group_id" required>
+        {% for g in groups %}<option value="{{ g.id }}">{{ g.name }} ({{ g.kind }})</option>{% endfor %}
+      </select></div>
+    <div class="fld" style="flex:0;min-width:150px"><label>Code <span class="muted small">(optional)</span></label><input name="code" id="codein" placeholder="auto-generate" style="text-transform:uppercase"></div>
+    <button class="btn primary" type="submit" style="margin:0">Add code</button>
+  </div>
+  {% if not groups %}<p class="muted small" style="margin-top:8px">Create a pricing tier first over in <a href="/admin/pricing">Pricing tiers</a>.</p>{% endif %}
+</form>
+
+<h2>Codes</h2>
+<table>
+  <tr><th>Type</th><th>Code</th><th>Holder</th><th>Tier</th><th class="r">Used today</th><th>Status</th><th class="no-print"></th></tr>
+  {% for c in codes %}
+  <tr class="{{ '' if c.is_active else 'off' }}">
+    <td><span class="kindtag {{ c.group.kind }}">{{ c.group.kind }}</span></td>
+    <td class="code">{{ c.code }}</td>
+    <td>{{ c.holder_name }}</td>
+    <td>{{ c.group.name }} · {{ '%g'|format(c.group.discount_percent|float) }}% off</td>
+    <td class="r usebar">{% if c.group.daily_item_limit %}{{ usage.get(c.id, 0) }} / {{ c.group.daily_item_limit }}{% else %}—{% endif %}</td>
+    <td>{% if c.is_active %}<span style="color:var(--teal-dark);font-weight:600">Active</span>{% else %}<span class="muted">Inactive</span>{% endif %}</td>
+    <td class="r">
+      <form class="miniform" method="post" action="/admin/discount-codes/{{ c.id }}/toggle"><button class="btn" style="padding:5px 10px;font-size:.8rem">{{ 'Disable' if c.is_active else 'Enable' }}</button></form>
+      <form class="miniform" method="post" action="/admin/discount-codes/{{ c.id }}/delete" onsubmit="return confirm('Delete code {{ c.code }}?')"><button class="btn" style="padding:5px 10px;font-size:.8rem;border-color:#e6a49b;color:#9c2c1e">Delete</button></form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="muted" style="padding:16px">No codes yet — add one above.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

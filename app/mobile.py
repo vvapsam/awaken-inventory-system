@@ -6,6 +6,7 @@ client. Reuses the existing tables and helpers so the desktop admin is unaffecte
 """
 import json
 import os
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -16,7 +17,8 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    Customer, Payment, Product, Sale, SaleItem, StockMovement, can, can_any,
+    Customer, Payment, Product, Sale, SaleItem, StockMovement,
+    PricingGroup, DiscountCode, can, can_any,
 )
 
 router = APIRouter()
@@ -29,6 +31,18 @@ templates.env.globals["can_any"] = can_any
 
 MAX_IMAGE = 4 * 1024 * 1024  # ~4 MB cap on uploads
 LOSS_MEMO_CHIPS = ["Expired", "Damaged", "Spoiled", "Missing", "Staff sample"]
+
+
+def _tz():
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(os.environ.get("APP_TZ", "Asia/Manila"))
+    except Exception:
+        return timezone(timedelta(hours=8))
+
+
+def _today():
+    return datetime.now(_tz()).date()
 
 
 # ---- permission mapping (spec §5) ----
@@ -156,6 +170,38 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "customers": customers,
         "balances": balances,
         "loss_chips": LOSS_MEMO_CHIPS,
+        "has_codes": db.query(DiscountCode).filter(DiscountCode.is_active).first() is not None,
+    }
+
+
+def _code_used_today(db, code_id):
+    start = datetime.combine(_today(), datetime.min.time()).replace(tzinfo=_tz())
+    return int(db.query(func.coalesce(func.sum(Sale.discounted_qty), 0))
+               .filter(Sale.discount_code_id == code_id, Sale.sold_at >= start).scalar() or 0)
+
+
+@router.post("/api/m/discount-code")
+def check_discount_code(request: Request, code: str = Form(...),
+                        db: Session = Depends(get_db)):
+    """Validate a discount code and return its tier so the Sell screen can preview."""
+    staff = current_staff(request, db)
+    if not staff or not can_sell(staff):
+        return _err("Not allowed", 403)
+    c = (db.query(DiscountCode)
+         .filter(func.upper(DiscountCode.code) == (code or "").strip().upper(),
+                 DiscountCode.is_active).first())
+    if not c or not c.group or not c.group.is_active:
+        return _err("Invalid or inactive code", 404)
+    g = c.group
+    limit = g.daily_item_limit
+    used = _code_used_today(db, c.id) if limit else 0
+    return {
+        "ok": True,
+        "code": c.code, "holder": c.holder_name, "kind": g.kind, "tier": g.name,
+        "discount": float(g.discount_percent or 0), "round_up": bool(g.round_up),
+        "product_ids": sorted(g.eligible_ids()),
+        "daily_limit": limit, "used_today": used,
+        "remaining": (max(0, limit - used) if limit else None),
     }
 
 
@@ -222,6 +268,7 @@ async def create_sale(
     items: str = Form(...),
     payment: str = Form(...),
     customer_id: str = Form(None),
+    discount_code: str = Form(None),
     proof: UploadFile = File(None),
     db: Session = Depends(get_db),
 ):
@@ -230,6 +277,19 @@ async def create_sale(
         return _err("Not signed in", 401)
     if not can_sell(staff):
         return _err("You don't have permission to log sales", 403)
+
+    # Discount code → pricing tier (Employee / Affiliate). Server is authoritative.
+    code = group = None
+    remaining = None  # None = unlimited; else remaining discounted units today
+    if discount_code and discount_code.strip():
+        code = (db.query(DiscountCode)
+                .filter(func.upper(DiscountCode.code) == discount_code.strip().upper(),
+                        DiscountCode.is_active).first())
+        if not code or not code.group or not code.group.is_active:
+            return _err("Invalid or inactive discount code")
+        group = code.group
+        if group.daily_item_limit:
+            remaining = max(0, group.daily_item_limit - _code_used_today(db, code.id))
 
     payment = (payment or "").lower().strip()
     if payment not in ("unpaid", "cash", "bank"):
@@ -276,15 +336,38 @@ async def create_sale(
         payment_method=None if is_credit else payment,
         proof=proof_bytes if not is_credit else None,
         proof_mime=proof_mime if not is_credit else None,
+        pricing_group_id=group.id if group else None,
+        discount_code_id=code.id if code else None,
+        note=("%s (%s)" % (group.name, code.holder_name)) if group else None,
     )
     db.add(sale)
     db.flush()
+    discounted_qty = 0
     for p, qty in lines:
-        db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty,
-                        unit_price=p.selling_price, cost_price=p.cost_price))
+        base = round(float(p.selling_price or 0), 2)
+        eligible = group is not None and p.id in group.eligible_ids()
+        # how many of this line's units can still be discounted (respects daily cap)
+        n = 0
+        if eligible:
+            n = qty if remaining is None else min(qty, remaining)
+            if remaining is not None:
+                remaining -= n
+        if eligible and n > 0:
+            disc = group.price_for(p)
+            db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=n,
+                            unit_price=disc, cost_price=p.cost_price))
+            discounted_qty += n
+            if n < qty:  # remainder at full price (cap reached)
+                db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty - n,
+                                unit_price=base, cost_price=p.cost_price))
+        else:
+            db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty,
+                            unit_price=base, cost_price=p.cost_price))
+    sale.discounted_qty = discounted_qty
     db.commit()
     db.refresh(sale)
-    return {"ok": True, "sale_id": sale.id, "total": sale.total}
+    return {"ok": True, "sale_id": sale.id, "total": sale.total,
+            "discounted_qty": discounted_qty}
 
 
 # ---------------------------------------------------------------- stock movement

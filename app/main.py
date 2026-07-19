@@ -25,6 +25,7 @@ from .models import (
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
     Coach, Member, COACH_TYPES, Invoice, InvoiceItem, InvoicePayment,
+    PricingGroup, PricingGroupItem, DiscountCode, PRICING_KINDS,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -84,6 +85,12 @@ def startup():
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR"))
         conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo BYTEA"))
         conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo_mime VARCHAR"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL"))
+        conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'employee'"))
+        conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS round_up BOOLEAN NOT NULL DEFAULT FALSE"))
+        conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_code_id INTEGER REFERENCES discount_codes(id) ON DELETE SET NULL"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0"))
     db = next(get_db())
     try:
         # Backfill usernames for any rows missing one, keeping them unique.
@@ -1839,6 +1846,168 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
     coach.next_billing = _add_month(coach.next_billing or today)
     db.commit()
     return RedirectResponse(f"/invoices/{inv.id}", status_code=303)
+
+
+# ---------- pricing tiers (Employee / Affiliate discounts on selected items) ----------
+def _code_used_today(db, code_id):
+    """Total discounted item-units redeemed by a code so far today (Manila)."""
+    tz = _tz()
+    start = datetime.combine(datetime.now(tz).date(), datetime.min.time()).replace(tzinfo=tz)
+    return int(db.query(func.coalesce(func.sum(Sale.discounted_qty), 0))
+               .filter(Sale.discount_code_id == code_id, Sale.sold_at >= start).scalar() or 0)
+
+
+@app.get("/admin/pricing", response_class=HTMLResponse)
+def pricing_list(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    groups = db.query(PricingGroup).order_by(PricingGroup.kind, PricingGroup.name).all()
+    return render(request, "pricing.html", db, staff, groups=groups, group=None,
+                  products=[], PRICING_KINDS=PRICING_KINDS)
+
+
+@app.post("/admin/pricing/new")
+def pricing_new(request: Request, name: str = Form(...), kind: str = Form("employee"),
+                discount_percent: str = Form("0"), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    try:
+        disc = max(0.0, min(100.0, float(discount_percent or 0)))
+    except ValueError:
+        disc = 0.0
+    kind = kind if kind in ("employee", "affiliate") else "employee"
+    g = PricingGroup(name=name.strip() or "Tier", kind=kind, discount_percent=disc,
+                     round_up=(kind == "employee"),
+                     daily_item_limit=(2 if kind == "employee" else None))
+    db.add(g)
+    db.commit()
+    return RedirectResponse(f"/admin/pricing/{g.id}", status_code=303)
+
+
+@app.get("/admin/pricing/{gid}", response_class=HTMLResponse)
+def pricing_edit(request: Request, gid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    group = db.get(PricingGroup, gid)
+    if not group:
+        return RedirectResponse("/admin/pricing", status_code=303)
+    groups = db.query(PricingGroup).order_by(PricingGroup.kind, PricingGroup.name).all()
+    products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+    return render(request, "pricing.html", db, staff, groups=groups, group=group,
+                  products=products, eligible=group.eligible_ids(), PRICING_KINDS=PRICING_KINDS)
+
+
+@app.post("/admin/pricing/{gid}")
+def pricing_update(request: Request, gid: int, name: str = Form(...),
+                   kind: str = Form("employee"), discount_percent: str = Form("0"),
+                   round_up: str = Form(None), daily_item_limit: str = Form(""),
+                   product_ids: list[str] = Form(default=[]),
+                   is_active: str = Form(None), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    group = db.get(PricingGroup, gid)
+    if group:
+        try:
+            disc = max(0.0, min(100.0, float(discount_percent or 0)))
+        except ValueError:
+            disc = 0.0
+        group.name = name.strip() or group.name
+        group.kind = kind if kind in ("employee", "affiliate") else group.kind
+        group.discount_percent = disc
+        group.round_up = bool(round_up)
+        try:
+            group.daily_item_limit = int(daily_item_limit) if str(daily_item_limit).strip() else None
+        except ValueError:
+            group.daily_item_limit = None
+        group.is_active = bool(is_active)
+        group.items.clear()
+        db.flush()
+        for pid in product_ids:
+            try:
+                group.items.append(PricingGroupItem(product_id=int(pid)))
+            except ValueError:
+                pass
+        db.commit()
+    return RedirectResponse(f"/admin/pricing/{gid}", status_code=303)
+
+
+@app.post("/admin/pricing/{gid}/delete")
+def pricing_delete(request: Request, gid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    g = db.get(PricingGroup, gid)
+    if g:
+        db.query(Sale).filter(Sale.pricing_group_id == gid).update({"pricing_group_id": None})
+        db.flush()
+        db.delete(g)
+        db.commit()
+    return RedirectResponse("/admin/pricing", status_code=303)
+
+
+# ---------- discount codes (per employee / affiliate) ----------
+@app.get("/admin/discount-codes", response_class=HTMLResponse)
+def codes_list(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    codes = (db.query(DiscountCode).order_by(DiscountCode.is_active.desc(),
+             DiscountCode.holder_name).all())
+    groups = db.query(PricingGroup).filter(PricingGroup.is_active).order_by(
+        PricingGroup.kind, PricingGroup.name).all()
+    usage = {c.id: _code_used_today(db, c.id) for c in codes}
+    return render(request, "codes.html", db, staff, codes=codes, groups=groups, usage=usage)
+
+
+@app.post("/admin/discount-codes/new")
+def codes_new(request: Request, holder_name: str = Form(...), group_id: str = Form(...),
+              code: str = Form(""), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    g = db.get(PricingGroup, int(group_id)) if group_id else None
+    if g and holder_name.strip():
+        c = (code or "").strip().upper()
+        if not c:
+            prefix = "EMP" if g.kind == "employee" else "AFF"
+            base = "".join(ch for ch in holder_name.upper() if ch.isalnum())[:4] or "CODE"
+            n = db.query(func.count(DiscountCode.id)).scalar() or 0
+            c = f"{prefix}-{base}{n+1:02d}"
+        # ensure unique
+        if not db.query(DiscountCode).filter(DiscountCode.code == c).first():
+            db.add(DiscountCode(code=c, holder_name=holder_name.strip(), group_id=g.id))
+            db.commit()
+    return RedirectResponse("/admin/discount-codes", status_code=303)
+
+
+@app.post("/admin/discount-codes/{cid}/toggle")
+def codes_toggle(request: Request, cid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    c = db.get(DiscountCode, cid)
+    if c:
+        c.is_active = not c.is_active
+        db.commit()
+    return RedirectResponse("/admin/discount-codes", status_code=303)
+
+
+@app.post("/admin/discount-codes/{cid}/delete")
+def codes_delete(request: Request, cid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    c = db.get(DiscountCode, cid)
+    if c:
+        db.query(Sale).filter(Sale.discount_code_id == cid).update({"discount_code_id": None})
+        db.flush()
+        db.delete(c)
+        db.commit()
+    return RedirectResponse("/admin/discount-codes", status_code=303)
 
 
 @app.get("/healthz")
