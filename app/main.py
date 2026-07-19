@@ -2521,3 +2521,33 @@ def _prod_list(db: Session = Depends(get_db)):
          "on_hand": int(adj.get(p.id, 0) - sold.get(p.id, 0))}
         for p in prods
     ]}
+
+
+@app.get("/admin/__seed_opening_q7fz3k")
+def _seed_opening(db: Session = Depends(get_db)):
+    # TEMPORARY one-off: opening inventory balances as of 2026-07-19 00:00 Manila.
+    # Idempotent: skips a product if its opening-balance restock already exists.
+    OPENING = [(1, 24), (4, 46), (6, 46)]  # (product_id, qty): Pocari, Sip Water, Sip Pink
+    NOTE = "Opening balance (Jul 19)"
+    when = "2026-07-19 00:00:00+08"
+    created = []
+    for pid, qty in OPENING:
+        p = db.get(Product, pid)
+        if not p:
+            created.append({"product_id": pid, "status": "product not found"}); continue
+        exists = db.execute(text(
+            "SELECT count(*) FROM transactions t JOIN transaction_items i ON i.transaction_id=t.id "
+            "WHERE t.type='inventory_adjustment' AND t.note=:n AND i.product_id=:p"
+        ), {"n": NOTE, "p": pid}).scalar()
+        if exists:
+            created.append({"product_id": pid, "name": p.name, "status": "already exists, skipped"}); continue
+        tx = Transaction(type=TX_INVENTORY, subtype="restock", status="done",
+                         occurred_at=datetime.fromisoformat(when), note=NOTE)
+        db.add(tx); db.flush()
+        db.add(TransactionItem(transaction_id=tx.id, product_id=pid, name=p.name,
+                               qty=abs(qty), unit_price=p.cost_price))
+        db.commit()
+        created.append({"product_id": pid, "name": p.name, "qty": qty, "status": "created"})
+    adj = _adjust_qty_map(db); sold = _sold_qty_map(db)
+    on_hand = {pid: int(adj.get(pid, 0) - sold.get(pid, 0)) for pid, _ in OPENING}
+    return {"as_of_manila": when, "results": created, "on_hand_now": on_hand}
