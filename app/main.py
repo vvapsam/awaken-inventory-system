@@ -2501,29 +2501,3 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
-
-
-@app.get("/diag/tables")
-@app.get("/diag/tables2")
-def diag_tables(db: Session = Depends(get_db)):
-    # TEMPORARY: verify entity+stock merge landed on production. Read-only.
-    from sqlalchemy import func
-    legacy = ["staff", "customers", "members", "stock_movements",
-              "sales", "orders", "invoices", "payments"]
-    present = {t: (db.execute(text("SELECT to_regclass(:n)"),
-                              {"n": "public." + t}).scalar() is not None)
-               for t in legacy}
-    by_type = dict(db.query(Staff.person_type, func.count(Staff.id))
-                   .group_by(Staff.person_type).all())
-    by_txtype = dict(db.query(Transaction.type, func.count(Transaction.id))
-                     .group_by(Transaction.type).all())
-    by_subtype = dict(db.query(Transaction.subtype, func.count(Transaction.id))
-                      .filter(Transaction.type == TX_INVENTORY)
-                      .group_by(Transaction.subtype).all())
-    return {
-        "legacy_tables_present": present,
-        "entity_count": db.query(func.count(Staff.id)).scalar(),
-        "entity_by_person_type": {str(k): v for k, v in by_type.items()},
-        "transactions_by_type": {str(k): v for k, v in by_txtype.items()},
-        "inventory_adjustment_by_subtype": {str(k): v for k, v in by_subtype.items()},
-    }
