@@ -13,7 +13,7 @@
   </div>
 </div>
 
-<table>
+<table class="dt">
   <tr><th>Customer</th><th>Charged</th><th>Paid</th><th>Balance</th><th></th></tr>
   {% for r in rows %}
   <tr class="{% if r.balance > 0.005 %}low{% endif %}">

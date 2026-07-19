@@ -4,18 +4,26 @@
   <h1>Items</h1>
   {% if can(staff, 'items.create') %}<a class="btn primary" href="/admin/products/new">＋ New item</a>{% endif %}
 </div>
-<table>
+{% set ed = can(staff, 'items.edit') %}
+<table class="dt">
   <tr><th>SKU</th><th>Name</th><th>Supplier</th><th>Category</th><th>Price</th>
     {% if can(staff, 'view_costs') %}<th>Cost</th>{% endif %}<th>Reorder</th><th>Status</th><th></th></tr>
   {% for p in products %}
   <tr class="{% if not p.is_active %}inactive{% endif %}">
     <td class="mono">{{ p.sku }}</td>
-    <td>{{ p.name }}</td>
-    <td>{{ p.supplier or '—' }}</td>
+    {% if ed %}<td class="ed" data-url="/admin/products/{{ p.id }}/field" data-field="name" data-val="{{ p.name }}">{{ p.name }}<span class="edp">✎</span></td>
+    {% else %}<td>{{ p.name }}</td>{% endif %}
+    {% if ed %}<td class="ed" data-url="/admin/products/{{ p.id }}/field" data-field="supplier" data-val="{{ p.supplier or '' }}">{{ p.supplier or '—' }}<span class="edp">✎</span></td>
+    {% else %}<td>{{ p.supplier or '—' }}</td>{% endif %}
     <td>{{ p.category or '—' }}</td>
-    <td>{{ peso(p.selling_price) }}</td>
-    {% if can(staff, 'view_costs') %}<td>{{ peso(p.cost_price) }}</td>{% endif %}
-    <td>{{ p.reorder_point }}</td>
+    {% if ed %}<td class="ed" data-kind="money" data-url="/admin/products/{{ p.id }}/field" data-field="selling_price" data-val="{{ '%.2f'|format(p.selling_price) }}">{{ peso(p.selling_price) }}<span class="edp">✎</span></td>
+    {% else %}<td>{{ peso(p.selling_price) }}</td>{% endif %}
+    {% if can(staff, 'view_costs') %}
+      {% if ed %}<td class="ed" data-kind="money" data-url="/admin/products/{{ p.id }}/field" data-field="cost_price" data-val="{{ '%.2f'|format(p.cost_price) if p.cost_price is not none else '' }}">{{ peso(p.cost_price) if p.cost_price is not none else '—' }}<span class="edp">✎</span></td>
+      {% else %}<td>{{ peso(p.cost_price) }}</td>{% endif %}
+    {% endif %}
+    {% if ed %}<td class="ed" data-kind="int" data-url="/admin/products/{{ p.id }}/field" data-field="reorder_point" data-val="{{ p.reorder_point }}">{{ p.reorder_point }}<span class="edp">✎</span></td>
+    {% else %}<td>{{ p.reorder_point }}</td>{% endif %}
     <td>{{ 'active' if p.is_active else 'inactive' }}</td>
     <td class="actions-cell">
       {% if can(staff, 'items.edit') %}<a href="/admin/products/{{ p.id }}/edit">Edit</a>{% endif %}

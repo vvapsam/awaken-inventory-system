@@ -39,6 +39,24 @@
     .settings-dd a.active{background:var(--teal-tint);color:var(--teal-dark)}
     .settings-dd a svg{width:18px;height:18px;color:var(--muted);flex:none;margin-top:2px}
     .settings-dd a:hover svg,.settings-dd a.active svg{color:var(--teal-dark)}
+    /* ---- Table tools: search + sortable headers + inline edit ---- */
+    .dt-tools{display:flex;justify-content:flex-end;margin:8px 0 6px}
+    .dt-search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:22px;
+      padding:8px 14px;background:#fff;min-width:230px;max-width:340px}
+    .dt-search svg{width:15px;height:15px;color:var(--muted);flex:none}
+    .dt-search input{border:0;outline:0;width:100%;font-size:.88rem;background:none;padding:0;color:var(--ink)}
+    table.dt th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+    table.dt th.sortable:hover{color:var(--ink)}
+    table.dt th .arr{opacity:.3;margin-left:6px;font-size:.82em}
+    table.dt th.asc .arr,table.dt th.desc .arr{opacity:.85;color:var(--teal-dark)}
+    tr.dt-none td{padding:16px;color:var(--muted);text-align:center}
+    td.ed{cursor:text}
+    td.ed:hover{background:var(--teal-tint)}
+    td.ed .edp{opacity:0;margin-left:6px;font-size:.85em;color:var(--muted)}
+    td.ed:hover .edp{opacity:.6}
+    td.ed input{width:100%;font-size:.9rem;padding:5px 7px;border:1px solid var(--teal);border-radius:5px;outline:none;font-family:inherit}
+    @keyframes edflash{0%{background:#d3f1eb}100%{background:transparent}}
+    td.ed.saved{animation:edflash 1.1s ease}
   </style>
 </head>
 <body>
@@ -60,12 +78,10 @@
 {%- endmacro %}
 <div class="app" id="app">
   <aside class="sidebar">
-    {% if can(staff, 'sales.create') %}
-    <a href="/sales" class="side-create" title="New sale">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      <span class="nav-label">New</span>
+    <a href="/dashboard" class="brand" title="AWAKEN Fitness Center">
+      <img src="/order-logo" alt="AWAKEN" class="brand-logo"
+           onerror="this.onerror=null;this.src='/static/brandmark.svg'">
     </a>
-    {% endif %}
     <nav class="side-nav">
       {% set q = request.url.query or '' %}
       {% set is_affiliate = 'type=affiliate' in q %}
@@ -150,9 +166,6 @@
       <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
       </button>
-      <a href="/dashboard" class="logobox" title="AWAKEN Fitness Center">
-        <svg class="logo" viewBox="0 0 200 200" fill="currentColor" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
-      </a>
       <span class="page-title">{{ ns.title }}</span>
       <span class="top-spacer"></span>
       {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}
@@ -246,6 +259,91 @@
   btn.addEventListener('click', function(e){ e.stopPropagation(); sm.classList.toggle('open'); });
   document.addEventListener('click', function(e){ if(!sm.contains(e.target)) sm.classList.remove('open'); });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') sm.classList.remove('open'); });
+})();
+
+/* Table enhancements: per-table search box + click-to-sort column headers.
+   Opt-in via <table class="dt">. Header = the table's first row (th cells). */
+(function(){
+  var num = function(s){ return parseFloat(String(s).replace(/[^0-9.\-]/g,'')); };
+  function rowsOf(tbl, head){
+    return Array.prototype.filter.call(tbl.rows, function(r){
+      return r!==head && !r.classList.contains('dt-none') && !r.classList.contains('gtot')
+        && r.cells.length && r.querySelector('td');
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('table.dt'), function(tbl){
+    var head = tbl.querySelector('tr'); if(!head) return;
+    var ths = Array.prototype.slice.call(head.cells);
+    // search box
+    var tools=document.createElement('div'); tools.className='dt-tools';
+    tools.innerHTML='<label class="dt-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input type="search" placeholder="Search this table…" aria-label="Search table"></label>';
+    tbl.parentNode.insertBefore(tools, tbl);
+    var inp=tools.querySelector('input');
+    inp.addEventListener('input', function(){
+      var q=inp.value.trim().toLowerCase(), any=false;
+      rowsOf(tbl, head).forEach(function(r){
+        var show = !q || r.textContent.toLowerCase().indexOf(q)>=0;
+        r.style.display = show ? '' : 'none'; if(show) any=true;
+      });
+    });
+    // sortable headers
+    ths.forEach(function(th, idx){
+      if(!th.textContent.trim() || th.classList.contains('nosort')) return;
+      th.classList.add('sortable');
+      var arr=document.createElement('span'); arr.className='arr'; arr.textContent='⇅'; th.appendChild(arr);
+      th.addEventListener('click', function(){
+        var asc=!th.classList.contains('asc');
+        ths.forEach(function(o){ o.classList.remove('asc','desc'); var a=o.querySelector('.arr'); if(a) a.textContent='⇅'; });
+        th.classList.add(asc?'asc':'desc'); arr.textContent=asc?'↑':'↓';
+        var rows=rowsOf(tbl, head);
+        var allNum = rows.length>0 && rows.every(function(r){ var c=r.cells[idx]; return c && c.textContent.trim()!=='' && !isNaN(num(c.textContent)); });
+        rows.sort(function(a,b){
+          var ca=a.cells[idx]?a.cells[idx].textContent.trim():'', cb=b.cells[idx]?b.cells[idx].textContent.trim():'';
+          if(allNum){ return (num(ca)||0)-(num(cb)||0); }
+          return ca.localeCompare(cb, undefined, {numeric:true, sensitivity:'base'});
+        });
+        if(!asc) rows.reverse();
+        var parent=rows.length?rows[0].parentNode:tbl;
+        rows.forEach(function(r){ parent.appendChild(r); });
+      });
+    });
+  });
+})();
+
+/* Inline edit: click a <td class="ed" data-url data-field [data-kind]> to edit,
+   Enter/blur saves via POST JSON, Escape cancels. */
+(function(){
+  Array.prototype.forEach.call(document.querySelectorAll('td.ed'), function(td){
+    td.addEventListener('click', function(){
+      if(td.querySelector('input')) return;
+      var kind=td.getAttribute('data-kind')||'text';
+      var cur=td.hasAttribute('data-val') ? td.getAttribute('data-val') : td.textContent.trim();
+      var input=document.createElement('input'); input.value=cur;
+      if(kind==='money'){ input.type='number'; input.step='0.01'; input.min='0'; }
+      else if(kind==='int'){ input.type='number'; input.step='1'; input.min='0'; }
+      td.textContent=''; td.appendChild(input); input.focus(); input.select();
+      var done=false;
+      function save(){
+        if(done) return; done=true;
+        var val=input.value;
+        fetch(td.getAttribute('data-url'), {method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({field:td.getAttribute('data-field'), value:val})})
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            td.innerHTML='';
+            if(d && d.ok){ if(d.raw!==undefined) td.setAttribute('data-val', d.raw); td.appendChild(document.createTextNode(d.display));
+              var pen=document.createElement('span'); pen.className='edp'; pen.textContent='✎'; td.appendChild(pen);
+              td.classList.add('saved'); setTimeout(function(){ td.classList.remove('saved'); },1100); }
+            else { td.appendChild(document.createTextNode(cur)); alert((d&&d.error)||'Could not save'); }
+          }).catch(function(){ td.innerHTML=''; td.appendChild(document.createTextNode(cur)); });
+      }
+      input.addEventListener('keydown', function(e){
+        if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+        else if(e.key==='Escape'){ done=true; td.innerHTML=''; td.appendChild(document.createTextNode(cur)); }
+      });
+      input.addEventListener('blur', save);
+    });
+  });
 })();
 </script>
 {% else %}

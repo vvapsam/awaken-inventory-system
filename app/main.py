@@ -913,6 +913,43 @@ def product_update(request: Request, pid: int, name: str = Form(...),
     return RedirectResponse("/admin/products", status_code=303)
 
 
+@app.post("/admin/products/{pid}/field")
+async def product_set_field(request: Request, pid: int, db: Session = Depends(get_db)):
+    """Inline single-field update from the Items table. Allowlisted fields only."""
+    staff, redir = require(request, db, perm="items.edit")
+    if redir:
+        return JSONResponse({"ok": False, "error": "Not allowed"}, status_code=403)
+    data = await request.json()
+    field = data.get("field")
+    value = data.get("value")
+    sval = "" if value is None else str(value).strip()
+    p = db.get(Product, pid)
+    if not p:
+        return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+    peso = lambda v: "₱{:,.2f}".format(float(v or 0))
+    try:
+        if field == "name":
+            if not sval:
+                return JSONResponse({"ok": False, "error": "Name is required"}, status_code=400)
+            p.name = sval; disp = p.name; raw = p.name
+        elif field == "supplier":
+            p.supplier = sval or None; disp = p.supplier or "—"; raw = p.supplier or ""
+        elif field == "selling_price":
+            p.selling_price = float(sval); disp = peso(p.selling_price); raw = "{:.2f}".format(p.selling_price)
+        elif field == "cost_price":
+            p.cost_price = float(sval) if sval else None
+            disp = peso(p.cost_price) if p.cost_price is not None else "—"
+            raw = "" if p.cost_price is None else "{:.2f}".format(p.cost_price)
+        elif field == "reorder_point":
+            p.reorder_point = int(float(sval or 0)); disp = str(p.reorder_point); raw = str(p.reorder_point)
+        else:
+            return JSONResponse({"ok": False, "error": "Field not editable"}, status_code=400)
+    except (ValueError, TypeError):
+        return JSONResponse({"ok": False, "error": "Invalid value"}, status_code=400)
+    db.commit()
+    return {"ok": True, "display": disp, "raw": raw}
+
+
 @app.post("/admin/products/{pid}/delete")
 def product_delete(request: Request, pid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="items.delete")

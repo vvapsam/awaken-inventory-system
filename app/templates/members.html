@@ -9,7 +9,7 @@
 </div>
 
 <div class="row-between"><h2 style="margin:0">Members (corkage rates)</h2><a class="btn primary" href="/coaches/members/new">＋ New member</a></div>
-<table>
+<table class="dt">
   <tr><th>Member</th><th>Coach</th><th class="r">Corkage / mo</th><th>Start date</th><th>Status</th><th></th></tr>
   {% for m in members %}
   <tr class="{% if not m.is_active %}inactive{% endif %}">

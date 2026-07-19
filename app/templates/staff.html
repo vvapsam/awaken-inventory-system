@@ -41,7 +41,7 @@
 </div>
 {% endif %}
 
-<table>
+<table class="dt">
   <tr><th>Name</th><th>Type</th><th>Discount code</th><th>Access</th><th>Role</th><th>Status</th><th></th></tr>
   {% for p in people %}
   <tr class="{% if not p.is_active %}inactive{% endif %}">

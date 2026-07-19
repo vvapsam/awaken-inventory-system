@@ -13,7 +13,7 @@
 </div>
 
 <div class="row-between"><h2 style="margin:0">Invoices</h2>{% if can_edit %}<a class="btn primary" href="/invoices/new">＋ New invoice</a>{% endif %}</div>
-<table>
+<table class="dt">
   <tr><th>Invoice #</th><th>Date</th><th>Bill to</th><th>Due</th><th class="r">Amount</th><th class="r">Balance</th><th>Status</th><th></th></tr>
   {% for i in invoices %}
   <tr>
