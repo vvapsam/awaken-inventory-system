@@ -60,12 +60,10 @@
 {%- endmacro %}
 <div class="app" id="app">
   <aside class="sidebar">
-    {% if can(staff, 'sales.create') %}
-    <a href="/sales" class="side-create" title="New sale">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      <span class="nav-label">New</span>
+    <a href="/dashboard" class="brand" title="AWAKEN Fitness Center">
+      <img src="/order-logo" alt="AWAKEN" class="brand-logo"
+           onerror="this.onerror=null;this.src='/static/brandmark.svg'">
     </a>
-    {% endif %}
     <nav class="side-nav">
       {% set q = request.url.query or '' %}
       {% set is_affiliate = 'type=affiliate' in q %}
@@ -150,9 +148,6 @@
       <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
       </button>
-      <a href="/dashboard" class="logobox" title="AWAKEN Fitness Center">
-        <svg class="logo" viewBox="0 0 200 200" fill="currentColor" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
-      </a>
       <span class="page-title">{{ ns.title }}</span>
       <span class="top-spacer"></span>
       {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}
