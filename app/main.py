@@ -27,8 +27,8 @@ from .models import (
     Member, Invoice, InvoiceItem, InvoicePayment, Order, OrderItem,
     PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
     ENTITY_TYPES, DISCOUNT_TYPES, Role,
-    Transaction, TransactionItem, TransactionPayment,
-    TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE,
+    Transaction, TransactionItem,
+    TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE, TX_PAYMENT,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -119,6 +119,7 @@ def startup():
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
         conn.execute(text("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
+        conn.execute(text("ALTER TABLE payments ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
     db = next(get_db())
     try:
         # Backfill usernames only for people WITH system access who are missing one.
@@ -308,11 +309,36 @@ def _migrate_transactions(db):
         for it in inv.items:
             db.add(TransactionItem(transaction_id=tx.id, product_id=None,
                                    name=it.description, qty=it.qty, unit_price=it.rate))
+        # invoice partial payments -> payment transactions applied to this invoice
         for pm in inv.ipayments:
-            db.add(TransactionPayment(transaction_id=tx.id, amount=pm.amount,
-                                      method=pm.method, note=pm.note,
-                                      paid_at=pm.paid_at, staff_id=pm.staff_id))
+            pay = Transaction(
+                type=TX_PAYMENT, parent_id=tx.id, occurred_at=pm.paid_at,
+                created_at=pm.paid_at, staff_id=pm.staff_id, customer_id=inv.customer_id,
+                customer_name=inv.bill_to_name, payment_method=pm.method, note=pm.note,
+                status="paid")
+            db.add(pay); db.flush()
+            db.add(TransactionItem(transaction_id=pay.id, name="Invoice payment",
+                                   qty=1, unit_price=pm.amount))
         inv.tx_id = tx.id
+    db.commit()
+
+    # 4) customer balance payments -> standalone payment transactions
+    if _has("payments"):
+        cust_pays = db.execute(text(
+            "SELECT id, customer_id, amount, note, method, screenshot, screenshot_mime, "
+            "paid_at, staff_id FROM payments WHERE tx_id IS NULL")).fetchall()
+    else:
+        cust_pays = []
+    for pid, customer_id, amount, note, method, shot, shot_mime, paid_at, staff_id in cust_pays:
+        pay = Transaction(
+            type=TX_PAYMENT, occurred_at=paid_at, created_at=paid_at,
+            staff_id=staff_id, customer_id=customer_id, payment_method=method,
+            proof=shot, proof_mime=shot_mime, note=note, status="paid")
+        db.add(pay); db.flush()
+        db.add(TransactionItem(transaction_id=pay.id, name="Payment received",
+                               qty=1, unit_price=amount))
+        db.execute(text("UPDATE payments SET tx_id = :t WHERE id = :p"),
+                   {"t": pay.id, "p": pid})
     db.commit()
 
 

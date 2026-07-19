@@ -4,7 +4,7 @@ from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
     LargeBinary, Numeric, String, Text,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from .db import Base
 
 
@@ -355,13 +355,16 @@ class OrderItem(Base):
 #   cash_sale  – an instant retail sale (paid, or is_credit=unpaid)
 #   order      – a customer self-checkout order awaiting staff confirmation
 #   invoice    – a billing document (affiliate corkage / customer / other)
+#   payment    – money received (against an invoice, or a customer balance)
 TX_CASH_SALE = "cash_sale"
 TX_ORDER = "order"
 TX_INVOICE = "invoice"
+TX_PAYMENT = "payment"
 TRANSACTION_TYPES = [
     (TX_CASH_SALE, "Cash sale"),
     (TX_ORDER, "Order"),
     (TX_INVOICE, "Invoice"),
+    (TX_PAYMENT, "Payment"),
 ]
 
 
@@ -401,6 +404,9 @@ class Transaction(Base):
     check_note = Column(Text)
     converted_id = Column(Integer, ForeignKey("transactions.id", ondelete="SET NULL"))
 
+    # a payment applies to its parent transaction (e.g. an invoice); null = standalone
+    parent_id = Column(Integer, ForeignKey("transactions.id", ondelete="SET NULL"))
+
     # invoice fields
     bill_to_type = Column(String)                              # coach | customer | other
     coach_id = Column(Integer, ForeignKey("staff.id"))
@@ -415,8 +421,9 @@ class Transaction(Base):
     customer = relationship("Customer")
     items = relationship("TransactionItem", back_populates="transaction",
                          cascade="all, delete-orphan")
-    payments = relationship("TransactionPayment", cascade="all, delete-orphan",
-                            backref="transaction")
+    # payments (and any child transactions) that apply to this one
+    children = relationship("Transaction", foreign_keys=[parent_id],
+                            backref=backref("parent", remote_side=[id]))
 
     @property
     def total(self):
@@ -424,7 +431,8 @@ class Transaction(Base):
 
     @property
     def paid(self):
-        return sum(float(p.amount or 0) for p in self.payments)
+        return sum(c.total for c in self.children
+                   if c.type == TX_PAYMENT and not c.is_void)
 
     @property
     def balance(self):
@@ -457,17 +465,6 @@ class TransactionItem(Base):
     @property
     def amount(self):
         return float(self.qty or 0) * float(self.unit_price or 0)
-
-
-class TransactionPayment(Base):
-    __tablename__ = "transaction_payments"
-    id = Column(Integer, primary_key=True)
-    transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
-    amount = Column(Numeric(10, 2), nullable=False)
-    method = Column(String)
-    note = Column(Text)
-    paid_at = Column(DateTime(timezone=True), default=now_utc)
-    staff_id = Column(Integer, ForeignKey("staff.id"))
 
 
 class PaymentSetting(Base):
@@ -532,6 +529,7 @@ class PricingGroupItem(Base):
 class Payment(Base):
     __tablename__ = "payments"
     id = Column(Integer, primary_key=True)
+    tx_id = Column(Integer)          # migration marker -> transactions.id
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
     note = Column(Text)
