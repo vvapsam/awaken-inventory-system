@@ -82,6 +82,8 @@ def startup():
         conn.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone VARCHAR"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof BYTEA"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR"))
+        conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo BYTEA"))
+        conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo_mime VARCHAR"))
     db = next(get_db())
     try:
         # Backfill usernames for any rows missing one, keeping them unique.

@@ -311,13 +311,15 @@ class OrderItem(Base):
 
 
 class PaymentSetting(Base):
-    """Singleton (id=1): bank details + payment QR shown on the customer page."""
+    """Singleton (id=1): bank details + payment QR + logo shown on the customer page."""
     __tablename__ = "payment_settings"
     id = Column(Integer, primary_key=True)
     bank_name = Column(String)
     account_name = Column(String)
     qr = Column(LargeBinary)
     qr_mime = Column(String)
+    logo = Column(LargeBinary)                 # storefront logo (customer /order header)
+    logo_mime = Column(String)
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
 

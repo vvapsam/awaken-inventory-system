@@ -4,7 +4,7 @@
 <meta name="theme-color" content="#0F0F0F">
 <title>AWAKEN — Order &amp; Pay</title>
 <link rel="icon" href="/static/logo.svg">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#0F0F0F;--green:#18BE7C;--green-d:#12a56b;--tint:#e8f8f1;--paper:#F5F6F6;--line:#E7E8EA;--muted:#868b93;--owed:#e2683f;--blue-t:#eaf1f8}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
@@ -18,6 +18,10 @@ input{font-family:inherit;font-size:16px}
 .top{display:flex;align-items:center;gap:10px;padding:6px 2px 14px}
 .brand{display:flex;align-items:center;gap:8px;font-family:Poppins;font-weight:700;letter-spacing:.14em;font-size:.95rem}
 .brand svg{width:22px;height:22px}
+.brandhead{display:flex;flex-direction:column;align-items:center;text-align:center;padding:18px 0 2px}
+.brandhead .mark{width:40px;height:40px;color:var(--ink)}
+.brandhead .brand-logo{max-height:60px;max-width:200px;object-fit:contain}
+.hero.center{text-align:center;margin-top:14px}
 .back{margin-right:2px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 13px 8px 10px;font-weight:600;font-size:.86rem;display:inline-flex;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(15,15,15,.06)}
 .hero{margin:2px 2px 14px}.hero h1{font-size:1.4rem}.hero p{color:var(--muted);font-size:.9rem;margin-top:3px}
 .section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted);margin:4px 2px 10px}
@@ -76,15 +80,18 @@ input{font-family:inherit;font-size:16px}
 <body>
 
 <section id="s-store" class="screen active">
-  <div class="top"><span class="brand"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>AWAKEN</span></div>
-  <div class="hero"><h1>Order &amp; Pay</h1><p>Welcome to AWAKEN Fitness Center — tap what you'd like.</p></div>
+  <div class="brandhead">
+    <img id="brand-logo" class="brand-logo hide" alt="AWAKEN">
+    <svg id="brand-mark" class="mark" viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg>
+  </div>
+  <div class="hero center"><h1>Order &amp; Pay</h1><p>Tap what you'd like — pay by cash or bank transfer.</p></div>
   <div class="section-label">Menu</div>
   <div class="pgrid" id="store-grid"><div class="loader">Loading…</div></div>
   <div class="cartbar"><button class="cta" id="to-review" disabled><span id="cta1-l">Add items</span><span class="amt" id="cta1-amt"></span></button></div>
 </section>
 
 <section id="s-review" class="screen">
-  <div class="top"><button class="back" data-go="store">‹ Menu</button><span class="brand" style="margin-left:auto"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>AWAKEN</span></div>
+  <div class="top"><button class="back" data-go="store">‹ Menu</button><span class="brand" style="margin-left:auto"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg></span></div>
   <div class="hero"><h1>Your order</h1></div>
   <div class="card" id="review-lines"></div>
   <div class="tot"><span>Total</span><span id="review-total">₱0.00</span></div>
@@ -96,7 +103,7 @@ input{font-family:inherit;font-size:16px}
 </section>
 
 <section id="s-pay" class="screen">
-  <div class="top"><button class="back" data-go="review">‹ Back</button><span class="brand" style="margin-left:auto"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/><path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>AWAKEN</span></div>
+  <div class="top"><button class="back" data-go="review">‹ Back</button><span class="brand" style="margin-left:auto"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg></span></div>
   <div class="hero"><h1>How would you like to pay?</h1><p id="pay-total-line">Total due ₱0.00</p></div>
   <div class="seg" id="pay-seg"><button data-m="cash">💵 Cash</button><button data-m="bank">🏦 Bank transfer</button></div>
 
@@ -143,6 +150,8 @@ function total(){return Object.entries(cart).reduce((s,[id,q])=>s+PRODUCTS.find(
 async function boot(){
   const r=await fetch('/api/order/bootstrap');const d=await r.json();
   PRODUCTS=d.products||[];PAY=d.pay||{};
+  // storefront logo (uploaded in admin) — falls back to the AWAKEN mark placeholder
+  if(d.has_logo){$('#brand-logo').src='/order-logo?ts='+Date.now();$('#brand-logo').classList.remove('hide');$('#brand-mark').classList.add('hide');}
   const g=$('#store-grid');g.innerHTML='';
   if(!PRODUCTS.length){g.innerHTML='<div class="loader">No items available right now.</div>';return;}
   PRODUCTS.forEach(p=>{const t=document.createElement('button');t.className='ptile';t.dataset.pid=p.id;

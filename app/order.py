@@ -227,7 +227,17 @@ def order_bootstrap(db: Session = Depends(get_db)):
         "products": products,
         "pay": {"bank_name": ps.bank_name or "", "account_name": ps.account_name or "",
                 "has_qr": bool(ps.qr)},
+        "has_logo": bool(ps.logo),
     }
+
+
+@router.get("/order-logo")
+def order_logo(db: Session = Depends(get_db)):
+    ps = db.get(PaymentSetting, 1)
+    if not ps or not ps.logo:
+        return Response(status_code=404)
+    return Response(content=ps.logo, media_type=ps.logo_mime or "image/png",
+                    headers={"Cache-Control": "no-store"})
 
 
 @router.get("/order-qr")
@@ -434,6 +444,7 @@ async def order_settings_save(
     bank_name: str = Form(""),
     account_name: str = Form(""),
     qr: UploadFile = File(None),
+    logo: UploadFile = File(None),
     db: Session = Depends(get_db),
 ):
     staff = current_staff(request, db)
@@ -445,6 +456,11 @@ async def order_settings_save(
     if qr is not None and getattr(qr, "filename", ""):
         try:
             ps.qr, ps.qr_mime = _read_image(qr)
+        except ValueError:
+            pass
+    if logo is not None and getattr(logo, "filename", ""):
+        try:
+            ps.logo, ps.logo_mime = _read_image(logo)
         except ValueError:
             pass
     db.commit()

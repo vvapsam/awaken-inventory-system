@@ -10,7 +10,19 @@
 <p class="muted small">These appear on the customer self-checkout page when they choose <b>Bank transfer</b>. The public order link is <a href="/order" target="_blank">/order</a>.</p>
 
 <form class="oset" method="post" action="/admin/order-settings" enctype="multipart/form-data">
-  <label>Bank name</label>
+  <label>Storefront logo</label>
+  <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+    <div>
+      {% if ps.logo %}<img class="qrprev" style="border:1px solid var(--line);background:#fff" src="/order-logo?ts={{ ps.updated_at }}" alt="current logo">
+      {% else %}<div class="noqr">No logo yet — the AWAKEN mark is shown by default</div>{% endif %}
+    </div>
+    <div style="flex:1;min-width:220px">
+      <input type="file" name="logo" accept="image/*">
+      <p class="muted small" style="margin-top:8px">Appears at the top of the customer order page (<a href="/order" target="_blank">/order</a>). PNG with a transparent background looks best. Leave empty to keep the current one.</p>
+    </div>
+  </div>
+
+  <label style="margin-top:18px">Bank name</label>
   <input name="bank_name" value="{{ ps.bank_name or '' }}" placeholder="e.g. BPI">
   <label>Account name</label>
   <input name="account_name" value="{{ ps.account_name or '' }}" placeholder="e.g. AWAKEN Fitness Center">
