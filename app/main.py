@@ -2544,3 +2544,11 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.get("/admin/__cust_list_q7fz3k")
+def _cust_list(db: Session = Depends(get_db)):
+    # TEMPORARY read-only: existing customers, for CSV dedup/merge.
+    people = (db.query(Staff).filter(Staff.person_type == "customer")
+              .order_by(Staff.name).all())
+    return {"customers": [{"id": p.id, "name": p.name, "phone": p.phone or ""} for p in people]}
