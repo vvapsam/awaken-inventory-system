@@ -18,6 +18,7 @@ input{font-family:inherit;font-size:16px}
 .top{display:flex;align-items:center;gap:10px;padding:6px 2px 14px}
 .brand{display:flex;align-items:center;gap:8px;font-family:Poppins;font-weight:700;letter-spacing:.14em;font-size:.95rem}
 .brand svg{width:22px;height:22px}
+.brand .mini-logo{max-height:28px;max-width:140px;object-fit:contain}
 .brandhead{display:flex;flex-direction:column;align-items:center;text-align:center;padding:18px 0 2px}
 .brandhead .mark{width:40px;height:40px;color:var(--ink)}
 .brandhead .brand-logo{max-height:60px;max-width:200px;object-fit:contain}
@@ -91,7 +92,7 @@ input{font-family:inherit;font-size:16px}
 </section>
 
 <section id="s-review" class="screen">
-  <div class="top"><button class="back" data-go="store">‹ Menu</button><span class="brand" style="margin-left:auto"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg></span></div>
+  <div class="top"><button class="back" data-go="store">‹ Menu</button><span class="brand" style="margin-left:auto"><img class="mini-logo hide" alt=""><svg class="mini-mark" viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg></span></div>
   <div class="hero"><h1>Your order</h1></div>
   <div class="card" id="review-lines"></div>
   <div class="tot"><span>Total</span><span id="review-total">₱0.00</span></div>
@@ -103,7 +104,7 @@ input{font-family:inherit;font-size:16px}
 </section>
 
 <section id="s-pay" class="screen">
-  <div class="top"><button class="back" data-go="review">‹ Back</button><span class="brand" style="margin-left:auto"><svg viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg></span></div>
+  <div class="top"><button class="back" data-go="review">‹ Back</button><span class="brand" style="margin-left:auto"><img class="mini-logo hide" alt=""><svg class="mini-mark" viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg></span></div>
   <div class="hero"><h1>How would you like to pay?</h1><p id="pay-total-line">Total due ₱0.00</p></div>
   <div class="seg" id="pay-seg"><button data-m="cash">💵 Cash</button><button data-m="bank">🏦 Bank transfer</button></div>
 
@@ -128,6 +129,7 @@ input{font-family:inherit;font-size:16px}
 </section>
 
 <section id="s-done" class="screen">
+  <div class="top" style="justify-content:center"><span class="brand"><img class="mini-logo hide" alt=""><svg class="mini-mark" viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg></span></div>
   <div class="conf">
     <div class="cico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
     <h2>Order placed!</h2>
@@ -150,8 +152,12 @@ function total(){return Object.entries(cart).reduce((s,[id,q])=>s+PRODUCTS.find(
 async function boot(){
   const r=await fetch('/api/order/bootstrap');const d=await r.json();
   PRODUCTS=d.products||[];PAY=d.pay||{};
-  // storefront logo (uploaded in admin) — falls back to the AWAKEN mark placeholder
-  if(d.has_logo){$('#brand-logo').src='/order-logo?ts='+Date.now();$('#brand-logo').classList.remove('hide');$('#brand-mark').classList.add('hide');}
+  // storefront logo (uploaded in admin) — falls back to the AWAKEN mark placeholder,
+  // reflected on every screen (landing header + the small icon on all pages)
+  if(d.has_logo){const src='/order-logo?ts='+Date.now();
+    $('#brand-logo').src=src;$('#brand-logo').classList.remove('hide');$('#brand-mark').classList.add('hide');
+    $$('.mini-logo').forEach(i=>{i.src=src;i.classList.remove('hide');});
+    $$('.mini-mark').forEach(m=>m.classList.add('hide'));}
   const g=$('#store-grid');g.innerHTML='';
   if(!PRODUCTS.length){g.innerHTML='<div class="loader">No items available right now.</div>';return;}
   PRODUCTS.forEach(p=>{const t=document.createElement('button');t.className='ptile';t.dataset.pid=p.id;
