@@ -4,8 +4,8 @@
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 <form method="post" action="/sale/{{ sale.id }}/edit" class="card">
   <div class="muted small">
-    {{ sale.sold_at.strftime('%Y-%m-%d %H:%M') if sale.sold_at else '' }} ·
-    {% for it in sale.items %}{{ it.quantity }}× {{ it.product.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+    {{ sale.occurred_at.strftime('%Y-%m-%d %H:%M') if sale.occurred_at else '' }} ·
+    {% for it in sale.items %}{{ it.qty|int }}× {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}
   </div>
 
   <label>Payment method</label>

@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    Customer, Payment, Product, Sale, SaleItem, StockMovement, Staff,
-    PricingGroup, can, can_any,
+    Customer, Product, StockMovement, Staff, PricingGroup, can, can_any,
+    Transaction, TransactionItem, TX_CASH_SALE, TX_PAYMENT,
 )
 
 router = APIRouter()
@@ -90,9 +90,11 @@ def _on_hand_map(db):
         .group_by(StockMovement.product_id).all()
     )
     sold = dict(
-        db.query(SaleItem.product_id,
-                 func.coalesce(func.sum(SaleItem.quantity), 0))
-        .group_by(SaleItem.product_id).all()
+        db.query(TransactionItem.product_id,
+                 func.coalesce(func.sum(TransactionItem.qty), 0))
+        .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+        .filter(Transaction.type == TX_CASH_SALE, TransactionItem.product_id != None)  # noqa: E711
+        .group_by(TransactionItem.product_id).all()
     )
     return {"mov": mov, "sold": sold}
 
@@ -177,8 +179,10 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
 
 def _code_used_today(db, person_id):
     start = datetime.combine(_today(), datetime.min.time()).replace(tzinfo=_tz())
-    return int(db.query(func.coalesce(func.sum(Sale.discounted_qty), 0))
-               .filter(Sale.discount_person_id == person_id, Sale.sold_at >= start).scalar() or 0)
+    return int(db.query(func.coalesce(func.sum(Transaction.discounted_qty), 0))
+               .filter(Transaction.type == TX_CASH_SALE,
+                       Transaction.discount_person_id == person_id,
+                       Transaction.occurred_at >= start).scalar() or 0)
 
 
 def _resolve_code(db, code):
@@ -343,7 +347,9 @@ async def create_sale(
             return _err("Invalid item in cart")
         lines.append((p, qty))
 
-    sale = Sale(
+    sale = Transaction(
+        type=TX_CASH_SALE,
+        status=("credit" if is_credit else "paid"),
         staff_id=staff.id,
         customer_id=cust.id if cust else None,
         is_credit=is_credit,
@@ -368,15 +374,15 @@ async def create_sale(
                 remaining -= n
         if eligible and n > 0:
             disc = group.price_for(p)
-            db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=n,
-                            unit_price=disc, cost_price=p.cost_price))
+            db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
+                                   qty=n, unit_price=disc, cost_price=p.cost_price))
             discounted_qty += n
             if n < qty:  # remainder at full price (cap reached)
-                db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty - n,
-                                unit_price=base, cost_price=p.cost_price))
+                db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
+                                       qty=qty - n, unit_price=base, cost_price=p.cost_price))
         else:
-            db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty,
-                            unit_price=base, cost_price=p.cost_price))
+            db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
+                                   qty=qty, unit_price=base, cost_price=p.cost_price))
     sale.discounted_qty = discounted_qty
     db.commit()
     db.refresh(sale)
@@ -481,33 +487,36 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
     orders = []
     charges = 0.0
     credit_sales = (
-        db.query(Sale)
-        .filter(Sale.customer_id == cid, Sale.is_credit == True)  # noqa: E712
-        .order_by(Sale.sold_at.desc()).all()
+        db.query(Transaction)
+        .filter(Transaction.type == TX_CASH_SALE,
+                Transaction.customer_id == cid, Transaction.is_credit == True)  # noqa: E712
+        .order_by(Transaction.occurred_at.desc()).all()
     )
     for s in credit_sales:
         charges += s.total
         orders.append({
             "id": s.id,
-            "date": (s.sold_at.astimezone().strftime("%b %d, %Y")
-                     if s.sold_at else ""),
+            "date": (s.occurred_at.astimezone().strftime("%b %d, %Y")
+                     if s.occurred_at else ""),
             "total": s.total,
             "items": [
-                {"name": (li.product.name if li.product else "—"),
-                 "qty": li.quantity,
+                {"name": (li.name or (li.product.name if li.product else "—")),
+                 "qty": int(li.qty),
                  "unit_price": float(li.unit_price or 0),
-                 "line": float(li.quantity) * float(li.unit_price or 0)}
+                 "line": float(li.qty) * float(li.unit_price or 0)}
                 for li in s.items
             ],
         })
 
-    pays = (db.query(Payment).filter(Payment.customer_id == cid)
-            .order_by(Payment.paid_at.desc()).all())
+    pays = (db.query(Transaction)
+            .filter(Transaction.type == TX_PAYMENT, Transaction.parent_id == None,  # noqa: E711
+                    Transaction.customer_id == cid)
+            .order_by(Transaction.occurred_at.desc()).all())
     payments = [
-        {"id": pm.id, "amount": float(pm.amount or 0),
-         "method": pm.method or "",
-         "date": (pm.paid_at.astimezone().strftime("%b %d, %Y")
-                  if pm.paid_at else "")}
+        {"id": pm.id, "amount": float(pm.total or 0),
+         "method": pm.payment_method or "",
+         "date": (pm.occurred_at.astimezone().strftime("%b %d, %Y")
+                  if pm.occurred_at else "")}
         for pm in pays
     ]
     paid = sum(p["amount"] for p in payments)
@@ -567,9 +576,12 @@ async def settle(
     if amt <= 0:
         return _err("Nothing to settle")
 
-    pay = Payment(customer_id=c.id, amount=amt, method=method,
-                  screenshot=shot, screenshot_mime=shot_mime, staff_id=staff.id)
+    pay = Transaction(type=TX_PAYMENT, customer_id=c.id, payment_method=method,
+                      proof=shot, proof_mime=shot_mime, staff_id=staff.id, status="paid")
     db.add(pay)
+    db.flush()
+    db.add(TransactionItem(transaction_id=pay.id, name="Payment received",
+                           qty=1, unit_price=amt))
     db.commit()
     row = next((r for r in customer_balances(db) if r["customer"].id == c.id), None)
     return {"ok": True, "paid": amt,

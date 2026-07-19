@@ -371,16 +371,23 @@ def require(request, db, admin=False, perm=None):
     return staff, None
 
 
+def _sold_qty_map(db, before=None):
+    """product_id -> units sold via cash-sale transactions (optionally before a datetime)."""
+    q = (db.query(TransactionItem.product_id, func.coalesce(func.sum(TransactionItem.qty), 0))
+         .join(Transaction, Transaction.id == TransactionItem.transaction_id)
+         .filter(Transaction.type == TX_CASH_SALE, TransactionItem.product_id != None))  # noqa: E711
+    if before is not None:
+        q = q.filter(Transaction.occurred_at < before)
+    return dict(q.group_by(TransactionItem.product_id).all())
+
+
 def stock_levels(db):
-    """on_hand per active product = sum(stock_movements) - sum(sale_items)."""
+    """on_hand per active product = sum(stock_movements) - units sold."""
     mov = dict(
         db.query(StockMovement.product_id, func.coalesce(func.sum(StockMovement.quantity), 0))
         .group_by(StockMovement.product_id).all()
     )
-    sold = dict(
-        db.query(SaleItem.product_id, func.coalesce(func.sum(SaleItem.quantity), 0))
-        .group_by(SaleItem.product_id).all()
-    )
+    sold = _sold_qty_map(db)
     rows = []
     for p in db.query(Product).filter(Product.is_active).order_by(Product.category, Product.name):
         on_hand = int(mov.get(p.id, 0)) - int(sold.get(p.id, 0))
@@ -470,9 +477,10 @@ def sales_summary(db, key):
     start, end, gran = _range_bounds(key)
     start_u, end_u = start.astimezone(timezone.utc), end.astimezone(timezone.utc)
     rows = (
-        db.query(Sale.sold_at, SaleItem.quantity, SaleItem.unit_price)
-        .join(SaleItem, SaleItem.sale_id == Sale.id)
-        .filter(Sale.sold_at >= start_u, Sale.sold_at < end_u).all()
+        db.query(Transaction.occurred_at, TransactionItem.qty, TransactionItem.unit_price)
+        .join(TransactionItem, TransactionItem.transaction_id == Transaction.id)
+        .filter(Transaction.type == TX_CASH_SALE,
+                Transaction.occurred_at >= start_u, Transaction.occurred_at < end_u).all()
     )
     # build ordered empty buckets
     buckets, index = [], {}
@@ -659,8 +667,8 @@ def sale_edit(request: Request, sid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="sales.edit")
     if redir:
         return redir
-    sale = db.get(Sale, sid)
-    if not sale:
+    sale = db.get(Transaction, sid)
+    if not sale or sale.type != TX_CASH_SALE:
         return RedirectResponse("/records", status_code=303)
     return render(request, "sale_edit.html", db, staff, sale=sale, error=None)
 
@@ -671,8 +679,8 @@ def sale_update(request: Request, sid: int, payment_method: str = Form("cash"),
     staff, redir = require(request, db, perm="sales.edit")
     if redir:
         return redir
-    sale = db.get(Sale, sid)
-    if not sale:
+    sale = db.get(Transaction, sid)
+    if not sale or sale.type != TX_CASH_SALE:
         return RedirectResponse("/records", status_code=303)
     sale.payment_method = payment_method
     sale.note = note or None
@@ -685,9 +693,9 @@ def sale_delete(request: Request, sid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="sales.delete")
     if redir:
         return redir
-    sale = db.get(Sale, sid)
-    if sale:
-        db.delete(sale)  # cascades to sale_items
+    sale = db.get(Transaction, sid)
+    if sale and sale.type == TX_CASH_SALE:
+        db.delete(sale)  # cascades to items
         db.commit()
     return RedirectResponse("/records", status_code=303)
 
@@ -792,7 +800,7 @@ def product_delete(request: Request, pid: int, db: Session = Depends(get_db)):
     if not product:
         return RedirectResponse("/admin/products", status_code=303)
     referenced = (
-        db.query(SaleItem).filter(SaleItem.product_id == pid).first()
+        db.query(TransactionItem).filter(TransactionItem.product_id == pid).first()
         or db.query(StockMovement).filter(StockMovement.product_id == pid).first()
     )
     if referenced:
@@ -1141,32 +1149,34 @@ def reports(request: Request, period: str = "week", db: Session = Depends(get_db
         return redir
     start, end = _range(period)
 
+    TI, TX = TransactionItem, Transaction
+    _cash = (TX.type == TX_CASH_SALE)
     daily = (
-        db.query(func.date(Sale.sold_at).label("day"),
-                 func.sum(SaleItem.quantity).label("units"),
-                 func.sum(SaleItem.quantity * SaleItem.unit_price).label("revenue"))
-        .join(SaleItem, SaleItem.sale_id == Sale.id)
-        .filter(Sale.sold_at >= start)
-        .group_by(func.date(Sale.sold_at)).order_by(func.date(Sale.sold_at).desc()).all()
+        db.query(func.date(TX.occurred_at).label("day"),
+                 func.sum(TI.qty).label("units"),
+                 func.sum(TI.qty * TI.unit_price).label("revenue"))
+        .join(TI, TI.transaction_id == TX.id)
+        .filter(_cash, TX.occurred_at >= start)
+        .group_by(func.date(TX.occurred_at)).order_by(func.date(TX.occurred_at).desc()).all()
     )
     sellers = (
         db.query(Product.name,
-                 func.sum(SaleItem.quantity).label("units"),
-                 func.sum(SaleItem.quantity * SaleItem.unit_price).label("revenue"))
-        .join(SaleItem, SaleItem.product_id == Product.id)
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .filter(Sale.sold_at >= start)
-        .group_by(Product.name).order_by(func.sum(SaleItem.quantity).desc()).all()
+                 func.sum(TI.qty).label("units"),
+                 func.sum(TI.qty * TI.unit_price).label("revenue"))
+        .join(TI, TI.product_id == Product.id)
+        .join(TX, TX.id == TI.transaction_id)
+        .filter(_cash, TX.occurred_at >= start)
+        .group_by(Product.name).order_by(func.sum(TI.qty).desc()).all()
     )
     margins = (
         db.query(
             Product.name,
-            func.sum(SaleItem.quantity * SaleItem.unit_price).label("revenue"),
-            func.sum(SaleItem.quantity * func.coalesce(SaleItem.cost_price, Product.cost_price, 0)).label("cost"),
+            func.sum(TI.qty * TI.unit_price).label("revenue"),
+            func.sum(TI.qty * func.coalesce(TI.cost_price, Product.cost_price, 0)).label("cost"),
         )
-        .join(SaleItem, SaleItem.product_id == Product.id)
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .filter(Sale.sold_at >= start)
+        .join(TI, TI.product_id == Product.id)
+        .join(TX, TX.id == TI.transaction_id)
+        .filter(_cash, TX.occurred_at >= start)
         .group_by(Product.name).all()
     )
     margin_rows = []
@@ -1194,12 +1204,7 @@ def inventory_valuation(db, end_u):
         .filter(StockMovement.occurred_at < end_u)
         .group_by(StockMovement.product_id).all()
     )
-    sold = dict(
-        db.query(SaleItem.product_id, func.coalesce(func.sum(SaleItem.quantity), 0))
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .filter(Sale.sold_at < end_u)
-        .group_by(SaleItem.product_id).all()
-    )
+    sold = _sold_qty_map(db, before=end_u)
     cats = {}
     tot_cost = tot_retail = 0.0
     tot_units = skus = 0
@@ -1258,9 +1263,8 @@ _DUMMY_PRODUCTS = {
 
 
 def _wipe_transactions(db):
-    db.query(SaleItem).delete()
-    db.query(Sale).delete()
-    db.query(Payment).delete()
+    db.query(TransactionItem).delete()
+    db.query(Transaction).delete()
     db.query(StockMovement).delete()
     db.query(Customer).delete()
     db.commit()
@@ -1341,13 +1345,14 @@ def dummy_import(request: Request, db: Session = Depends(get_db)):
             cust = None
             if r.get("customer"):
                 cust = find_or_create_customer(db, r["customer"])
-            sale = Sale(staff_id=staff.id, sold_at=when, is_credit=(not paid),
+            sale = Transaction(type=TX_CASH_SALE, status=("credit" if not paid else "paid"),
+                        staff_id=staff.id, occurred_at=when, is_credit=(not paid),
                         customer_id=(cust.id if cust else None), note=r.get("note") or None,
                         payment_method=(r.get("payment") or "cash") if paid else None)
             db.add(sale)
             db.flush()
-            db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=int(r["qty"]),
-                            unit_price=p.selling_price, cost_price=p.cost_price))
+            db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
+                            qty=int(r["qty"]), unit_price=p.selling_price, cost_price=p.cost_price))
         n += 1
     db.commit()
     return RedirectResponse(f"/admin/dummy?done=imported&n={n}", status_code=303)
@@ -1367,7 +1372,7 @@ def dummy_reprice(request: Request, sku: str = Form(...), price: float = Form(..
     p.selling_price = price
     n = 0
     if apply_all == "on":
-        items = db.query(SaleItem).filter(SaleItem.product_id == p.id).all()
+        items = db.query(TransactionItem).filter(TransactionItem.product_id == p.id).all()
         for it in items:
             it.unit_price = price
             n += 1
@@ -1394,12 +1399,13 @@ def reports_csv(request: Request, period: str = "all", db: Session = Depends(get
         return redir
     start, end = _range(period)
     rows = (
-        db.query(Sale.sold_at, Staff.name, Sale.payment_method, Product.sku,
-                 Product.name, SaleItem.quantity, SaleItem.unit_price)
-        .join(SaleItem, SaleItem.sale_id == Sale.id)
-        .join(Product, Product.id == SaleItem.product_id)
-        .outerjoin(Staff, Staff.id == Sale.staff_id)
-        .filter(Sale.sold_at >= start).order_by(Sale.sold_at.desc()).all()
+        db.query(Transaction.occurred_at, Staff.name, Transaction.payment_method, Product.sku,
+                 Product.name, TransactionItem.qty, TransactionItem.unit_price)
+        .join(TransactionItem, TransactionItem.transaction_id == Transaction.id)
+        .join(Product, Product.id == TransactionItem.product_id)
+        .outerjoin(Staff, Staff.id == Transaction.staff_id)
+        .filter(Transaction.type == TX_CASH_SALE, Transaction.occurred_at >= start)
+        .order_by(Transaction.occurred_at.desc()).all()
     )
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -1427,7 +1433,8 @@ def records(request: Request, db: Session = Depends(get_db)):
     movements = (
         db.query(StockMovement).order_by(StockMovement.occurred_at.desc()).limit(100).all()
     )
-    sales = db.query(Sale).order_by(Sale.sold_at.desc()).limit(50).all()
+    sales = (db.query(Transaction).filter(Transaction.type == TX_CASH_SALE)
+             .order_by(Transaction.occurred_at.desc()).limit(50).all())
     return render(request, "records.html", db, staff, movements=movements, sales=sales)
 
 
@@ -1446,13 +1453,19 @@ def customer_balances(db):
     """Per-customer: charges from credit sales, payments made, and balance."""
     charges = {}
     credit_sales = (
-        db.query(Sale).filter(Sale.is_credit == True, Sale.customer_id != None).all()  # noqa: E712,E711
+        db.query(Transaction).filter(
+            Transaction.type == TX_CASH_SALE, Transaction.is_credit == True,  # noqa: E712
+            Transaction.customer_id != None).all()  # noqa: E711
     )
     for s in credit_sales:
         charges[s.customer_id] = charges.get(s.customer_id, 0.0) + s.total
     paid = dict(
-        db.query(Payment.customer_id, func.coalesce(func.sum(Payment.amount), 0))
-        .group_by(Payment.customer_id).all()
+        db.query(Transaction.customer_id,
+                 func.coalesce(func.sum(TransactionItem.qty * TransactionItem.unit_price), 0))
+        .join(TransactionItem, TransactionItem.transaction_id == Transaction.id)
+        .filter(Transaction.type == TX_PAYMENT, Transaction.parent_id == None,  # noqa: E711
+                Transaction.customer_id != None)
+        .group_by(Transaction.customer_id).all()
     )
     rows = []
     for c in db.query(Customer).order_by(Customer.name).all():
@@ -1487,15 +1500,19 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
     if not customer:
         return RedirectResponse("/customers", status_code=303)
     sales = (
-        db.query(Sale).filter(Sale.customer_id == cid, Sale.is_credit == True)  # noqa: E712
-        .order_by(Sale.sold_at.desc()).all()
+        db.query(Transaction).filter(
+            Transaction.type == TX_CASH_SALE, Transaction.customer_id == cid,
+            Transaction.is_credit == True)  # noqa: E712
+        .order_by(Transaction.occurred_at.desc()).all()
     )
     payments = (
-        db.query(Payment).filter(Payment.customer_id == cid)
-        .order_by(Payment.paid_at.desc()).all()
+        db.query(Transaction).filter(
+            Transaction.type == TX_PAYMENT, Transaction.parent_id == None,  # noqa: E711
+            Transaction.customer_id == cid)
+        .order_by(Transaction.occurred_at.desc()).all()
     )
     charges = sum(s.total for s in sales)
-    paid = sum(float(p.amount) for p in payments)
+    paid = sum(p.total for p in payments)
     return render(request, "customer_detail.html", db, staff, customer=customer,
                   sales=sales, payments=payments, charges=charges, paid=paid,
                   balance=charges - paid)
@@ -1539,8 +1556,13 @@ async def pay_create(request: Request, cid: int, amount: str = Form(...),
         if len(img_bytes) > 8 * 1024 * 1024:  # 8 MB cap
             return render(request, "customer_pay.html", db, staff, customer=customer,
                           balance=0, error="Screenshot is too large (max 8 MB).")
-    db.add(Payment(customer_id=cid, amount=amt, method=method, note=note or None,
-                   screenshot=img_bytes, screenshot_mime=img_mime, staff_id=staff.id))
+    pay = Transaction(type=TX_PAYMENT, customer_id=cid, payment_method=method,
+                      note=note or None, proof=img_bytes, proof_mime=img_mime,
+                      staff_id=staff.id, status="paid")
+    db.add(pay)
+    db.flush()
+    db.add(TransactionItem(transaction_id=pay.id, name="Payment received",
+                           qty=1, unit_price=amt))
     db.commit()
     return RedirectResponse(f"/customer/{cid}", status_code=303)
 
@@ -1552,10 +1574,10 @@ def payment_screenshot(request: Request, pid: int, db: Session = Depends(get_db)
         return redir
     if not can_any(staff, CUSTOMER_VIEW_PERMS):
         return RedirectResponse("/dashboard", status_code=303)
-    p = db.get(Payment, pid)
-    if not p or not p.screenshot:
+    p = db.get(Transaction, pid)
+    if not p or not p.proof:
         return Response(status_code=404)
-    return Response(content=p.screenshot, media_type=p.screenshot_mime or "image/jpeg")
+    return Response(content=p.proof, media_type=p.proof_mime or "image/jpeg")
 
 
 @app.post("/payment/{pid}/delete")
@@ -1563,8 +1585,8 @@ def payment_delete(request: Request, pid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="payments.delete")
     if redir:
         return redir
-    p = db.get(Payment, pid)
-    if p:
+    p = db.get(Transaction, pid)
+    if p and p.type == TX_PAYMENT:
         cid = p.customer_id
         db.delete(p)
         db.commit()
@@ -1591,9 +1613,9 @@ def _sold_dt_from_date(date_str):
 def _sale_row(sale):
     tz = _tz()
     it = sale.items[0] if sale.items else None
-    local = sale.sold_at.astimezone(tz) if sale.sold_at else datetime.now(tz)
+    local = sale.occurred_at.astimezone(tz) if sale.occurred_at else datetime.now(tz)
     up = float(it.unit_price) if it else 0.0
-    qn = it.quantity if it else 0
+    qn = int(it.qty) if it else 0
     return {
         "id": sale.id,
         "date": local.strftime("%Y-%m-%d"),
@@ -1658,13 +1680,13 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
         range_key = range_key or "today"
         start, end_d = today0, today0
 
-    q = db.query(Sale)
+    q = db.query(Transaction).filter(Transaction.type == TX_CASH_SALE)
     if selected_customer:
-        q = q.filter(Sale.customer_id == selected_customer.id)
+        q = q.filter(Transaction.customer_id == selected_customer.id)
     if start is not None:
-        q = q.filter(Sale.sold_at >= start.astimezone(timezone.utc))
-    q = q.filter(Sale.sold_at < (end_d + timedelta(days=1)).astimezone(timezone.utc))
-    sales = q.order_by(Sale.sold_at.desc(), Sale.id.desc()).limit(1000).all()
+        q = q.filter(Transaction.occurred_at >= start.astimezone(timezone.utc))
+    q = q.filter(Transaction.occurred_at < (end_d + timedelta(days=1)).astimezone(timezone.utc))
+    sales = q.order_by(Transaction.occurred_at.desc(), Transaction.id.desc()).limit(1000).all()
     rows = [_sale_row(s) for s in sales]
 
     total = sum(r["total"] for r in rows)
@@ -1673,9 +1695,9 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
     # Balances + sale counts, for the customer search dropdown hints.
     bal_by_id = {r["customer"].id: r for r in customer_balances(db)}
     counts = dict(
-        db.query(Sale.customer_id, func.count(Sale.id))
-        .filter(Sale.customer_id != None)  # noqa: E711
-        .group_by(Sale.customer_id).all()
+        db.query(Transaction.customer_id, func.count(Transaction.id))
+        .filter(Transaction.type == TX_CASH_SALE, Transaction.customer_id != None)  # noqa: E711
+        .group_by(Transaction.customer_id).all()
     )
     products = [
         {"id": p.id, "name": p.name, "price": float(p.selling_price)}
@@ -1728,13 +1750,14 @@ async def api_sale_create(request: Request, db: Session = Depends(get_db)):
         up = float(up) if up not in (None, "") else float(p.selling_price)
     except (ValueError, TypeError):
         up = float(p.selling_price)
-    sale = Sale(staff_id=staff.id, sold_at=_sold_dt_from_date(data.get("date")),
+    sale = Transaction(type=TX_CASH_SALE, status=("credit" if not paid else "paid"),
+                staff_id=staff.id, occurred_at=_sold_dt_from_date(data.get("date")),
                 is_credit=(not paid), customer_id=cid,
                 payment_method=(None if not paid else "cash"))
     db.add(sale)
     db.flush()
-    db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty,
-                    unit_price=up, cost_price=p.cost_price))
+    db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
+                    qty=qty, unit_price=up, cost_price=p.cost_price))
     db.commit()
     db.refresh(sale)
     return JSONResponse(_sale_row(sale))
@@ -1745,12 +1768,12 @@ async def api_sale_update(request: Request, sid: int, db: Session = Depends(get_
     staff, err = _json_guard(request, db, "sales.edit")
     if err:
         return err
-    sale = db.get(Sale, sid)
-    if not sale:
+    sale = db.get(Transaction, sid)
+    if not sale or sale.type != TX_CASH_SALE:
         return JSONResponse({"error": "not found"}, status_code=404)
     data = await request.json()
     if "date" in data:
-        sale.sold_at = _sold_dt_from_date(data.get("date"))
+        sale.occurred_at = _sold_dt_from_date(data.get("date"))
     if "paid" in data:
         sale.is_credit = not bool(data.get("paid"))
         sale.payment_method = None if sale.is_credit else (sale.payment_method or "cash")
@@ -1761,8 +1784,8 @@ async def api_sale_update(request: Request, sid: int, db: Session = Depends(get_
         p = db.get(Product, data.get("product_id"))
         if p:
             if not it:
-                it = SaleItem(sale_id=sale.id, product_id=p.id, quantity=1,
-                              unit_price=p.selling_price, cost_price=p.cost_price)
+                it = TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
+                              qty=1, unit_price=p.selling_price, cost_price=p.cost_price)
                 db.add(it)
             else:
                 it.product_id = p.id
@@ -1770,7 +1793,7 @@ async def api_sale_update(request: Request, sid: int, db: Session = Depends(get_
                 it.cost_price = p.cost_price
     if "qty" in data and it:
         try:
-            it.quantity = max(1, int(data.get("qty")))
+            it.qty = max(1, int(data.get("qty")))
         except (ValueError, TypeError):
             pass
     if "unit_price" in data and it and data.get("unit_price") not in (None, ""):
@@ -1788,8 +1811,8 @@ def api_sale_delete(request: Request, sid: int, db: Session = Depends(get_db)):
     staff, err = _json_guard(request, db, "sales.delete")
     if err:
         return err
-    sale = db.get(Sale, sid)
-    if sale:
+    sale = db.get(Transaction, sid)
+    if sale and sale.type == TX_CASH_SALE:
         db.delete(sale)
         db.commit()
     return JSONResponse({"ok": True})
@@ -1825,13 +1848,14 @@ def sale_quick(request: Request, product_id: int = Form(...), quantity: int = Fo
         customer = find_or_create_customer(db, customer_name)
     elif customer_id.strip():
         customer = db.get(Customer, int(customer_id))
-    sale = Sale(staff_id=staff.id, sold_at=_sold_dt_from_date(date),
+    sale = Transaction(type=TX_CASH_SALE, status=("credit" if not is_paid else "paid"),
+                staff_id=staff.id, occurred_at=_sold_dt_from_date(date),
                 is_credit=(not is_paid), customer_id=(customer.id if customer else None),
                 payment_method=(None if not is_paid else "cash"))
     db.add(sale)
     db.flush()
-    db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=max(1, quantity),
-                    unit_price=p.selling_price, cost_price=p.cost_price))
+    db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
+                    qty=max(1, quantity), unit_price=p.selling_price, cost_price=p.cost_price))
     db.commit()
     return RedirectResponse("/sales?saved=1", status_code=303)
 
@@ -2027,7 +2051,7 @@ def can_invoice_edit(staff):
 
 def next_invoice_number(db):
     nums = []
-    for (n,) in db.query(Invoice.number).all():
+    for (n,) in db.query(Transaction.number).filter(Transaction.type == TX_INVOICE).all():
         try:
             nums.append(int(str(n).split("-")[-1]))
         except (ValueError, TypeError):
@@ -2049,7 +2073,8 @@ def invoices_page(request: Request, db: Session = Depends(get_db)):
         return redir
     if not can_invoices(staff):
         return RedirectResponse("/dashboard", status_code=303)
-    invoices = db.query(Invoice).order_by(Invoice.created_at.desc(), Invoice.id.desc()).limit(500).all()
+    invoices = (db.query(Transaction).filter(Transaction.type == TX_INVOICE)
+                .order_by(Transaction.created_at.desc(), Transaction.id.desc()).limit(500).all())
     now = datetime.now(_tz())
     inv_month = sum(i.total for i in invoices if not i.is_void and i.issue_date
                     and i.issue_date.year == now.year and i.issue_date.month == now.month)
@@ -2103,8 +2128,10 @@ async def invoice_create(request: Request, db: Session = Depends(get_db)):
             bill_to = c.name
     if not bill_to:
         bill_to = "—"
-    inv = Invoice(number=next_invoice_number(db), bill_to_type=bill_type,
-                  coach_id=coach_id, customer_id=customer_id, bill_to_name=bill_to,
+    inv = Transaction(type=TX_INVOICE, status="unpaid",
+                  number=next_invoice_number(db), bill_to_type=bill_type,
+                  coach_id=coach_id, customer_id=customer_id, customer_name=bill_to,
+                  occurred_at=_dt(_date_only(form.get("issue_date")), datetime.now(timezone.utc)),
                   issue_date=_date_only(form.get("issue_date")),
                   due_date=_date_only(form.get("due_date")),
                   period=(form.get("period") or None), note=(form.get("note") or None),
@@ -2119,7 +2146,7 @@ async def invoice_create(request: Request, db: Session = Depends(get_db)):
             r = float(rate) if rate else 0
         except ValueError:
             q, r = 1, 0
-        db.add(InvoiceItem(invoice_id=inv.id, description=desc.strip(), qty=q, rate=r, amount=q * r))
+        db.add(TransactionItem(transaction_id=inv.id, name=desc.strip(), qty=q, unit_price=r))
     db.commit()
     return RedirectResponse(f"/invoices/{inv.id}", status_code=303)
 
@@ -2131,8 +2158,8 @@ def invoice_view(request: Request, iid: int, db: Session = Depends(get_db)):
         return redir
     if not can_invoices(staff):
         return RedirectResponse("/dashboard", status_code=303)
-    inv = db.get(Invoice, iid)
-    if not inv:
+    inv = db.get(Transaction, iid)
+    if not inv or inv.type != TX_INVOICE:
         return RedirectResponse("/invoices", status_code=303)
     return render(request, "invoice_view.html", db, staff, inv=inv,
                   methods=PAYMENT_METHODS, can_edit=can_invoice_edit(staff),
@@ -2148,8 +2175,8 @@ def invoice_pay(request: Request, iid: int, amount: str = Form(...), method: str
         return redir
     if not can_invoice_edit(staff):
         return RedirectResponse("/invoices", status_code=303)
-    inv = db.get(Invoice, iid)
-    if not inv:
+    inv = db.get(Transaction, iid)
+    if not inv or inv.type != TX_INVOICE:
         return RedirectResponse("/invoices", status_code=303)
     try:
         amt = float(amount)
@@ -2157,8 +2184,13 @@ def invoice_pay(request: Request, iid: int, amount: str = Form(...), method: str
         amt = 0
     if amt > 0:
         when = _sold_dt_from_date(date) if date else datetime.now(timezone.utc)
-        db.add(InvoicePayment(invoice_id=inv.id, amount=amt, method=method,
-                              note=note or None, paid_at=when, staff_id=staff.id))
+        pay = Transaction(type=TX_PAYMENT, parent_id=inv.id, customer_id=inv.customer_id,
+                          customer_name=inv.customer_name, payment_method=method,
+                          note=note or None, occurred_at=when, staff_id=staff.id, status="paid")
+        db.add(pay)
+        db.flush()
+        db.add(TransactionItem(transaction_id=pay.id, name="Invoice payment",
+                               qty=1, unit_price=amt))
         db.commit()
     return RedirectResponse(f"/invoices/{iid}", status_code=303)
 
@@ -2168,8 +2200,8 @@ def invoice_void(request: Request, iid: int, db: Session = Depends(get_db)):
     staff, redir = require_admin(request, db)
     if redir:
         return redir
-    inv = db.get(Invoice, iid)
-    if inv:
+    inv = db.get(Transaction, iid)
+    if inv and inv.type == TX_INVOICE:
         inv.is_void = True
         db.commit()
     return RedirectResponse(f"/invoices/{iid}", status_code=303)
@@ -2183,16 +2215,19 @@ def payments_page(request: Request, db: Session = Depends(get_db)):
     if not can_invoices(staff):
         return RedirectResponse("/dashboard", status_code=303)
     rows = []
-    for p in db.query(Payment).order_by(Payment.paid_at.desc()).limit(300).all():
-        rows.append({"at": p.paid_at, "kind": "Customer payment",
-                     "party": (p.customer.name if p.customer else "—"),
-                     "amount": float(p.amount or 0), "method": p.method or "",
-                     "link": f"/customer/{p.customer_id}"})
-    for p in db.query(InvoicePayment).order_by(InvoicePayment.paid_at.desc()).limit(300).all():
-        rows.append({"at": p.paid_at, "kind": "Invoice payment",
-                     "party": (p.invoice.bill_to_name if p.invoice else "—"),
-                     "amount": float(p.amount or 0), "method": p.method or "",
-                     "link": f"/invoices/{p.invoice_id}"})
+    pays = (db.query(Transaction).filter(Transaction.type == TX_PAYMENT)
+            .order_by(Transaction.occurred_at.desc()).limit(600).all())
+    for p in pays:
+        if p.parent_id:
+            rows.append({"at": p.occurred_at, "kind": "Invoice payment",
+                         "party": (p.parent.customer_name if p.parent else "—"),
+                         "amount": float(p.total or 0), "method": p.payment_method or "",
+                         "link": f"/invoices/{p.parent_id}"})
+        else:
+            rows.append({"at": p.occurred_at, "kind": "Customer payment",
+                         "party": (p.customer.name if p.customer else "—"),
+                         "amount": float(p.total or 0), "method": p.payment_method or "",
+                         "link": f"/customer/{p.customer_id}"})
     tz = _tz()
     rows.sort(key=lambda r: r["at"] or datetime.now(timezone.utc), reverse=True)
     for r in rows:
@@ -2215,21 +2250,22 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
     members = sorted(
         db.query(Member).filter(Member.coach_id == coach.id, Member.is_active == True).all(),  # noqa: E712
         key=_member_sort_key)
-    inv = Invoice(number=next_invoice_number(db), bill_to_type="coach", coach_id=coach.id,
-                  bill_to_name=coach.name, issue_date=today,
+    inv = Transaction(type=TX_INVOICE, status="unpaid", number=next_invoice_number(db),
+                  bill_to_type="coach", coach_id=coach.id, customer_name=coach.name,
+                  occurred_at=_dt(today, datetime.now(timezone.utc)), issue_date=today,
                   due_date=today + timedelta(days=7), period=period,
                   note="Auto-generated from Monthly billing", staff_id=staff.id)
     db.add(inv)
     db.flush()
     fee = float(coach.affiliate_fee or 0)
     if fee > 0:
-        db.add(InvoiceItem(invoice_id=inv.id, description=f"Affiliate fee — {period}",
-                           qty=1, rate=fee, amount=fee))
+        db.add(TransactionItem(transaction_id=inv.id, name=f"Affiliate fee — {period}",
+                               qty=1, unit_price=fee))
     for i, m in enumerate(members):
         base = float(m.corkage_rate or 0)
         rate = base if i < FIRST_TIER_CLIENTS else min(base, TIER_CORKAGE)
-        db.add(InvoiceItem(invoice_id=inv.id, description=f"Corkage — {m.name}",
-                           qty=1, rate=rate, amount=rate))
+        db.add(TransactionItem(transaction_id=inv.id, name=f"Corkage — {m.name}",
+                               qty=1, unit_price=rate))
     coach.next_billing = _add_month(coach.next_billing or today)
     db.commit()
     return RedirectResponse(f"/invoices/{inv.id}", status_code=303)
@@ -2240,8 +2276,10 @@ def _code_used_today(db, person_id):
     """Total discounted item-units redeemed by a person's code so far today (Manila)."""
     tz = _tz()
     start = datetime.combine(datetime.now(tz).date(), datetime.min.time()).replace(tzinfo=tz)
-    return int(db.query(func.coalesce(func.sum(Sale.discounted_qty), 0))
-               .filter(Sale.discount_person_id == person_id, Sale.sold_at >= start).scalar() or 0)
+    return int(db.query(func.coalesce(func.sum(Transaction.discounted_qty), 0))
+               .filter(Transaction.type == TX_CASH_SALE,
+                       Transaction.discount_person_id == person_id,
+                       Transaction.occurred_at >= start).scalar() or 0)
 
 
 @app.get("/admin/pricing", response_class=HTMLResponse)
@@ -2329,7 +2367,7 @@ def pricing_delete(request: Request, gid: int, db: Session = Depends(get_db)):
         return redir
     g = db.get(PricingGroup, gid)
     if g:
-        db.query(Sale).filter(Sale.pricing_group_id == gid).update({"pricing_group_id": None})
+        db.query(Transaction).filter(Transaction.pricing_group_id == gid).update({"pricing_group_id": None})
         db.flush()
         db.delete(g)
         db.commit()

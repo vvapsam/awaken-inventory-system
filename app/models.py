@@ -439,6 +439,15 @@ class Transaction(Base):
         return self.total - self.paid
 
     @property
+    def bill_to_name(self):
+        return self.customer_name
+
+    @property
+    def ipayments(self):
+        """Child payment transactions applied to this one (for invoice views)."""
+        return [c for c in self.children if c.type == TX_PAYMENT and not c.is_void]
+
+    @property
     def invoice_status(self):
         if self.is_void:
             return "void"

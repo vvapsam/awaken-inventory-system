@@ -21,8 +21,8 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    Customer, Order, OrderItem, PaymentSetting, Product, Sale, SaleItem,
-    StockMovement, can, can_any,
+    Customer, PaymentSetting, Product, StockMovement, can, can_any,
+    Transaction, TransactionItem, TX_ORDER, TX_CASH_SALE,
 )
 
 router = APIRouter()
@@ -79,7 +79,7 @@ def _read_image(upload):
 
 
 def next_order_number(db):
-    n = db.query(func.count(Order.id)).scalar() or 0
+    n = db.query(func.count(Transaction.id)).filter(Transaction.type == TX_ORDER).scalar() or 0
     return "ORD-%04d" % (n + 1)
 
 
@@ -304,13 +304,14 @@ async def place_order(
                         "Please upload today's payment screenshot."
                         % checks["detected_date"], checks=checks)
 
-    order = Order(
+    order = Transaction(
+        type=TX_ORDER,
         number=next_order_number(db),
         customer_name=name,
         customer_phone=(phone or "").strip() or None,
         payment_method=method,
         proof=proof_bytes, proof_mime=proof_mime,
-        amount=total, status="pending",
+        amount_snapshot=total, status="pending",
     )
     if checks:
         order.check_amount_ok = checks["amount_ok"]
@@ -321,8 +322,8 @@ async def place_order(
     db.add(order)
     db.flush()
     for p, qty in lines:
-        db.add(OrderItem(order_id=order.id, product_id=p.id, name=p.name,
-                         qty=qty, unit_price=p.selling_price))
+        db.add(TransactionItem(transaction_id=order.id, product_id=p.id, name=p.name,
+                               qty=qty, unit_price=p.selling_price))
     db.commit()
     db.refresh(order)
     return {"ok": True, "number": order.number, "method": method, "total": total,
@@ -340,7 +341,8 @@ def _require_orders(request, db):
 
 
 def pending_order_count(db):
-    return db.query(func.count(Order.id)).filter(Order.status == "pending").scalar() or 0
+    return db.query(func.count(Transaction.id)).filter(
+        Transaction.type == TX_ORDER, Transaction.status == "pending").scalar() or 0
 
 
 @router.get("/orders", response_class=HTMLResponse)
@@ -348,10 +350,12 @@ def orders_queue(request: Request, db: Session = Depends(get_db)):
     staff, redir = _require_orders(request, db)
     if redir:
         return redir
-    pending = (db.query(Order).filter(Order.status == "pending")
-               .order_by(Order.created_at.desc()).all())
-    recent = (db.query(Order).filter(Order.status != "pending")
-              .order_by(Order.decided_at.desc()).limit(20).all())
+    pending = (db.query(Transaction)
+               .filter(Transaction.type == TX_ORDER, Transaction.status == "pending")
+               .order_by(Transaction.created_at.desc()).all())
+    recent = (db.query(Transaction)
+              .filter(Transaction.type == TX_ORDER, Transaction.status != "pending")
+              .order_by(Transaction.decided_at.desc()).limit(20).all())
     return templates.TemplateResponse(
         "orders_queue.html",
         {"request": request, "staff": staff, "pending": pending, "recent": recent,
@@ -364,8 +368,8 @@ def order_detail(request: Request, oid: int, db: Session = Depends(get_db)):
     staff, redir = _require_orders(request, db)
     if redir:
         return redir
-    o = db.get(Order, oid)
-    if not o:
+    o = db.get(Transaction, oid)
+    if not o or o.type != TX_ORDER:
         return RedirectResponse("/orders", status_code=303)
     return templates.TemplateResponse(
         "order_detail.html",
@@ -378,7 +382,7 @@ def order_proof(request: Request, oid: int, db: Session = Depends(get_db)):
     staff, redir = _require_orders(request, db)
     if redir:
         return redir
-    o = db.get(Order, oid)
+    o = db.get(Transaction, oid)
     if not o or not o.proof:
         return Response(status_code=404)
     return Response(content=o.proof, media_type=o.proof_mime or "image/jpeg")
@@ -389,22 +393,22 @@ def order_confirm(request: Request, oid: int, db: Session = Depends(get_db)):
     staff, redir = _require_orders(request, db)
     if redir:
         return redir
-    o = db.get(Order, oid)
-    if o and o.status == "pending":
+    o = db.get(Transaction, oid)
+    if o and o.type == TX_ORDER and o.status == "pending":
         # Turn the order into a real paid sale (deducts stock, shows in Retail).
-        sale = Sale(staff_id=staff.id, customer_id=None, is_credit=False,
-                    payment_method=o.payment_method,
-                    proof=o.proof, proof_mime=o.proof_mime,
-                    note="Self-checkout %s · %s" % (o.number, o.customer_name))
+        sale = Transaction(
+            type=TX_CASH_SALE, status="paid", staff_id=staff.id, is_credit=False,
+            payment_method=o.payment_method, proof=o.proof, proof_mime=o.proof_mime,
+            note="Self-checkout %s · %s" % (o.number, o.customer_name))
         db.add(sale)
         db.flush()
         for it in o.items:
             prod = db.get(Product, it.product_id) if it.product_id else None
-            db.add(SaleItem(sale_id=sale.id, product_id=it.product_id,
-                            quantity=it.qty, unit_price=it.unit_price,
-                            cost_price=(prod.cost_price if prod else None)))
+            db.add(TransactionItem(transaction_id=sale.id, product_id=it.product_id,
+                                   name=it.name, qty=it.qty, unit_price=it.unit_price,
+                                   cost_price=(prod.cost_price if prod else None)))
         o.status = "confirmed"
-        o.sale_id = sale.id
+        o.converted_id = sale.id
         o.staff_id = staff.id
         o.decided_at = datetime.now(timezone.utc)
         db.commit()
@@ -416,8 +420,8 @@ def order_reject(request: Request, oid: int, db: Session = Depends(get_db)):
     staff, redir = _require_orders(request, db)
     if redir:
         return redir
-    o = db.get(Order, oid)
-    if o and o.status == "pending":
+    o = db.get(Transaction, oid)
+    if o and o.type == TX_ORDER and o.status == "pending":
         o.status = "rejected"
         o.staff_id = staff.id
         o.decided_at = datetime.now(timezone.utc)

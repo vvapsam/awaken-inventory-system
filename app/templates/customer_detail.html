@@ -18,8 +18,8 @@
   <tr><th>When</th><th>Items</th><th>Amount</th></tr>
   {% for s in sales %}
   <tr>
-    <td>{{ s.sold_at.strftime('%Y-%m-%d %H:%M') if s.sold_at else '' }}</td>
-    <td>{% for it in s.items %}{{ it.quantity }}× {{ it.product.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    <td>{{ s.occurred_at.strftime('%Y-%m-%d %H:%M') if s.occurred_at else '' }}</td>
+    <td>{% for it in s.items %}{{ it.qty|int }}× {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
     <td>{{ peso(s.total) }}</td>
   </tr>
   {% else %}<tr><td colspan="3" class="muted">No credit sales.</td></tr>{% endfor %}
@@ -30,9 +30,9 @@
   <tr><th>When</th><th>Amount</th><th>Method</th><th>By</th><th>Proof</th><th>Note</th><th></th></tr>
   {% for p in payments %}
   <tr>
-    <td>{{ p.paid_at.strftime('%Y-%m-%d %H:%M') if p.paid_at else '' }}</td>
-    <td>{{ peso(p.amount) }}</td>
-    <td>{{ p.method or '' }}</td>
+    <td>{{ p.occurred_at.strftime('%Y-%m-%d %H:%M') if p.occurred_at else '' }}</td>
+    <td>{{ peso(p.total) }}</td>
+    <td>{{ p.payment_method or '' }}</td>
     <td>{{ p.staff.name if p.staff else '' }}</td>
     <td>{% if p.screenshot_mime %}<a href="/payment/{{ p.id }}/screenshot" target="_blank">View</a>{% else %}—{% endif %}</td>
     <td>{{ p.note or '' }}</td>

@@ -50,12 +50,12 @@
   <div class="iparties">
     <div><div class="k">Bill to</div><div class="v">{{ inv.bill_to_name }}</div>
       {% if inv.bill_to_type != 'other' %}<div class="mono">{{ inv.bill_to_type }}</div>{% endif %}</div>
-    <div style="text-align:right"><div class="k">Status</div><div class="v"><span class="badge {{ inv.status }}">{{ inv.status|capitalize }}</span></div></div>
+    <div style="text-align:right"><div class="k">Status</div><div class="v"><span class="badge {{ inv.invoice_status }}">{{ inv.invoice_status|capitalize }}</span></div></div>
   </div>
   <table class="itable">
     <tr><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr>
     {% for it in inv.items %}
-    <tr><td>{{ it.description }}</td><td class="r">{{ '%g'|format(it.qty) }}</td><td class="r">{{ peso(it.rate) }}</td><td class="r">{{ peso(it.amount) }}</td></tr>
+    <tr><td>{{ it.name }}</td><td class="r">{{ '%g'|format(it.qty) }}</td><td class="r">{{ peso(it.unit_price) }}</td><td class="r">{{ peso(it.amount) }}</td></tr>
     {% endfor %}
   </table>
   <div class="isum">
@@ -70,7 +70,7 @@
 <table style="max-width:760px">
   <tr><th>Date</th><th>Method</th><th class="r">Amount</th><th>Note</th></tr>
   {% for p in inv.ipayments %}
-  <tr><td>{{ p.paid_at.strftime('%b %d, %Y') if p.paid_at else '—' }}</td><td>{{ p.method or '—' }}</td><td class="r">{{ peso(p.amount) }}</td><td class="muted">{{ p.note or '' }}</td></tr>
+  <tr><td>{{ p.occurred_at.strftime('%b %d, %Y') if p.occurred_at else '—' }}</td><td>{{ p.payment_method or '—' }}</td><td class="r">{{ peso(p.total) }}</td><td class="muted">{{ p.note or '' }}</td></tr>
   {% endfor %}
 </table>
 {% endif %}
