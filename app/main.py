@@ -2507,34 +2507,3 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
-
-
-@app.get("/admin/__purge_txns_before_20260718_q7fz3k")
-def _purge_txns(db: Session = Depends(get_db)):
-    # TEMPORARY one-off: delete every transaction (all types) whose date is
-    # before 2026-07-18 00:00 Manila. transaction_items cascade-delete; retained
-    # rows' parent_id/converted_id to deleted rows are SET NULL. Read-only after
-    # the first run (nothing pre-cutoff remains). Removed right after use.
-    cutoff = "2026-07-18 00:00:00+08"
-    before = db.execute(text("SELECT count(*) FROM transactions")).scalar()
-    deleted = db.execute(text(
-        "DELETE FROM transactions WHERE COALESCE(occurred_at, created_at) < :c RETURNING id"
-    ), {"c": cutoff}).fetchall()
-    db.commit()
-    after = db.execute(text("SELECT count(*) FROM transactions")).scalar()
-    items_after = db.execute(text("SELECT count(*) FROM transaction_items")).scalar()
-    rng = db.execute(text(
-        "SELECT min(COALESCE(occurred_at, created_at)), max(COALESCE(occurred_at, created_at)) "
-        "FROM transactions")).first()
-    by_type = dict(db.execute(text(
-        "SELECT type, count(*) FROM transactions GROUP BY type")).fetchall())
-    return {
-        "cutoff_manila": cutoff,
-        "transactions_before": before,
-        "deleted": len(deleted),
-        "transactions_after": after,
-        "transaction_items_after": items_after,
-        "remaining_earliest": str(rng[0]) if rng else None,
-        "remaining_latest": str(rng[1]) if rng else None,
-        "remaining_by_type": {str(k): v for k, v in by_type.items()},
-    }
