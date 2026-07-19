@@ -72,27 +72,54 @@ def can_any(staff, keys):
 
 
 PERSON_TYPES = [("", "— none —"), ("employee", "Employee"), ("affiliate", "Affiliate")]
+# All relationship types an entity can be (one unified table).
+ENTITY_TYPES = [
+    ("", "— none —"),
+    ("employee", "Employee"),
+    ("affiliate", "Affiliate"),
+    ("supplier", "Supplier"),
+]
+# Types that carry a personal discount code / pricing tier.
+DISCOUNT_TYPES = ("employee", "affiliate")
+
+
+class Role(Base):
+    """A named role with a default permission set. Assigning a role to an entity
+    fills in that entity's permissions."""
+    __tablename__ = "roles"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+    is_admin = Column(Boolean, nullable=False, default=False)   # full access
+    permissions = Column(Text, nullable=False, default="")      # comma-separated keys
+    is_system = Column(Boolean, nullable=False, default=False)  # built-in, undeletable
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    def perm_list(self):
+        return [p for p in (self.permissions or "").split(",") if p]
 
 
 class Staff(Base):
-    """A person. May have system access (login + role) and/or a discount type
-    (employee / affiliate) with a personal code. One unified 'Users' table."""
+    """A person or party. May have system access (login + role) and/or a
+    relationship type (employee / affiliate / supplier). One unified table."""
     __tablename__ = "staff"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)                   # display name
-    # --- discount side ---
-    person_type = Column(String)                            # '', 'employee', 'affiliate'
+    # --- relationship side ---
+    person_type = Column(String)                            # '', employee, affiliate, supplier
     discount_code = Column(String, unique=True)             # personal code (E/A only)
     # --- system access side (only when has_access) ---
     has_access = Column(Boolean, nullable=False, default=True)
     username = Column(String, unique=True)                  # login handle (access only)
-    role = Column(String, nullable=False, default="staff")
+    role = Column(String, nullable=False, default="staff")  # 'admin'/'staff' (drives checks)
+    role_id = Column(Integer, ForeignKey("roles.id", ondelete="SET NULL"))
     pin_hash = Column(String)
     pin_salt = Column(String)
     permissions = Column(Text, nullable=False, default="")  # comma-separated keys
     phone = Column(String)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    role_obj = relationship("Role")
 
     __table_args__ = (
         CheckConstraint("role IN ('admin','staff')", name="staff_role_check"),

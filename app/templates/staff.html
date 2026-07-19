@@ -4,15 +4,30 @@
 .typetag{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:6px}
 .typetag.employee{background:#eaf1f8;color:#1f4e79}
 .typetag.affiliate{background:#f3ecfa;color:#6b3fa0}
+.typetag.supplier{background:#eaf6ec;color:#1f6b34}
 .codecell{font-family:ui-monospace,Menlo,monospace;font-weight:600}
 .codecell .used{font-family:inherit;font-weight:400;color:var(--muted);font-size:.78rem;margin-left:6px}
 .yes{color:var(--teal-dark);font-weight:600}
 .no{color:var(--muted)}
+.tfilter{display:flex;gap:8px;margin:10px 0 4px;flex-wrap:wrap}
+.tfilter a{font-size:.82rem;padding:5px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted);text-decoration:none}
+.tfilter a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 </style>
 <div class="row-between">
-  <div><h1 style="margin:0">Users</h1><p class="muted small" style="margin:2px 0 0">Everyone in one place — staff, employees and affiliates. Tick <b>Access</b> to let someone log in.</p></div>
-  <a class="btn primary" href="/admin/staff/new">＋ New person</a>
+  <div>
+    <h1 style="margin:0">{{ ftype_label ~ 's' if ftype_label else 'Users' }}</h1>
+    <p class="muted small" style="margin:2px 0 0">Everyone in one place — staff, employees, affiliates and suppliers. Tick <b>Access</b> to let someone log in.</p>
+  </div>
+  <a class="btn primary" href="/admin/staff/new{{ '?type=' ~ ftype if ftype }}">＋ New Entity</a>
 </div>
+
+<div class="tfilter">
+  <a href="/admin/staff" class="{{ 'on' if not ftype }}">All</a>
+  <a href="/admin/staff?type=employee" class="{{ 'on' if ftype == 'employee' }}">Employees</a>
+  <a href="/admin/staff?type=affiliate" class="{{ 'on' if ftype == 'affiliate' }}">Affiliates</a>
+  <a href="/admin/staff?type=supplier" class="{{ 'on' if ftype == 'supplier' }}">Suppliers</a>
+</div>
+
 <table>
   <tr><th>Name</th><th>Type</th><th>Discount code</th><th>Access</th><th>Role</th><th>Status</th><th></th></tr>
   {% for p in people %}
@@ -24,10 +39,12 @@
       {% else %}<span class="no">—</span>{% endif %}
     </td>
     <td>{% if p.has_access %}<span class="yes">✓ can log in</span>{% else %}<span class="no">no login</span>{% endif %}</td>
-    <td>{% if p.has_access %}{% if p.role == 'admin' %}<span class="tag">admin</span>{% else %}staff{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{% if p.has_access %}{{ p.role_obj.name if p.role_obj else p.role }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td>{{ 'active' if p.is_active else 'inactive' }}</td>
     <td><a href="/admin/staff/{{ p.id }}/edit">Edit</a></td>
   </tr>
+  {% else %}
+  <tr><td colspan="7" class="muted" style="padding:16px">No entities here yet.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}

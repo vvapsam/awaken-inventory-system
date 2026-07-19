@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ 'Edit role' if role else 'New role' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+{% set current = role.perm_list() if role else [] %}
+<form method="post" action="{{ '/admin/roles/%s/edit' % role.id if role else '/admin/roles/new' }}" class="card">
+  <div class="two-col">
+    <div>
+      <label>Role name</label>
+      <input name="name" value="{{ role.name if role else '' }}" placeholder="e.g. Cashier" required
+             {% if role and role.is_system %}readonly{% endif %}>
+      {% if role and role.is_system %}<p class="muted small" style="margin:4px 0 0">Built-in role — name is fixed.</p>{% endif %}
+    </div>
+    <div>
+      <label>Access level</label>
+      <label class="check" style="margin-top:8px">
+        <input type="checkbox" name="is_admin" id="isadmin" onchange="toggleAdmin()"
+               {% if role and role.is_admin %}checked{% endif %}
+               {% if role and role.is_system %}disabled{% endif %}>
+        Full access (admin) — can do everything
+      </label>
+      {% if role and role.is_system %}<input type="hidden" name="is_admin" value="{{ 'on' if role.is_admin else '' }}">{% endif %}
+    </div>
+  </div>
+
+  <div id="perm-block" style="margin-top:8px">
+    <label>Permissions</label>
+    <p class="muted small">Tick what people with this role can do. Admin roles get everything automatically.</p>
+
+    <table class="perm-matrix">
+      <tr>
+        <th>Module</th>
+        {% for akey, alabel in ACTIONS %}<th>{{ alabel }}</th>{% endfor %}
+      </tr>
+      {% for mkey, mlabel in MODULES %}
+      <tr>
+        <td class="mod-name">{{ mlabel }}</td>
+        {% for akey, alabel in ACTIONS %}
+        {% set pk = mkey ~ '.' ~ akey %}
+        <td class="cell">
+          <input type="checkbox" name="permissions" value="{{ pk }}" {% if pk in current %}checked{% endif %}>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+
+    <div class="perm-group">
+      <div class="perm-group-title">Reports &amp; access</div>
+      {% for akey, alabel in ACCESS_DEFS %}
+      <label class="check perm-check">
+        <input type="checkbox" name="permissions" value="{{ akey }}" {% if akey in current %}checked{% endif %}>
+        <span>{{ alabel }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div style="margin-top:14px">
+    <button type="submit" class="btn primary big">Save role</button>
+    <a class="btn" href="/admin/roles">Cancel</a>
+    {% if role and not role.is_system %}
+    <button type="submit" class="btn" formaction="/admin/roles/{{ role.id }}/delete" formnovalidate
+            onclick="return confirm('Delete role {{ role.name }}? People on it move to Staff.')"
+            style="border-color:#e6a49b;color:#9c2c1e">Delete</button>
+    {% endif %}
+  </div>
+</form>
+
+<script>
+function toggleAdmin(){
+  var isAdmin = document.getElementById('isadmin').checked;
+  document.getElementById('perm-block').style.opacity = isAdmin ? .4 : 1;
+  document.querySelectorAll('#perm-block input[type=checkbox]').forEach(function(c){ c.disabled = isAdmin; });
+}
+toggleAdmin();
+</script>
+{% endblock %}
