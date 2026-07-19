@@ -93,10 +93,19 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 
 /* bottom sheet (cart) */
 .sheet{position:fixed;left:0;right:0;bottom:0;background:var(--white);border-radius:22px 22px 0 0;
-  box-shadow:0 -8px 30px rgba(15,15,15,.14);padding:14px 16px calc(14px + var(--safe-b));
-  max-height:56vh;overflow:auto;transform:translateY(calc(100% + 40px));transition:transform .22s ease;z-index:40}
+  box-shadow:0 -8px 30px rgba(15,15,15,.14);padding:8px 16px calc(8px + var(--safe-b));
+  max-height:none;overflow:visible;transform:translateY(calc(100% + 40px));transition:transform .22s ease;z-index:40}
 .sheet.open{transform:none}
-.sheet .grip{width:38px;height:4px;border-radius:99px;background:var(--line);margin:2px auto 12px}
+.sheet.expanded{max-height:86vh;overflow:auto;padding-bottom:calc(16px + var(--safe-b))}
+.sheet .grip{width:38px;height:4px;border-radius:99px;background:var(--line);margin:2px auto 6px}
+/* collapsed peek bar — keeps the product grid tappable while a cart is building */
+.sheet-peek{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;padding:6px 2px;text-align:left}
+.sheet-peek:active{transform:scale(.995)}
+.sheet-peek .peek-count{font-weight:700;font-size:.95rem;color:var(--ink)}
+.sheet-peek .peek-total{font-family:Poppins;font-weight:700;font-size:1.08rem;margin-left:auto;color:var(--ink)}
+.sheet-peek .peek-cta{flex:none;font-weight:700;font-size:.86rem;color:var(--green);white-space:nowrap}
+.sheet-body{display:none;padding-top:4px}
+.sheet.expanded .sheet-body{display:block}
 .cartline{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
 .cartline:last-of-type{border-bottom:0}
 .cartline .cn{flex:1;font-weight:600;font-size:.9rem}
@@ -219,11 +228,17 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
   <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">Sell</h2></div>
   <div class="section-label">Tap a product to add</div>
   <div class="pgrid" id="sell-grid"></div>
-  <div style="height:8px"></div>
+  <div id="sell-spacer" style="height:8px"></div>
 
   <!-- cart bottom sheet -->
   <div class="sheet" id="cart-sheet">
     <div class="grip"></div>
+    <button class="sheet-peek" id="sheet-peek" type="button">
+      <span class="peek-count" id="peek-count">0 items</span>
+      <span class="peek-total" id="peek-total">₱0.00</span>
+      <span class="peek-cta" id="peek-cta">Review &amp; pay ›</span>
+    </button>
+    <div class="sheet-body" id="sheet-body">
     <div id="cart-lines"></div>
     <div class="carttot"><span>Total</span><span id="cart-total">₱0.00</span></div>
 
@@ -262,6 +277,7 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     </div>
 
     <button class="bigbtn" id="sell-submit" disabled style="margin-top:14px">Select payment</button>
+    </div>
   </div>
 </section>
 
@@ -499,9 +515,27 @@ function renderCart(){
     if(al.capHit) msg += ' · daily cap reached — extra at full price';
     note.textContent=msg; note.classList.remove('hide');
   } else note.classList.add('hide');
-  $('#cart-sheet').classList.toggle('open', ids.length>0);
+  // peek bar summary
+  const qty=al.rows.reduce((s,r)=>s+r.q,0);
+  $('#peek-count').textContent = qty===1 ? '1 item' : qty+' items';
+  $('#peek-total').textContent = peso(al.total);
+  const open = ids.length>0;
+  const sheet=$('#cart-sheet');
+  sheet.classList.toggle('open', open);
+  if(!open) sheet.classList.remove('expanded');           // collapse when cart empties
+  $('#sell-spacer').style.height = open ? '84px' : '8px'; // keep last products clear of the bar
   updateSellBtn();
 }
+function toggleSheet(force){
+  const sheet=$('#cart-sheet');
+  if(!sheet.classList.contains('open')) return;
+  const exp = force===undefined ? !sheet.classList.contains('expanded') : force;
+  sheet.classList.toggle('expanded', exp);
+  $('#peek-cta').textContent = exp ? 'Keep adding ▾' : 'Review & pay ›';
+  if(exp) sheet.scrollTop=0;
+}
+$('#sheet-peek').onclick=()=>toggleSheet();
+$('.sheet .grip').onclick=()=>toggleSheet();
 $$('#pay-seg button').forEach(b=>b.onclick=()=>{
   payMode=b.dataset.pay;
   $$('#pay-seg button').forEach(x=>x.classList.remove('on','g','c','i'));
