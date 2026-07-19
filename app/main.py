@@ -24,9 +24,11 @@ from .models import (
     MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
-    Member, Invoice, InvoiceItem, InvoicePayment,
+    Member, Invoice, InvoiceItem, InvoicePayment, Order, OrderItem,
     PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
     ENTITY_TYPES, DISCOUNT_TYPES, Role,
+    Transaction, TransactionItem, TransactionPayment,
+    TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -113,6 +115,10 @@ def startup():
         conn.execute(text(
             "DO $$ BEGIN IF to_regclass('public.coaches') IS NOT NULL THEN "
             "ALTER TABLE coaches ADD COLUMN IF NOT EXISTS staff_id INTEGER; END IF; END $$;"))
+        # Unified transactions: markers so sales/orders/invoices fold in once.
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
+        conn.execute(text("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
     db = next(get_db())
     try:
         # Backfill usernames only for people WITH system access who are missing one.
@@ -155,12 +161,13 @@ def startup():
         # One-time migration: fold legacy discount_codes into the people table.
         # Each code becomes a non-access person (Employee/Affiliate) carrying the code.
         # Read via raw SQL so the ORM model can be removed and the table dropped.
-        try:
+        # Guard with to_regclass — a missing table would abort the session txn.
+        if db.execute(text("SELECT to_regclass('public.discount_codes')")).scalar():
             legacy = db.execute(text(
                 "SELECT dc.code, dc.holder_name, dc.is_active, pg.kind "
                 "FROM discount_codes dc LEFT JOIN pricing_groups pg ON pg.id = dc.group_id"
             )).fetchall()
-        except Exception:
+        else:
             legacy = []
         if legacy:
             existing_codes = set(c for (c,) in db.query(Staff.discount_code).all() if c)
@@ -182,12 +189,12 @@ def startup():
         #   full-time coach -> entity type 'coach'
         # Then remap members.coach_id and invoices.coach_id from coach ids to the
         # new staff ids. Idempotent via coaches.staff_id.
-        try:
+        if db.execute(text("SELECT to_regclass('public.coaches')")).scalar():
             unmigrated = db.execute(text(
                 "SELECT id, name, coach_type, affiliate_fee, start_date, next_billing, "
                 "is_active FROM coaches WHERE staff_id IS NULL"
             )).fetchall()
-        except Exception:
+        else:
             unmigrated = []
         if unmigrated:
             mapping = {}
@@ -223,8 +230,90 @@ def startup():
             conn.execute(text("ALTER TABLE sales DROP COLUMN IF EXISTS discount_code_id"))
             conn.execute(text("DROP TABLE IF EXISTS discount_codes"))
             conn.execute(text("DROP TABLE IF EXISTS coaches"))
+        # Fold sales, orders and invoices into the unified transactions table.
+        _migrate_transactions(db)
     finally:
         db.close()
+
+
+def _dt(d, fallback=None):
+    """Coerce a date/None into a datetime for occurred_at."""
+    if isinstance(d, datetime):
+        return d
+    if isinstance(d, date):
+        return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+    return fallback
+
+
+def _migrate_transactions(db):
+    """One-time fold of sales/orders/invoices (+ items & invoice payments) into
+    the transactions table. Idempotent via each source table's tx_id marker."""
+    sale_tx = {}  # sale.id -> transaction.id (for linking confirmed orders)
+
+    def _has(tbl):
+        return bool(db.execute(text("SELECT to_regclass(:n)"), {"n": "public." + tbl}).scalar())
+
+    # 1) cash sales
+    sales = db.query(Sale).filter(Sale.tx_id == None).all() if _has("sales") else []  # noqa: E711
+    for s in sales:
+        tx = Transaction(
+            type=TX_CASH_SALE, status=("credit" if s.is_credit else "paid"),
+            occurred_at=s.sold_at, created_at=s.created_at or s.sold_at,
+            staff_id=s.staff_id, customer_id=s.customer_id,
+            payment_method=s.payment_method, is_credit=bool(s.is_credit),
+            proof=s.proof, proof_mime=s.proof_mime,
+            pricing_group_id=s.pricing_group_id, discount_person_id=s.discount_person_id,
+            discounted_qty=s.discounted_qty or 0, note=s.note)
+        db.add(tx); db.flush()
+        for it in s.items:
+            db.add(TransactionItem(
+                transaction_id=tx.id, product_id=it.product_id,
+                name=(it.product.name if it.product else "Item"),
+                qty=it.quantity, unit_price=it.unit_price, cost_price=it.cost_price))
+        s.tx_id = tx.id
+        sale_tx[s.id] = tx.id
+    db.commit()
+
+    # 2) orders (link to the sale they became, if any)
+    orders = db.query(Order).filter(Order.tx_id == None).all() if _has("orders") else []  # noqa: E711
+    for o in orders:
+        tx = Transaction(
+            type=TX_ORDER, number=o.number, status=o.status,
+            occurred_at=o.created_at, created_at=o.created_at, decided_at=o.decided_at,
+            staff_id=o.staff_id, customer_name=o.customer_name, customer_phone=o.customer_phone,
+            payment_method=o.payment_method, proof=o.proof, proof_mime=o.proof_mime,
+            amount_snapshot=o.amount,
+            check_amount_ok=o.check_amount_ok, check_detected_amount=o.check_detected_amount,
+            check_date_ok=o.check_date_ok, check_detected_date=o.check_detected_date,
+            check_note=o.check_note, converted_id=sale_tx.get(o.sale_id))
+        db.add(tx); db.flush()
+        for it in o.items:
+            db.add(TransactionItem(transaction_id=tx.id, product_id=it.product_id,
+                                   name=it.name, qty=it.qty, unit_price=it.unit_price))
+        o.tx_id = tx.id
+    db.commit()
+
+    # 3) invoices (+ items + payments)
+    invoices = db.query(Invoice).filter(Invoice.tx_id == None).all() if _has("invoices") else []  # noqa: E711
+    for inv in invoices:
+        tx = Transaction(
+            type=TX_INVOICE, number=inv.number,
+            status=("void" if inv.is_void else "unpaid"),
+            occurred_at=_dt(inv.issue_date, inv.created_at), created_at=inv.created_at,
+            staff_id=inv.staff_id, customer_id=inv.customer_id,
+            customer_name=inv.bill_to_name, bill_to_type=inv.bill_to_type,
+            coach_id=inv.coach_id, issue_date=inv.issue_date, due_date=inv.due_date,
+            period=inv.period, is_void=bool(inv.is_void), note=inv.note)
+        db.add(tx); db.flush()
+        for it in inv.items:
+            db.add(TransactionItem(transaction_id=tx.id, product_id=None,
+                                   name=it.description, qty=it.qty, unit_price=it.rate))
+        for pm in inv.ipayments:
+            db.add(TransactionPayment(transaction_id=tx.id, amount=pm.amount,
+                                      method=pm.method, note=pm.note,
+                                      paid_at=pm.paid_at, staff_id=pm.staff_id))
+        inv.tx_id = tx.id
+    db.commit()
 
 
 # ---------- helpers ----------

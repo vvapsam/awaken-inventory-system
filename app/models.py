@@ -206,6 +206,7 @@ class Member(Base):
 class Invoice(Base):
     __tablename__ = "invoices"
     id = Column(Integer, primary_key=True)
+    tx_id = Column(Integer)          # migration marker -> transactions.id
     number = Column(String, unique=True, nullable=False)      # INV-0001
     bill_to_type = Column(String, default="other")            # coach / customer / other
     coach_id = Column(Integer, ForeignKey("staff.id"))        # affiliate entity billed
@@ -271,6 +272,7 @@ class InvoicePayment(Base):
 class Sale(Base):
     __tablename__ = "sales"
     id = Column(Integer, primary_key=True)
+    tx_id = Column(Integer)          # migration marker -> transactions.id
     sold_at = Column(DateTime(timezone=True), default=now_utc)
     staff_id = Column(Integer, ForeignKey("staff.id"))
     customer_id = Column(Integer, ForeignKey("customers.id"))  # optional
@@ -311,6 +313,7 @@ class Order(Base):
     """A customer self-checkout order placed from the public /order page."""
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True)
+    tx_id = Column(Integer)          # migration marker -> transactions.id
     number = Column(String, unique=True, nullable=False)       # ORD-0001
     customer_name = Column(String, nullable=False)
     customer_phone = Column(String)
@@ -345,6 +348,126 @@ class OrderItem(Base):
     name = Column(String, nullable=False)      # snapshot name
     qty = Column(Integer, nullable=False, default=1)
     unit_price = Column(Numeric(10, 2), nullable=False, default=0)
+
+
+# ===================== Unified transactions =====================
+# One table for every money movement, distinguished by `type`:
+#   cash_sale  – an instant retail sale (paid, or is_credit=unpaid)
+#   order      – a customer self-checkout order awaiting staff confirmation
+#   invoice    – a billing document (affiliate corkage / customer / other)
+TX_CASH_SALE = "cash_sale"
+TX_ORDER = "order"
+TX_INVOICE = "invoice"
+TRANSACTION_TYPES = [
+    (TX_CASH_SALE, "Cash sale"),
+    (TX_ORDER, "Order"),
+    (TX_INVOICE, "Invoice"),
+]
+
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+    id = Column(Integer, primary_key=True)
+    type = Column(String, nullable=False)                       # cash_sale | order | invoice
+    number = Column(String, unique=True)                        # ORD-/INV- (sales: none)
+    status = Column(String, nullable=False, default="paid")     # see per-type notes below
+    occurred_at = Column(DateTime(timezone=True), default=now_utc)  # sold_at / issue_date
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    decided_at = Column(DateTime(timezone=True))                # order confirm/reject time
+
+    staff_id = Column(Integer, ForeignKey("staff.id"))
+    customer_id = Column(Integer, ForeignKey("customers.id"))
+    customer_name = Column(String)                              # order walk-in / invoice bill-to
+    customer_phone = Column(String)
+
+    # payment / proof (cash_sale, order)
+    payment_method = Column(String)
+    is_credit = Column(Boolean, nullable=False, default=False)  # unpaid retail sale
+    proof = Column(LargeBinary)
+    proof_mime = Column(String)
+    amount_snapshot = Column(Numeric(10, 2))                    # order total snapshot
+    note = Column(Text)
+
+    # retail discount (cash_sale)
+    pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))
+    discount_person_id = Column(Integer, ForeignKey("staff.id", ondelete="SET NULL"))
+    discounted_qty = Column(Integer, nullable=False, default=0)
+
+    # order self-checkout OCR checks + link to the sale it became
+    check_amount_ok = Column(Boolean)
+    check_detected_amount = Column(Numeric(10, 2))
+    check_date_ok = Column(Boolean)
+    check_detected_date = Column(String)
+    check_note = Column(Text)
+    converted_id = Column(Integer, ForeignKey("transactions.id", ondelete="SET NULL"))
+
+    # invoice fields
+    bill_to_type = Column(String)                              # coach | customer | other
+    coach_id = Column(Integer, ForeignKey("staff.id"))
+    issue_date = Column(Date)
+    due_date = Column(Date)
+    period = Column(String)
+    is_void = Column(Boolean, nullable=False, default=False)
+
+    staff = relationship("Staff", foreign_keys=[staff_id])
+    discount_person = relationship("Staff", foreign_keys=[discount_person_id])
+    coach = relationship("Staff", foreign_keys=[coach_id])
+    customer = relationship("Customer")
+    items = relationship("TransactionItem", back_populates="transaction",
+                         cascade="all, delete-orphan")
+    payments = relationship("TransactionPayment", cascade="all, delete-orphan",
+                            backref="transaction")
+
+    @property
+    def total(self):
+        return sum(float(i.qty) * float(i.unit_price) for i in self.items)
+
+    @property
+    def paid(self):
+        return sum(float(p.amount or 0) for p in self.payments)
+
+    @property
+    def balance(self):
+        return self.total - self.paid
+
+    @property
+    def invoice_status(self):
+        if self.is_void:
+            return "void"
+        if self.total > 0 and self.balance <= 0.005:
+            return "paid"
+        if self.paid > 0.005:
+            return "partial"
+        return "unpaid"
+
+
+class TransactionItem(Base):
+    __tablename__ = "transaction_items"
+    id = Column(Integer, primary_key=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"))     # null for free-text invoice lines
+    name = Column(String, nullable=False)                       # snapshot / invoice description
+    qty = Column(Numeric(10, 2), nullable=False, default=1)
+    unit_price = Column(Numeric(10, 2), nullable=False, default=0)
+    cost_price = Column(Numeric(10, 2))
+
+    transaction = relationship("Transaction", back_populates="items")
+    product = relationship("Product")
+
+    @property
+    def amount(self):
+        return float(self.qty or 0) * float(self.unit_price or 0)
+
+
+class TransactionPayment(Base):
+    __tablename__ = "transaction_payments"
+    id = Column(Integer, primary_key=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    method = Column(String)
+    note = Column(Text)
+    paid_at = Column(DateTime(timezone=True), default=now_utc)
+    staff_id = Column(Integer, ForeignKey("staff.id"))
 
 
 class PaymentSetting(Base):
