@@ -184,22 +184,8 @@ class Customer(Base):
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
 
-COACH_TYPES = [("affiliate", "Affiliate"), ("full_time", "Full Time")]
-
-
-class Coach(Base):
-    """Deprecated: coaches were merged into the unified Staff/entity table.
-    Kept only so the one-time startup migration can read legacy rows."""
-    __tablename__ = "coaches"
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    coach_type = Column(String, nullable=False, default="affiliate")
-    affiliate_fee = Column(Numeric(10, 2), default=0)   # monthly, affiliates only
-    start_date = Column(Date)
-    next_billing = Column(Date)
-    is_active = Column(Boolean, nullable=False, default=True)
-    staff_id = Column(Integer)                           # migration marker → staff.id
-    created_at = Column(DateTime(timezone=True), default=now_utc)
+# Coaches were merged into the unified Staff/entity table; the legacy `coaches`
+# table is migrated then dropped at startup. No ORM model remains for it.
 
 
 class Member(Base):
@@ -416,17 +402,8 @@ class PricingGroupItem(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
 
 
-class DiscountCode(Base):
-    """A per-person code (employee or affiliate) that unlocks a pricing tier."""
-    __tablename__ = "discount_codes"
-    id = Column(Integer, primary_key=True)
-    code = Column(String, unique=True, nullable=False)          # stored uppercase
-    holder_name = Column(String, nullable=False)               # the employee / affiliate
-    group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="CASCADE"), nullable=False)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), default=now_utc)
-
-    group = relationship("PricingGroup")
+# Legacy `discount_codes` (per-person codes) were folded into the Staff entity
+# table; the table is migrated then dropped at startup. No ORM model remains.
 
 
 class Payment(Base):

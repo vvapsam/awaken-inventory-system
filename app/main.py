@@ -24,8 +24,8 @@ from .models import (
     MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
-    Coach, Member, COACH_TYPES, Invoice, InvoiceItem, InvoicePayment,
-    PricingGroup, PricingGroupItem, DiscountCode, PRICING_KINDS, PERSON_TYPES,
+    Member, Invoice, InvoiceItem, InvoicePayment,
+    PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
     ENTITY_TYPES, DISCOUNT_TYPES, Role,
 )
 
@@ -90,7 +90,6 @@ def startup():
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'employee'"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS round_up BOOLEAN NOT NULL DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_code_id INTEGER REFERENCES discount_codes(id) ON DELETE SET NULL"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0"))
         # Unified people: staff table also holds employees/affiliates (may have no login)
         conn.execute(text("ALTER TABLE staff ALTER COLUMN username DROP NOT NULL"))
@@ -110,7 +109,10 @@ def startup():
         # FKs to coaches so we can remap the values in the data migration below.
         conn.execute(text("ALTER TABLE members DROP CONSTRAINT IF EXISTS members_coach_id_fkey"))
         conn.execute(text("ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_coach_id_fkey"))
-        conn.execute(text("ALTER TABLE coaches ADD COLUMN IF NOT EXISTS staff_id INTEGER"))
+        # Only touch the legacy coaches table if it still exists.
+        conn.execute(text(
+            "DO $$ BEGIN IF to_regclass('public.coaches') IS NOT NULL THEN "
+            "ALTER TABLE coaches ADD COLUMN IF NOT EXISTS staff_id INTEGER; END IF; END $$;"))
     db = next(get_db())
     try:
         # Backfill usernames only for people WITH system access who are missing one.
@@ -152,25 +154,28 @@ def startup():
         db.commit()
         # One-time migration: fold legacy discount_codes into the people table.
         # Each code becomes a non-access person (Employee/Affiliate) carrying the code.
+        # Read via raw SQL so the ORM model can be removed and the table dropped.
         try:
-            legacy = db.query(DiscountCode).all()
+            legacy = db.execute(text(
+                "SELECT dc.code, dc.holder_name, dc.is_active, pg.kind "
+                "FROM discount_codes dc LEFT JOIN pricing_groups pg ON pg.id = dc.group_id"
+            )).fetchall()
         except Exception:
             legacy = []
         if legacy:
             existing_codes = set(c for (c,) in db.query(Staff.discount_code).all() if c)
-            for lc in legacy:
-                if not lc.code or lc.code in existing_codes:
+            for code, holder_name, is_active, kind in legacy:
+                if not code or code in existing_codes:
                     continue
-                kind = (lc.group.kind if lc.group else "") or "employee"
                 db.add(Staff(
-                    name=lc.holder_name or lc.code,
-                    person_type=kind,
-                    discount_code=lc.code,
+                    name=holder_name or code,
+                    person_type=(kind or "employee"),
+                    discount_code=code,
                     has_access=False,
-                    is_active=bool(lc.is_active),
+                    is_active=bool(is_active),
                     permissions="",
                 ))
-                existing_codes.add(lc.code)
+                existing_codes.add(code)
             db.commit()
         # One-time migration: fold coaches into the entity table.
         #   affiliate coach -> entity type 'affiliate' (keeps fee/members/billing)
@@ -178,26 +183,31 @@ def startup():
         # Then remap members.coach_id and invoices.coach_id from coach ids to the
         # new staff ids. Idempotent via coaches.staff_id.
         try:
-            unmigrated = db.query(Coach).filter(Coach.staff_id == None).all()  # noqa: E711
+            unmigrated = db.execute(text(
+                "SELECT id, name, coach_type, affiliate_fee, start_date, next_billing, "
+                "is_active FROM coaches WHERE staff_id IS NULL"
+            )).fetchall()
         except Exception:
             unmigrated = []
         if unmigrated:
             mapping = {}
-            for c in unmigrated:
+            for cid, name, coach_type, fee, sdate, nbill, active in unmigrated:
+                is_aff = coach_type == "affiliate"
                 ent = Staff(
-                    name=c.name,
-                    person_type=("affiliate" if c.coach_type == "affiliate" else "coach"),
+                    name=name,
+                    person_type=("affiliate" if is_aff else "coach"),
                     has_access=False,
-                    is_active=bool(c.is_active),
+                    is_active=bool(active),
                     permissions="",
-                    affiliate_fee=(c.affiliate_fee if c.coach_type == "affiliate" else None),
-                    start_date=c.start_date,
-                    next_billing=(c.next_billing if c.coach_type == "affiliate" else None),
+                    affiliate_fee=(fee if is_aff else None),
+                    start_date=sdate,
+                    next_billing=(nbill if is_aff else None),
                 )
                 db.add(ent)
                 db.flush()  # get ent.id
-                c.staff_id = ent.id
-                mapping[c.id] = ent.id
+                mapping[cid] = ent.id
+                db.execute(text("UPDATE coaches SET staff_id = :sid WHERE id = :cid"),
+                           {"sid": ent.id, "cid": cid})
             db.commit()
             # remap references (read old coach id -> write new staff id)
             for m in db.query(Member).all():
@@ -207,6 +217,12 @@ def startup():
                 if inv.coach_id in mapping:
                     inv.coach_id = mapping[inv.coach_id]
             db.commit()
+        # Cleanup: the legacy tables are now redundant — drop them (and the dead
+        # sales.discount_code_id column) so the schema only keeps live tables.
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE sales DROP COLUMN IF EXISTS discount_code_id"))
+            conn.execute(text("DROP TABLE IF EXISTS discount_codes"))
+            conn.execute(text("DROP TABLE IF EXISTS coaches"))
     finally:
         db.close()
 
