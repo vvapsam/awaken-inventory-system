@@ -329,7 +329,7 @@ class TransactionItem(Base):
 
 class PaymentSetting(Base):
     """Singleton (id=1): bank details + payment QR + logo shown on the customer page."""
-    __tablename__ = "payment_settings"
+    __tablename__ = "company_info"
     id = Column(Integer, primary_key=True)
     bank_name = Column(String)
     account_name = Column(String)

@@ -77,6 +77,12 @@ def startup():
             "DO $$ BEGIN IF to_regclass('public.staff') IS NOT NULL "
             "AND to_regclass('public.entity') IS NULL THEN "
             "ALTER TABLE staff RENAME TO entity; END IF; END $$;"))
+        # `payment_settings` was renamed to `company_info`. Same rule: rename
+        # BEFORE create_all so it doesn't create an empty `company_info`.
+        conn.execute(text(
+            "DO $$ BEGIN IF to_regclass('public.payment_settings') IS NOT NULL "
+            "AND to_regclass('public.company_info') IS NULL THEN "
+            "ALTER TABLE payment_settings RENAME TO company_info; END IF; END $$;"))
     Base.metadata.create_all(bind=engine)
     # Lightweight migrations for databases created before these columns existed.
     with engine.begin() as conn:
@@ -93,8 +99,8 @@ def startup():
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.customers') IS NOT NULL THEN ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone VARCHAR; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof BYTEA; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR; END IF; END $$;"))
-        conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo BYTEA"))
-        conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo_mime VARCHAR"))
+        conn.execute(text("ALTER TABLE company_info ADD COLUMN IF NOT EXISTS logo BYTEA"))
+        conn.execute(text("ALTER TABLE company_info ADD COLUMN IF NOT EXISTS logo_mime VARCHAR"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL; END IF; END $$;"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'employee'"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS round_up BOOLEAN NOT NULL DEFAULT FALSE"))
