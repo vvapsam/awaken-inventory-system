@@ -75,9 +75,11 @@ PERSON_TYPES = [("", "— none —"), ("employee", "Employee"), ("affiliate", "A
 # All relationship types an entity can be (one unified table).
 ENTITY_TYPES = [
     ("", "— none —"),
+    ("customer", "Customer"),
     ("employee", "Employee"),
     ("affiliate", "Affiliate"),
     ("coach", "Coach"),
+    ("member", "Member"),
     ("supplier", "Supplier"),
 ]
 # Types that carry a personal discount code / pricing tier.
@@ -100,9 +102,10 @@ class Role(Base):
 
 
 class Staff(Base):
-    """A person or party. May have system access (login + role) and/or a
-    relationship type (employee / affiliate / supplier). One unified table."""
-    __tablename__ = "staff"
+    """An entity: any person or party — staff/login, employee, affiliate, coach,
+    supplier, customer, or member — all in one `entity` table, tagged by
+    person_type. May have system access (login + role) and/or billing fields."""
+    __tablename__ = "entity"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)                   # display name
     # --- relationship side ---
@@ -121,10 +124,14 @@ class Staff(Base):
     affiliate_fee = Column(Numeric(10, 2))                  # monthly affiliate fee
     start_date = Column(Date)
     next_billing = Column(Date)
+    # --- member (an affiliate's corkage client) ---
+    corkage_rate = Column(Numeric(10, 2))                   # monthly corkage (members)
+    affiliate_id = Column(Integer, ForeignKey("entity.id")) # member -> their affiliate
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     role_obj = relationship("Role")
+    affiliate = relationship("Staff", foreign_keys=[affiliate_id], remote_side=[id])
 
     __table_args__ = (
         CheckConstraint("role IN ('admin','staff')", name="staff_role_check"),
@@ -153,53 +160,20 @@ class Product(Base):
     )
 
 
-class StockMovement(Base):
-    __tablename__ = "stock_movements"
-    id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    movement_type = Column(String, nullable=False)
-    quantity = Column(Integer, nullable=False)  # +adds, -removes
-    unit_cost = Column(Numeric(10, 2))
-    note = Column(Text)
-    staff_id = Column(Integer, ForeignKey("staff.id"))
-    occurred_at = Column(DateTime(timezone=True), default=now_utc)
-    created_at = Column(DateTime(timezone=True), default=now_utc)
-
-    product = relationship("Product")
-    staff = relationship("Staff")
-
-    __table_args__ = (
-        CheckConstraint(
-            "movement_type IN ('restock','waste','missing','adjustment','return')",
-            name="stock_movements_type_check",
-        ),
-    )
+# Stock movements were merged into transactions (type='inventory_adjustment',
+# subtype = restock/waste/…); the legacy stock_movements table is dropped at startup.
 
 
-class Customer(Base):
-    __tablename__ = "customers"
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    phone = Column(String)                    # optional contact number
-    created_at = Column(DateTime(timezone=True), default=now_utc)
+# Customers were merged into the unified `entity` table (person_type='customer');
+# the legacy `customers` table is migrated then dropped at startup.
 
 
 # Coaches were merged into the unified Staff/entity table; the legacy `coaches`
 # table is migrated then dropped at startup. No ORM model remains for it.
 
 
-class Member(Base):
-    __tablename__ = "members"
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    # points at an affiliate entity in the unified staff table (kept name for history)
-    coach_id = Column(Integer, ForeignKey("staff.id"))
-    corkage_rate = Column(Numeric(10, 2), default=3000)  # monthly corkage per client
-    start_date = Column(Date)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), default=now_utc)
-
-    coach = relationship("Staff")
+# Members were merged into the unified `entity` table (person_type='member',
+# with corkage_rate + affiliate_id); the legacy `members` table is dropped at startup.
 
 
 # Legacy sales/orders/invoices (+ their items & payments) were merged into the
@@ -212,30 +186,34 @@ class Member(Base):
 #   order      – a customer self-checkout order awaiting staff confirmation
 #   invoice    – a billing document (affiliate corkage / customer / other)
 #   payment    – money received (against an invoice, or a customer balance)
+#   inventory_adjustment – a stock movement (subtype = restock/waste/missing/…)
 TX_CASH_SALE = "cash_sale"
 TX_ORDER = "order"
 TX_INVOICE = "invoice"
 TX_PAYMENT = "payment"
+TX_INVENTORY = "inventory_adjustment"
 TRANSACTION_TYPES = [
     (TX_CASH_SALE, "Cash sale"),
     (TX_ORDER, "Order"),
     (TX_INVOICE, "Invoice"),
     (TX_PAYMENT, "Payment"),
+    (TX_INVENTORY, "Inventory adjustment"),
 ]
 
 
 class Transaction(Base):
     __tablename__ = "transactions"
     id = Column(Integer, primary_key=True)
-    type = Column(String, nullable=False)                       # cash_sale | order | invoice
+    type = Column(String, nullable=False)                       # cash_sale | order | invoice | payment | inventory_adjustment
+    subtype = Column(String)                                    # inventory kind: restock/waste/…
     number = Column(String, unique=True)                        # ORD-/INV- (sales: none)
     status = Column(String, nullable=False, default="paid")     # see per-type notes below
     occurred_at = Column(DateTime(timezone=True), default=now_utc)  # sold_at / issue_date
     created_at = Column(DateTime(timezone=True), default=now_utc)
     decided_at = Column(DateTime(timezone=True))                # order confirm/reject time
 
-    staff_id = Column(Integer, ForeignKey("staff.id"))
-    customer_id = Column(Integer, ForeignKey("customers.id"))
+    staff_id = Column(Integer, ForeignKey("entity.id"))
+    customer_id = Column(Integer, ForeignKey("entity.id"))
     customer_name = Column(String)                              # order walk-in / invoice bill-to
     customer_phone = Column(String)
 
@@ -249,7 +227,7 @@ class Transaction(Base):
 
     # retail discount (cash_sale)
     pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))
-    discount_person_id = Column(Integer, ForeignKey("staff.id", ondelete="SET NULL"))
+    discount_person_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     discounted_qty = Column(Integer, nullable=False, default=0)
 
     # order self-checkout OCR checks + link to the sale it became
@@ -265,7 +243,7 @@ class Transaction(Base):
 
     # invoice fields
     bill_to_type = Column(String)                              # coach | customer | other
-    coach_id = Column(Integer, ForeignKey("staff.id"))
+    coach_id = Column(Integer, ForeignKey("entity.id"))
     issue_date = Column(Date)
     due_date = Column(Date)
     period = Column(String)
@@ -274,7 +252,7 @@ class Transaction(Base):
     staff = relationship("Staff", foreign_keys=[staff_id])
     discount_person = relationship("Staff", foreign_keys=[discount_person_id])
     coach = relationship("Staff", foreign_keys=[coach_id])
-    customer = relationship("Customer")
+    customer = relationship("Staff", foreign_keys=[customer_id])
     items = relationship("TransactionItem", back_populates="transaction",
                          cascade="all, delete-orphan")
     # payments (and any child transactions) that apply to this one
@@ -284,6 +262,23 @@ class Transaction(Base):
     @property
     def total(self):
         return sum(float(i.qty) * float(i.unit_price) for i in self.items)
+
+    # ---- inventory_adjustment convenience (one line item) ----
+    @property
+    def movement_type(self):
+        return self.subtype
+
+    @property
+    def quantity(self):
+        return int(self.items[0].qty) if self.items else 0
+
+    @property
+    def unit_cost(self):
+        return float(self.items[0].unit_price) if (self.items and self.items[0].unit_price is not None) else None
+
+    @property
+    def product(self):
+        return self.items[0].product if self.items else None
 
     @property
     def paid(self):

@@ -14,7 +14,7 @@
   {% for m in members %}
   <tr class="{% if not m.is_active %}inactive{% endif %}">
     <td>{{ m.name }}</td>
-    <td>{{ m.coach.name if m.coach else '—' }}</td>
+    <td>{{ m.affiliate.name if m.affiliate else '—' }}</td>
     <td class="r">{{ peso(m.corkage_rate) }}</td>
     <td>{{ m.start_date.strftime('%b %d, %Y') if m.start_date else '—' }}</td>
     <td>{% if m.is_active %}<span class="bdg act">Active</span>{% else %}<span class="bdg off">Inactive</span>{% endif %}</td>

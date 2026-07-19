@@ -9,7 +9,7 @@
   <select name="coach_id">
     <option value="">— none —</option>
     {% for c in coaches %}
-    <option value="{{ c.id }}" {% if member and member.coach_id==c.id %}selected{% endif %}>{{ c.name }}</option>
+    <option value="{{ c.id }}" {% if member and member.affiliate_id==c.id %}selected{% endif %}>{{ c.name }}</option>
     {% endfor %}
   </select>
 

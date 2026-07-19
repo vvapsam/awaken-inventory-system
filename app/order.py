@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    Customer, PaymentSetting, Product, StockMovement, can, can_any,
+    PaymentSetting, Product, can, can_any,
     Transaction, TransactionItem, TX_ORDER, TX_CASH_SALE,
 )
 
