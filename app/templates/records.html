@@ -3,7 +3,7 @@
 <h1>Records</h1>
 
 <h2>Recent sales</h2>
-<table>
+<table class="dt">
   <tr><th>When</th><th>By</th><th>Customer</th><th>Payment</th><th>Items</th><th>Total</th><th></th></tr>
   {% for s in sales %}
   <tr>
@@ -30,7 +30,7 @@
 </table>
 
 <h2>Recent stock movements</h2>
-<table>
+<table class="dt">
   <tr><th>When</th><th>Type</th><th>Product</th><th>Qty</th><th>By</th><th>Note</th><th></th></tr>
   {% for m in movements %}
   {% set mod = 'receive' if m.movement_type in RECEIVE_TYPES else 'adjust' %}

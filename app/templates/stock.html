@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 <h1>Current stock</h1>
-<table>
+<table class="dt">
   <tr>
     <th>SKU</th><th>Product</th><th>Category</th><th>On hand</th><th>Reorder at</th>
     <th>Price</th>{% if can(staff, 'view_costs') %}<th>Cost</th>{% endif %}
