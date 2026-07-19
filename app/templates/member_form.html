@@ -5,11 +5,11 @@
   <label>Member name</label>
   <input name="name" value="{{ member.name if member else '' }}" required autofocus>
 
-  <label>Coach (who brought them)</label>
+  <label>Affiliate (who brought them)</label>
   <select name="coach_id">
     <option value="">— none —</option>
     {% for c in coaches %}
-    <option value="{{ c.id }}" {% if member and member.coach_id==c.id %}selected{% endif %}>{{ c.name }}{% if c.coach_type=='affiliate' %} (Affiliate){% endif %}</option>
+    <option value="{{ c.id }}" {% if member and member.coach_id==c.id %}selected{% endif %}>{{ c.name }}</option>
     {% endfor %}
   </select>
 

@@ -4,6 +4,7 @@
 .typetag{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:6px}
 .typetag.employee{background:#eaf1f8;color:#1f4e79}
 .typetag.affiliate{background:#f3ecfa;color:#6b3fa0}
+.typetag.coach{background:#fdf0e6;color:#9a5518}
 .typetag.supplier{background:#eaf6ec;color:#1f6b34}
 .codecell{font-family:ui-monospace,Menlo,monospace;font-weight:600}
 .codecell .used{font-family:inherit;font-weight:400;color:var(--muted);font-size:.78rem;margin-left:6px}
@@ -25,8 +26,16 @@
   <a href="/admin/staff" class="{{ 'on' if not ftype }}">All</a>
   <a href="/admin/staff?type=employee" class="{{ 'on' if ftype == 'employee' }}">Employees</a>
   <a href="/admin/staff?type=affiliate" class="{{ 'on' if ftype == 'affiliate' }}">Affiliates</a>
+  <a href="/admin/staff?type=coach" class="{{ 'on' if ftype == 'coach' }}">Coaches</a>
   <a href="/admin/staff?type=supplier" class="{{ 'on' if ftype == 'supplier' }}">Suppliers</a>
 </div>
+
+{% if ftype == 'affiliate' %}
+<div class="tfilter" style="margin:2px 0 10px">
+  <a href="/coaches/members" style="background:var(--teal-tint);border-color:rgba(15,158,145,.3);color:var(--teal-dark)">👥 Members (corkage)</a>
+  <a href="/coaches/billing" style="background:var(--teal-tint);border-color:rgba(15,158,145,.3);color:var(--teal-dark)">🧾 Corkage billing</a>
+</div>
+{% endif %}
 
 <table>
   <tr><th>Name</th><th>Type</th><th>Discount code</th><th>Access</th><th>Role</th><th>Status</th><th></th></tr>

@@ -77,6 +77,7 @@ ENTITY_TYPES = [
     ("", "— none —"),
     ("employee", "Employee"),
     ("affiliate", "Affiliate"),
+    ("coach", "Coach"),
     ("supplier", "Supplier"),
 ]
 # Types that carry a personal discount code / pricing tier.
@@ -116,6 +117,10 @@ class Staff(Base):
     pin_salt = Column(String)
     permissions = Column(Text, nullable=False, default="")  # comma-separated keys
     phone = Column(String)
+    # --- affiliate / coach billing (affiliates only) ---
+    affiliate_fee = Column(Numeric(10, 2))                  # monthly affiliate fee
+    start_date = Column(Date)
+    next_billing = Column(Date)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
@@ -179,32 +184,22 @@ class Customer(Base):
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
 
-COACH_TYPES = [("affiliate", "Affiliate"), ("full_time", "Full Time")]
-
-
-class Coach(Base):
-    __tablename__ = "coaches"
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    coach_type = Column(String, nullable=False, default="affiliate")
-    affiliate_fee = Column(Numeric(10, 2), default=0)   # monthly, affiliates only
-    start_date = Column(Date)
-    next_billing = Column(Date)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), default=now_utc)
+# Coaches were merged into the unified Staff/entity table; the legacy `coaches`
+# table is migrated then dropped at startup. No ORM model remains for it.
 
 
 class Member(Base):
     __tablename__ = "members"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    coach_id = Column(Integer, ForeignKey("coaches.id"))
+    # points at an affiliate entity in the unified staff table (kept name for history)
+    coach_id = Column(Integer, ForeignKey("staff.id"))
     corkage_rate = Column(Numeric(10, 2), default=3000)  # monthly corkage per client
     start_date = Column(Date)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
-    coach = relationship("Coach")
+    coach = relationship("Staff")
 
 
 # ---- Invoices (Transactions → Invoices) ----
@@ -213,7 +208,7 @@ class Invoice(Base):
     id = Column(Integer, primary_key=True)
     number = Column(String, unique=True, nullable=False)      # INV-0001
     bill_to_type = Column(String, default="other")            # coach / customer / other
-    coach_id = Column(Integer, ForeignKey("coaches.id"))
+    coach_id = Column(Integer, ForeignKey("staff.id"))        # affiliate entity billed
     customer_id = Column(Integer, ForeignKey("customers.id"))
     bill_to_name = Column(String, nullable=False)             # snapshot name
     issue_date = Column(Date)
@@ -226,7 +221,7 @@ class Invoice(Base):
 
     items = relationship("InvoiceItem", cascade="all, delete-orphan", backref="invoice")
     ipayments = relationship("InvoicePayment", cascade="all, delete-orphan", backref="invoice")
-    coach = relationship("Coach")
+    coach = relationship("Staff", foreign_keys=[coach_id])
     customer = relationship("Customer")
 
     @property
@@ -407,17 +402,8 @@ class PricingGroupItem(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
 
 
-class DiscountCode(Base):
-    """A per-person code (employee or affiliate) that unlocks a pricing tier."""
-    __tablename__ = "discount_codes"
-    id = Column(Integer, primary_key=True)
-    code = Column(String, unique=True, nullable=False)          # stored uppercase
-    holder_name = Column(String, nullable=False)               # the employee / affiliate
-    group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="CASCADE"), nullable=False)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), default=now_utc)
-
-    group = relationship("PricingGroup")
+# Legacy `discount_codes` (per-person codes) were folded into the Staff entity
+# table; the table is migrated then dropped at startup. No ORM model remains.
 
 
 class Payment(Base):

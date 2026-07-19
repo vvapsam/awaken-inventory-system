@@ -24,8 +24,8 @@ from .models import (
     MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
-    Coach, Member, COACH_TYPES, Invoice, InvoiceItem, InvoicePayment,
-    PricingGroup, PricingGroupItem, DiscountCode, PRICING_KINDS, PERSON_TYPES,
+    Member, Invoice, InvoiceItem, InvoicePayment,
+    PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
     ENTITY_TYPES, DISCOUNT_TYPES, Role,
 )
 
@@ -90,7 +90,6 @@ def startup():
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'employee'"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS round_up BOOLEAN NOT NULL DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_code_id INTEGER REFERENCES discount_codes(id) ON DELETE SET NULL"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0"))
         # Unified people: staff table also holds employees/affiliates (may have no login)
         conn.execute(text("ALTER TABLE staff ALTER COLUMN username DROP NOT NULL"))
@@ -102,6 +101,18 @@ def startup():
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS has_access BOOLEAN NOT NULL DEFAULT TRUE"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_person_id INTEGER REFERENCES staff(id) ON DELETE SET NULL"))
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL"))
+        # Coaches merged into the entity table: affiliate/coach billing lives on staff.
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS affiliate_fee NUMERIC(10,2)"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS start_date DATE"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS next_billing DATE"))
+        # members.coach_id / invoices.coach_id now point at staff(id). Drop the old
+        # FKs to coaches so we can remap the values in the data migration below.
+        conn.execute(text("ALTER TABLE members DROP CONSTRAINT IF EXISTS members_coach_id_fkey"))
+        conn.execute(text("ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_coach_id_fkey"))
+        # Only touch the legacy coaches table if it still exists.
+        conn.execute(text(
+            "DO $$ BEGIN IF to_regclass('public.coaches') IS NOT NULL THEN "
+            "ALTER TABLE coaches ADD COLUMN IF NOT EXISTS staff_id INTEGER; END IF; END $$;"))
     db = next(get_db())
     try:
         # Backfill usernames only for people WITH system access who are missing one.
@@ -143,26 +154,75 @@ def startup():
         db.commit()
         # One-time migration: fold legacy discount_codes into the people table.
         # Each code becomes a non-access person (Employee/Affiliate) carrying the code.
+        # Read via raw SQL so the ORM model can be removed and the table dropped.
         try:
-            legacy = db.query(DiscountCode).all()
+            legacy = db.execute(text(
+                "SELECT dc.code, dc.holder_name, dc.is_active, pg.kind "
+                "FROM discount_codes dc LEFT JOIN pricing_groups pg ON pg.id = dc.group_id"
+            )).fetchall()
         except Exception:
             legacy = []
         if legacy:
             existing_codes = set(c for (c,) in db.query(Staff.discount_code).all() if c)
-            for lc in legacy:
-                if not lc.code or lc.code in existing_codes:
+            for code, holder_name, is_active, kind in legacy:
+                if not code or code in existing_codes:
                     continue
-                kind = (lc.group.kind if lc.group else "") or "employee"
                 db.add(Staff(
-                    name=lc.holder_name or lc.code,
-                    person_type=kind,
-                    discount_code=lc.code,
+                    name=holder_name or code,
+                    person_type=(kind or "employee"),
+                    discount_code=code,
                     has_access=False,
-                    is_active=bool(lc.is_active),
+                    is_active=bool(is_active),
                     permissions="",
                 ))
-                existing_codes.add(lc.code)
+                existing_codes.add(code)
             db.commit()
+        # One-time migration: fold coaches into the entity table.
+        #   affiliate coach -> entity type 'affiliate' (keeps fee/members/billing)
+        #   full-time coach -> entity type 'coach'
+        # Then remap members.coach_id and invoices.coach_id from coach ids to the
+        # new staff ids. Idempotent via coaches.staff_id.
+        try:
+            unmigrated = db.execute(text(
+                "SELECT id, name, coach_type, affiliate_fee, start_date, next_billing, "
+                "is_active FROM coaches WHERE staff_id IS NULL"
+            )).fetchall()
+        except Exception:
+            unmigrated = []
+        if unmigrated:
+            mapping = {}
+            for cid, name, coach_type, fee, sdate, nbill, active in unmigrated:
+                is_aff = coach_type == "affiliate"
+                ent = Staff(
+                    name=name,
+                    person_type=("affiliate" if is_aff else "coach"),
+                    has_access=False,
+                    is_active=bool(active),
+                    permissions="",
+                    affiliate_fee=(fee if is_aff else None),
+                    start_date=sdate,
+                    next_billing=(nbill if is_aff else None),
+                )
+                db.add(ent)
+                db.flush()  # get ent.id
+                mapping[cid] = ent.id
+                db.execute(text("UPDATE coaches SET staff_id = :sid WHERE id = :cid"),
+                           {"sid": ent.id, "cid": cid})
+            db.commit()
+            # remap references (read old coach id -> write new staff id)
+            for m in db.query(Member).all():
+                if m.coach_id in mapping:
+                    m.coach_id = mapping[m.coach_id]
+            for inv in db.query(Invoice).filter(Invoice.bill_to_type == "coach").all():
+                if inv.coach_id in mapping:
+                    inv.coach_id = mapping[inv.coach_id]
+            db.commit()
+        # Cleanup: the legacy tables are now redundant — drop them (and the dead
+        # sales.discount_code_id column) so the schema only keeps live tables.
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE sales DROP COLUMN IF EXISTS discount_code_id"))
+            conn.execute(text("DROP TABLE IF EXISTS discount_codes"))
+            conn.execute(text("DROP TABLE IF EXISTS coaches"))
     finally:
         db.close()
 
@@ -639,7 +699,7 @@ def staff_list(request: Request, type: str = "", db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    ftype = type if type in ("employee", "affiliate", "supplier") else ""
+    ftype = type if type in ("employee", "affiliate", "coach", "supplier") else ""
     q = db.query(Staff)
     if ftype:
         q = q.filter(Staff.person_type == ftype)
@@ -665,7 +725,7 @@ def staff_new(request: Request, type: str = "", db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    preset = type if type in ("employee", "affiliate", "supplier") else ""
+    preset = type if type in ("employee", "affiliate", "coach", "supplier") else ""
     return _form(request, db, staff, person=None, preset_type=preset)
 
 
@@ -743,12 +803,28 @@ def _apply_type(db, person, person_type, form, err):
             return err(f"Discount code '{wanted}' is already taken.")
         person.person_type = person_type
         person.discount_code = wanted
-    elif person_type:  # supplier (no discount code)
+    elif person_type:  # coach / supplier (no discount code)
         person.person_type = person_type
         person.discount_code = None
     else:
         person.person_type = None
         person.discount_code = None
+    # Affiliate/coach billing fields (affiliates carry a fee + billing date).
+    if person_type in ("affiliate", "coach"):
+        person.start_date = _date_only(form.get("start_date"))
+        if person_type == "affiliate":
+            try:
+                person.affiliate_fee = float(form.get("affiliate_fee")) if (form.get("affiliate_fee") or "").strip() else None
+            except ValueError:
+                person.affiliate_fee = None
+            person.next_billing = _date_only(form.get("next_billing"))
+        else:
+            person.affiliate_fee = None
+            person.next_billing = None
+    else:
+        person.affiliate_fee = None
+        person.start_date = None
+        person.next_billing = None
     return None
 
 
@@ -760,7 +836,7 @@ async def staff_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     name = (form.get("name") or "").strip()
     person_type = form.get("person_type") or ""
-    if person_type not in ("employee", "affiliate", "supplier"):
+    if person_type not in ("employee", "affiliate", "coach", "supplier"):
         person_type = ""
     has_access = form.get("has_access") == "on"
 
@@ -804,7 +880,7 @@ async def staff_update(request: Request, sid: int, db: Session = Depends(get_db)
     form = await request.form()
     name = (form.get("name") or "").strip()
     person_type = form.get("person_type") or ""
-    if person_type not in ("employee", "affiliate", "supplier"):
+    if person_type not in ("employee", "affiliate", "coach", "supplier"):
         person_type = ""
     has_access = form.get("has_access") == "on"
 
@@ -1691,16 +1767,19 @@ def coach_corkage(members):
 
 
 def coach_rows(db):
+    """Affiliate/coach entities with their member counts + monthly totals."""
     members = db.query(Member).filter(Member.is_active == True).all()  # noqa: E712
     by = {}
     for m in members:
         by.setdefault(m.coach_id, []).append(m)
     rows = []
-    for c in db.query(Coach).order_by(Coach.is_active.desc(), Coach.name).all():
+    for c in (db.query(Staff)
+              .filter(Staff.person_type.in_(["affiliate", "coach"]))
+              .order_by(Staff.is_active.desc(), Staff.name).all()):
         ms = by.get(c.id, [])
         corkage = coach_corkage(ms)
-        fee = float(c.affiliate_fee or 0) if c.coach_type == "affiliate" else 0.0
-        monthly = (fee + corkage) if c.coach_type == "affiliate" else 0.0
+        fee = float(c.affiliate_fee or 0) if c.person_type == "affiliate" else 0.0
+        monthly = (fee + corkage) if c.person_type == "affiliate" else 0.0
         rows.append({"coach": c, "clients": len(ms), "corkage": corkage,
                      "fee": fee, "monthly": monthly,
                      "discounted": max(0, len(ms) - FIRST_TIER_CLIENTS)})
@@ -1708,89 +1787,22 @@ def coach_rows(db):
 
 
 def coach_summary(rows):
-    aff = [r for r in rows if r["coach"].coach_type == "affiliate" and r["coach"].is_active]
+    aff = [r for r in rows if r["coach"].person_type == "affiliate" and r["coach"].is_active]
     return {"total_monthly": sum(r["monthly"] for r in aff),
             "affiliate_count": len(aff),
             "member_count": sum(r["clients"] for r in aff)}
 
 
-@app.get("/coaches", response_class=HTMLResponse)
+# Coaches are now entities. Keep the old URLs working by redirecting into the
+# unified entity table (Coaches view) / entity form.
+@app.get("/coaches")
 def coaches_page(request: Request, db: Session = Depends(get_db)):
-    staff, redir = require_admin(request, db)
-    if redir:
-        return redir
-    rows = coach_rows(db)
-    return render(request, "coaches.html", db, staff, rows=rows,
-                  summ=coach_summary(rows), active="coaches",
-                  today=datetime.now(_tz()).date())
+    return RedirectResponse("/admin/staff?type=coach", status_code=303)
 
 
-@app.get("/coaches/new", response_class=HTMLResponse)
+@app.get("/coaches/new")
 def coach_new(request: Request, db: Session = Depends(get_db)):
-    staff, redir = require_admin(request, db)
-    if redir:
-        return redir
-    today = datetime.now(_tz()).strftime("%Y-%m-%d")
-    return render(request, "coach_form.html", db, staff, coach=None,
-                  coach_types=COACH_TYPES, today=today)
-
-
-@app.post("/coaches/new")
-def coach_create(request: Request, name: str = Form(...), coach_type: str = Form("affiliate"),
-                 affiliate_fee: str = Form("0"), start_date: str = Form(""),
-                 next_billing: str = Form(""), is_active: str = Form(""),
-                 db: Session = Depends(get_db)):
-    staff, redir = require_admin(request, db)
-    if redir:
-        return redir
-    fee = 0.0
-    try:
-        fee = float(affiliate_fee) if affiliate_fee.strip() else 0.0
-    except ValueError:
-        fee = 0.0
-    db.add(Coach(name=name.strip(), coach_type=coach_type,
-                 affiliate_fee=(fee if coach_type == "affiliate" else 0),
-                 start_date=_date_only(start_date), next_billing=_date_only(next_billing),
-                 is_active=(is_active == "on")))
-    db.commit()
-    return RedirectResponse("/coaches", status_code=303)
-
-
-@app.get("/coaches/{cid}/edit", response_class=HTMLResponse)
-def coach_edit(request: Request, cid: int, db: Session = Depends(get_db)):
-    staff, redir = require_admin(request, db)
-    if redir:
-        return redir
-    coach = db.get(Coach, cid)
-    if not coach:
-        return RedirectResponse("/coaches", status_code=303)
-    return render(request, "coach_form.html", db, staff, coach=coach,
-                  coach_types=COACH_TYPES, today="")
-
-
-@app.post("/coaches/{cid}/edit")
-def coach_update(request: Request, cid: int, name: str = Form(...),
-                 coach_type: str = Form("affiliate"), affiliate_fee: str = Form("0"),
-                 start_date: str = Form(""), next_billing: str = Form(""),
-                 is_active: str = Form(""), db: Session = Depends(get_db)):
-    staff, redir = require_admin(request, db)
-    if redir:
-        return redir
-    coach = db.get(Coach, cid)
-    if not coach:
-        return RedirectResponse("/coaches", status_code=303)
-    try:
-        fee = float(affiliate_fee) if affiliate_fee.strip() else 0.0
-    except ValueError:
-        fee = 0.0
-    coach.name = name.strip()
-    coach.coach_type = coach_type
-    coach.affiliate_fee = fee if coach_type == "affiliate" else 0
-    coach.start_date = _date_only(start_date)
-    coach.next_billing = _date_only(next_billing)
-    coach.is_active = (is_active == "on")
-    db.commit()
-    return RedirectResponse("/coaches", status_code=303)
+    return RedirectResponse("/admin/staff/new?type=coach", status_code=303)
 
 
 @app.get("/coaches/members", response_class=HTMLResponse)
@@ -1812,7 +1824,9 @@ def member_new(request: Request, db: Session = Depends(get_db)):
     staff, redir = require_admin(request, db)
     if redir:
         return redir
-    coaches = db.query(Coach).filter(Coach.is_active == True).order_by(Coach.name).all()  # noqa: E712
+    coaches = (db.query(Staff)
+               .filter(Staff.person_type == "affiliate", Staff.is_active == True)  # noqa: E712
+               .order_by(Staff.name).all())
     today = datetime.now(_tz()).strftime("%Y-%m-%d")
     return render(request, "member_form.html", db, staff, member=None,
                   coaches=coaches, today=today)
@@ -1844,7 +1858,9 @@ def member_edit(request: Request, mid: int, db: Session = Depends(get_db)):
     member = db.get(Member, mid)
     if not member:
         return RedirectResponse("/coaches/members", status_code=303)
-    coaches = db.query(Coach).order_by(Coach.name).all()
+    coaches = (db.query(Staff)
+               .filter(Staff.person_type == "affiliate")
+               .order_by(Staff.name).all())
     return render(request, "member_form.html", db, staff, member=member,
                   coaches=coaches, today="")
 
@@ -1877,7 +1893,7 @@ def coaches_billing(request: Request, db: Session = Depends(get_db)):
     staff, redir = require_admin(request, db)
     if redir:
         return redir
-    rows = [r for r in coach_rows(db) if r["coach"].coach_type == "affiliate" and r["coach"].is_active]
+    rows = [r for r in coach_rows(db) if r["coach"].person_type == "affiliate" and r["coach"].is_active]
     return render(request, "coaches_billing.html", db, staff, rows=rows,
                   summ=coach_summary(coach_rows(db)), active="billing",
                   today=datetime.now(_tz()).date())
@@ -1938,7 +1954,9 @@ def invoice_new(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/invoices", status_code=303)
     tz = _tz()
     today = datetime.now(tz).date()
-    coaches = db.query(Coach).filter(Coach.is_active == True).order_by(Coach.name).all()  # noqa: E712
+    coaches = (db.query(Staff)
+               .filter(Staff.person_type == "affiliate", Staff.is_active == True)  # noqa: E712
+               .order_by(Staff.name).all())
     customers = db.query(Customer).order_by(Customer.name).all()
     return render(request, "invoice_form.html", db, staff, coaches=coaches,
                   customers=customers, number=next_invoice_number(db),
@@ -1960,7 +1978,7 @@ async def invoice_create(request: Request, db: Session = Depends(get_db)):
     bill_type = "other"
     if party.startswith("coach:"):
         coach_id = int(party.split(":")[1]); bill_type = "coach"
-        c = db.get(Coach, coach_id)
+        c = db.get(Staff, coach_id)
         if c and not bill_to:
             bill_to = c.name
     elif party.startswith("customer:"):
@@ -2073,8 +2091,8 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
     staff, redir = require_admin(request, db)
     if redir:
         return redir
-    coach = db.get(Coach, cid)
-    if not coach or coach.coach_type != "affiliate":
+    coach = db.get(Staff, cid)
+    if not coach or coach.person_type != "affiliate":
         return RedirectResponse("/coaches/billing", status_code=303)
     tz = _tz()
     today = datetime.now(tz).date()
