@@ -4,7 +4,7 @@ from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
     LargeBinary, Numeric, String, Text,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from .db import Base
 
 
@@ -202,42 +202,109 @@ class Member(Base):
     coach = relationship("Staff")
 
 
-# ---- Invoices (Transactions → Invoices) ----
-class Invoice(Base):
-    __tablename__ = "invoices"
+# Legacy sales/orders/invoices (+ their items & payments) were merged into the
+# unified transactions table below; those tables are migrated then dropped at startup.
+
+
+# ===================== Unified transactions =====================
+# One table for every money movement, distinguished by `type`:
+#   cash_sale  – an instant retail sale (paid, or is_credit=unpaid)
+#   order      – a customer self-checkout order awaiting staff confirmation
+#   invoice    – a billing document (affiliate corkage / customer / other)
+#   payment    – money received (against an invoice, or a customer balance)
+TX_CASH_SALE = "cash_sale"
+TX_ORDER = "order"
+TX_INVOICE = "invoice"
+TX_PAYMENT = "payment"
+TRANSACTION_TYPES = [
+    (TX_CASH_SALE, "Cash sale"),
+    (TX_ORDER, "Order"),
+    (TX_INVOICE, "Invoice"),
+    (TX_PAYMENT, "Payment"),
+]
+
+
+class Transaction(Base):
+    __tablename__ = "transactions"
     id = Column(Integer, primary_key=True)
-    number = Column(String, unique=True, nullable=False)      # INV-0001
-    bill_to_type = Column(String, default="other")            # coach / customer / other
-    coach_id = Column(Integer, ForeignKey("staff.id"))        # affiliate entity billed
+    type = Column(String, nullable=False)                       # cash_sale | order | invoice
+    number = Column(String, unique=True)                        # ORD-/INV- (sales: none)
+    status = Column(String, nullable=False, default="paid")     # see per-type notes below
+    occurred_at = Column(DateTime(timezone=True), default=now_utc)  # sold_at / issue_date
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    decided_at = Column(DateTime(timezone=True))                # order confirm/reject time
+
+    staff_id = Column(Integer, ForeignKey("staff.id"))
     customer_id = Column(Integer, ForeignKey("customers.id"))
-    bill_to_name = Column(String, nullable=False)             # snapshot name
+    customer_name = Column(String)                              # order walk-in / invoice bill-to
+    customer_phone = Column(String)
+
+    # payment / proof (cash_sale, order)
+    payment_method = Column(String)
+    is_credit = Column(Boolean, nullable=False, default=False)  # unpaid retail sale
+    proof = Column(LargeBinary)
+    proof_mime = Column(String)
+    amount_snapshot = Column(Numeric(10, 2))                    # order total snapshot
+    note = Column(Text)
+
+    # retail discount (cash_sale)
+    pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))
+    discount_person_id = Column(Integer, ForeignKey("staff.id", ondelete="SET NULL"))
+    discounted_qty = Column(Integer, nullable=False, default=0)
+
+    # order self-checkout OCR checks + link to the sale it became
+    check_amount_ok = Column(Boolean)
+    check_detected_amount = Column(Numeric(10, 2))
+    check_date_ok = Column(Boolean)
+    check_detected_date = Column(String)
+    check_note = Column(Text)
+    converted_id = Column(Integer, ForeignKey("transactions.id", ondelete="SET NULL"))
+
+    # a payment applies to its parent transaction (e.g. an invoice); null = standalone
+    parent_id = Column(Integer, ForeignKey("transactions.id", ondelete="SET NULL"))
+
+    # invoice fields
+    bill_to_type = Column(String)                              # coach | customer | other
+    coach_id = Column(Integer, ForeignKey("staff.id"))
     issue_date = Column(Date)
     due_date = Column(Date)
-    period = Column(String)                                   # e.g. "August 2026"
-    note = Column(Text)
+    period = Column(String)
     is_void = Column(Boolean, nullable=False, default=False)
-    staff_id = Column(Integer, ForeignKey("staff.id"))
-    created_at = Column(DateTime(timezone=True), default=now_utc)
 
-    items = relationship("InvoiceItem", cascade="all, delete-orphan", backref="invoice")
-    ipayments = relationship("InvoicePayment", cascade="all, delete-orphan", backref="invoice")
+    staff = relationship("Staff", foreign_keys=[staff_id])
+    discount_person = relationship("Staff", foreign_keys=[discount_person_id])
     coach = relationship("Staff", foreign_keys=[coach_id])
     customer = relationship("Customer")
+    items = relationship("TransactionItem", back_populates="transaction",
+                         cascade="all, delete-orphan")
+    # payments (and any child transactions) that apply to this one
+    children = relationship("Transaction", foreign_keys=[parent_id],
+                            backref=backref("parent", remote_side=[id]))
 
     @property
     def total(self):
-        return sum(float(i.amount or 0) for i in self.items)
+        return sum(float(i.qty) * float(i.unit_price) for i in self.items)
 
     @property
     def paid(self):
-        return sum(float(p.amount or 0) for p in self.ipayments)
+        return sum(c.total for c in self.children
+                   if c.type == TX_PAYMENT and not c.is_void)
 
     @property
     def balance(self):
         return self.total - self.paid
 
     @property
-    def status(self):
+    def bill_to_name(self):
+        return self.customer_name
+
+    @property
+    def ipayments(self):
+        """Child payment transactions applied to this one (for invoice views)."""
+        return [c for c in self.children if c.type == TX_PAYMENT and not c.is_void]
+
+    @property
+    def invoice_status(self):
         if self.is_void:
             return "void"
         if self.total > 0 and self.balance <= 0.005:
@@ -247,104 +314,22 @@ class Invoice(Base):
         return "unpaid"
 
 
-class InvoiceItem(Base):
-    __tablename__ = "invoice_items"
+class TransactionItem(Base):
+    __tablename__ = "transaction_items"
     id = Column(Integer, primary_key=True)
-    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
-    description = Column(String, nullable=False)
-    qty = Column(Numeric(10, 2), default=1)
-    rate = Column(Numeric(10, 2), default=0)
-    amount = Column(Numeric(10, 2), default=0)
-
-
-class InvoicePayment(Base):
-    __tablename__ = "invoice_payments"
-    id = Column(Integer, primary_key=True)
-    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
-    amount = Column(Numeric(10, 2), nullable=False)
-    method = Column(String)
-    note = Column(Text)
-    paid_at = Column(DateTime(timezone=True), default=now_utc)
-    staff_id = Column(Integer, ForeignKey("staff.id"))
-
-
-class Sale(Base):
-    __tablename__ = "sales"
-    id = Column(Integer, primary_key=True)
-    sold_at = Column(DateTime(timezone=True), default=now_utc)
-    staff_id = Column(Integer, ForeignKey("staff.id"))
-    customer_id = Column(Integer, ForeignKey("customers.id"))  # optional
-    is_credit = Column(Boolean, nullable=False, default=False)  # unpaid / on credit
-    payment_method = Column(String)
-    proof = Column(LargeBinary)              # proof-of-payment image (cash/bank sales)
-    proof_mime = Column(String)
-    pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))  # tier applied
-    discount_person_id = Column(Integer, ForeignKey("staff.id", ondelete="SET NULL"))  # whose code
-    discounted_qty = Column(Integer, nullable=False, default=0)   # item-units that got the tier discount
-    note = Column(Text)
-    created_at = Column(DateTime(timezone=True), default=now_utc)
-
-    staff = relationship("Staff", foreign_keys=[staff_id])
-    discount_person = relationship("Staff", foreign_keys=[discount_person_id])
-    customer = relationship("Customer")
-    items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
-
-    @property
-    def total(self):
-        return sum(float(i.quantity) * float(i.unit_price) for i in self.items)
-
-
-class SaleItem(Base):
-    __tablename__ = "sale_items"
-    id = Column(Integer, primary_key=True)
-    sale_id = Column(Integer, ForeignKey("sales.id", ondelete="CASCADE"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    quantity = Column(Integer, nullable=False)
-    unit_price = Column(Numeric(10, 2), nullable=False)
+    transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"))     # null for free-text invoice lines
+    name = Column(String, nullable=False)                       # snapshot / invoice description
+    qty = Column(Numeric(10, 2), nullable=False, default=1)
+    unit_price = Column(Numeric(10, 2), nullable=False, default=0)
     cost_price = Column(Numeric(10, 2))
 
-    sale = relationship("Sale", back_populates="items")
+    transaction = relationship("Transaction", back_populates="items")
     product = relationship("Product")
 
-
-class Order(Base):
-    """A customer self-checkout order placed from the public /order page."""
-    __tablename__ = "orders"
-    id = Column(Integer, primary_key=True)
-    number = Column(String, unique=True, nullable=False)       # ORD-0001
-    customer_name = Column(String, nullable=False)
-    customer_phone = Column(String)
-    payment_method = Column(String, nullable=False)            # cash | bank
-    proof = Column(LargeBinary)                                # payment screenshot (bank)
-    proof_mime = Column(String)
-    amount = Column(Numeric(10, 2), nullable=False, default=0)  # snapshot total
-    status = Column(String, nullable=False, default="pending")  # pending|confirmed|rejected
-    # Automated screenshot checks (best-effort OCR; staff still confirm)
-    check_amount_ok = Column(Boolean)          # True/False/None(unknown)
-    check_detected_amount = Column(Numeric(10, 2))
-    check_date_ok = Column(Boolean)
-    check_detected_date = Column(String)
-    check_note = Column(Text)
-    staff_id = Column(Integer, ForeignKey("staff.id"))         # who confirmed/rejected
-    sale_id = Column(Integer, ForeignKey("sales.id", ondelete="SET NULL"))  # created on confirm
-    created_at = Column(DateTime(timezone=True), default=now_utc)
-    decided_at = Column(DateTime(timezone=True))
-
-    items = relationship("OrderItem", cascade="all, delete-orphan", backref="order")
-
     @property
-    def total(self):
-        return sum(float(i.qty) * float(i.unit_price) for i in self.items)
-
-
-class OrderItem(Base):
-    __tablename__ = "order_items"
-    id = Column(Integer, primary_key=True)
-    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"))
-    name = Column(String, nullable=False)      # snapshot name
-    qty = Column(Integer, nullable=False, default=1)
-    unit_price = Column(Numeric(10, 2), nullable=False, default=0)
+    def amount(self):
+        return float(self.qty or 0) * float(self.unit_price or 0)
 
 
 class PaymentSetting(Base):
@@ -406,17 +391,4 @@ class PricingGroupItem(Base):
 # table; the table is migrated then dropped at startup. No ORM model remains.
 
 
-class Payment(Base):
-    __tablename__ = "payments"
-    id = Column(Integer, primary_key=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
-    amount = Column(Numeric(10, 2), nullable=False)
-    note = Column(Text)
-    method = Column(String)  # cash / gcash / etc.
-    screenshot = Column(LargeBinary)         # proof-of-payment image bytes
-    screenshot_mime = Column(String)         # e.g. image/jpeg
-    paid_at = Column(DateTime(timezone=True), default=now_utc)
-    staff_id = Column(Integer, ForeignKey("staff.id"))
-
-    customer = relationship("Customer")
-    staff = relationship("Staff")
+# Legacy `payments` (customer balance payments) folded into transactions; dropped at startup.

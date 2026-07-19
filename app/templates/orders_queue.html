@@ -38,7 +38,7 @@
         · {{ o.created_at.astimezone(tz).strftime('%b %d, %I:%M %p') if o.created_at }}
       </div>
     </span>
-    <span class="amt">{{ peso(o.amount) }}</span>
+    <span class="amt">{{ peso(o.amount_snapshot) }}</span>
   </a>
   {% else %}
   <div class="empty">No pending orders right now.</div>
@@ -54,7 +54,7 @@
     <span class="mid"><div class="nm">{{ o.customer_name }}</div>
       <div class="sub">{{ o.decided_at.astimezone(tz).strftime('%b %d, %I:%M %p') if o.decided_at }}</div></span>
     <span class="stat {{ o.status }}">{{ o.status }}</span>
-    <span class="amt">{{ peso(o.amount) }}</span>
+    <span class="amt">{{ peso(o.amount_snapshot) }}</span>
   </a>
   {% endfor %}
 </div>

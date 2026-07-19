@@ -33,7 +33,7 @@
       {% for it in o.items %}
       <tr><td>{{ it.name }}</td><td class="r">{{ it.qty }}</td><td class="r">{{ peso(it.unit_price) }}</td><td class="r">{{ peso(it.qty * it.unit_price) }}</td></tr>
       {% endfor %}
-      <tr class="gtot"><td colspan="3"><b>Total due</b></td><td class="r"><b>{{ peso(o.amount) }}</b></td></tr>
+      <tr class="gtot"><td colspan="3"><b>Total due</b></td><td class="r"><b>{{ peso(o.amount_snapshot) }}</b></td></tr>
     </table>
 
     <div class="card" style="margin-top:14px">
@@ -74,7 +74,7 @@
     {% if o.payment_method=='bank' and o.proof %}
       <img class="proofimg" src="/order-proof/{{ o.id }}" alt="payment screenshot">
     {% elif o.payment_method=='cash' %}
-      <div class="noproof">💵 Cash — collect ₱{{ '%.2f'|format(o.amount|float) }} at the counter, then confirm.</div>
+      <div class="noproof">💵 Cash — collect ₱{{ '%.2f'|format(o.amount_snapshot|float) }} at the counter, then confirm.</div>
     {% else %}
       <div class="noproof">No screenshot attached.</div>
     {% endif %}

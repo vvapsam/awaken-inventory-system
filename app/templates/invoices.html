@@ -23,7 +23,7 @@
     <td>{{ i.due_date.strftime('%b %d, %Y') if i.due_date else '—' }}</td>
     <td class="r">{{ peso(i.total) }}</td>
     <td class="r">{{ peso(i.balance) }}</td>
-    <td><span class="ist {{ i.status }}">{{ i.status|capitalize }}</span></td>
+    <td><span class="ist {{ i.invoice_status }}">{{ i.invoice_status|capitalize }}</span></td>
     <td class="r"><a href="/invoices/{{ i.id }}" style="color:var(--teal-dark);font-weight:600">View</a></td>
   </tr>
   {% else %}

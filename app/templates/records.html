@@ -7,14 +7,14 @@
   <tr><th>When</th><th>By</th><th>Customer</th><th>Payment</th><th>Items</th><th>Total</th><th></th></tr>
   {% for s in sales %}
   <tr>
-    <td>{{ s.sold_at.strftime('%Y-%m-%d %H:%M') if s.sold_at else '' }}</td>
+    <td>{{ s.occurred_at.strftime('%Y-%m-%d %H:%M') if s.occurred_at else '' }}</td>
     <td>{{ s.staff.name if s.staff else '' }}</td>
     <td>{{ s.customer.name if s.customer else '—' }}</td>
     <td>{% if s.is_credit %}<span class="tag">UNPAID</span>{% else %}{{ s.payment_method }}{% endif %}</td>
-    <td>{% for it in s.items %}{{ it.quantity }}× {{ it.product.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    <td>{% for it in s.items %}{{ it.qty|int }}× {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
     <td>
       {% set ns = namespace(t=0) %}
-      {% for it in s.items %}{% set ns.t = ns.t + it.quantity * it.unit_price %}{% endfor %}
+      {% for it in s.items %}{% set ns.t = ns.t + it.qty * it.unit_price %}{% endfor %}
       {{ peso(ns.t) }}
     </td>
     <td class="actions-cell">
