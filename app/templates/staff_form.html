@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% block body %}
-<h1>{{ 'Edit user' if person else 'New user' }}</h1>
+<h1>{{ 'Edit Entity' if person else 'New Entity' }}</h1>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
 {% set current = (person.permissions or '').split(',') if person else [] %}
+{% set cur_type = person.person_type if person else preset_type %}
+{% set cur_role = person.role_id if person and person.role_id else None %}
 <form method="post" action="{{ '/admin/staff/%s/edit' % person.id if person else '/admin/staff/new' }}" class="card">
   <div class="two-col">
     <div>
@@ -11,80 +13,133 @@
       <input name="name" value="{{ person.name if person else '' }}" required>
     </div>
     <div>
-      <label>Username (for login)</label>
-      <input name="username" value="{{ person.username if person else '' }}"
-             autocapitalize="none" autocorrect="off" spellcheck="false"
-             placeholder="e.g. maria" required>
+      <label>Phone (optional)</label>
+      <input name="phone" value="{{ person.phone if person and person.phone else '' }}" placeholder="+63...">
     </div>
   </div>
 
   <div class="two-col">
     <div>
-      <label>Role</label>
-      <select name="role" id="role" onchange="toggleRole()">
-        {% for r in ROLES %}
-        <option value="{{ r }}" {% if (person and person.role == r) or (not person and r == 'staff') %}selected{% endif %}>{{ r }}</option>
+      <label>Type</label>
+      <select name="person_type" id="ptype" onchange="toggleType()">
+        {% for k, lbl in ENTITY_TYPES %}
+        <option value="{{ k }}" {% if (cur_type or '') == k %}selected{% endif %}>{{ lbl }}</option>
         {% endfor %}
       </select>
     </div>
-    <div>
-      <label>PIN {% if person %}(blank = keep current){% endif %}</label>
-      <input name="pin" type="password" inputmode="numeric" placeholder="at least 4 digits" {% if not person %}required{% endif %}>
+    <div id="code-wrap">
+      <label>Discount code {% if not person %}(blank = auto-generate){% endif %}</label>
+      <input name="discount_code" value="{{ person.discount_code if person and person.discount_code else '' }}"
+             autocapitalize="characters" autocorrect="off" spellcheck="false"
+             placeholder="e.g. EMP-MARY01" style="text-transform:uppercase">
     </div>
   </div>
+  <p class="muted small" id="type-note" style="margin-top:-4px">Employees &amp; affiliates get a personal code for their discount tier. Suppliers are just tracked here. Leave Type as “— none —” for plain staff.</p>
 
-  <label>Phone for WhatsApp (optional, for later)</label>
-  <input name="phone" value="{{ person.phone if person and person.phone else '' }}" placeholder="+63...">
+  <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
 
-  <div id="perm-block">
-    <label>Permissions</label>
-    <p class="muted small">Admins automatically have everything. For staff, tick exactly what they can do.</p>
+  <label class="check" style="font-weight:600"><input type="checkbox" name="has_access" id="hasaccess" onchange="toggleAccess()" {% if not person or person.has_access %}checked{% endif %}> Access — this person can log in to the system</label>
 
-    <table class="perm-matrix">
-      <tr>
-        <th>Module</th>
-        {% for akey, alabel in ACTIONS %}<th>{{ alabel }}</th>{% endfor %}
-      </tr>
-      {% for mkey, mlabel in MODULES %}
-      <tr>
-        <td class="mod-name">{{ mlabel }}</td>
-        {% for akey, alabel in ACTIONS %}
-        {% set pk = mkey ~ '.' ~ akey %}
-        <td class="cell">
-          <input type="checkbox" name="permissions" value="{{ pk }}"
-            {% if person and pk in current %}checked{% elif not person and pk in ['sales.create','receive.create','adjust.create'] %}checked{% endif %}>
-        </td>
+  <div id="access-block" style="margin-top:12px">
+    <div class="two-col">
+      <div>
+        <label>Username (for login)</label>
+        <input name="username" value="{{ person.username if person and person.username else '' }}"
+               autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="e.g. maria">
+      </div>
+      <div>
+        <label>Role</label>
+        <select name="role_id" id="role" onchange="applyRole()">
+          {% for r in roles %}
+          <option value="{{ r.id }}" data-admin="{{ 1 if r.is_admin else 0 }}"
+                  data-perms="{{ r.permissions }}"
+                  {% if (cur_role and cur_role == r.id) or (not cur_role and r.name == 'Staff') %}selected{% endif %}>{{ r.name }}{% if r.is_admin %} (full access){% endif %}</option>
+          {% endfor %}
+        </select>
+        <p class="muted small" style="margin:4px 0 0">Picking a role fills the permissions below. <a href="/admin/roles">Manage roles</a></p>
+      </div>
+    </div>
+
+    <label>PIN {% if person %}(blank = keep current){% endif %}</label>
+    <input name="pin" type="password" inputmode="numeric" placeholder="at least 4 digits">
+
+    <div id="perm-block">
+      <label>Permissions</label>
+      <p class="muted small">Admin roles get everything. Otherwise these are seeded from the role — tweak per person if needed.</p>
+
+      <table class="perm-matrix">
+        <tr>
+          <th>Module</th>
+          {% for akey, alabel in ACTIONS %}<th>{{ alabel }}</th>{% endfor %}
+        </tr>
+        {% for mkey, mlabel in MODULES %}
+        <tr>
+          <td class="mod-name">{{ mlabel }}</td>
+          {% for akey, alabel in ACTIONS %}
+          {% set pk = mkey ~ '.' ~ akey %}
+          <td class="cell">
+            <input type="checkbox" name="permissions" value="{{ pk }}"
+              {% if person and pk in current %}checked{% endif %}>
+          </td>
+          {% endfor %}
+        </tr>
         {% endfor %}
-      </tr>
-      {% endfor %}
-    </table>
+      </table>
 
-    <div class="perm-group">
-      <div class="perm-group-title">Reports & access</div>
-      {% for akey, alabel in ACCESS_DEFS %}
-      <label class="check perm-check">
-        <input type="checkbox" name="permissions" value="{{ akey }}"
-          {% if person and akey in current %}checked{% elif not person and akey == 'view_stock' %}checked{% endif %}>
-        <span>{{ alabel }}</span>
-      </label>
-      {% endfor %}
+      <div class="perm-group">
+        <div class="perm-group-title">Reports &amp; access</div>
+        {% for akey, alabel in ACCESS_DEFS %}
+        <label class="check perm-check">
+          <input type="checkbox" name="permissions" value="{{ akey }}"
+            {% if person and akey in current %}checked{% endif %}>
+          <span>{{ alabel }}</span>
+        </label>
+        {% endfor %}
+      </div>
     </div>
   </div>
 
   {% if person %}
-  <label class="check"><input type="checkbox" name="is_active" {% if person.is_active %}checked{% endif %}> Active</label>
+  <label class="check" style="margin-top:14px"><input type="checkbox" name="is_active" {% if person.is_active %}checked{% endif %}> Active</label>
   {% endif %}
 
-  <button type="submit" class="btn primary big">Save</button>
-  <a class="btn" href="/admin/staff">Cancel</a>
+  <div style="margin-top:14px">
+    <button type="submit" class="btn primary big">Save</button>
+    <a class="btn" href="/admin/staff">Cancel</a>
+  </div>
 </form>
 
 <script>
-function toggleRole(){
-  var isAdmin = document.getElementById('role').value === 'admin';
+var IS_EDIT = {{ 'true' if person else 'false' }};
+function toggleType(){
+  var t = document.getElementById('ptype').value;
+  var showCode = (t === 'employee' || t === 'affiliate');
+  document.getElementById('code-wrap').style.display = showCode ? '' : 'none';
+  document.getElementById('type-note').style.display = t ? 'none' : '';
+}
+function setPerms(keys){
+  document.querySelectorAll('#perm-block input[type=checkbox]').forEach(function(c){
+    c.checked = keys.indexOf(c.value) !== -1;
+  });
+}
+function applyRole(initial){
+  var sel = document.getElementById('role');
+  var opt = sel.options[sel.selectedIndex];
+  var isAdmin = opt.getAttribute('data-admin') === '1';
   document.getElementById('perm-block').style.opacity = isAdmin ? .4 : 1;
   document.querySelectorAll('#perm-block input[type=checkbox]').forEach(function(c){ c.disabled = isAdmin; });
+  // On a fresh new form, or whenever the admin actively changes the role,
+  // fill the grid from the role. When first editing an existing person, keep
+  // their saved ticks.
+  if(!(initial && IS_EDIT)){
+    var perms = (opt.getAttribute('data-perms') || '').split(',').filter(Boolean);
+    setPerms(isAdmin ? [] : perms);
+  }
 }
-toggleRole();
+function toggleAccess(){
+  var on = document.getElementById('hasaccess').checked;
+  document.getElementById('access-block').style.display = on ? '' : 'none';
+}
+toggleType(); applyRole(true); toggleAccess();
 </script>
 {% endblock %}

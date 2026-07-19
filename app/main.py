@@ -25,7 +25,8 @@ from .models import (
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
     Coach, Member, COACH_TYPES, Invoice, InvoiceItem, InvoicePayment,
-    PricingGroup, PricingGroupItem, DiscountCode, PRICING_KINDS,
+    PricingGroup, PricingGroupItem, DiscountCode, PRICING_KINDS, PERSON_TYPES,
+    ENTITY_TYPES, DISCOUNT_TYPES, Role,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -91,11 +92,23 @@ def startup():
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_code_id INTEGER REFERENCES discount_codes(id) ON DELETE SET NULL"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0"))
+        # Unified people: staff table also holds employees/affiliates (may have no login)
+        conn.execute(text("ALTER TABLE staff ALTER COLUMN username DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE staff ALTER COLUMN pin_hash DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE staff ALTER COLUMN pin_salt DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS person_type VARCHAR"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS discount_code VARCHAR"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS staff_discount_code_uq ON staff (discount_code)"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS has_access BOOLEAN NOT NULL DEFAULT TRUE"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_person_id INTEGER REFERENCES staff(id) ON DELETE SET NULL"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL"))
     db = next(get_db())
     try:
-        # Backfill usernames for any rows missing one, keeping them unique.
+        # Backfill usernames only for people WITH system access who are missing one.
         taken = set(u for (u,) in db.query(Staff.username).all() if u)
-        for st in db.query(Staff).filter((Staff.username == None) | (Staff.username == "")).all():  # noqa: E711
+        for st in db.query(Staff).filter(
+                Staff.has_access == True,  # noqa: E712
+                (Staff.username == None) | (Staff.username == "")).all():  # noqa: E711
             base = _slugify(st.name)
             u, i = base, 1
             while u in taken:
@@ -106,12 +119,49 @@ def startup():
         db.commit()
         with engine.begin() as conn:
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS staff_username_uq ON staff (username)"))
+        # Seed the two built-in roles (Admin = full, Staff = default perms).
+        admin_role = db.query(Role).filter(Role.name == "Admin").first()
+        if not admin_role:
+            admin_role = Role(name="Admin", is_admin=True, is_system=True, permissions="")
+            db.add(admin_role)
+        staff_role = db.query(Role).filter(Role.name == "Staff").first()
+        if not staff_role:
+            staff_role = Role(name="Staff", is_admin=False, is_system=True,
+                              permissions=",".join(DEFAULT_STAFF_PERMS))
+            db.add(staff_role)
+        db.commit()
         # Bootstrap a first admin if none exists.
         if not db.query(Staff).filter(Staff.role == "admin").first():
             pin = os.environ.get("ADMIN_INITIAL_PIN", "123456")
             h, s = hash_pin(pin)
             db.add(Staff(username="admin", name="Admin", role="admin",
-                         pin_hash=h, pin_salt=s, permissions=""))
+                         role_id=admin_role.id, pin_hash=h, pin_salt=s, permissions=""))
+            db.commit()
+        # Backfill role_id on any access people missing it (admin→Admin, else Staff).
+        for st in db.query(Staff).filter(Staff.role_id == None).all():  # noqa: E711
+            st.role_id = admin_role.id if st.role == "admin" else staff_role.id
+        db.commit()
+        # One-time migration: fold legacy discount_codes into the people table.
+        # Each code becomes a non-access person (Employee/Affiliate) carrying the code.
+        try:
+            legacy = db.query(DiscountCode).all()
+        except Exception:
+            legacy = []
+        if legacy:
+            existing_codes = set(c for (c,) in db.query(Staff.discount_code).all() if c)
+            for lc in legacy:
+                if not lc.code or lc.code in existing_codes:
+                    continue
+                kind = (lc.group.kind if lc.group else "") or "employee"
+                db.add(Staff(
+                    name=lc.holder_name or lc.code,
+                    person_type=kind,
+                    discount_code=lc.code,
+                    has_access=False,
+                    is_active=bool(lc.is_active),
+                    permissions="",
+                ))
+                existing_codes.add(lc.code)
             db.commit()
     finally:
         db.close()
@@ -193,8 +243,9 @@ def login_form(request: Request, db: Session = Depends(get_db)):
 @app.post("/login", response_class=HTMLResponse)
 def login(request: Request, username: str = Form(...), pin: str = Form(...), db: Session = Depends(get_db)):
     uname = (username or "").strip().lower()
-    staff = db.query(Staff).filter(func.lower(Staff.username) == uname, Staff.is_active).first()
-    if not staff or not verify_pin(pin, staff.pin_hash, staff.pin_salt):
+    staff = db.query(Staff).filter(func.lower(Staff.username) == uname,
+                                   Staff.is_active, Staff.has_access).first()
+    if not staff or not staff.pin_hash or not verify_pin(pin, staff.pin_hash, staff.pin_salt):
         return templates.TemplateResponse(
             "login.html", {"request": request, "error": "Wrong username or PIN."}
         )
@@ -580,21 +631,42 @@ def product_delete(request: Request, pid: int, db: Session = Depends(get_db)):
 
 # ---------- admin: staff ----------
 
+ENTITY_TYPE_LABELS = dict(ENTITY_TYPES)
+
+
 @app.get("/admin/staff", response_class=HTMLResponse)
-def staff_list(request: Request, db: Session = Depends(get_db)):
+def staff_list(request: Request, type: str = "", db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    people = db.query(Staff).order_by(Staff.is_active.desc(), Staff.name).all()
-    return render(request, "staff.html", db, staff, people=people)
+    ftype = type if type in ("employee", "affiliate", "supplier") else ""
+    q = db.query(Staff)
+    if ftype:
+        q = q.filter(Staff.person_type == ftype)
+    people = q.order_by(Staff.is_active.desc(), Staff.name).all()
+    usage = {p.id: _code_used_today(db, p.id) for p in people if p.discount_code}
+    return render(request, "staff.html", db, staff, people=people, usage=usage,
+                  ftype=ftype, ftype_label=(ENTITY_TYPE_LABELS.get(ftype, "") if ftype else ""),
+                  ENTITY_TYPES=ENTITY_TYPES)
+
+
+def _roles(db):
+    return db.query(Role).order_by(Role.is_admin.desc(), Role.name).all()
+
+
+def _form(request, db, staff, person=None, error=None, preset_type=""):
+    return render(request, "staff_form.html", db, staff, person=person, error=error,
+                  ENTITY_TYPES=ENTITY_TYPES, DISCOUNT_TYPES=list(DISCOUNT_TYPES),
+                  roles=_roles(db), preset_type=preset_type)
 
 
 @app.get("/admin/staff/new", response_class=HTMLResponse)
-def staff_new(request: Request, db: Session = Depends(get_db)):
+def staff_new(request: Request, type: str = "", db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    return render(request, "staff_form.html", db, staff, person=None, error=None)
+    preset = type if type in ("employee", "affiliate", "supplier") else ""
+    return _form(request, db, staff, person=None, preset_type=preset)
 
 
 def _clean_perms(values):
@@ -605,6 +677,81 @@ def _norm_username(u):
     return "".join(c for c in (u or "").strip().lower() if c.isalnum() or c in "._-")
 
 
+def _gen_code(db, name, person_type, exclude_id=None):
+    """Make a unique personal discount code like EMP-JOHN01 / AFF-MARY01."""
+    prefix = "AFF" if person_type == "affiliate" else "EMP"
+    base = "".join(ch for ch in (name or "").upper() if ch.isalnum())[:4] or "CODE"
+    q = db.query(Staff).filter(Staff.discount_code != None)  # noqa: E711
+    if exclude_id:
+        q = q.filter(Staff.id != exclude_id)
+    taken = set(c for (c,) in q.with_entities(Staff.discount_code).all() if c)
+    i = 1
+    while True:
+        c = f"{prefix}-{base}{i:02d}"
+        if c not in taken:
+            return c
+        i += 1
+
+
+def _norm_code(c):
+    return "".join(ch for ch in (c or "").strip().upper() if ch.isalnum() or ch == "-")
+
+
+def _apply_access(db, person, form, err):
+    """Apply the login side of the form to `person`. Returns an error response
+    (via `err`) or None on success."""
+    username = _norm_username(form.get("username"))
+    pin = form.get("pin") or ""
+    if not username:
+        return err("Username is required when Access is granted.")
+    if username != (person.username or ""):
+        if db.query(Staff).filter(func.lower(Staff.username) == username,
+                                  Staff.id != (person.id or -1)).first():
+            return err(f"Username '{username}' is already taken.")
+        person.username = username
+    # Role → drives admin flag + seeds permissions.
+    role = None
+    rid = form.get("role_id")
+    if rid:
+        try:
+            role = db.get(Role, int(rid))
+        except (TypeError, ValueError):
+            role = None
+    if role is None:
+        role = db.query(Role).filter(Role.name == "Staff").first()
+    person.role_id = role.id if role else None
+    person.role = "admin" if (role and role.is_admin) else "staff"
+    person.permissions = "" if (role and role.is_admin) else _clean_perms(form.getlist("permissions"))
+    if pin.strip():
+        if len(pin) < 4:
+            return err("PIN must be at least 4 digits.")
+        person.pin_hash, person.pin_salt = hash_pin(pin)
+    elif not person.pin_hash:
+        return err("Set a PIN (at least 4 digits) for this login.")
+    return None
+
+
+def _apply_type(db, person, person_type, form, err):
+    """Apply the relationship type + discount code. Returns error or None."""
+    if person_type in DISCOUNT_TYPES:
+        wanted = _norm_code(form.get("discount_code"))
+        if not wanted:
+            wanted = person.discount_code or _gen_code(db, person.name, person_type,
+                                                       exclude_id=person.id)
+        if wanted != person.discount_code and db.query(Staff).filter(
+                Staff.discount_code == wanted, Staff.id != (person.id or -1)).first():
+            return err(f"Discount code '{wanted}' is already taken.")
+        person.person_type = person_type
+        person.discount_code = wanted
+    elif person_type:  # supplier (no discount code)
+        person.person_type = person_type
+        person.discount_code = None
+    else:
+        person.person_type = None
+        person.discount_code = None
+    return None
+
+
 @app.post("/admin/staff/new")
 async def staff_create(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
@@ -612,23 +759,27 @@ async def staff_create(request: Request, db: Session = Depends(get_db)):
         return redir
     form = await request.form()
     name = (form.get("name") or "").strip()
-    username = _norm_username(form.get("username"))
-    role = form.get("role") if form.get("role") in ROLES else "staff"
-    pin = form.get("pin") or ""
-    phone = (form.get("phone") or "").strip()
-    perms = _clean_perms(form.getlist("permissions"))
-    if not name or not username:
-        return render(request, "staff_form.html", db, staff, person=None,
-                      error="Name and username are required.")
-    if db.query(Staff).filter(func.lower(Staff.username) == username).first():
-        return render(request, "staff_form.html", db, staff, person=None,
-                      error=f"Username '{username}' is already taken.")
-    if len(pin) < 4:
-        return render(request, "staff_form.html", db, staff, person=None,
-                      error="PIN must be at least 4 digits.")
-    h, s = hash_pin(pin)
-    db.add(Staff(username=username, name=name, role=role, pin_hash=h, pin_salt=s,
-                 permissions=perms, phone=phone or None))
+    person_type = form.get("person_type") or ""
+    if person_type not in ("employee", "affiliate", "supplier"):
+        person_type = ""
+    has_access = form.get("has_access") == "on"
+
+    def err(msg):
+        return _form(request, db, staff, person=None, error=msg)
+
+    if not name:
+        return err("Name is required.")
+
+    new = Staff(name=name, has_access=has_access, permissions="", role="staff",
+                phone=(form.get("phone") or "").strip() or None)
+    r = _apply_type(db, new, person_type, form, err)
+    if r:
+        return r
+    if has_access:
+        r = _apply_access(db, new, form, err)
+        if r:
+            return r
+    db.add(new)
     db.commit()
     return RedirectResponse("/admin/staff", status_code=303)
 
@@ -639,7 +790,7 @@ def staff_edit(request: Request, sid: int, db: Session = Depends(get_db)):
     if redir:
         return redir
     person = db.get(Staff, sid)
-    return render(request, "staff_form.html", db, staff, person=person, error=None)
+    return _form(request, db, staff, person=person)
 
 
 @app.post("/admin/staff/{sid}/edit")
@@ -652,26 +803,129 @@ async def staff_update(request: Request, sid: int, db: Session = Depends(get_db)
         return RedirectResponse("/admin/staff", status_code=303)
     form = await request.form()
     name = (form.get("name") or "").strip()
-    username = _norm_username(form.get("username"))
-    pin = form.get("pin") or ""
-    if username and username != person.username:
-        if db.query(Staff).filter(func.lower(Staff.username) == username,
-                                  Staff.id != person.id).first():
-            return render(request, "staff_form.html", db, staff, person=person,
-                          error=f"Username '{username}' is already taken.")
-        person.username = username
+    person_type = form.get("person_type") or ""
+    if person_type not in ("employee", "affiliate", "supplier"):
+        person_type = ""
+    has_access = form.get("has_access") == "on"
+
+    def err(msg):
+        return _form(request, db, staff, person=person, error=msg)
+
     person.name = name or person.name
-    person.role = form.get("role") if form.get("role") in ROLES else "staff"
     person.phone = (form.get("phone") or "").strip() or None
     person.is_active = form.get("is_active") == "on"
-    person.permissions = _clean_perms(form.getlist("permissions"))
-    if pin.strip():
-        if len(pin) < 4:
-            return render(request, "staff_form.html", db, staff, person=person,
-                          error="PIN must be at least 4 digits.")
-        person.pin_hash, person.pin_salt = hash_pin(pin)
+
+    r = _apply_type(db, person, person_type, form, err)
+    if r:
+        return r
+
+    person.has_access = has_access
+    if has_access:
+        r = _apply_access(db, person, form, err)
+        if r:
+            return r
     db.commit()
     return RedirectResponse("/admin/staff", status_code=303)
+
+
+# ---------- admin: roles ----------
+
+@app.get("/admin/roles", response_class=HTMLResponse)
+def roles_list(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    roles = _roles(db)
+    counts = {r.id: db.query(func.count(Staff.id)).filter(Staff.role_id == r.id).scalar()
+              for r in roles}
+    return render(request, "roles.html", db, staff, roles=roles, role=None, counts=counts)
+
+
+@app.get("/admin/roles/new", response_class=HTMLResponse)
+def role_new(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    return render(request, "role_form.html", db, staff, role=None, error=None)
+
+
+@app.get("/admin/roles/{rid}/edit", response_class=HTMLResponse)
+def role_edit(request: Request, rid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    role = db.get(Role, rid)
+    if not role:
+        return RedirectResponse("/admin/roles", status_code=303)
+    return render(request, "role_form.html", db, staff, role=role, error=None)
+
+
+def _save_role(db, role, form):
+    role.name = (form.get("name") or role.name or "Role").strip()
+    if not role.is_system:  # system roles keep their admin flag
+        role.is_admin = form.get("is_admin") == "on"
+    role.permissions = "" if role.is_admin else _clean_perms(form.getlist("permissions"))
+
+
+@app.post("/admin/roles/new")
+async def role_create(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    if not name:
+        return render(request, "role_form.html", db, staff, role=None,
+                      error="Role name is required.")
+    if db.query(Role).filter(func.lower(Role.name) == name.lower()).first():
+        return render(request, "role_form.html", db, staff, role=None,
+                      error=f"A role named '{name}' already exists.")
+    role = Role(name=name)
+    _save_role(db, role, form)
+    db.add(role)
+    db.commit()
+    return RedirectResponse("/admin/roles", status_code=303)
+
+
+@app.post("/admin/roles/{rid}/edit")
+async def role_update(request: Request, rid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    role = db.get(Role, rid)
+    if not role:
+        return RedirectResponse("/admin/roles", status_code=303)
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    if name and db.query(Role).filter(func.lower(Role.name) == name.lower(),
+                                      Role.id != role.id).first():
+        return render(request, "role_form.html", db, staff, role=role,
+                      error=f"A role named '{name}' already exists.")
+    _save_role(db, role, form)
+    db.commit()
+    # Re-stamp members' admin flag if this role's admin status changed.
+    role_flag = "admin" if role.is_admin else "staff"
+    db.query(Staff).filter(Staff.role_id == role.id).update({"role": role_flag})
+    db.commit()
+    return RedirectResponse("/admin/roles", status_code=303)
+
+
+@app.post("/admin/roles/{rid}/delete")
+def role_delete(request: Request, rid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    role = db.get(Role, rid)
+    if role and not role.is_system:
+        # Reassign anyone on this role to the built-in Staff role.
+        fallback = db.query(Role).filter(Role.name == "Staff").first()
+        for st in db.query(Staff).filter(Staff.role_id == role.id).all():
+            st.role_id = fallback.id if fallback else None
+            st.role = "staff"
+        db.flush()
+        db.delete(role)
+        db.commit()
+    return RedirectResponse("/admin/roles", status_code=303)
 
 
 # ---------- admin: reports ----------
@@ -1849,12 +2103,12 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
 
 
 # ---------- pricing tiers (Employee / Affiliate discounts on selected items) ----------
-def _code_used_today(db, code_id):
-    """Total discounted item-units redeemed by a code so far today (Manila)."""
+def _code_used_today(db, person_id):
+    """Total discounted item-units redeemed by a person's code so far today (Manila)."""
     tz = _tz()
     start = datetime.combine(datetime.now(tz).date(), datetime.min.time()).replace(tzinfo=tz)
     return int(db.query(func.coalesce(func.sum(Sale.discounted_qty), 0))
-               .filter(Sale.discount_code_id == code_id, Sale.sold_at >= start).scalar() or 0)
+               .filter(Sale.discount_person_id == person_id, Sale.sold_at >= start).scalar() or 0)
 
 
 @app.get("/admin/pricing", response_class=HTMLResponse)
@@ -1949,65 +2203,10 @@ def pricing_delete(request: Request, gid: int, db: Session = Depends(get_db)):
     return RedirectResponse("/admin/pricing", status_code=303)
 
 
-# ---------- discount codes (per employee / affiliate) ----------
-@app.get("/admin/discount-codes", response_class=HTMLResponse)
+# Discount codes now live on people (see Users page). Keep the old URL working.
+@app.get("/admin/discount-codes")
 def codes_list(request: Request, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    codes = (db.query(DiscountCode).order_by(DiscountCode.is_active.desc(),
-             DiscountCode.holder_name).all())
-    groups = db.query(PricingGroup).filter(PricingGroup.is_active).order_by(
-        PricingGroup.kind, PricingGroup.name).all()
-    usage = {c.id: _code_used_today(db, c.id) for c in codes}
-    return render(request, "codes.html", db, staff, codes=codes, groups=groups, usage=usage)
-
-
-@app.post("/admin/discount-codes/new")
-def codes_new(request: Request, holder_name: str = Form(...), group_id: str = Form(...),
-              code: str = Form(""), db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    g = db.get(PricingGroup, int(group_id)) if group_id else None
-    if g and holder_name.strip():
-        c = (code or "").strip().upper()
-        if not c:
-            prefix = "EMP" if g.kind == "employee" else "AFF"
-            base = "".join(ch for ch in holder_name.upper() if ch.isalnum())[:4] or "CODE"
-            n = db.query(func.count(DiscountCode.id)).scalar() or 0
-            c = f"{prefix}-{base}{n+1:02d}"
-        # ensure unique
-        if not db.query(DiscountCode).filter(DiscountCode.code == c).first():
-            db.add(DiscountCode(code=c, holder_name=holder_name.strip(), group_id=g.id))
-            db.commit()
-    return RedirectResponse("/admin/discount-codes", status_code=303)
-
-
-@app.post("/admin/discount-codes/{cid}/toggle")
-def codes_toggle(request: Request, cid: int, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    c = db.get(DiscountCode, cid)
-    if c:
-        c.is_active = not c.is_active
-        db.commit()
-    return RedirectResponse("/admin/discount-codes", status_code=303)
-
-
-@app.post("/admin/discount-codes/{cid}/delete")
-def codes_delete(request: Request, cid: int, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    c = db.get(DiscountCode, cid)
-    if c:
-        db.query(Sale).filter(Sale.discount_code_id == cid).update({"discount_code_id": None})
-        db.flush()
-        db.delete(c)
-        db.commit()
-    return RedirectResponse("/admin/discount-codes", status_code=303)
+    return RedirectResponse("/admin/staff", status_code=303)
 
 
 @app.get("/healthz")

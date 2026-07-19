@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.role-list{display:flex;flex-direction:column;gap:10px;margin:12px 0;max-width:720px}
+.role-row{display:flex;align-items:center;gap:14px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;text-decoration:none;color:var(--ink)}
+.role-row:hover{border-color:var(--teal)}
+.role-row .nm{font-weight:600}
+.role-row .cnt{color:var(--muted);font-size:.82rem;margin-left:auto}
+.sys{display:inline-block;font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:6px;background:#eee;color:#666}
+.fulltag{display:inline-block;font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:6px;background:#eafaf1;color:#0b6b62}
+.pchips{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
+.pchips .chip{font-size:.72rem}
+</style>
+<div class="row-between">
+  <div><h1 style="margin:0">Roles</h1><p class="muted small" style="margin:2px 0 0">Each role carries a default set of permissions. Assign a role to a person and it fills their access.</p></div>
+  <a class="btn primary" href="/admin/roles/new">＋ New role</a>
+</div>
+
+<div class="role-list">
+  {% for r in roles %}
+  <a class="role-row" href="/admin/roles/{{ r.id }}/edit">
+    <div>
+      <span class="nm">{{ r.name }}</span>
+      {% if r.is_admin %}<span class="fulltag">full access</span>{% endif %}
+      {% if r.is_system %}<span class="sys">built-in</span>{% endif %}
+      {% if not r.is_admin %}
+      <div class="pchips">
+        {% for k in r.perm_list() %}<span class="chip">{{ k.replace('.', ' ') }}</span>{% else %}<span class="muted small">no permissions</span>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <span class="cnt">{{ counts.get(r.id, 0) }} {{ 'person' if counts.get(r.id, 0) == 1 else 'people' }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
