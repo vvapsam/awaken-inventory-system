@@ -2548,7 +2548,19 @@ def healthz():
 
 @app.get("/admin/__cust_list_q7fz3k")
 def _cust_list(db: Session = Depends(get_db)):
-    # TEMPORARY read-only: existing customers, for CSV dedup/merge.
+    # TEMPORARY read-only: existing customers with tx count + balance, for cleanup.
     people = (db.query(Staff).filter(Staff.person_type == "customer")
               .order_by(Staff.name).all())
-    return {"customers": [{"id": p.id, "name": p.name, "phone": p.phone or ""} for p in people]}
+    bal_map = {}
+    try:
+        for r in customer_balances(db):
+            bal_map[r["customer"].id] = float(r.get("balance") or 0)
+    except Exception:
+        pass
+    out = []
+    for p in people:
+        txc = db.query(func.count(Transaction.id)).filter(Transaction.customer_id == p.id).scalar()
+        out.append({"id": p.id, "name": p.name, "phone": p.phone or "",
+                    "single_name": (" " not in p.name.strip()),
+                    "tx_count": int(txc or 0), "balance": bal_map.get(p.id, 0)})
+    return {"customers": out}
