@@ -2507,3 +2507,17 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.get("/admin/__prod_list_q7fz3k")
+def _prod_list(db: Session = Depends(get_db)):
+    # TEMPORARY read-only: list products so opening balances can be matched by id.
+    prods = db.query(Product).order_by(Product.name).all()
+    adj = _adjust_qty_map(db)
+    sold = _sold_qty_map(db)
+    return {"products": [
+        {"id": p.id, "sku": p.sku, "name": p.name, "is_active": p.is_active,
+         "cost_price": float(p.cost_price) if p.cost_price is not None else None,
+         "on_hand": int(adj.get(p.id, 0) - sold.get(p.id, 0))}
+        for p in prods
+    ]}
