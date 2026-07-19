@@ -24,6 +24,6 @@ def current_staff(request, db) -> Staff | None:
     if not sid:
         return None
     staff = db.get(Staff, sid)
-    if staff and staff.is_active:
+    if staff and staff.is_active and staff.has_access:
         return staff
     return None

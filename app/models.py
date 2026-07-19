@@ -71,16 +71,26 @@ def can_any(staff, keys):
     return any(can(staff, k) for k in keys)
 
 
+PERSON_TYPES = [("", "— none —"), ("employee", "Employee"), ("affiliate", "Affiliate")]
+
+
 class Staff(Base):
+    """A person. May have system access (login + role) and/or a discount type
+    (employee / affiliate) with a personal code. One unified 'Users' table."""
     __tablename__ = "staff"
     id = Column(Integer, primary_key=True)
-    username = Column(String, unique=True, nullable=False)  # login handle
     name = Column(String, nullable=False)                   # display name
+    # --- discount side ---
+    person_type = Column(String)                            # '', 'employee', 'affiliate'
+    discount_code = Column(String, unique=True)             # personal code (E/A only)
+    # --- system access side (only when has_access) ---
+    has_access = Column(Boolean, nullable=False, default=True)
+    username = Column(String, unique=True)                  # login handle (access only)
     role = Column(String, nullable=False, default="staff")
-    pin_hash = Column(String, nullable=False)
-    pin_salt = Column(String, nullable=False)
+    pin_hash = Column(String)
+    pin_salt = Column(String)
     permissions = Column(Text, nullable=False, default="")  # comma-separated keys
-    phone = Column(String)  # for WhatsApp channel later
+    phone = Column(String)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
@@ -247,12 +257,13 @@ class Sale(Base):
     proof = Column(LargeBinary)              # proof-of-payment image (cash/bank sales)
     proof_mime = Column(String)
     pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))  # tier applied
-    discount_code_id = Column(Integer, ForeignKey("discount_codes.id", ondelete="SET NULL"))  # code used
+    discount_person_id = Column(Integer, ForeignKey("staff.id", ondelete="SET NULL"))  # whose code
     discounted_qty = Column(Integer, nullable=False, default=0)   # item-units that got the tier discount
     note = Column(Text)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
-    staff = relationship("Staff")
+    staff = relationship("Staff", foreign_keys=[staff_id])
+    discount_person = relationship("Staff", foreign_keys=[discount_person_id])
     customer = relationship("Customer")
     items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
 

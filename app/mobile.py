@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    Customer, Payment, Product, Sale, SaleItem, StockMovement,
-    PricingGroup, DiscountCode, can, can_any,
+    Customer, Payment, Product, Sale, SaleItem, StockMovement, Staff,
+    PricingGroup, can, can_any,
 )
 
 router = APIRouter()
@@ -170,14 +170,34 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "customers": customers,
         "balances": balances,
         "loss_chips": LOSS_MEMO_CHIPS,
-        "has_codes": db.query(DiscountCode).filter(DiscountCode.is_active).first() is not None,
+        "has_codes": db.query(Staff).filter(Staff.discount_code != None,  # noqa: E711
+                                            Staff.is_active).first() is not None,
     }
 
 
-def _code_used_today(db, code_id):
+def _code_used_today(db, person_id):
     start = datetime.combine(_today(), datetime.min.time()).replace(tzinfo=_tz())
     return int(db.query(func.coalesce(func.sum(Sale.discounted_qty), 0))
-               .filter(Sale.discount_code_id == code_id, Sale.sold_at >= start).scalar() or 0)
+               .filter(Sale.discount_person_id == person_id, Sale.sold_at >= start).scalar() or 0)
+
+
+def _resolve_code(db, code):
+    """Look up a person by their personal discount code and the active pricing
+    tier for their type. Returns (person, group) or (None, None)."""
+    c = (code or "").strip().upper()
+    if not c:
+        return None, None
+    person = (db.query(Staff)
+              .filter(func.upper(Staff.discount_code) == c,
+                      Staff.is_active, Staff.person_type != None).first())  # noqa: E711
+    if not person or not person.person_type:
+        return None, None
+    group = (db.query(PricingGroup)
+             .filter(PricingGroup.kind == person.person_type, PricingGroup.is_active)
+             .order_by(PricingGroup.id).first())
+    if not group:
+        return None, None
+    return person, group
 
 
 @router.post("/api/m/discount-code")
@@ -187,17 +207,14 @@ def check_discount_code(request: Request, code: str = Form(...),
     staff = current_staff(request, db)
     if not staff or not can_sell(staff):
         return _err("Not allowed", 403)
-    c = (db.query(DiscountCode)
-         .filter(func.upper(DiscountCode.code) == (code or "").strip().upper(),
-                 DiscountCode.is_active).first())
-    if not c or not c.group or not c.group.is_active:
+    person, g = _resolve_code(db, code)
+    if not person or not g:
         return _err("Invalid or inactive code", 404)
-    g = c.group
     limit = g.daily_item_limit
-    used = _code_used_today(db, c.id) if limit else 0
+    used = _code_used_today(db, person.id) if limit else 0
     return {
         "ok": True,
-        "code": c.code, "holder": c.holder_name, "kind": g.kind, "tier": g.name,
+        "code": person.discount_code, "holder": person.name, "kind": g.kind, "tier": g.name,
         "discount": float(g.discount_percent or 0), "round_up": bool(g.round_up),
         "product_ids": sorted(g.eligible_ids()),
         "daily_limit": limit, "used_today": used,
@@ -278,18 +295,15 @@ async def create_sale(
     if not can_sell(staff):
         return _err("You don't have permission to log sales", 403)
 
-    # Discount code → pricing tier (Employee / Affiliate). Server is authoritative.
-    code = group = None
+    # Discount code → person + pricing tier (Employee / Affiliate). Server is authoritative.
+    person = group = None
     remaining = None  # None = unlimited; else remaining discounted units today
     if discount_code and discount_code.strip():
-        code = (db.query(DiscountCode)
-                .filter(func.upper(DiscountCode.code) == discount_code.strip().upper(),
-                        DiscountCode.is_active).first())
-        if not code or not code.group or not code.group.is_active:
+        person, group = _resolve_code(db, discount_code)
+        if not person or not group:
             return _err("Invalid or inactive discount code")
-        group = code.group
         if group.daily_item_limit:
-            remaining = max(0, group.daily_item_limit - _code_used_today(db, code.id))
+            remaining = max(0, group.daily_item_limit - _code_used_today(db, person.id))
 
     payment = (payment or "").lower().strip()
     if payment not in ("unpaid", "cash", "bank"):
@@ -337,8 +351,8 @@ async def create_sale(
         proof=proof_bytes if not is_credit else None,
         proof_mime=proof_mime if not is_credit else None,
         pricing_group_id=group.id if group else None,
-        discount_code_id=code.id if code else None,
-        note=("%s (%s)" % (group.name, code.holder_name)) if group else None,
+        discount_person_id=person.id if person else None,
+        note=("%s (%s)" % (group.name, person.name)) if group else None,
     )
     db.add(sale)
     db.flush()

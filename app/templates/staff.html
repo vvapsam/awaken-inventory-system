@@ -1,24 +1,30 @@
 {% extends "base.html" %}
 {% block body %}
+<style>
+.typetag{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:6px}
+.typetag.employee{background:#eaf1f8;color:#1f4e79}
+.typetag.affiliate{background:#f3ecfa;color:#6b3fa0}
+.codecell{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+.codecell .used{font-family:inherit;font-weight:400;color:var(--muted);font-size:.78rem;margin-left:6px}
+.yes{color:var(--teal-dark);font-weight:600}
+.no{color:var(--muted)}
+</style>
 <div class="row-between">
-  <h1>Users</h1>
-  <a class="btn primary" href="/admin/staff/new">＋ New user</a>
+  <div><h1 style="margin:0">Users</h1><p class="muted small" style="margin:2px 0 0">Everyone in one place — staff, employees and affiliates. Tick <b>Access</b> to let someone log in.</p></div>
+  <a class="btn primary" href="/admin/staff/new">＋ New person</a>
 </div>
 <table>
-  <tr><th>Username</th><th>Name</th><th>Role</th><th>Permissions</th><th>Status</th><th></th></tr>
+  <tr><th>Name</th><th>Type</th><th>Discount code</th><th>Access</th><th>Role</th><th>Status</th><th></th></tr>
   {% for p in people %}
   <tr class="{% if not p.is_active %}inactive{% endif %}">
-    <td class="mono">{{ p.username }}</td>
     <td>{{ p.name }}</td>
-    <td>{% if p.role == 'admin' %}<span class="tag">admin</span>{% else %}staff{% endif %}</td>
-    <td class="perm-cell">
-      {% if p.role == 'admin' %}<span class="muted">Full access</span>
-      {% else %}
-        {% set keys = (p.permissions or '').split(',') | select | list %}
-        {% if keys %}{% for k in keys %}<span class="chip">{{ k.replace('.', ' ') }}</span>{% endfor %}
-        {% else %}<span class="muted">none</span>{% endif %}
-      {% endif %}
+    <td>{% if p.person_type %}<span class="typetag {{ p.person_type }}">{{ p.person_type }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="codecell">
+      {% if p.discount_code %}{{ p.discount_code }}{% if usage.get(p.id) %}<span class="used">{{ usage[p.id] }} used today</span>{% endif %}
+      {% else %}<span class="no">—</span>{% endif %}
     </td>
+    <td>{% if p.has_access %}<span class="yes">✓ can log in</span>{% else %}<span class="no">no login</span>{% endif %}</td>
+    <td>{% if p.has_access %}{% if p.role == 'admin' %}<span class="tag">admin</span>{% else %}staff{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td>{{ 'active' if p.is_active else 'inactive' }}</td>
     <td><a href="/admin/staff/{{ p.id }}/edit">Edit</a></td>
   </tr>

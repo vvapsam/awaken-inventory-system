@@ -25,7 +25,7 @@ from .models import (
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
     Coach, Member, COACH_TYPES, Invoice, InvoiceItem, InvoicePayment,
-    PricingGroup, PricingGroupItem, DiscountCode, PRICING_KINDS,
+    PricingGroup, PricingGroupItem, DiscountCode, PRICING_KINDS, PERSON_TYPES,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -91,11 +91,22 @@ def startup():
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_code_id INTEGER REFERENCES discount_codes(id) ON DELETE SET NULL"))
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0"))
+        # Unified people: staff table also holds employees/affiliates (may have no login)
+        conn.execute(text("ALTER TABLE staff ALTER COLUMN username DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE staff ALTER COLUMN pin_hash DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE staff ALTER COLUMN pin_salt DROP NOT NULL"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS person_type VARCHAR"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS discount_code VARCHAR"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS staff_discount_code_uq ON staff (discount_code)"))
+        conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS has_access BOOLEAN NOT NULL DEFAULT TRUE"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_person_id INTEGER REFERENCES staff(id) ON DELETE SET NULL"))
     db = next(get_db())
     try:
-        # Backfill usernames for any rows missing one, keeping them unique.
+        # Backfill usernames only for people WITH system access who are missing one.
         taken = set(u for (u,) in db.query(Staff.username).all() if u)
-        for st in db.query(Staff).filter((Staff.username == None) | (Staff.username == "")).all():  # noqa: E711
+        for st in db.query(Staff).filter(
+                Staff.has_access == True,  # noqa: E712
+                (Staff.username == None) | (Staff.username == "")).all():  # noqa: E711
             base = _slugify(st.name)
             u, i = base, 1
             while u in taken:
@@ -112,6 +123,28 @@ def startup():
             h, s = hash_pin(pin)
             db.add(Staff(username="admin", name="Admin", role="admin",
                          pin_hash=h, pin_salt=s, permissions=""))
+            db.commit()
+        # One-time migration: fold legacy discount_codes into the people table.
+        # Each code becomes a non-access person (Employee/Affiliate) carrying the code.
+        try:
+            legacy = db.query(DiscountCode).all()
+        except Exception:
+            legacy = []
+        if legacy:
+            existing_codes = set(c for (c,) in db.query(Staff.discount_code).all() if c)
+            for lc in legacy:
+                if not lc.code or lc.code in existing_codes:
+                    continue
+                kind = (lc.group.kind if lc.group else "") or "employee"
+                db.add(Staff(
+                    name=lc.holder_name or lc.code,
+                    person_type=kind,
+                    discount_code=lc.code,
+                    has_access=False,
+                    is_active=bool(lc.is_active),
+                    permissions="",
+                ))
+                existing_codes.add(lc.code)
             db.commit()
     finally:
         db.close()
@@ -193,8 +226,9 @@ def login_form(request: Request, db: Session = Depends(get_db)):
 @app.post("/login", response_class=HTMLResponse)
 def login(request: Request, username: str = Form(...), pin: str = Form(...), db: Session = Depends(get_db)):
     uname = (username or "").strip().lower()
-    staff = db.query(Staff).filter(func.lower(Staff.username) == uname, Staff.is_active).first()
-    if not staff or not verify_pin(pin, staff.pin_hash, staff.pin_salt):
+    staff = db.query(Staff).filter(func.lower(Staff.username) == uname,
+                                   Staff.is_active, Staff.has_access).first()
+    if not staff or not staff.pin_hash or not verify_pin(pin, staff.pin_hash, staff.pin_salt):
         return templates.TemplateResponse(
             "login.html", {"request": request, "error": "Wrong username or PIN."}
         )
@@ -586,7 +620,9 @@ def staff_list(request: Request, db: Session = Depends(get_db)):
     if redir:
         return redir
     people = db.query(Staff).order_by(Staff.is_active.desc(), Staff.name).all()
-    return render(request, "staff.html", db, staff, people=people)
+    usage = {p.id: _code_used_today(db, p.id) for p in people if p.discount_code}
+    return render(request, "staff.html", db, staff, people=people, usage=usage,
+                  PERSON_TYPES=PERSON_TYPES)
 
 
 @app.get("/admin/staff/new", response_class=HTMLResponse)
@@ -594,7 +630,8 @@ def staff_new(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    return render(request, "staff_form.html", db, staff, person=None, error=None)
+    return render(request, "staff_form.html", db, staff, person=None, error=None,
+                  PERSON_TYPES=PERSON_TYPES)
 
 
 def _clean_perms(values):
@@ -605,6 +642,26 @@ def _norm_username(u):
     return "".join(c for c in (u or "").strip().lower() if c.isalnum() or c in "._-")
 
 
+def _gen_code(db, name, person_type, exclude_id=None):
+    """Make a unique personal discount code like EMP-JOHN01 / AFF-MARY01."""
+    prefix = "AFF" if person_type == "affiliate" else "EMP"
+    base = "".join(ch for ch in (name or "").upper() if ch.isalnum())[:4] or "CODE"
+    q = db.query(Staff).filter(Staff.discount_code != None)  # noqa: E711
+    if exclude_id:
+        q = q.filter(Staff.id != exclude_id)
+    taken = set(c for (c,) in q.with_entities(Staff.discount_code).all() if c)
+    i = 1
+    while True:
+        c = f"{prefix}-{base}{i:02d}"
+        if c not in taken:
+            return c
+        i += 1
+
+
+def _norm_code(c):
+    return "".join(ch for ch in (c or "").strip().upper() if ch.isalnum() or ch == "-")
+
+
 @app.post("/admin/staff/new")
 async def staff_create(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
@@ -612,23 +669,49 @@ async def staff_create(request: Request, db: Session = Depends(get_db)):
         return redir
     form = await request.form()
     name = (form.get("name") or "").strip()
-    username = _norm_username(form.get("username"))
-    role = form.get("role") if form.get("role") in ROLES else "staff"
-    pin = form.get("pin") or ""
-    phone = (form.get("phone") or "").strip()
-    perms = _clean_perms(form.getlist("permissions"))
-    if not name or not username:
+    person_type = form.get("person_type") or ""
+    if person_type not in ("", "employee", "affiliate"):
+        person_type = ""
+    has_access = form.get("has_access") == "on"
+    if not name:
         return render(request, "staff_form.html", db, staff, person=None,
-                      error="Name and username are required.")
-    if db.query(Staff).filter(func.lower(Staff.username) == username).first():
-        return render(request, "staff_form.html", db, staff, person=None,
-                      error=f"Username '{username}' is already taken.")
-    if len(pin) < 4:
-        return render(request, "staff_form.html", db, staff, person=None,
-                      error="PIN must be at least 4 digits.")
-    h, s = hash_pin(pin)
-    db.add(Staff(username=username, name=name, role=role, pin_hash=h, pin_salt=s,
-                 permissions=perms, phone=phone or None))
+                      error="Name is required.", PERSON_TYPES=PERSON_TYPES)
+
+    # --- discount code (only for employee / affiliate) ---
+    code = None
+    if person_type:
+        code = _norm_code(form.get("discount_code")) or _gen_code(db, name, person_type)
+        if db.query(Staff).filter(Staff.discount_code == code).first():
+            return render(request, "staff_form.html", db, staff, person=None,
+                          error=f"Discount code '{code}' is already taken.",
+                          PERSON_TYPES=PERSON_TYPES)
+
+    new = Staff(name=name, person_type=person_type or None, discount_code=code,
+                has_access=has_access, permissions="",
+                phone=(form.get("phone") or "").strip() or None)
+
+    # --- system access side ---
+    if has_access:
+        username = _norm_username(form.get("username"))
+        pin = form.get("pin") or ""
+        if not username:
+            return render(request, "staff_form.html", db, staff, person=None,
+                          error="Username is required when Access is granted.",
+                          PERSON_TYPES=PERSON_TYPES)
+        if db.query(Staff).filter(func.lower(Staff.username) == username).first():
+            return render(request, "staff_form.html", db, staff, person=None,
+                          error=f"Username '{username}' is already taken.",
+                          PERSON_TYPES=PERSON_TYPES)
+        if len(pin) < 4:
+            return render(request, "staff_form.html", db, staff, person=None,
+                          error="PIN must be at least 4 digits.",
+                          PERSON_TYPES=PERSON_TYPES)
+        new.username = username
+        new.role = form.get("role") if form.get("role") in ROLES else "staff"
+        new.pin_hash, new.pin_salt = hash_pin(pin)
+        new.permissions = _clean_perms(form.getlist("permissions"))
+
+    db.add(new)
     db.commit()
     return RedirectResponse("/admin/staff", status_code=303)
 
@@ -639,7 +722,8 @@ def staff_edit(request: Request, sid: int, db: Session = Depends(get_db)):
     if redir:
         return redir
     person = db.get(Staff, sid)
-    return render(request, "staff_form.html", db, staff, person=person, error=None)
+    return render(request, "staff_form.html", db, staff, person=person, error=None,
+                  PERSON_TYPES=PERSON_TYPES)
 
 
 @app.post("/admin/staff/{sid}/edit")
@@ -652,24 +736,53 @@ async def staff_update(request: Request, sid: int, db: Session = Depends(get_db)
         return RedirectResponse("/admin/staff", status_code=303)
     form = await request.form()
     name = (form.get("name") or "").strip()
-    username = _norm_username(form.get("username"))
-    pin = form.get("pin") or ""
-    if username and username != person.username:
-        if db.query(Staff).filter(func.lower(Staff.username) == username,
-                                  Staff.id != person.id).first():
-            return render(request, "staff_form.html", db, staff, person=person,
-                          error=f"Username '{username}' is already taken.")
-        person.username = username
+    person_type = form.get("person_type") or ""
+    if person_type not in ("", "employee", "affiliate"):
+        person_type = ""
+    has_access = form.get("has_access") == "on"
+
+    def _err(msg):
+        return render(request, "staff_form.html", db, staff, person=person,
+                      error=msg, PERSON_TYPES=PERSON_TYPES)
+
     person.name = name or person.name
-    person.role = form.get("role") if form.get("role") in ROLES else "staff"
     person.phone = (form.get("phone") or "").strip() or None
     person.is_active = form.get("is_active") == "on"
-    person.permissions = _clean_perms(form.getlist("permissions"))
-    if pin.strip():
-        if len(pin) < 4:
-            return render(request, "staff_form.html", db, staff, person=person,
-                          error="PIN must be at least 4 digits.")
-        person.pin_hash, person.pin_salt = hash_pin(pin)
+
+    # --- discount side ---
+    if person_type:
+        wanted = _norm_code(form.get("discount_code"))
+        if not wanted:
+            wanted = person.discount_code or _gen_code(db, person.name, person_type, exclude_id=person.id)
+        if wanted != person.discount_code and db.query(Staff).filter(
+                Staff.discount_code == wanted, Staff.id != person.id).first():
+            return _err(f"Discount code '{wanted}' is already taken.")
+        person.person_type = person_type
+        person.discount_code = wanted
+    else:
+        person.person_type = None
+        person.discount_code = None
+
+    # --- system access side ---
+    person.has_access = has_access
+    if has_access:
+        username = _norm_username(form.get("username"))
+        pin = form.get("pin") or ""
+        if not username:
+            return _err("Username is required when Access is granted.")
+        if username != (person.username or ""):
+            if db.query(Staff).filter(func.lower(Staff.username) == username,
+                                      Staff.id != person.id).first():
+                return _err(f"Username '{username}' is already taken.")
+            person.username = username
+        person.role = form.get("role") if form.get("role") in ROLES else "staff"
+        person.permissions = _clean_perms(form.getlist("permissions"))
+        if pin.strip():
+            if len(pin) < 4:
+                return _err("PIN must be at least 4 digits.")
+            person.pin_hash, person.pin_salt = hash_pin(pin)
+        elif not person.pin_hash:
+            return _err("Set a PIN (at least 4 digits) for this login.")
     db.commit()
     return RedirectResponse("/admin/staff", status_code=303)
 
@@ -1849,12 +1962,12 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
 
 
 # ---------- pricing tiers (Employee / Affiliate discounts on selected items) ----------
-def _code_used_today(db, code_id):
-    """Total discounted item-units redeemed by a code so far today (Manila)."""
+def _code_used_today(db, person_id):
+    """Total discounted item-units redeemed by a person's code so far today (Manila)."""
     tz = _tz()
     start = datetime.combine(datetime.now(tz).date(), datetime.min.time()).replace(tzinfo=tz)
     return int(db.query(func.coalesce(func.sum(Sale.discounted_qty), 0))
-               .filter(Sale.discount_code_id == code_id, Sale.sold_at >= start).scalar() or 0)
+               .filter(Sale.discount_person_id == person_id, Sale.sold_at >= start).scalar() or 0)
 
 
 @app.get("/admin/pricing", response_class=HTMLResponse)
@@ -1949,65 +2062,10 @@ def pricing_delete(request: Request, gid: int, db: Session = Depends(get_db)):
     return RedirectResponse("/admin/pricing", status_code=303)
 
 
-# ---------- discount codes (per employee / affiliate) ----------
-@app.get("/admin/discount-codes", response_class=HTMLResponse)
+# Discount codes now live on people (see Users page). Keep the old URL working.
+@app.get("/admin/discount-codes")
 def codes_list(request: Request, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    codes = (db.query(DiscountCode).order_by(DiscountCode.is_active.desc(),
-             DiscountCode.holder_name).all())
-    groups = db.query(PricingGroup).filter(PricingGroup.is_active).order_by(
-        PricingGroup.kind, PricingGroup.name).all()
-    usage = {c.id: _code_used_today(db, c.id) for c in codes}
-    return render(request, "codes.html", db, staff, codes=codes, groups=groups, usage=usage)
-
-
-@app.post("/admin/discount-codes/new")
-def codes_new(request: Request, holder_name: str = Form(...), group_id: str = Form(...),
-              code: str = Form(""), db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    g = db.get(PricingGroup, int(group_id)) if group_id else None
-    if g and holder_name.strip():
-        c = (code or "").strip().upper()
-        if not c:
-            prefix = "EMP" if g.kind == "employee" else "AFF"
-            base = "".join(ch for ch in holder_name.upper() if ch.isalnum())[:4] or "CODE"
-            n = db.query(func.count(DiscountCode.id)).scalar() or 0
-            c = f"{prefix}-{base}{n+1:02d}"
-        # ensure unique
-        if not db.query(DiscountCode).filter(DiscountCode.code == c).first():
-            db.add(DiscountCode(code=c, holder_name=holder_name.strip(), group_id=g.id))
-            db.commit()
-    return RedirectResponse("/admin/discount-codes", status_code=303)
-
-
-@app.post("/admin/discount-codes/{cid}/toggle")
-def codes_toggle(request: Request, cid: int, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    c = db.get(DiscountCode, cid)
-    if c:
-        c.is_active = not c.is_active
-        db.commit()
-    return RedirectResponse("/admin/discount-codes", status_code=303)
-
-
-@app.post("/admin/discount-codes/{cid}/delete")
-def codes_delete(request: Request, cid: int, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    c = db.get(DiscountCode, cid)
-    if c:
-        db.query(Sale).filter(Sale.discount_code_id == cid).update({"discount_code_id": None})
-        db.flush()
-        db.delete(c)
-        db.commit()
-    return RedirectResponse("/admin/discount-codes", status_code=303)
+    return RedirectResponse("/admin/staff", status_code=303)
 
 
 @app.get("/healthz")
