@@ -218,6 +218,12 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     <div id="cart-lines"></div>
     <div class="carttot"><span>Total</span><span id="cart-total">₱0.00</span></div>
 
+    <div id="price-wrap" class="hide">
+      <div class="section-label" style="margin-top:12px">Price</div>
+      <div class="seg" id="price-seg" style="grid-template-columns:repeat(auto-fit,minmax(88px,1fr))"></div>
+      <div class="note ok hide" id="price-note"></div>
+    </div>
+
     <div class="section-label" style="margin-top:14px">Payment</div>
     <div class="seg" id="pay-seg">
       <button data-pay="unpaid">Unpaid</button>
@@ -392,9 +398,25 @@ function renderHomeBal(){
 }
 
 // ================= SELL =================
-let cart={}, payMode=null, proofFile=null, sellCustomer=null;
+let cart={}, payMode=null, proofFile=null, sellCustomer=null, sellGroup=null;
+function curGroup(){ return (DATA.pricing_groups||[]).find(g=>g.id==sellGroup); }
+function effPrice(p){ const g=curGroup();
+  if(g && g.product_ids.includes(Number(p.id))) return Math.round(p.price*(1-g.discount/100)*100)/100;
+  return p.price; }
+function buildPriceSeg(){
+  const groups=DATA.pricing_groups||[], pw=$('#price-wrap'), ps=$('#price-seg');
+  if(!groups.length){pw.classList.add('hide');return;}
+  pw.classList.remove('hide'); ps.innerHTML='';
+  const mk=(id,label)=>{const b=document.createElement('button');b.textContent=label;
+    b.onclick=()=>{sellGroup=id;$$('#price-seg button').forEach(x=>x.classList.remove('on','g'));
+      b.classList.add('on'); if(id) b.classList.add('g'); renderCart();};
+    return b;};
+  const reg=mk(null,'Regular'); reg.classList.add('on'); ps.appendChild(reg);
+  groups.forEach(g=>ps.appendChild(mk(g.id, g.name)));
+}
 function initSell(){
-  cart={}; payMode=null; proofFile=null; sellCustomer=null;
+  cart={}; payMode=null; proofFile=null; sellCustomer=null; sellGroup=null;
+  buildPriceSeg(); $('#price-note').classList.add('hide');
   $$('#pay-seg button').forEach(x=>x.classList.remove('on'));
   $('#pay-proof').classList.add('hide'); $('#pay-cust').classList.add('hide');
   clearProof(); $('#cust-choose-lbl').textContent='Choose a customer…'; $('#cust-choose .cav').textContent='?';
@@ -419,12 +441,14 @@ function renderCart(){
     if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');}
     else{t.classList.remove('picked');b.classList.add('hide');}
   });
-  const lines=$('#cart-lines'); lines.innerHTML=''; let total=0;
+  const lines=$('#cart-lines'); lines.innerHTML=''; let total=0, saved=0;
   const ids=Object.keys(cart);
   ids.forEach(pid=>{
-    const p=DATA.products.find(x=>x.id==pid), q=cart[pid], sub=p.price*q; total+=sub;
+    const p=DATA.products.find(x=>x.id==pid), q=cart[pid], up=effPrice(p), sub=up*q;
+    total+=sub; saved+=(p.price-up)*q;
+    const disc=up<p.price-0.001;
     const row=document.createElement('div'); row.className='cartline';
-    row.innerHTML=`<div class="cn">${p.name}<small>${peso(p.price)} each</small></div>
+    row.innerHTML=`<div class="cn">${p.name}<small>${disc?`<s>${peso(p.price)}</s> `:''}${peso(up)} each</small></div>
       <div class="stepper"><button data-m>−</button><span class="q">${q}</span><button data-p>+</button></div>
       <div class="cartsub">${peso(sub)}</div>`;
     $('[data-m]',row).onclick=()=>setQty(pid,q-1);
@@ -432,6 +456,12 @@ function renderCart(){
     lines.appendChild(row);
   });
   $('#cart-total').textContent=peso(total);
+  // pricing-group note
+  const g=curGroup(), note=$('#price-note');
+  if(g){ note.classList.remove('hide');
+    note.textContent = saved>0.005 ? `${g.name} · −${g.discount}% on eligible items · saves ${peso(saved)}`
+                                   : `${g.name} · no eligible items in this cart`;
+  } else note.classList.add('hide');
   $('#cart-sheet').classList.toggle('open', ids.length>0);
   updateSellBtn();
 }
@@ -468,11 +498,12 @@ $('#sell-submit').onclick=async()=>{
   const fd=new FormData();
   fd.append('items', JSON.stringify(Object.entries(cart).map(([product_id,quantity])=>({product_id,quantity}))));
   fd.append('payment', payMode);
+  if(sellGroup) fd.append('pricing_group_id', sellGroup);
   if(payMode==='unpaid') fd.append('customer_id', sellCustomer.id);
   else fd.append('proof', proofFile);
   const r=await fetch('/api/m/sale',{method:'POST',body:fd}); const j=await r.json();
   if(!j.ok){ alert(j.error||'Could not save'); btn.textContent=old; btn.disabled=false; return; }
-  const lines=Object.entries(cart).map(([pid,q])=>{const p=DATA.products.find(x=>x.id==pid);return {n:p.name,q,sub:p.price*q};});
+  const lines=Object.entries(cart).map(([pid,q])=>{const p=DATA.products.find(x=>x.id==pid);return {n:p.name,q,sub:effPrice(p)*q};});
   await boot();
   showDone('sale',{total:j.total,payMode,customer:sellCustomer,lines});
 };

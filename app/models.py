@@ -245,6 +245,7 @@ class Sale(Base):
     payment_method = Column(String)
     proof = Column(LargeBinary)              # proof-of-payment image (cash/bank sales)
     proof_mime = Column(String)
+    pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))  # e.g. Employee
     note = Column(Text)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
@@ -321,6 +322,35 @@ class PaymentSetting(Base):
     logo = Column(LargeBinary)                 # storefront logo (customer /order header)
     logo_mime = Column(String)
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class PricingGroup(Base):
+    """A price tier (e.g. Employee) giving a % discount on selected products only."""
+    __tablename__ = "pricing_groups"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    discount_percent = Column(Numeric(5, 2), nullable=False, default=0)  # e.g. 15.00
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    items = relationship("PricingGroupItem", cascade="all, delete-orphan", backref="group")
+
+    def eligible_ids(self):
+        return {i.product_id for i in self.items}
+
+    def price_for(self, product):
+        """Discounted price if the product is eligible, else its normal price."""
+        base = float(product.selling_price or 0)
+        if product.id in self.eligible_ids():
+            return round(base * (1 - float(self.discount_percent or 0) / 100.0), 2)
+        return round(base, 2)
+
+
+class PricingGroupItem(Base):
+    __tablename__ = "pricing_group_items"
+    id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
 
 
 class Payment(Base):

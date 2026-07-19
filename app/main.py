@@ -25,6 +25,7 @@ from .models import (
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
     Coach, Member, COACH_TYPES, Invoice, InvoiceItem, InvoicePayment,
+    PricingGroup, PricingGroupItem,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -84,6 +85,7 @@ def startup():
         conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR"))
         conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo BYTEA"))
         conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo_mime VARCHAR"))
+        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL"))
     db = next(get_db())
     try:
         # Backfill usernames for any rows missing one, keeping them unique.
@@ -1839,6 +1841,92 @@ def coach_bill(request: Request, cid: int, db: Session = Depends(get_db)):
     coach.next_billing = _add_month(coach.next_billing or today)
     db.commit()
     return RedirectResponse(f"/invoices/{inv.id}", status_code=303)
+
+
+# ---------- pricing groups (employee discounts on selected items) ----------
+@app.get("/admin/pricing", response_class=HTMLResponse)
+def pricing_list(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    groups = db.query(PricingGroup).order_by(PricingGroup.name).all()
+    return render(request, "pricing.html", db, staff, groups=groups, group=None,
+                  products=[])
+
+
+@app.post("/admin/pricing/new")
+def pricing_new(request: Request, name: str = Form(...),
+                discount_percent: str = Form("0"), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    try:
+        disc = max(0.0, min(100.0, float(discount_percent or 0)))
+    except ValueError:
+        disc = 0.0
+    g = PricingGroup(name=name.strip() or "Group", discount_percent=disc)
+    db.add(g)
+    db.commit()
+    return RedirectResponse(f"/admin/pricing/{g.id}", status_code=303)
+
+
+@app.get("/admin/pricing/{gid}", response_class=HTMLResponse)
+def pricing_edit(request: Request, gid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    group = db.get(PricingGroup, gid)
+    if not group:
+        return RedirectResponse("/admin/pricing", status_code=303)
+    groups = db.query(PricingGroup).order_by(PricingGroup.name).all()
+    products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+    return render(request, "pricing.html", db, staff, groups=groups, group=group,
+                  products=products, eligible=group.eligible_ids())
+
+
+@app.post("/admin/pricing/{gid}")
+def pricing_update(request: Request, gid: int, name: str = Form(...),
+                   discount_percent: str = Form("0"),
+                   product_ids: list[str] = Form(default=[]),
+                   is_active: str = Form(None), db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    group = db.get(PricingGroup, gid)
+    if group:
+        try:
+            disc = max(0.0, min(100.0, float(discount_percent or 0)))
+        except ValueError:
+            disc = 0.0
+        group.name = name.strip() or group.name
+        group.discount_percent = disc
+        group.is_active = bool(is_active)
+        # reset eligible items
+        group.items.clear()
+        db.flush()
+        for pid in product_ids:
+            try:
+                group.items.append(PricingGroupItem(product_id=int(pid)))
+            except ValueError:
+                pass
+        db.commit()
+    return RedirectResponse(f"/admin/pricing/{gid}", status_code=303)
+
+
+@app.post("/admin/pricing/{gid}/delete")
+def pricing_delete(request: Request, gid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    g = db.get(PricingGroup, gid)
+    if g:
+        # keep past sales intact (prices are already snapshotted) — just unlink them
+        db.query(Sale).filter(Sale.pricing_group_id == gid).update(
+            {"pricing_group_id": None})
+        db.flush()
+        db.delete(g)
+        db.commit()
+    return RedirectResponse("/admin/pricing", status_code=303)
 
 
 @app.get("/healthz")

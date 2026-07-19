@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    Customer, Payment, Product, Sale, SaleItem, StockMovement, can, can_any,
+    Customer, Payment, Product, Sale, SaleItem, StockMovement,
+    PricingGroup, can, can_any,
 )
 
 router = APIRouter()
@@ -148,6 +149,16 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
             ],
         }
 
+    pricing_groups = []
+    if perms["sell"]:
+        for g in (db.query(PricingGroup).filter(PricingGroup.is_active)
+                  .order_by(PricingGroup.name).all()):
+            pricing_groups.append({
+                "id": g.id, "name": g.name,
+                "discount": float(g.discount_percent or 0),
+                "product_ids": sorted(g.eligible_ids()),
+            })
+
     return {
         "ok": True,
         "staff": {"name": staff.name, "role": staff.role},
@@ -156,6 +167,7 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "customers": customers,
         "balances": balances,
         "loss_chips": LOSS_MEMO_CHIPS,
+        "pricing_groups": pricing_groups,
     }
 
 
@@ -222,6 +234,7 @@ async def create_sale(
     items: str = Form(...),
     payment: str = Form(...),
     customer_id: str = Form(None),
+    pricing_group_id: str = Form(None),
     proof: UploadFile = File(None),
     db: Session = Depends(get_db),
 ):
@@ -230,6 +243,12 @@ async def create_sale(
         return _err("Not signed in", 401)
     if not can_sell(staff):
         return _err("You don't have permission to log sales", 403)
+
+    group = None
+    if pricing_group_id:
+        group = db.get(PricingGroup, int(pricing_group_id))
+        if group and not group.is_active:
+            group = None
 
     payment = (payment or "").lower().strip()
     if payment not in ("unpaid", "cash", "bank"):
@@ -276,12 +295,16 @@ async def create_sale(
         payment_method=None if is_credit else payment,
         proof=proof_bytes if not is_credit else None,
         proof_mime=proof_mime if not is_credit else None,
+        pricing_group_id=group.id if group else None,
+        note=("%s pricing" % group.name) if group else None,
     )
     db.add(sale)
     db.flush()
     for p, qty in lines:
+        # Discounted price if a group is applied and this product is eligible.
+        unit = group.price_for(p) if group else round(float(p.selling_price or 0), 2)
         db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=qty,
-                        unit_price=p.selling_price, cost_price=p.cost_price))
+                        unit_price=unit, cost_price=p.cost_price))
     db.commit()
     db.refresh(sale)
     return {"ok": True, "sale_id": sale.id, "total": sale.total}
