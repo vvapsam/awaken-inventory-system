@@ -114,6 +114,14 @@ def startup():
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS affiliate_fee NUMERIC(10,2)"))
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS start_date DATE"))
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS next_billing DATE"))
+        # Members merged into the entity table: corkage members carry a monthly rate
+        # and point at their affiliate. These columns are new, so add them to the
+        # pre-existing (renamed-from-staff) entity table before any query touches them.
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS corkage_rate NUMERIC(10,2)"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS affiliate_id INTEGER REFERENCES entity(id) ON DELETE SET NULL"))
+        # Stock movements merged into transactions as an 'inventory_adjustment' type;
+        # subtype holds the movement kind (restock/waste/missing/adjustment).
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS subtype VARCHAR"))
         # members.coach_id / invoices.coach_id now point at staff(id). Drop the old
         # FKs to coaches so we can remap the values in the data migration below.
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.members') IS NOT NULL THEN ALTER TABLE members DROP CONSTRAINT IF EXISTS members_coach_id_fkey; END IF; END $$;"))
