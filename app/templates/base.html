@@ -23,13 +23,29 @@
     .fly-link svg{width:18px;height:18px;flex:none}
     .fly-link:hover{background:rgba(255,255,255,.09);color:#fff}
     .fly-link.active{background:rgba(15,158,145,.24);color:#fff}
+    /* Settings gear menu (top-right) */
+    .settings-menu{position:relative;display:inline-flex}
+    .gear-btn{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;
+      border:1px solid var(--line);background:var(--bg);border-radius:var(--radius-sm);cursor:pointer;color:var(--ink);padding:0;margin-right:4px}
+    .gear-btn:hover,.gear-btn.active{border-color:var(--teal);color:var(--teal-dark)}
+    .gear-btn svg{width:19px;height:19px}
+    .settings-dd{position:absolute;right:0;top:46px;background:var(--bg);border:1px solid var(--line);
+      border-radius:12px;box-shadow:0 16px 38px rgba(16,24,32,.16);min-width:236px;padding:7px;z-index:80;display:none}
+    .settings-menu.open .settings-dd{display:block}
+    .settings-dd .dd-title{color:var(--muted);font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;padding:6px 11px 8px}
+    .settings-dd a{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;color:var(--ink);font-size:.9rem;font-weight:500}
+    .settings-dd a small{display:block;color:var(--muted);font-size:.72rem;font-weight:400}
+    .settings-dd a:hover{background:var(--teal-tint)}
+    .settings-dd a.active{background:var(--teal-tint);color:var(--teal-dark)}
+    .settings-dd a svg{width:18px;height:18px;color:var(--muted);flex:none;margin-top:2px}
+    .settings-dd a:hover svg,.settings-dd a.active svg{color:var(--teal-dark)}
   </style>
 </head>
 <body>
 {% if staff %}
 {% set p = request.url.path %}
 {% set ns = namespace(title='AWAKEN Inventory') %}
-{% for pre,label in [('/dashboard','Dashboard'),('/sales','Transactions'),('/invoices','Transactions'),('/payments','Transactions'),('/stock','Stock'),('/orders','Orders'),('/movement','Stock in/out'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/customer','Customers'),('/records','Records'),('/admin/pricing','Pricing'),('/admin/roles','Roles'),('/admin/staff','Relationships')] %}
+{% for pre,label in [('/dashboard','Dashboard'),('/sales','Transactions'),('/invoices','Transactions'),('/payments','Transactions'),('/stock','Stock'),('/orders','Orders'),('/movement','Stock in/out'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/customer','Customers'),('/records','Records'),('/admin/pricing','Pricing'),('/admin/order-settings','Payment settings'),('/admin/product-images','Product photos'),('/admin/roles','Roles'),('/admin/staff','Relationships')] %}
   {% if p.startswith(pre) %}{% set ns.title = label %}{% endif %}
 {% endfor %}
 {% set parts = staff.name.split() %}
@@ -117,7 +133,6 @@
 
       {% if can(staff, 'view_reports') %}{% call nav('/admin/reports', 'Reports', p.startswith('/admin/reports')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>{% endcall %}{% endif %}
       {% if can_any(staff, ['view_reports','sales.edit','sales.delete','receive.edit','receive.delete','adjust.edit','adjust.delete']) %}{% call nav('/records', 'Records', p.startswith('/records')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>{% endcall %}{% endif %}
-      {% if staff.role == 'admin' %}{% call nav('/admin/roles', 'Roles', p.startswith('/admin/roles')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8 8 10 4.6-2 8-5 8-10V6z"/><path d="m9 12 2 2 4-4"/></svg>{% endcall %}{% endif %}
     </nav>
     <div class="side-foot">
       <a href="/logout" class="nav-item" title="Logout"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span><span class="nav-label">Logout</span></a>
@@ -140,6 +155,29 @@
       <a href="/sales" class="topsearch" title="Search customers / sales">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       </a>
+      {% endif %}
+      {% if staff.role == 'admin' %}
+      {% set settings_active = p.startswith('/admin/roles') or p.startswith('/admin/order-settings') or p.startswith('/admin/product-images') %}
+      <div class="settings-menu" id="settings-menu">
+        <button type="button" class="gear-btn {% if settings_active %}active{% endif %}" id="gear-btn" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <div class="settings-dd">
+          <div class="dd-title">Settings</div>
+          <a href="/admin/roles" class="{% if p.startswith('/admin/roles') %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8 8 10 4.6-2 8-5 8-10V6z"/><path d="m9 12 2 2 4-4"/></svg>
+            <span>Roles<small>Access levels &amp; default permissions</small></span>
+          </a>
+          <a href="/admin/order-settings" class="{% if p.startswith('/admin/order-settings') %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            <span>Payment settings<small>Bank details &amp; storefront logo for /order</small></span>
+          </a>
+          <a href="/admin/product-images" class="{% if p.startswith('/admin/product-images') %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L3 21"/></svg>
+            <span>Product photos<small>Item images for the Sell tiles</small></span>
+          </a>
+        </div>
+      </div>
       {% endif %}
       <span class="avatar-chip" title="{{ staff.name }} · {{ staff.role }}">{{ initials }}</span>
     </header>
@@ -194,6 +232,16 @@
     });
   });
   window.addEventListener('scroll', function(){ groups.forEach(function(g){ g.classList.remove('flyopen'); }); }, true);
+})();
+
+/* Settings dropdown (top-right gear) */
+(function(){
+  var sm=document.getElementById('settings-menu');
+  if(!sm) return;
+  var btn=document.getElementById('gear-btn');
+  btn.addEventListener('click', function(e){ e.stopPropagation(); sm.classList.toggle('open'); });
+  document.addEventListener('click', function(e){ if(!sm.contains(e.target)) sm.classList.remove('open'); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') sm.classList.remove('open'); });
 })();
 </script>
 {% else %}
