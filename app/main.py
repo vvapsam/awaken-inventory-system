@@ -2564,3 +2564,37 @@ def _cust_list(db: Session = Depends(get_db)):
                     "single_name": (" " not in p.name.strip()),
                     "tx_count": int(txc or 0), "balance": bal_map.get(p.id, 0)})
     return {"customers": out}
+
+
+@app.post("/admin/__import_customers_q7fz3k")
+async def _import_customers(request: Request, db: Session = Depends(get_db)):
+    # TEMPORARY: delete single-name customers (unlinking their transactions, not
+    # destroying them) then insert the provided customers. Run ONCE.
+    payload = await request.json()
+    customers = payload.get("customers", [])
+    existing = db.query(Staff).filter(Staff.person_type == "customer").all()
+    single = [p for p in existing if " " not in p.name.strip()]
+    deleted = []
+    for p in single:
+        txc = db.query(func.count(Transaction.id)).filter(Transaction.customer_id == p.id).scalar()
+        db.query(Transaction).filter(Transaction.customer_id == p.id).update(
+            {Transaction.customer_id: None}, synchronize_session=False)
+        deleted.append({"name": p.name, "tx_unlinked": int(txc or 0)})
+    for p in single:
+        db.delete(p)
+    db.commit()
+    ins = 0
+    skipped = 0
+    for c in customers:
+        name = (c.get("name") or "").strip()
+        if not name:
+            skipped += 1
+            continue
+        phone = (c.get("phone") or "").strip() or None
+        db.add(Staff(name=name, phone=phone, person_type="customer",
+                     has_access=False, role="staff", permissions=""))
+        ins += 1
+    db.commit()
+    now = db.query(func.count(Staff.id)).filter(Staff.person_type == "customer").scalar()
+    return {"ok": True, "deleted_single_name": deleted, "inserted": ins,
+            "skipped": skipped, "customers_now": int(now)}
