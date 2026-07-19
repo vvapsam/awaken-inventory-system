@@ -1627,10 +1627,20 @@ def customer_balances(db):
         .group_by(Transaction.customer_id).all()
     )
     rows = []
+    seen = set()
     for c in db.query(Staff).filter(Staff.person_type == "customer").order_by(Staff.name).all():
         ch = charges.get(c.id, 0.0)
         pd = float(paid.get(c.id, 0) or 0)
         rows.append({"customer": c, "charges": ch, "paid": pd, "balance": ch - pd})
+        seen.add(c.id)
+    # Non-customer entities (employees/affiliates/etc.) who bought on credit still
+    # need their balance tracked so it can be settled.
+    extra = [i for i in (set(charges) | set(paid)) if i is not None and i not in seen]
+    if extra:
+        for c in db.query(Staff).filter(Staff.id.in_(extra)).order_by(Staff.name).all():
+            ch = charges.get(c.id, 0.0)
+            pd = float(paid.get(c.id, 0) or 0)
+            rows.append({"customer": c, "charges": ch, "paid": pd, "balance": ch - pd})
     return rows
 
 
@@ -2544,3 +2554,21 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.get("/admin/__reclass_q7fz3k")
+def _reclass(db: Session = Depends(get_db)):
+    # TEMPORARY one-off: reclassify a few entities. They can still buy retail
+    # since the mobile buyer picker now lists all entities.
+    changes = {"Anjo Resurreccion": "affiliate", "AR Manlapaz": "employee",
+               "Joseph Junsay": "employee", "Vanessa Sampang": "employee"}
+    done = []
+    for name, ptype in changes.items():
+        rows = db.query(Staff).filter(Staff.name == name).all()
+        for p in rows:
+            p.person_type = ptype
+            done.append({"id": p.id, "name": name, "type": ptype})
+        if not rows:
+            done.append({"name": name, "type": ptype, "note": "not found"})
+    db.commit()
+    return {"ok": True, "changed": done}

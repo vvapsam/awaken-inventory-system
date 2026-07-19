@@ -146,9 +146,12 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
                 "has_image": bool(p.image),
             })
 
+    # Any entity can be selected as the buyer on the counter (a customer, but
+    # also employees/affiliates/etc. buying retail).
     customers = [
-        {"id": c.id, "name": c.name, "phone": c.phone or ""}
-        for c in db.query(Staff).filter(Staff.person_type == "customer").order_by(Staff.name).all()
+        {"id": c.id, "name": c.name, "phone": c.phone or "",
+         "type": c.person_type or "customer"}
+        for c in db.query(Staff).filter(Staff.is_active).order_by(Staff.name).all()
     ]
 
     balances = {"total": 0.0, "count": 0, "customers": []}
