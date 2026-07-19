@@ -34,7 +34,26 @@
              placeholder="e.g. EMP-MARY01" style="text-transform:uppercase">
     </div>
   </div>
-  <p class="muted small" id="type-note" style="margin-top:-4px">Employees &amp; affiliates get a personal code for their discount tier. Suppliers are just tracked here. Leave Type as “— none —” for plain staff.</p>
+  <p class="muted small" id="type-note" style="margin-top:-4px">Employees &amp; affiliates get a personal code for their discount tier. Suppliers &amp; coaches are just tracked here. Leave Type as “— none —” for plain staff.</p>
+
+  <div id="billing-wrap" style="margin-top:10px">
+    <div class="two-col">
+      <div id="fee-wrap">
+        <label>Monthly affiliate fee</label>
+        <input name="affiliate_fee" type="number" step="0.01" min="0"
+               value="{{ person.affiliate_fee if person and person.affiliate_fee is not none else '' }}" placeholder="e.g. 3000">
+      </div>
+      <div>
+        <label>Start date</label>
+        <input name="start_date" type="date" value="{{ person.start_date if person and person.start_date else '' }}">
+      </div>
+    </div>
+    <div id="nextbill-wrap" style="max-width:calc(50% - 8px)">
+      <label>Next billing date</label>
+      <input name="next_billing" type="date" value="{{ person.next_billing if person and person.next_billing else '' }}">
+    </div>
+    <p class="muted small" id="billing-note">Affiliates are billed monthly for this fee plus their members’ corkage. Manage members &amp; run billing from <a href="/coaches/billing">Corkage billing</a>.</p>
+  </div>
 
   <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
 
@@ -116,6 +135,12 @@ function toggleType(){
   var showCode = (t === 'employee' || t === 'affiliate');
   document.getElementById('code-wrap').style.display = showCode ? '' : 'none';
   document.getElementById('type-note').style.display = t ? 'none' : '';
+  // Billing fields: affiliates get fee + next billing; coaches just a start date.
+  var isAff = (t === 'affiliate'), isCoach = (t === 'coach');
+  document.getElementById('billing-wrap').style.display = (isAff || isCoach) ? '' : 'none';
+  document.getElementById('fee-wrap').style.display = isAff ? '' : 'none';
+  document.getElementById('nextbill-wrap').style.display = isAff ? '' : 'none';
+  document.getElementById('billing-note').style.display = isAff ? '' : 'none';
 }
 function setPerms(keys){
   document.querySelectorAll('#perm-block input[type=checkbox]').forEach(function(c){
