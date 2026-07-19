@@ -23,8 +23,7 @@ from .models import (
     CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
     MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
-    Customer, Payment, Product, Sale, SaleItem, Staff, StockMovement,
-    Member, Invoice, InvoiceItem, InvoicePayment, Order, OrderItem,
+    Customer, Product, Staff, StockMovement, Member,
     PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
     ENTITY_TYPES, DISCOUNT_TYPES, Role,
     Transaction, TransactionItem,
@@ -75,8 +74,8 @@ def startup():
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS permissions TEXT NOT NULL DEFAULT ''"))
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS username TEXT"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_credit BOOLEAN NOT NULL DEFAULT FALSE"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id); END IF; END $$;"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_credit BOOLEAN NOT NULL DEFAULT FALSE; END IF; END $$;"))
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier VARCHAR"))
         conn.execute(text("ALTER TABLE products DROP CONSTRAINT IF EXISTS products_category_check"))
         conn.execute(text("ALTER TABLE products ALTER COLUMN category DROP NOT NULL"))
@@ -84,15 +83,15 @@ def startup():
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS image BYTEA"))
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_mime VARCHAR"))
         conn.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone VARCHAR"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof BYTEA"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof BYTEA; END IF; END $$;"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR; END IF; END $$;"))
         conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo BYTEA"))
         conn.execute(text("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS logo_mime VARCHAR"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL; END IF; END $$;"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'employee'"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS round_up BOOLEAN NOT NULL DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0; END IF; END $$;"))
         # Unified people: staff table also holds employees/affiliates (may have no login)
         conn.execute(text("ALTER TABLE staff ALTER COLUMN username DROP NOT NULL"))
         conn.execute(text("ALTER TABLE staff ALTER COLUMN pin_hash DROP NOT NULL"))
@@ -101,7 +100,7 @@ def startup():
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS discount_code VARCHAR"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS staff_discount_code_uq ON staff (discount_code)"))
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS has_access BOOLEAN NOT NULL DEFAULT TRUE"))
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_person_id INTEGER REFERENCES staff(id) ON DELETE SET NULL"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_person_id INTEGER REFERENCES staff(id) ON DELETE SET NULL; END IF; END $$;"))
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL"))
         # Coaches merged into the entity table: affiliate/coach billing lives on staff.
         conn.execute(text("ALTER TABLE staff ADD COLUMN IF NOT EXISTS affiliate_fee NUMERIC(10,2)"))
@@ -110,16 +109,16 @@ def startup():
         # members.coach_id / invoices.coach_id now point at staff(id). Drop the old
         # FKs to coaches so we can remap the values in the data migration below.
         conn.execute(text("ALTER TABLE members DROP CONSTRAINT IF EXISTS members_coach_id_fkey"))
-        conn.execute(text("ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_coach_id_fkey"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.invoices') IS NOT NULL THEN ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_coach_id_fkey; END IF; END $$;"))
         # Only touch the legacy coaches table if it still exists.
         conn.execute(text(
             "DO $$ BEGIN IF to_regclass('public.coaches') IS NOT NULL THEN "
             "ALTER TABLE coaches ADD COLUMN IF NOT EXISTS staff_id INTEGER; END IF; END $$;"))
         # Unified transactions: markers so sales/orders/invoices fold in once.
-        conn.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
-        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
-        conn.execute(text("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
-        conn.execute(text("ALTER TABLE payments ADD COLUMN IF NOT EXISTS tx_id INTEGER"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.orders') IS NOT NULL THEN ALTER TABLE orders ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.invoices') IS NOT NULL THEN ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.payments') IS NOT NULL THEN ALTER TABLE payments ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
     db = next(get_db())
     try:
         # Backfill usernames only for people WITH system access who are missing one.
@@ -221,14 +220,16 @@ def startup():
             for m in db.query(Member).all():
                 if m.coach_id in mapping:
                     m.coach_id = mapping[m.coach_id]
-            for inv in db.query(Invoice).filter(Invoice.bill_to_type == "coach").all():
-                if inv.coach_id in mapping:
-                    inv.coach_id = mapping[inv.coach_id]
+            if db.execute(text("SELECT to_regclass('public.invoices')")).scalar():
+                for old, new in mapping.items():
+                    db.execute(text("UPDATE invoices SET coach_id = :new "
+                                    "WHERE coach_id = :old AND bill_to_type = 'coach'"),
+                               {"new": new, "old": old})
             db.commit()
         # Cleanup: the legacy tables are now redundant — drop them (and the dead
         # sales.discount_code_id column) so the schema only keeps live tables.
         with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE sales DROP COLUMN IF EXISTS discount_code_id"))
+            conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales DROP COLUMN IF EXISTS discount_code_id; END IF; END $$;"))
             conn.execute(text("DROP TABLE IF EXISTS discount_codes"))
             conn.execute(text("DROP TABLE IF EXISTS coaches"))
         # Fold sales, orders and invoices into the unified transactions table.
@@ -246,100 +247,125 @@ def _dt(d, fallback=None):
     return fallback
 
 
-def _migrate_transactions(db):
-    """One-time fold of sales/orders/invoices (+ items & invoice payments) into
-    the transactions table. Idempotent via each source table's tx_id marker."""
-    sale_tx = {}  # sale.id -> transaction.id (for linking confirmed orders)
+def _has_table(db, tbl):
+    return bool(db.execute(text("SELECT to_regclass(:n)"), {"n": "public." + tbl}).scalar())
 
-    def _has(tbl):
-        return bool(db.execute(text("SELECT to_regclass(:n)"), {"n": "public." + tbl}).scalar())
+
+def _migrate_transactions(db):
+    """One-time fold of the legacy sales/orders/invoices/payments tables (+ their
+    line items & invoice payments) into the unified transactions table. Reads via
+    raw SQL so the old ORM models can be removed and the tables dropped afterwards.
+    Idempotent via each source table's tx_id marker."""
+    sale_tx = {}  # legacy sale.id -> transaction.id (for linking confirmed orders)
 
     # 1) cash sales
-    sales = db.query(Sale).filter(Sale.tx_id == None).all() if _has("sales") else []  # noqa: E711
-    for s in sales:
-        tx = Transaction(
-            type=TX_CASH_SALE, status=("credit" if s.is_credit else "paid"),
-            occurred_at=s.sold_at, created_at=s.created_at or s.sold_at,
-            staff_id=s.staff_id, customer_id=s.customer_id,
-            payment_method=s.payment_method, is_credit=bool(s.is_credit),
-            proof=s.proof, proof_mime=s.proof_mime,
-            pricing_group_id=s.pricing_group_id, discount_person_id=s.discount_person_id,
-            discounted_qty=s.discounted_qty or 0, note=s.note)
-        db.add(tx); db.flush()
-        for it in s.items:
-            db.add(TransactionItem(
-                transaction_id=tx.id, product_id=it.product_id,
-                name=(it.product.name if it.product else "Item"),
-                qty=it.quantity, unit_price=it.unit_price, cost_price=it.cost_price))
-        s.tx_id = tx.id
-        sale_tx[s.id] = tx.id
-    db.commit()
+    if _has_table(db, "sales"):
+        rows = db.execute(text(
+            "SELECT id, sold_at, staff_id, customer_id, is_credit, payment_method, "
+            "proof, proof_mime, pricing_group_id, discount_person_id, discounted_qty, "
+            "note, created_at FROM sales WHERE tx_id IS NULL")).fetchall()
+        for r in rows:
+            tx = Transaction(
+                type=TX_CASH_SALE, status=("credit" if r.is_credit else "paid"),
+                occurred_at=r.sold_at, created_at=r.created_at or r.sold_at,
+                staff_id=r.staff_id, customer_id=r.customer_id,
+                payment_method=r.payment_method, is_credit=bool(r.is_credit),
+                proof=r.proof, proof_mime=r.proof_mime,
+                pricing_group_id=r.pricing_group_id, discount_person_id=r.discount_person_id,
+                discounted_qty=r.discounted_qty or 0, note=r.note)
+            db.add(tx); db.flush()
+            for si in db.execute(text(
+                    "SELECT si.product_id, si.quantity, si.unit_price, si.cost_price, p.name "
+                    "FROM sale_items si LEFT JOIN products p ON p.id = si.product_id "
+                    "WHERE si.sale_id = :sid"), {"sid": r.id}).fetchall():
+                db.add(TransactionItem(transaction_id=tx.id, product_id=si.product_id,
+                                       name=si.name or "Item", qty=si.quantity,
+                                       unit_price=si.unit_price, cost_price=si.cost_price))
+            db.execute(text("UPDATE sales SET tx_id = :t WHERE id = :s"), {"t": tx.id, "s": r.id})
+            sale_tx[r.id] = tx.id
+        db.commit()
 
     # 2) orders (link to the sale they became, if any)
-    orders = db.query(Order).filter(Order.tx_id == None).all() if _has("orders") else []  # noqa: E711
-    for o in orders:
-        tx = Transaction(
-            type=TX_ORDER, number=o.number, status=o.status,
-            occurred_at=o.created_at, created_at=o.created_at, decided_at=o.decided_at,
-            staff_id=o.staff_id, customer_name=o.customer_name, customer_phone=o.customer_phone,
-            payment_method=o.payment_method, proof=o.proof, proof_mime=o.proof_mime,
-            amount_snapshot=o.amount,
-            check_amount_ok=o.check_amount_ok, check_detected_amount=o.check_detected_amount,
-            check_date_ok=o.check_date_ok, check_detected_date=o.check_detected_date,
-            check_note=o.check_note, converted_id=sale_tx.get(o.sale_id))
-        db.add(tx); db.flush()
-        for it in o.items:
-            db.add(TransactionItem(transaction_id=tx.id, product_id=it.product_id,
-                                   name=it.name, qty=it.qty, unit_price=it.unit_price))
-        o.tx_id = tx.id
-    db.commit()
+    if _has_table(db, "orders"):
+        rows = db.execute(text(
+            "SELECT id, number, status, created_at, decided_at, staff_id, customer_name, "
+            "customer_phone, payment_method, proof, proof_mime, amount, sale_id, "
+            "check_amount_ok, check_detected_amount, check_date_ok, check_detected_date, "
+            "check_note FROM orders WHERE tx_id IS NULL")).fetchall()
+        for r in rows:
+            tx = Transaction(
+                type=TX_ORDER, number=r.number, status=r.status,
+                occurred_at=r.created_at, created_at=r.created_at, decided_at=r.decided_at,
+                staff_id=r.staff_id, customer_name=r.customer_name, customer_phone=r.customer_phone,
+                payment_method=r.payment_method, proof=r.proof, proof_mime=r.proof_mime,
+                amount_snapshot=r.amount,
+                check_amount_ok=r.check_amount_ok, check_detected_amount=r.check_detected_amount,
+                check_date_ok=r.check_date_ok, check_detected_date=r.check_detected_date,
+                check_note=r.check_note, converted_id=sale_tx.get(r.sale_id))
+            db.add(tx); db.flush()
+            for oi in db.execute(text(
+                    "SELECT product_id, name, qty, unit_price FROM order_items "
+                    "WHERE order_id = :oid"), {"oid": r.id}).fetchall():
+                db.add(TransactionItem(transaction_id=tx.id, product_id=oi.product_id,
+                                       name=oi.name, qty=oi.qty, unit_price=oi.unit_price))
+            db.execute(text("UPDATE orders SET tx_id = :t WHERE id = :o"), {"t": tx.id, "o": r.id})
+        db.commit()
 
     # 3) invoices (+ items + payments)
-    invoices = db.query(Invoice).filter(Invoice.tx_id == None).all() if _has("invoices") else []  # noqa: E711
-    for inv in invoices:
-        tx = Transaction(
-            type=TX_INVOICE, number=inv.number,
-            status=("void" if inv.is_void else "unpaid"),
-            occurred_at=_dt(inv.issue_date, inv.created_at), created_at=inv.created_at,
-            staff_id=inv.staff_id, customer_id=inv.customer_id,
-            customer_name=inv.bill_to_name, bill_to_type=inv.bill_to_type,
-            coach_id=inv.coach_id, issue_date=inv.issue_date, due_date=inv.due_date,
-            period=inv.period, is_void=bool(inv.is_void), note=inv.note)
-        db.add(tx); db.flush()
-        for it in inv.items:
-            db.add(TransactionItem(transaction_id=tx.id, product_id=None,
-                                   name=it.description, qty=it.qty, unit_price=it.rate))
-        # invoice partial payments -> payment transactions applied to this invoice
-        for pm in inv.ipayments:
-            pay = Transaction(
-                type=TX_PAYMENT, parent_id=tx.id, occurred_at=pm.paid_at,
-                created_at=pm.paid_at, staff_id=pm.staff_id, customer_id=inv.customer_id,
-                customer_name=inv.bill_to_name, payment_method=pm.method, note=pm.note,
-                status="paid")
-            db.add(pay); db.flush()
-            db.add(TransactionItem(transaction_id=pay.id, name="Invoice payment",
-                                   qty=1, unit_price=pm.amount))
-        inv.tx_id = tx.id
-    db.commit()
+    if _has_table(db, "invoices"):
+        rows = db.execute(text(
+            "SELECT id, number, is_void, issue_date, due_date, period, note, created_at, "
+            "staff_id, customer_id, bill_to_name, bill_to_type, coach_id "
+            "FROM invoices WHERE tx_id IS NULL")).fetchall()
+        for r in rows:
+            tx = Transaction(
+                type=TX_INVOICE, number=r.number,
+                status=("void" if r.is_void else "unpaid"),
+                occurred_at=_dt(r.issue_date, r.created_at), created_at=r.created_at,
+                staff_id=r.staff_id, customer_id=r.customer_id,
+                customer_name=r.bill_to_name, bill_to_type=r.bill_to_type,
+                coach_id=r.coach_id, issue_date=r.issue_date, due_date=r.due_date,
+                period=r.period, is_void=bool(r.is_void), note=r.note)
+            db.add(tx); db.flush()
+            for it in db.execute(text(
+                    "SELECT description, qty, rate FROM invoice_items WHERE invoice_id = :iid"),
+                    {"iid": r.id}).fetchall():
+                db.add(TransactionItem(transaction_id=tx.id, product_id=None,
+                                       name=it.description, qty=it.qty, unit_price=it.rate))
+            for pm in db.execute(text(
+                    "SELECT amount, method, note, paid_at, staff_id FROM invoice_payments "
+                    "WHERE invoice_id = :iid"), {"iid": r.id}).fetchall():
+                pay = Transaction(
+                    type=TX_PAYMENT, parent_id=tx.id, occurred_at=pm.paid_at,
+                    created_at=pm.paid_at, staff_id=pm.staff_id, customer_id=r.customer_id,
+                    customer_name=r.bill_to_name, payment_method=pm.method, note=pm.note,
+                    status="paid")
+                db.add(pay); db.flush()
+                db.add(TransactionItem(transaction_id=pay.id, name="Invoice payment",
+                                       qty=1, unit_price=pm.amount))
+            db.execute(text("UPDATE invoices SET tx_id = :t WHERE id = :i"), {"t": tx.id, "i": r.id})
+        db.commit()
 
     # 4) customer balance payments -> standalone payment transactions
-    if _has("payments"):
-        cust_pays = db.execute(text(
-            "SELECT id, customer_id, amount, note, method, screenshot, screenshot_mime, "
-            "paid_at, staff_id FROM payments WHERE tx_id IS NULL")).fetchall()
-    else:
-        cust_pays = []
-    for pid, customer_id, amount, note, method, shot, shot_mime, paid_at, staff_id in cust_pays:
-        pay = Transaction(
-            type=TX_PAYMENT, occurred_at=paid_at, created_at=paid_at,
-            staff_id=staff_id, customer_id=customer_id, payment_method=method,
-            proof=shot, proof_mime=shot_mime, note=note, status="paid")
-        db.add(pay); db.flush()
-        db.add(TransactionItem(transaction_id=pay.id, name="Payment received",
-                               qty=1, unit_price=amount))
-        db.execute(text("UPDATE payments SET tx_id = :t WHERE id = :p"),
-                   {"t": pay.id, "p": pid})
-    db.commit()
+    if _has_table(db, "payments"):
+        for r in db.execute(text(
+                "SELECT id, customer_id, amount, note, method, screenshot, screenshot_mime, "
+                "paid_at, staff_id FROM payments WHERE tx_id IS NULL")).fetchall():
+            pay = Transaction(
+                type=TX_PAYMENT, occurred_at=r.paid_at, created_at=r.paid_at,
+                staff_id=r.staff_id, customer_id=r.customer_id, payment_method=r.method,
+                proof=r.screenshot, proof_mime=r.screenshot_mime, note=r.note, status="paid")
+            db.add(pay); db.flush()
+            db.add(TransactionItem(transaction_id=pay.id, name="Payment received",
+                                   qty=1, unit_price=r.amount))
+            db.execute(text("UPDATE payments SET tx_id = :t WHERE id = :p"), {"t": pay.id, "p": r.id})
+        db.commit()
+
+    # 5) drop the now-redundant legacy tables (children first for FK safety)
+    with engine.begin() as conn:
+        for tbl in ("sale_items", "sales", "order_items", "orders",
+                    "invoice_items", "invoice_payments", "invoices", "payments"):
+            conn.execute(text(f"DROP TABLE IF EXISTS {tbl} CASCADE"))
 
 
 # ---------- helpers ----------
