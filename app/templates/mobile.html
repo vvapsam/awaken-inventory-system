@@ -50,20 +50,56 @@ input,select{font-family:inherit;font-size:16px}
 .back svg{width:18px;height:18px}
 .topbar h2{font-size:1.15rem}
 
-/* home */
-.hi{font-size:1.5rem;margin:6px 2px 4px}
-.hi small{display:block;font-family:Inter;font-weight:500;font-size:.9rem;color:var(--muted);margin-top:3px}
-.cards{display:flex;flex-direction:column;gap:14px;flex:1;margin-top:16px}
-.navcard{position:relative;flex:1;min-height:120px;border-radius:20px;background:var(--white);
-  border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:10px;text-align:center;box-shadow:0 4px 16px rgba(15,15,15,.05);padding:20px;overflow:hidden}
-.navcard:active{transform:scale(.98)}
-.navcard .ic{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;
-  background:var(--paper);color:var(--ink)}
-.navcard .ic svg{width:26px;height:26px;stroke-width:1.8}
-.navcard h3{font-size:1.35rem;font-weight:600}
-.navcard p{margin:0;font-size:.9rem;color:var(--muted);font-weight:500}
-.navcard.bal .ic{background:var(--green-tint);color:var(--green-dark)}
+/* home (gradient hero + action cards + low-stock watch) */
+#s-home.screen{padding:0}
+.h-hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 120%);color:#fff;
+  padding:calc(var(--safe-t) + 34px) 22px 58px;position:relative;flex:none}
+.h-hero:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:34px;background:var(--paper);border-radius:24px 24px 0 0}
+.h-top{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:2}
+.h-brand{display:flex;align-items:center;gap:9px;font-family:Poppins;font-weight:700;letter-spacing:.16em;font-size:.78rem;color:rgba(255,255,255,.92)}
+.h-brand .mk{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
+.h-brand .mk svg{width:15px;height:15px;stroke-width:2.4}
+.h-av{width:38px;height:38px;border-radius:999px;background:rgba(255,255,255,.2);color:#fff;font-weight:700;
+  display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.3)}
+.h-greet{margin-top:22px;position:relative;z-index:2}
+.h-greet h1{font-size:1.9rem;line-height:1.06}
+.h-greet .h-date{color:rgba(255,255,255,.82);font-weight:500;font-size:.9rem;margin-top:6px}
+.h-owed{margin-top:16px;display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:10px 14px;position:relative;z-index:2}
+.h-owed .lbl{font-size:.8rem;color:rgba(255,255,255,.88)}
+.h-owed .amt{font-family:Poppins;font-weight:700}
+.h-body{margin-top:-22px;position:relative;z-index:3;padding:0 18px calc(22px + var(--safe-b));
+  display:flex;flex-direction:column;gap:12px;flex:1;overflow:auto}
+.ncard{border-radius:20px;background:var(--white);box-shadow:0 12px 30px rgba(11,26,23,.12);
+  padding:16px 17px;display:flex;align-items:center;gap:14px;position:relative;overflow:hidden;text-align:left;width:100%}
+.ncard:active{transform:scale(.985)}
+.ncard .ic{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.ncard .ic svg{width:26px;height:26px;stroke-width:1.9}
+.ncard .tx{flex:1}
+.ncard .tx h3{font-size:1.2rem;font-weight:700}
+.ncard .tx p{margin:2px 0 0;color:var(--muted);font-size:.86rem}
+.ncard .arw{color:#c3c8ce}.ncard .arw svg{width:16px;height:16px;stroke-width:2.6}
+.ncard.sell{background:linear-gradient(135deg,#0F0F0F,#232a30)}
+.ncard.sell h3{color:#fff}.ncard.sell p{color:rgba(255,255,255,.7)}
+.ncard.sell .ic{background:linear-gradient(135deg,#18BE7C,#0F9E91);color:#fff}
+.ncard.sell .arw{color:rgba(255,255,255,.6)}
+.ncard.adjust .ic{background:#eaf1ff;color:#3f6fd0}
+.ncard.bal .ic{background:var(--green-tint);color:var(--green-dark)}
+.ncard .nbadge{position:absolute;top:11px;right:14px;background:var(--owed);color:#fff;font-size:.66rem;font-weight:700;padding:3px 8px;border-radius:999px}
+.h-seclbl{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#9aa1aa;margin:8px 4px 0}
+.watch{border-radius:20px;background:var(--white);box-shadow:0 12px 30px rgba(11,26,23,.10);overflow:hidden;margin-top:2px}
+.watch .wh{display:flex;align-items:center;gap:10px;padding:14px 16px 10px}
+.watch .wh .wic{width:34px;height:34px;border-radius:10px;background:#fbf1df;color:#c9821f;display:flex;align-items:center;justify-content:center;flex:none}
+.watch .wh .wic svg{width:19px;height:19px;stroke-width:2}
+.watch .wh .wt{flex:1;font-family:Poppins;font-weight:700;font-size:.96rem}
+.watch .wh .wt small{display:block;font-family:Inter;font-weight:500;font-size:.75rem;color:var(--muted)}
+.watch .wrow{display:flex;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid #f1f2f4;width:100%;text-align:left}
+.watch .wrow:active{background:#fafbfb}
+.watch .wrow .nm{flex:1;font-weight:600;font-size:.9rem}
+.watch .wrow .q{font-family:Poppins;font-weight:700;font-size:.88rem;color:var(--owed)}
+.watch .wrow .q.warn{color:#c9821f}
+.watch .wrow .pill{font-size:.66rem;font-weight:700;color:#fff;background:var(--owed);border-radius:999px;padding:2px 8px}
+.watch .wrow .pill.warn{background:#E8A13C}
 .badge{position:absolute;top:14px;right:14px;background:var(--ink);color:#fff;font-weight:700;
   font-size:.78rem;border-radius:999px;padding:3px 10px}
 
@@ -211,21 +247,46 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 
 <!-- ============ HOME ============ -->
 <section id="s-home" class="screen active">
-  <div class="hi hd">Hi, {{ staff.name.split()[0] }}<small id="home-date"></small></div>
-  <div class="cards" id="home-cards">
-    <button class="navcard sell" data-go="sell">
+  <div class="h-hero">
+    <div class="h-top">
+      <div class="h-brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 20h16z"/></svg></span> AWAKEN</div>
+      <div class="h-av">{{ staff.name[0]|upper }}</div>
+    </div>
+    <div class="h-greet">
+      <h1 class="hd">Hi, {{ staff.name.split()[0] }} 👋</h1>
+      <div class="h-date" id="home-date"></div>
+      <div class="h-owed" id="home-owed"><span class="lbl" id="home-owed-lbl">All paid up</span></div>
+    </div>
+  </div>
+
+  <div class="h-body">
+    <button class="ncard sell" data-go="sell">
       <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div>
-      <h3>Sell</h3><p>Log a sale</p>
+      <div class="tx"><h3>Sell</h3><p>Log a sale at the counter</p></div>
+      <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
     </button>
-    <button class="navcard adjust" data-go="adjust">
+    <button class="ncard adjust" data-go="adjust">
       <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div>
-      <h3>Adjust</h3><p>Receive or correct stock</p>
+      <div class="tx"><h3>Adjust</h3><p>Receive or correct stock</p></div>
+      <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
     </button>
-    <button class="navcard bal" data-go="balances">
-      <span class="badge hide" id="home-bal-badge"></span>
+    <button class="ncard bal" data-go="balances">
+      <span class="nbadge hide" id="home-bal-badge"></span>
       <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="3"/><path d="M1 10h22"/></svg></div>
-      <h3>Balances</h3><p id="home-bal-sub">—</p>
+      <div class="tx"><h3>Balances</h3><p id="home-bal-sub">Settle unpaid customers</p></div>
+      <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
     </button>
+
+    <div id="home-lowwrap" class="hide">
+      <div class="h-seclbl">Needs attention</div>
+      <div class="watch">
+        <div class="wh">
+          <span class="wic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>
+          <span class="wt">Low stock<small id="home-low-sub"></small></span>
+        </div>
+        <div id="home-low-list"></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -412,19 +473,51 @@ async function boot(){
   if(r.status===401){location.href='/login';return;}
   DATA=await r.json();
   // hide cards without permission
-  if(!DATA.perms.sell) $('.navcard.sell').classList.add('hide');
-  if(!DATA.perms.adjust) $('.navcard.adjust').classList.add('hide');
-  if(!DATA.perms.settle) $('.navcard.bal').classList.add('hide');
+  if(!DATA.perms.sell) $('.ncard.sell').classList.add('hide');
+  if(!DATA.perms.adjust) $('.ncard.adjust').classList.add('hide');
+  if(!DATA.perms.settle) $('.ncard.bal').classList.add('hide');
   renderHomeBal();
+  renderLowStock();
   const d=new Date();
   $('#home-date').textContent=d.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'});
 }
 function renderHomeBal(){
   const b=DATA.balances||{count:0,total:0};
   const badge=$('#home-bal-badge');
-  if(b.count>0){ badge.textContent=b.count; badge.classList.remove('hide');
-    $('#home-bal-sub').textContent=`${b.count} customer${b.count==1?'':'s'} owe ${peso(b.total)}`;
-  }else{ badge.classList.add('hide'); $('#home-bal-sub').textContent='All paid up'; }
+  const owed=$('#home-owed');
+  if(b.count>0){
+    badge.textContent=b.count; badge.classList.remove('hide');
+    owed.innerHTML=`<span class="lbl">${b.count} customer${b.count==1?'':'s'} owe</span> <span class="amt">${peso(b.total)}</span>`;
+  }else{
+    badge.classList.add('hide');
+    owed.innerHTML=`<span class="lbl">✓ All paid up</span>`;
+  }
+}
+function renderLowStock(){
+  const wrap=$('#home-lowwrap'), list=$('#home-low-list');
+  const prods = DATA.products||[];                 // only present if the user may see stock
+  const canAdjust = DATA.perms && DATA.perms.adjust;
+  if(!prods.length){ wrap.classList.add('hide'); return; }
+  const low = prods.filter(p=> p.reorder_point!=null && p.on_hand<=p.reorder_point)
+                   .sort((a,b)=> a.on_hand-b.on_hand);
+  if(!low.length){ wrap.classList.add('hide'); return; }
+  wrap.classList.remove('hide');
+  $('#home-low-sub').textContent=`${low.length} item${low.length==1?'':'s'} at or below reorder point`;
+  list.innerHTML='';
+  const rows = low.slice(0,5);
+  rows.forEach(p=>{
+    const out=p.on_hand<=0;
+    const b=document.createElement('button'); b.type='button'; b.className='wrow';
+    b.innerHTML=`<span class="nm">${p.name}</span><span class="q ${out?'':'warn'}">${p.on_hand} left</span><span class="pill ${out?'':'warn'}">${out?'out':'low'}</span>`;
+    if(canAdjust) b.onclick=()=>openScreen('adjust'); else b.disabled=true;
+    list.appendChild(b);
+  });
+  if(low.length>5){
+    const more=document.createElement('button'); more.type='button'; more.className='wrow';
+    more.innerHTML=`<span class="nm muted">+${low.length-5} more low</span>`;
+    if(canAdjust) more.onclick=()=>openScreen('adjust'); else more.disabled=true;
+    list.appendChild(more);
+  }
 }
 
 // ================= SELL =================
