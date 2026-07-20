@@ -2554,35 +2554,3 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
-
-
-@app.get("/admin/__seed_utang_q7fz3k")
-def _seed_utang(db: Session = Depends(get_db)):
-    # TEMPORARY one-off: opening utang (credit) balances as of 2026-07-19 00:00 Manila.
-    OPENING = [("Dom Roque", 935), ("Dean Roxas", 80), ("Melvin Te", 281),
-               ("Benjo Austria", 45), ("Joseph Junsay", 100), ("Dino Reyes", 25)]
-    NOTE = "Opening balance (utang)"
-    when = datetime.fromisoformat("2026-07-19 00:00:00+08")
-    done = []
-    for name, amt in OPENING:
-        rows = db.query(Staff).filter(Staff.name == name).all()
-        if len(rows) != 1:
-            done.append({"name": name, "status": ("not found" if not rows
-                         else "%d name matches — skipped" % len(rows))})
-            continue
-        person = rows[0]
-        exists = db.query(Transaction).filter(
-            Transaction.type == TX_CASH_SALE, Transaction.customer_id == person.id,
-            Transaction.note == NOTE).first()
-        if exists:
-            done.append({"name": name, "status": "already exists, skipped"})
-            continue
-        tx = Transaction(type=TX_CASH_SALE, status="credit", is_credit=True,
-                         customer_id=person.id, occurred_at=when, note=NOTE)
-        db.add(tx)
-        db.flush()
-        db.add(TransactionItem(transaction_id=tx.id, product_id=None,
-                               name="Opening balance", qty=1, unit_price=amt))
-        done.append({"name": name, "id": person.id, "amount": amt, "status": "created"})
-    db.commit()
-    return {"ok": True, "results": done}
