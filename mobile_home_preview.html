@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWAKEN Mobile — Home menu redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0F1115; --muted:#8A9099; --line:#E9EBEE; --paper:#F4F6F7; --white:#fff;
+  --green:#18BE7C; --green-d:#0FA268; --green-dk:#0B6B62;
+  --teal:#0F9E91; --owed:#E2683F; --owed-tint:#fcefe9;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
+  background:radial-gradient(1200px 600px at 50% -10%, #eef3f2, #e7eb ), linear-gradient(180deg,#eef1f2,#e6eaec);
+  min-height:100vh;padding:34px 18px 60px}
+h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
+.pagehead{text-align:center;max-width:900px;margin:0 auto 26px}
+.pagehead h1{font-size:1.5rem}
+.pagehead p{color:#5c636c;margin:8px 0 0;font-size:.98rem}
+.stage{display:flex;gap:44px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+.variant{display:flex;flex-direction:column;align-items:center;gap:14px}
+.vlabel{font-family:Poppins;font-weight:700;font-size:.82rem;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;
+  background:#fff;border:1px solid var(--line);padding:7px 16px;border-radius:999px;box-shadow:0 4px 14px rgba(15,15,15,.05)}
+.vlabel b{color:var(--green-d)}
+
+/* phone frame */
+.phone{width:352px;height:720px;border-radius:46px;background:#0b0d10;padding:12px;
+  box-shadow:0 30px 70px -20px rgba(16,20,26,.5), 0 0 0 2px rgba(255,255,255,.04) inset;position:relative}
+.screen{width:100%;height:100%;border-radius:36px;overflow:hidden;position:relative;background:var(--paper)}
+.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#0b0d10;border-radius:0 0 16px 16px;z-index:40}
+.app{height:100%;overflow:hidden;display:flex;flex-direction:column}
+
+/* ============ VARIANT A — light & airy ============ */
+.a .hero{padding:44px 22px 20px}
+.a .toprow{display:flex;align-items:center;justify-content:space-between}
+.a .brand{display:flex;align-items:center;gap:9px;font-family:Poppins;font-weight:700;letter-spacing:.16em;font-size:.82rem;color:#2b3037}
+.a .brand .mark{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#12a56b,#0b6b62);display:flex;align-items:center;justify-content:center}
+.a .brand .mark svg{width:15px;height:15px;color:#fff}
+.a .avatar{width:38px;height:38px;border-radius:999px;background:linear-gradient(135deg,#18BE7C,#0F9E91);color:#fff;
+  font-weight:700;font-size:.9rem;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(15,158,145,.35)}
+.a .greet{margin-top:22px}
+.a .greet h1{font-size:1.9rem;line-height:1.05}
+.a .greet .date{color:var(--muted);font-weight:500;font-size:.92rem;margin-top:6px}
+
+/* balances banner */
+.a .owedcard{margin:16px 22px 0;border-radius:18px;padding:15px 17px;display:flex;align-items:center;gap:13px;
+  background:linear-gradient(135deg,#fff,#fdf6f3);border:1px solid #f2ded5;box-shadow:0 8px 22px rgba(226,104,63,.10)}
+.a .owedcard .oic{width:42px;height:42px;border-radius:12px;background:var(--owed-tint);color:var(--owed);flex:none;display:flex;align-items:center;justify-content:center}
+.a .owedcard .oic svg{width:22px;height:22px}
+.a .owedcard .ot{flex:1;min-width:0}
+.a .owedcard .ot .lbl{font-size:.78rem;color:var(--muted);font-weight:600}
+.a .owedcard .ot .amt{font-family:Poppins;font-weight:700;font-size:1.15rem;color:#c9502b}
+.a .owedcard .chev{color:#d9a793}
+
+.a .menu{display:flex;flex-direction:column;gap:14px;padding:20px 22px 22px;flex:1}
+.a .mlabel{font-size:.74rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#9aa1aa;margin:2px 2px -2px}
+.a .card{position:relative;border-radius:22px;background:var(--white);border:1px solid var(--line);
+  box-shadow:0 10px 26px rgba(16,20,26,.06);padding:18px 18px;display:flex;align-items:center;gap:15px;overflow:hidden}
+.a .card .ic{width:52px;height:52px;border-radius:15px;display:flex;align-items:center;justify-content:center;flex:none}
+.a .card .ic svg{width:27px;height:27px;stroke-width:1.9}
+.a .card .tx{flex:1}
+.a .card .tx h3{font-size:1.28rem;font-weight:700}
+.a .card .tx p{margin:3px 0 0;color:var(--muted);font-size:.9rem}
+.a .card .go{width:30px;height:30px;border-radius:999px;background:var(--paper);color:#aab0b8;display:flex;align-items:center;justify-content:center;flex:none}
+.a .card.sell{background:linear-gradient(135deg,#18BE7C,#0F9E91);border:0;box-shadow:0 16px 34px -8px rgba(15,158,145,.55)}
+.a .card.sell h3,.a .card.sell p{color:#fff}
+.a .card.sell p{color:rgba(255,255,255,.82)}
+.a .card.sell .ic{background:rgba(255,255,255,.2);color:#fff}
+.a .card.sell .go{background:rgba(255,255,255,.22);color:#fff}
+.a .card.adjust .ic{background:#eaf1ff;color:#3f6fd0}
+.a .card.bal .ic{background:var(--green-tint,#e8f8f1);color:var(--green-d)}
+.a .card .badge{position:absolute;top:12px;right:16px;background:var(--owed);color:#fff;font-size:.68rem;font-weight:700;padding:3px 8px;border-radius:999px}
+
+/* ============ VARIANT B — bold gradient hero ============ */
+.b .app{background:#0e1a17}
+.b .hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 120%);color:#fff;padding:46px 22px 74px;position:relative}
+.b .hero:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:40px;background:var(--paper);border-radius:26px 26px 0 0}
+.b .toprow{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:2}
+.b .brand{display:flex;align-items:center;gap:9px;font-family:Poppins;font-weight:700;letter-spacing:.16em;font-size:.8rem;color:rgba(255,255,255,.92)}
+.b .brand .mark{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
+.b .brand .mark svg{width:15px;height:15px;color:#fff}
+.b .avatar{width:38px;height:38px;border-radius:999px;background:rgba(255,255,255,.2);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.3)}
+.b .greet{margin-top:24px;position:relative;z-index:2}
+.b .greet h1{font-size:2rem;line-height:1.05}
+.b .greet .date{color:rgba(255,255,255,.8);font-weight:500;font-size:.92rem;margin-top:6px}
+.b .owedpill{margin-top:18px;display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.22);backdrop-filter:blur(6px);border-radius:14px;padding:11px 14px;position:relative;z-index:2}
+.b .owedpill .amt{font-family:Poppins;font-weight:700}
+.b .owedpill .lbl{font-size:.8rem;color:rgba(255,255,255,.85)}
+.b .menu{margin-top:-26px;position:relative;z-index:3;padding:0 20px 22px;display:flex;flex-direction:column;gap:13px;flex:1}
+.b .card{border-radius:20px;background:#fff;box-shadow:0 12px 30px rgba(11,26,23,.14);padding:17px;display:flex;align-items:center;gap:14px;position:relative;overflow:hidden}
+.b .card .ic{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.b .card .ic svg{width:26px;height:26px;stroke-width:1.9}
+.b .card .tx{flex:1}
+.b .card .tx h3{font-size:1.24rem;font-weight:700}
+.b .card .tx p{margin:2px 0 0;color:var(--muted);font-size:.88rem}
+.b .card .go{color:#c3c8ce}
+.b .card.sell{background:linear-gradient(135deg,#0F1115,#232a30);}
+.b .card.sell h3{color:#fff}.b .card.sell p{color:rgba(255,255,255,.7)}
+.b .card.sell .ic{background:linear-gradient(135deg,#18BE7C,#0F9E91);color:#fff}
+.b .card.sell .go{color:rgba(255,255,255,.6)}
+.b .card.adjust .ic{background:#eaf1ff;color:#3f6fd0}
+.b .card.bal .ic{background:#e8f8f1;color:var(--green-d)}
+.b .card .badge{position:absolute;top:11px;right:15px;background:var(--owed);color:#fff;font-size:.66rem;font-weight:700;padding:3px 8px;border-radius:999px}
+
+/* bottom tab hint (both) */
+.tabbar{display:flex;justify-content:space-around;align-items:center;padding:12px 24px 22px;background:rgba(255,255,255,.86);
+  backdrop-filter:blur(8px);border-top:1px solid var(--line)}
+.b .tabbar{background:rgba(255,255,255,.9)}
+.tabbar .tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:#b3b9c0;font-size:.66rem;font-weight:600}
+.tabbar .tab svg{width:22px;height:22px}
+.tabbar .tab.on{color:var(--green-d)}
+.note{max-width:900px;margin:34px auto 0;text-align:center;color:#6b7280;font-size:.9rem;line-height:1.6}
+.note b{color:#0F1115}
+</style>
+</head>
+<body>
+<div class="pagehead">
+  <h1>AWAKEN Mobile — new home menu</h1>
+  <p>Two directions for the mobile app's main menu. Same three actions (Sell · Adjust · Balances), redesigned. Pick one — or mix — and I'll build it into the live app.</p>
+</div>
+
+<div class="stage">
+
+  <!-- ========== VARIANT A ========== -->
+  <div class="variant">
+    <div class="vlabel">Option A · <b>Light &amp; airy</b></div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app a">
+        <div class="hero">
+          <div class="toprow">
+            <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 20h16z"/></svg></span> AWAKEN</div>
+            <div class="avatar">V</div>
+          </div>
+          <div class="greet">
+            <h1>Good afternoon,<br>Vanessa</h1>
+            <div class="date">Monday, 20 July</div>
+          </div>
+        </div>
+
+        <div class="owedcard">
+          <div class="oic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="3"/><path d="M1 10h22"/></svg></div>
+          <div class="ot"><div class="lbl">Outstanding balances</div><div class="amt">₱1,466.00</div></div>
+          <div class="chev"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        </div>
+
+        <div class="menu">
+          <div class="mlabel">What would you like to do?</div>
+          <div class="card sell">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div>
+            <div class="tx"><h3>Sell</h3><p>Log a sale at the counter</p></div>
+            <div class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+          <div class="card adjust">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div>
+            <div class="tx"><h3>Adjust</h3><p>Receive or correct stock</p></div>
+            <div class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+          <div class="card bal">
+            <span class="badge">3 owe</span>
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="3"/><path d="M1 10h22"/></svg></div>
+            <div class="tx"><h3>Balances</h3><p>Settle unpaid customers</p></div>
+            <div class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+        </div>
+
+        <div class="tabbar">
+          <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>Sell</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8"/><path d="M3.3 7 12 12l8.7-5"/></svg>Stock</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="3"/><path d="M1 10h22"/></svg>Balances</div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ========== VARIANT B ========== -->
+  <div class="variant">
+    <div class="vlabel">Option B · <b>Bold gradient</b></div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app b">
+        <div class="hero">
+          <div class="toprow">
+            <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 20h16z"/></svg></span> AWAKEN</div>
+            <div class="avatar">V</div>
+          </div>
+          <div class="greet">
+            <h1>Hi, Vanessa 👋</h1>
+            <div class="date">Monday, 20 July</div>
+            <div class="owedpill"><span class="lbl">3 customers owe</span> <span class="amt">₱1,466.00</span></div>
+          </div>
+        </div>
+
+        <div class="menu">
+          <div class="card sell">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div>
+            <div class="tx"><h3>Sell</h3><p>Log a sale at the counter</p></div>
+            <div class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+          <div class="card adjust">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div>
+            <div class="tx"><h3>Adjust</h3><p>Receive or correct stock</p></div>
+            <div class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+          <div class="card bal">
+            <span class="badge">3 owe</span>
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="3"/><path d="M1 10h22"/></svg></div>
+            <div class="tx"><h3>Balances</h3><p>Settle unpaid customers</p></div>
+            <div class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+        </div>
+
+        <div class="tabbar">
+          <div class="tab on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>Sell</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8"/><path d="M3.3 7 12 12l8.7-5"/></svg>Stock</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="3"/><path d="M1 10h22"/></svg>Balances</div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+<div class="note">
+  Both keep the exact same actions and data you have today — greeting, live outstanding-balances total, and Sell / Adjust / Balances — just restyled. New touches: a branded header, the balances total surfaced on the home screen, a bolder primary <b>Sell</b> card, and an optional bottom tab bar for one-tap navigation.<br>
+  Tell me <b>A</b> or <b>B</b> (or tweaks — colors, keep/drop the tab bar, etc.) and I'll build it into the live mobile app.
+</div>
+</body>
+</html>
