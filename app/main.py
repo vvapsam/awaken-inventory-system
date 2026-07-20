@@ -2609,18 +2609,25 @@ async def _awk_setup_apply(request: Request, db: Session = Depends(get_db)):
                                      "employee": spec.get("employee"),
                                      "affiliate": spec.get("affiliate")})
 
+    set_type = bool(data.get("set_type"))
     for eid in data.get("employees", []):
         e = db.get(Staff, eid)
         if e:
             e.pricing_group_id = emp.id
-            report["assigned"].append({"id": eid, "name": e.name, "level": "Employee"})
+            if set_type:
+                e.person_type = "employee"
+            report["assigned"].append({"id": eid, "name": e.name, "level": "Employee",
+                                       "type": e.person_type})
         else:
             report["unmatched"].append({"entity_id": eid})
     for eid in data.get("affiliates", []):
         e = db.get(Staff, eid)
         if e:
             e.pricing_group_id = aff.id
-            report["assigned"].append({"id": eid, "name": e.name, "level": "Affiliate"})
+            if set_type:
+                e.person_type = "affiliate"
+            report["assigned"].append({"id": eid, "name": e.name, "level": "Affiliate",
+                                       "type": e.person_type})
         else:
             report["unmatched"].append({"entity_id": eid})
 
