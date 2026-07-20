@@ -32,7 +32,7 @@ templates.env.globals["peso"] = lambda v: "₱{:,.2f}".format(float(v or 0))
 templates.env.globals["can"] = can
 templates.env.globals["can_any"] = can_any
 
-MAX_IMAGE = 4 * 1024 * 1024
+MAX_IMAGE = 10 * 1024 * 1024
 
 
 def _tz():
@@ -71,7 +71,7 @@ def _read_image(upload):
     if not data:
         raise ValueError("Empty file")
     if len(data) > MAX_IMAGE:
-        raise ValueError("Image is too large (max 4 MB)")
+        raise ValueError("Image is too large (max 10 MB)")
     mime = upload.content_type or "image/jpeg"
     if not mime.startswith("image/"):
         raise ValueError("Attachment must be an image")

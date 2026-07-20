@@ -117,7 +117,10 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 .stepper button{width:32px;height:32px;border-radius:999px;background:var(--white);border:1px solid var(--line);
   font-size:1.2rem;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
 .stepper button:active{transform:scale(.94)}
-.stepper .q{min-width:26px;text-align:center;font-weight:700}
+.stepper .q{width:46px;text-align:center;font-weight:700;border:0;background:none;color:var(--ink);
+  font-size:1rem;font-family:inherit;padding:4px 2px;-moz-appearance:textfield}
+.stepper .q::-webkit-outer-spin-button,.stepper .q::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.stepper .q:focus{outline:none;background:var(--white);border-radius:8px}
 .cartsub{width:78px;text-align:right;font-family:Poppins;font-weight:700;font-size:.9rem}
 .carttot{display:flex;justify-content:space-between;align-items:center;margin:12px 2px 4px;font-family:Poppins;font-weight:700;font-size:1.2rem}
 
@@ -267,7 +270,7 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     <div id="pay-proof" class="hide">
       <div class="photo">
         <label class="drop" id="proof-drop">📷 Tap to attach proof of payment
-          <input type="file" accept="image/*" capture="environment" class="hide" id="proof-input">
+          <input type="file" accept="image/*" class="hide" id="proof-input">
         </label>
         <div class="thumbwrap hide" id="proof-thumb"><img id="proof-img"><button class="rm" id="proof-rm" type="button">×</button></div>
       </div>
@@ -508,10 +511,13 @@ function renderCart(){
     else lbl=`${peso(p.price)} each`;
     const row=document.createElement('div'); row.className='cartline';
     row.innerHTML=`<div class="cn">${p.name}<small>${lbl}</small></div>
-      <div class="stepper"><button data-m>−</button><span class="q">${q}</span><button data-p>+</button></div>
+      <div class="stepper"><button data-m>−</button><input class="q" type="number" inputmode="numeric" min="0" value="${q}"><button data-p>+</button></div>
       <div class="cartsub">${peso(sub)}</div>`;
     $('[data-m]',row).onclick=()=>setQty(p.id,q-1);
     $('[data-p]',row).onclick=()=>setQty(p.id,q+1);
+    const qin=$('.q',row);
+    qin.onchange=()=>{ let v=parseInt(qin.value,10); if(isNaN(v)||v<0) v=0; setQty(p.id,v); };
+    qin.onfocus=()=>qin.select();
     lines.appendChild(row);
   });
   $('#cart-total').textContent=peso(al.total);
