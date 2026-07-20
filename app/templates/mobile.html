@@ -41,14 +41,18 @@ input,select{font-family:inherit;font-size:16px}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.screen,.screen.active{animation:none}*{transition:none!important}}
 
-/* top bar w/ back */
-.topbar{display:flex;align-items:center;gap:12px;margin:4px 0 18px;min-height:44px}
-.back{display:inline-flex;align-items:center;gap:6px;background:var(--white);border:1px solid var(--line);
-  border-radius:999px;padding:9px 15px 9px 12px;font-weight:600;font-size:.9rem;
-  box-shadow:0 2px 8px rgba(15,15,15,.07)}
+/* top bar w/ back — full-bleed green header to match Home */
+.topbar{display:flex;align-items:center;gap:12px;min-height:44px;
+  margin:calc(-1*(var(--safe-t) + 8px)) -18px 18px;
+  padding:calc(var(--safe-t) + 18px) 18px 16px;
+  background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 65%,#18BE7C 135%);
+  border-radius:0 0 22px 22px;box-shadow:0 12px 26px -8px rgba(11,26,23,.30)}
+.back{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);
+  border:1px solid rgba(255,255,255,.32);color:#fff;border-radius:999px;padding:8px 14px 8px 11px;
+  font-weight:600;font-size:.88rem;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .back:active{transform:scale(.97)}
 .back svg{width:18px;height:18px}
-.topbar h2{font-size:1.15rem}
+.topbar h2{font-size:1.18rem;color:#fff;letter-spacing:-.01em}
 
 /* home (gradient hero + action cards + low-stock watch) */
 #s-home.screen{padding:0}
@@ -216,10 +220,11 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 .crow .cbal{font-family:Poppins;font-weight:600;color:var(--ink)}
 
 /* balances */
-.summary{background:var(--ink);color:#fff;border-radius:18px;padding:18px 20px;margin-bottom:14px}
-.summary .lbl{font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:#9a9ba3;font-weight:600}
+.summary{background:linear-gradient(135deg,#0b6b62,#0f9e91 70%,#18BE7C 135%);color:#fff;border-radius:18px;
+  padding:18px 20px;margin-bottom:14px;box-shadow:0 14px 30px -10px rgba(15,158,145,.5)}
+.summary .lbl{font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.82);font-weight:600}
 .summary .amt{font-family:Poppins;font-weight:700;font-size:2rem;color:#fff;margin:6px 0 2px}
-.summary .sub{color:#b7b8c0;font-size:.86rem}
+.summary .sub{color:rgba(255,255,255,.85);font-size:.86rem}
 
 /* detail order card */
 .ocard{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
