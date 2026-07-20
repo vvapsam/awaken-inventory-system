@@ -1,23 +1,108 @@
 {% extends "base.html" %}
 {% block body %}
+<style>
+.editcard{max-width:720px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.linehead,.linerow{display:grid;grid-template-columns:1fr 78px 110px 40px;gap:8px;align-items:center}
+.linehead{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 2px}
+.linerow{margin:6px 0}
+.linerow input{margin:0}
+.linerow .rm{display:flex;align-items:center;justify-content:center}
+.saletot{display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+.addrow{display:grid;grid-template-columns:1fr 78px 110px;gap:8px;align-items:end;margin-top:6px}
+.addrow label{font-size:.72rem;color:var(--muted)}
+hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
+</style>
 <h1>Edit sale</h1>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
-<form method="post" action="/sale/{{ sale.id }}/edit" class="card">
-  <div class="muted small">
-    {{ sale.occurred_at.strftime('%Y-%m-%d %H:%M') if sale.occurred_at else '' }} ·
-    {% for it in sale.items %}{{ it.qty|int }}× {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+<form method="post" action="/sale/{{ sale.id }}/edit" class="card editcard">
+
+  <div class="two-col">
+    <div>
+      <label>Date &amp; time</label>
+      <input name="occurred_at" type="datetime-local" value="{{ dt_value }}">
+    </div>
+    <div>
+      <label>Customer</label>
+      <select name="customer_id">
+        <option value="">— none (walk-in) —</option>
+        {% for c in customers %}
+        <option value="{{ c.id }}" {% if sale.customer_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
 
-  <label>Payment method</label>
-  <select name="payment_method">
-    {% for m in PAYMENT_METHODS %}<option value="{{ m }}" {% if sale.payment_method == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
-  </select>
+  <div class="two-col" style="margin-top:12px">
+    <div>
+      <label>Status</label>
+      <select name="status" id="status" onchange="toggleMethod()">
+        <option value="paid" {% if not sale.is_credit %}selected{% endif %}>Paid</option>
+        <option value="unpaid" {% if sale.is_credit %}selected{% endif %}>Unpaid (credit)</option>
+      </select>
+    </div>
+    <div id="method-wrap">
+      <label>Payment method</label>
+      <select name="payment_method">
+        {% for m in PAYMENT_METHODS %}<option value="{{ m }}" {% if sale.payment_method == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
 
-  <label>Note</label>
+  <label style="margin-top:12px">Note</label>
   <input name="note" value="{{ sale.note or '' }}">
 
-  <p class="muted small">To change the items or quantities, delete this sale and log it again.</p>
-  <button type="submit" class="btn primary big">Save</button>
-  <a class="btn" href="/records">Cancel</a>
+  <hr class="sep">
+  <label style="font-weight:600">Items &amp; amounts</label>
+  <div class="linehead"><span>Item</span><span>Qty</span><span>Unit price</span><span>Del</span></div>
+  {% for it in sale.items %}
+  <div class="linerow">
+    <input type="hidden" name="item_id" value="{{ it.id }}">
+    <input name="item_name" value="{{ it.name }}">
+    <input name="item_qty" type="number" min="0" step="1" value="{{ it.qty|int }}" class="qf" oninput="recalc()">
+    <input name="item_price" type="number" min="0" step="0.01" value="{{ '%.2f'|format(it.unit_price|float) if it.unit_price is not none else '' }}" class="pf" oninput="recalc()">
+    <span class="rm"><input type="checkbox" name="item_remove" value="{{ it.id }}" title="Delete this line" onchange="recalc()"></span>
+  </div>
+  {% endfor %}
+
+  <div class="saletot"><span>Total</span><span id="saletot">₱0.00</span></div>
+
+  <hr class="sep">
+  <label style="font-weight:600">Add an item (optional)</label>
+  <div class="addrow">
+    <div>
+      <label>Product</label>
+      <select name="new_product_id">
+        <option value="">—</option>
+        {% for p in products %}<option value="{{ p.id }}" data-price="{{ p.selling_price }}">{{ p.name }} ({{ peso(p.selling_price) }})</option>{% endfor %}
+      </select>
+    </div>
+    <div><label>Qty</label><input name="new_qty" type="number" min="0" step="1" placeholder="0"></div>
+    <div><label>Unit price</label><input name="new_price" type="number" min="0" step="0.01" placeholder="base"></div>
+  </div>
+
+  <div style="margin-top:16px">
+    <button type="submit" class="btn primary big">Save</button>
+    <a class="btn" href="/records">Cancel</a>
+  </div>
 </form>
+
+<script>
+function toggleMethod(){
+  document.getElementById('method-wrap').style.display =
+    document.getElementById('status').value === 'paid' ? '' : 'none';
+}
+function recalc(){
+  let t=0;
+  document.querySelectorAll('.linerow').forEach(r=>{
+    const rm=r.querySelector('input[name=item_remove]');
+    if(rm && rm.checked) return;
+    const q=parseFloat(r.querySelector('.qf').value)||0;
+    const p=parseFloat(r.querySelector('.pf').value)||0;
+    t+=q*p;
+  });
+  document.getElementById('saletot').textContent='₱'+t.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+toggleMethod(); recalc();
+</script>
 {% endblock %}

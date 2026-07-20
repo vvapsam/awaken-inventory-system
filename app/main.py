@@ -747,13 +747,19 @@ def movement_edit(request: Request, mid: int, db: Session = Depends(get_db)):
         return RedirectResponse("/records", status_code=303)
     if not can(staff, f"{module_for_type(m.movement_type)}.edit"):
         return RedirectResponse("/records", status_code=303)
-    return render(request, "movement_edit.html", db, staff, m=m, error=None)
+    tz = _tz()
+    local = m.occurred_at.astimezone(tz) if m.occurred_at else datetime.now(tz)
+    dt_value = local.strftime("%Y-%m-%dT%H:%M")
+    products = db.query(Product).order_by(Product.name).all()
+    return render(request, "movement_edit.html", db, staff, m=m, error=None,
+                  dt_value=dt_value, products=products)
 
 
 @app.post("/movement/{mid}/edit")
 def movement_update(request: Request, mid: int, quantity: int = Form(...),
                     direction: str = Form("add"), unit_cost: str = Form(""),
-                    note: str = Form(""), db: Session = Depends(get_db)):
+                    note: str = Form(""), occurred_at: str = Form(""),
+                    product_id: str = Form(""), db: Session = Depends(get_db)):
     staff, redir = require(request, db)
     if redir:
         return redir
@@ -762,9 +768,17 @@ def movement_update(request: Request, mid: int, quantity: int = Form(...),
         return RedirectResponse("/records", status_code=303)
     if not can(staff, f"{module_for_type(m.movement_type)}.edit"):
         return RedirectResponse("/records", status_code=303)
+    dt = _parse_local_dt(occurred_at)
+    if dt is not None:
+        m.occurred_at = dt
     if m.items:
         m.items[0].qty = signed_qty(m.movement_type, quantity, direction)
         m.items[0].unit_price = float(unit_cost) if unit_cost.strip() else None
+        if product_id.strip().isdigit():
+            p = db.get(Product, int(product_id))
+            if p:
+                m.items[0].product_id = p.id
+                m.items[0].name = p.name
     m.note = note or None
     db.commit()
     return RedirectResponse("/records", status_code=303)
@@ -795,20 +809,91 @@ def sale_edit(request: Request, sid: int, db: Session = Depends(get_db)):
     sale = db.get(Transaction, sid)
     if not sale or sale.type != TX_CASH_SALE:
         return RedirectResponse("/records", status_code=303)
-    return render(request, "sale_edit.html", db, staff, sale=sale, error=None)
+    tz = _tz()
+    local = sale.occurred_at.astimezone(tz) if sale.occurred_at else datetime.now(tz)
+    dt_value = local.strftime("%Y-%m-%dT%H:%M")
+    products = db.query(Product).order_by(Product.name).all()
+    customers = db.query(Staff).filter(Staff.is_active).order_by(Staff.name).all()
+    return render(request, "sale_edit.html", db, staff, sale=sale, error=None,
+                  dt_value=dt_value, products=products, customers=customers)
 
 
 @app.post("/sale/{sid}/edit")
-def sale_update(request: Request, sid: int, payment_method: str = Form("cash"),
-                note: str = Form(""), db: Session = Depends(get_db)):
+async def sale_update(request: Request, sid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="sales.edit")
     if redir:
         return redir
     sale = db.get(Transaction, sid)
     if not sale or sale.type != TX_CASH_SALE:
         return RedirectResponse("/records", status_code=303)
-    sale.payment_method = payment_method
-    sale.note = note or None
+    form = await request.form()
+
+    # header ------------------------------------------------------------
+    dt = _parse_local_dt(form.get("occurred_at"))
+    if dt is not None:
+        sale.occurred_at = dt
+    cid = (form.get("customer_id") or "").strip()
+    sale.customer_id = int(cid) if cid.isdigit() else None
+    is_paid = (form.get("status") or "paid") == "paid"
+    sale.is_credit = not is_paid
+    sale.status = "paid" if is_paid else "credit"
+    if is_paid:
+        pm = (form.get("payment_method") or "cash").strip()
+        sale.payment_method = pm if pm in PAYMENT_METHODS else "cash"
+    else:
+        sale.payment_method = None
+    sale.note = (form.get("note") or "").strip() or None
+
+    # existing line items: update qty / unit price / name, or delete ----
+    remove_ids = set(form.getlist("item_remove"))
+    ids = form.getlist("item_id")
+    names = form.getlist("item_name")
+    qtys = form.getlist("item_qty")
+    prices = form.getlist("item_price")
+    by_id = {str(it.id): it for it in sale.items}
+    for i, iid in enumerate(ids):
+        it = by_id.get(str(iid))
+        if not it:
+            continue
+        if iid in remove_ids:
+            db.delete(it)
+            continue
+        try:
+            q = int(qtys[i]) if i < len(qtys) and str(qtys[i]).strip() else it.qty
+        except ValueError:
+            q = it.qty
+        if q <= 0:
+            db.delete(it)
+            continue
+        it.qty = q
+        try:
+            if i < len(prices) and str(prices[i]).strip():
+                it.unit_price = round(float(prices[i]), 2)
+        except ValueError:
+            pass
+        nm = names[i].strip() if i < len(names) else ""
+        if nm:
+            it.name = nm
+
+    # optional new line -------------------------------------------------
+    np = (form.get("new_product_id") or "").strip()
+    nq = (form.get("new_qty") or "").strip()
+    if np.isdigit() and nq:
+        p = db.get(Product, int(np))
+        try:
+            q = int(nq)
+        except ValueError:
+            q = 0
+        if p and q > 0:
+            npr = (form.get("new_price") or "").strip()
+            try:
+                up = round(float(npr), 2) if npr else float(p.selling_price or 0)
+            except ValueError:
+                up = float(p.selling_price or 0)
+            db.add(TransactionItem(transaction_id=sale.id, product_id=p.id,
+                                   name=p.name, qty=q, unit_price=up,
+                                   cost_price=p.cost_price))
+
     db.commit()
     return RedirectResponse("/records", status_code=303)
 
@@ -1762,6 +1847,21 @@ def payment_delete(request: Request, pid: int, db: Session = Depends(get_db)):
 
 
 # ---------- Sales spreadsheet (autosave grid) ----------
+
+def _parse_local_dt(s):
+    """Parse a datetime-local / date string in app TZ → aware UTC (or None)."""
+    tz = _tz()
+    if not s or not str(s).strip():
+        return None
+    s = str(s).strip().replace("T", " ")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.replace(tzinfo=tz).astimezone(timezone.utc)
+        except ValueError:
+            continue
+    return None
+
 
 def _sold_dt_from_date(date_str):
     tz = _tz()
