@@ -1,46 +1,131 @@
 {% extends "base.html" %}
 {% block body %}
-<h1>{{ 'Edit product' if product else 'New product' }}</h1>
+<style>
+.formgroups{max-width:760px}
+fieldset.fg{border:1px solid var(--line);border-radius:12px;padding:16px 18px 18px;margin:0 0 18px}
+fieldset.fg > legend{font-size:.74rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:0 8px}
+.fg .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fg .field{display:flex;flex-direction:column}
+.fg .field.full{grid-column:1 / -1}
+.fg label{font-weight:500}
+.fg .hint{color:var(--muted);font-size:.8rem;font-weight:400}
+table.levels{border-collapse:collapse;width:100%;font-size:.92rem}
+table.levels th,table.levels td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left}
+table.levels th{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+table.levels tr:last-child td{border-bottom:0}
+table.levels td.base{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+table.levels .lp{width:120px;margin:0;text-align:right;font-variant-numeric:tabular-nums}
+table.levels .lp::placeholder{color:#bcc4cf}
+.lvl-note{color:var(--muted);font-size:.82rem;margin:2px 0 10px}
+.baseref{font-variant-numeric:tabular-nums}
+</style>
+
+<h1>{{ 'Edit item' if product else 'New item' }}</h1>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
-<form method="post" action="{{ '/admin/products/%s/edit' % product.id if product else '/admin/products/new' }}" class="card">
-  <label>SKU</label>
-  {% if product %}
-    <input value="{{ product.sku }}" disabled>
-  {% else %}
-    <input name="sku" placeholder="e.g. BEV-LAT-16" required>
+
+<form method="post" action="{{ '/admin/products/%s/edit' % product.id if product else '/admin/products/new' }}" class="formgroups">
+
+  <fieldset class="fg">
+    <legend>Item details</legend>
+    <div class="grid2">
+      <div class="field">
+        <label>SKU</label>
+        {% if product %}<input value="{{ product.sku }}" disabled>
+        {% else %}<input name="sku" placeholder="e.g. BEV-LAT-16" required>{% endif %}
+      </div>
+      <div class="field">
+        <label>Name</label>
+        <input name="name" value="{{ product.name if product else '' }}" required>
+      </div>
+      <div class="field">
+        <label>Supplier <span class="hint">(optional)</span></label>
+        <input name="supplier" value="{{ product.supplier if product and product.supplier else '' }}" placeholder="e.g. Pacific Synergy">
+      </div>
+      <div class="field">
+        <label>Category <span class="hint">(type any, or pick)</span></label>
+        <input name="category" list="cat-list" value="{{ product.category if product and product.category else '' }}" placeholder="e.g. Water, Sports Drink">
+        <datalist id="cat-list">{% for c in category_suggestions %}<option value="{{ c }}">{% endfor %}</datalist>
+      </div>
+      <div class="field">
+        <label>Unit</label>
+        <select name="unit">
+          {% for u in UNITS %}<option value="{{ u }}" {% if (product and product.unit == u) or (not product and u == 'each') %}selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      {% if product %}
+      <div class="field" style="justify-content:flex-end">
+        <label class="check"><input type="checkbox" name="is_active" {% if product.is_active %}checked{% endif %}> Active</label>
+      </div>
+      {% endif %}
+    </div>
+  </fieldset>
+
+  <fieldset class="fg">
+    <legend>Pricing</legend>
+    <div class="grid2">
+      <div class="field">
+        <label>Base selling price (₱)</label>
+        <input name="selling_price" type="number" step="0.01" min="0" value="{{ product.selling_price if product else '' }}" required>
+        <span class="hint">The normal price everyone pays.</span>
+      </div>
+      <div class="field">
+        <label>Cost price (₱) <span class="hint">— admin only</span></label>
+        <input name="cost_price" type="number" step="0.01" min="0" value="{{ product.cost_price if product and product.cost_price is not none else '' }}">
+        <span class="hint">Used for margin reports.</span>
+      </div>
+    </div>
+  </fieldset>
+
+  {% if price_levels %}
+  <fieldset class="fg">
+    <legend>Price levels</legend>
+    <p class="lvl-note">Set a special price for this item at each level. Leave a cell blank to use the <b>Base price</b> (<span class="baseref" id="base-ref">{{ peso(product.selling_price) if product else '—' }}</span>). Assign a level to a person on their profile. <a href="/admin/pricing">Manage levels</a>.</p>
+    <table class="levels">
+      <tr><th>Level</th><th>Base</th><th>Price at this level</th></tr>
+      {% for g in price_levels %}
+      {% set cur = level_prices.get(g.id) %}
+      <tr>
+        <td>{{ g.name }}{% if not g.is_active %} <span class="hint">(off)</span>{% endif %}</td>
+        <td class="base base-cell">{{ peso(product.selling_price) if product else '—' }}</td>
+        <td><input class="lp" type="number" step="0.01" min="0" inputmode="decimal"
+                   name="level_price_{{ g.id }}"
+                   value="{{ '%.2f'|format(cur) if cur is not none else '' }}"
+                   placeholder="{{ '%.2f'|format(product.selling_price|float) if product else 'base' }}"></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </fieldset>
   {% endif %}
 
-  <label>Name</label>
-  <input name="name" value="{{ product.name if product else '' }}" required>
+  <fieldset class="fg">
+    <legend>Stock</legend>
+    <div class="grid2">
+      <div class="field">
+        <label>Reorder point</label>
+        <input name="reorder_point" type="number" min="0" value="{{ product.reorder_point if product else 0 }}">
+        <span class="hint">Low-stock alert at or below this quantity.</span>
+      </div>
+    </div>
+  </fieldset>
 
-  <label>Supplier (optional)</label>
-  <input name="supplier" value="{{ product.supplier if product and product.supplier else '' }}" placeholder="e.g. Pacific Synergy">
-
-  <label>Category (optional — type any, or pick a suggestion)</label>
-  <input name="category" list="cat-list" value="{{ product.category if product and product.category else '' }}" placeholder="e.g. Water, Fruits, Sports Drink">
-  <datalist id="cat-list">
-    {% for c in category_suggestions %}<option value="{{ c }}">{% endfor %}
-  </datalist>
-
-  <label>Unit</label>
-  <select name="unit">
-    {% for u in UNITS %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
-  </select>
-
-  <label>Selling price (₱)</label>
-  <input name="selling_price" type="number" step="0.01" value="{{ product.selling_price if product else '' }}" required>
-
-  <label>Cost price (₱) — admin only, for margins</label>
-  <input name="cost_price" type="number" step="0.01" value="{{ product.cost_price if product and product.cost_price is not none else '' }}">
-
-  <label>Reorder point (alert at or below)</label>
-  <input name="reorder_point" type="number" min="0" value="{{ product.reorder_point if product else 0 }}">
-
-  {% if product %}
-  <label class="check"><input type="checkbox" name="is_active" {% if product.is_active %}checked{% endif %}> Active</label>
-  {% endif %}
-
-  <button type="submit" class="btn primary big">Save</button>
-  <a class="btn" href="/admin/products">Cancel</a>
+  <div>
+    <button type="submit" class="btn primary big">Save</button>
+    <a class="btn" href="/admin/products">Cancel</a>
+  </div>
 </form>
+
+<script>
+// keep the "Base" reference in the levels table in sync as you edit the base price
+(function(){
+  var sp = document.querySelector('input[name=selling_price]');
+  if(!sp) return;
+  var fmt = v => '₱' + (Number(v)||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+  sp.addEventListener('input', function(){
+    var v = sp.value;
+    document.querySelectorAll('.base-cell').forEach(function(td){ td.textContent = v!=='' ? fmt(v) : '—'; });
+    var ref = document.getElementById('base-ref'); if(ref) ref.textContent = v!=='' ? fmt(v) : '—';
+    document.querySelectorAll('.lp').forEach(function(i){ i.placeholder = v!=='' ? Number(v).toFixed(2) : 'base'; });
+  });
+})();
+</script>
 {% endblock %}

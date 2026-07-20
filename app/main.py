@@ -934,35 +934,95 @@ def _category_suggestions(db):
     return cats
 
 
+def _price_levels(db):
+    return db.query(PricingGroup).order_by(PricingGroup.name).all()
+
+
+def _item_level_prices(db, product):
+    """{group_id: explicit price} for this product across all levels."""
+    if not product or not product.id:
+        return {}
+    rows = db.query(PricingGroupItem).filter(PricingGroupItem.product_id == product.id).all()
+    return {r.group_id: float(r.price) for r in rows if r.price is not None}
+
+
+def _apply_item_levels(db, product, form):
+    """Upsert per-level prices from level_price_<gid> fields (blank = revert to Base)."""
+    for key, val in form.multi_items():
+        if not key.startswith("level_price_"):
+            continue
+        try:
+            gid = int(key[len("level_price_"):])
+        except ValueError:
+            continue
+        if not db.get(PricingGroup, gid):
+            continue
+        row = (db.query(PricingGroupItem)
+               .filter_by(group_id=gid, product_id=product.id).first())
+        sval = (val or "").strip()
+        if sval:
+            try:
+                price = round(float(sval), 2)
+            except ValueError:
+                continue
+            if price < 0:
+                continue
+            if row:
+                row.price = price
+            else:
+                db.add(PricingGroupItem(group_id=gid, product_id=product.id, price=price))
+        elif row:
+            db.delete(row)
+
+
 @app.get("/admin/products/new", response_class=HTMLResponse)
 def product_new(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="items.create")
     if redir:
         return redir
     return render(request, "product_form.html", db, staff, product=None, error=None,
-                  category_suggestions=_category_suggestions(db))
+                  category_suggestions=_category_suggestions(db),
+                  price_levels=_price_levels(db), level_prices={})
 
 
 @app.post("/admin/products/new")
-def product_create(request: Request, sku: str = Form(...), name: str = Form(...),
-                   category: str = Form(""), supplier: str = Form(""), unit: str = Form("each"),
-                   selling_price: float = Form(...), cost_price: str = Form(""),
-                   reorder_point: int = Form(0), db: Session = Depends(get_db)):
+async def product_create(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="items.create")
     if redir:
         return redir
+    form = await request.form()
+
+    def back(error):
+        return render(request, "product_form.html", db, staff, product=None, error=error,
+                      category_suggestions=_category_suggestions(db),
+                      price_levels=_price_levels(db), level_prices={})
+
+    sku = (form.get("sku") or "").strip()
+    name = (form.get("name") or "").strip()
+    unit = form.get("unit") or "each"
+    if not sku or not name:
+        return back("SKU and name are required.")
     if unit not in UNITS:
-        return render(request, "product_form.html", db, staff, product=None,
-                      error="Invalid unit.", category_suggestions=_category_suggestions(db))
+        return back("Invalid unit.")
+    try:
+        selling_price = float(form.get("selling_price"))
+    except (TypeError, ValueError):
+        return back("Selling price is required.")
     if db.query(Product).filter(Product.sku == sku).first():
-        return render(request, "product_form.html", db, staff, product=None,
-                      error=f"SKU '{sku}' already exists.",
-                      category_suggestions=_category_suggestions(db))
-    cp = float(cost_price) if cost_price.strip() else None
-    db.add(Product(sku=sku.strip(), name=name.strip(),
-                   category=(category.strip() or None), supplier=(supplier.strip() or None),
-                   unit=unit, selling_price=selling_price, cost_price=cp,
-                   reorder_point=reorder_point))
+        return back(f"SKU '{sku}' already exists.")
+    cost = (form.get("cost_price") or "").strip()
+    try:
+        reorder = int(form.get("reorder_point") or 0)
+    except ValueError:
+        reorder = 0
+    product = Product(sku=sku, name=name,
+                      category=((form.get("category") or "").strip() or None),
+                      supplier=((form.get("supplier") or "").strip() or None),
+                      unit=unit, selling_price=selling_price,
+                      cost_price=(float(cost) if cost else None), reorder_point=reorder)
+    db.add(product)
+    db.flush()
+    _apply_item_levels(db, product, form)
     db.commit()
     return RedirectResponse("/admin/products", status_code=303)
 
@@ -974,29 +1034,37 @@ def product_edit(request: Request, pid: int, db: Session = Depends(get_db)):
         return redir
     product = db.get(Product, pid)
     return render(request, "product_form.html", db, staff, product=product, error=None,
-                  category_suggestions=_category_suggestions(db))
+                  category_suggestions=_category_suggestions(db),
+                  price_levels=_price_levels(db),
+                  level_prices=_item_level_prices(db, product))
 
 
 @app.post("/admin/products/{pid}/edit")
-def product_update(request: Request, pid: int, name: str = Form(...),
-                   category: str = Form(""), supplier: str = Form(""), unit: str = Form("each"),
-                   selling_price: float = Form(...), cost_price: str = Form(""),
-                   reorder_point: int = Form(0), is_active: str = Form("on"),
-                   db: Session = Depends(get_db)):
+async def product_update(request: Request, pid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="items.edit")
     if redir:
         return redir
     product = db.get(Product, pid)
     if not product:
         return RedirectResponse("/admin/products", status_code=303)
-    product.name = name.strip()
-    product.category = category.strip() or None
-    product.supplier = supplier.strip() or None
-    product.unit = unit
-    product.selling_price = selling_price
-    product.cost_price = float(cost_price) if cost_price.strip() else None
-    product.reorder_point = reorder_point
-    product.is_active = is_active == "on"
+    form = await request.form()
+    product.name = (form.get("name") or product.name).strip()
+    product.category = (form.get("category") or "").strip() or None
+    product.supplier = (form.get("supplier") or "").strip() or None
+    unit = form.get("unit") or product.unit
+    product.unit = unit if unit in UNITS else product.unit
+    try:
+        product.selling_price = float(form.get("selling_price"))
+    except (TypeError, ValueError):
+        pass
+    cost = (form.get("cost_price") or "").strip()
+    product.cost_price = float(cost) if cost else None
+    try:
+        product.reorder_point = int(form.get("reorder_point") or 0)
+    except ValueError:
+        pass
+    product.is_active = form.get("is_active") == "on"
+    _apply_item_levels(db, product, form)
     db.commit()
     return RedirectResponse("/admin/products", status_code=303)
 
