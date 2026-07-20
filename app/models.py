@@ -127,11 +127,14 @@ class Staff(Base):
     # --- member (an affiliate's corkage client) ---
     corkage_rate = Column(Numeric(10, 2))                   # monthly corkage (members)
     affiliate_id = Column(Integer, ForeignKey("entity.id")) # member -> their affiliate
+    # --- pricing ---
+    pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     role_obj = relationship("Role")
     affiliate = relationship("Staff", foreign_keys=[affiliate_id], remote_side=[id])
+    pricing_group = relationship("PricingGroup", foreign_keys=[pricing_group_id])
 
     __table_args__ = (
         CheckConstraint("role IN ('admin','staff')", name="staff_role_check"),
@@ -344,34 +347,41 @@ PRICING_KINDS = [("employee", "Employee"), ("affiliate", "Affiliate")]
 
 
 class PricingGroup(Base):
-    """A price tier (Employee / Affiliate) giving a % discount on selected products.
+    """A named price level (e.g. Affiliate, Employee) that holds an explicit
+    per-item price for some products.
 
-    Base price = the product's normal selling price (no tier). Employee tiers round
-    the discounted price UP to a whole peso and can cap discounted items per day.
+    Base price = the product's normal selling price, used for anyone not on a
+    level and for any item this level hasn't set an explicit price for. A level
+    only overrides the items it has a `PricingGroupItem` row (with a price) for.
+
+    The legacy columns (kind / discount_percent / round_up / daily_item_limit)
+    are retained for backward compatibility but are no longer used.
     """
     __tablename__ = "pricing_groups"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    kind = Column(String, nullable=False, default="employee")   # employee | affiliate
-    discount_percent = Column(Numeric(5, 2), nullable=False, default=0)  # e.g. 15.00
-    round_up = Column(Boolean, nullable=False, default=False)   # ceil price to whole peso
-    daily_item_limit = Column(Integer)                          # NULL = unlimited (e.g. 2)
+    kind = Column(String, nullable=False, default="employee")   # legacy, unused
+    discount_percent = Column(Numeric(5, 2), nullable=False, default=0)  # legacy, unused
+    round_up = Column(Boolean, nullable=False, default=False)   # legacy, unused
+    daily_item_limit = Column(Integer)                          # legacy, unused
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     items = relationship("PricingGroupItem", cascade="all, delete-orphan", backref="group")
 
+    def price_map(self):
+        """{product_id: explicit price} for items this level overrides."""
+        return {i.product_id: float(i.price) for i in self.items if i.price is not None}
+
     def eligible_ids(self):
-        return {i.product_id for i in self.items}
+        return {i.product_id for i in self.items if i.price is not None}
 
     def price_for(self, product):
-        """Discounted price if the product is eligible, else its normal price."""
+        """This level's explicit price for the product, else its base price."""
         base = float(product.selling_price or 0)
-        if product.id in self.eligible_ids():
-            raw = base * (1 - float(self.discount_percent or 0) / 100.0)
-            if self.round_up:
-                return float(math.ceil(raw - 1e-9))       # always round up to whole peso
-            return round(raw, 2)
+        for i in self.items:
+            if i.product_id == product.id and i.price is not None:
+                return round(float(i.price), 2)
         return round(base, 2)
 
 
@@ -380,6 +390,7 @@ class PricingGroupItem(Base):
     id = Column(Integer, primary_key=True)
     group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    price = Column(Numeric(10, 2))                              # explicit price at this level
 
 
 # Legacy `discount_codes` (per-person codes) were folded into the Staff entity

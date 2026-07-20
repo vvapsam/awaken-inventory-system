@@ -27,14 +27,17 @@
         {% endfor %}
       </select>
     </div>
-    <div id="code-wrap">
-      <label>Discount code {% if not person %}(blank = auto-generate){% endif %}</label>
-      <input name="discount_code" value="{{ person.discount_code if person and person.discount_code else '' }}"
-             autocapitalize="characters" autocorrect="off" spellcheck="false"
-             placeholder="e.g. EMP-MARY01" style="text-transform:uppercase">
+    <div id="level-wrap">
+      <label>Price level</label>
+      <select name="pricing_group_id">
+        <option value="">— Base price —</option>
+        {% for g in price_levels %}
+        <option value="{{ g.id }}" {% if person and person.pricing_group_id == g.id %}selected{% endif %}>{{ g.name }}{% if not g.is_active %} (off){% endif %}</option>
+        {% endfor %}
+      </select>
     </div>
   </div>
-  <p class="muted small" id="type-note" style="margin-top:-4px">Employees &amp; affiliates get a personal code for their discount tier. Suppliers &amp; coaches are just tracked here. Leave Type as “— none —” for plain staff.</p>
+  <p class="muted small" id="type-note" style="margin-top:-4px">Type just tags the relationship. <b>Price level</b> sets which prices this person pays at the counter — leave it on <b>Base price</b> for normal retail. <a href="/admin/pricing">Manage levels &amp; item prices</a>.</p>
 
   <div id="billing-wrap" style="margin-top:10px">
     <div class="two-col">
@@ -132,9 +135,6 @@
 var IS_EDIT = {{ 'true' if person else 'false' }};
 function toggleType(){
   var t = document.getElementById('ptype').value;
-  var showCode = (t === 'employee' || t === 'affiliate');
-  document.getElementById('code-wrap').style.display = showCode ? '' : 'none';
-  document.getElementById('type-note').style.display = t ? 'none' : '';
   // Billing fields: affiliates get fee + next billing; coaches just a start date.
   var isAff = (t === 'affiliate'), isCoach = (t === 'coach');
   document.getElementById('billing-wrap').style.display = (isAff || isCoach) ? '' : 'none';

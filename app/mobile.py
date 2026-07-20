@@ -131,10 +131,15 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
     }
 
     maps = _on_hand_map(db)
+    # Active price levels → {level_id: {product_id: override_price}} and label map.
+    levels = db.query(PricingGroup).filter(PricingGroup.is_active).order_by(PricingGroup.name).all()
+    level_pmaps = {g.id: g.price_map() for g in levels}
+    level_names = {g.id: g.name for g in levels}
     products = []
     if perms["sell"] or perms["adjust"] or can(staff, "view_stock"):
         for p in (db.query(Product).filter(Product.is_active)
                   .order_by(Product.name).all()):
+            prices = {str(gid): pm[p.id] for gid, pm in level_pmaps.items() if p.id in pm}
             products.append({
                 "id": p.id,
                 "name": p.name,
@@ -144,13 +149,17 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
                 "on_hand": _on_hand(maps, p.id),
                 "reorder_point": p.reorder_point,
                 "has_image": bool(p.image),
+                "prices": prices,          # per-level overrides for this item
             })
 
     # Any entity can be selected as the buyer on the counter (a customer, but
-    # also employees/affiliates/etc. buying retail).
+    # also employees/affiliates/etc. buying retail). `level` = their price level
+    # (only when that level is active); drives the prices they pay.
     customers = [
         {"id": c.id, "name": c.name, "phone": c.phone or "",
-         "type": c.person_type or "customer"}
+         "type": c.person_type or "customer",
+         "level": (c.pricing_group_id if c.pricing_group_id in level_names else None),
+         "level_name": level_names.get(c.pricing_group_id)}
         for c in db.query(Staff).filter(Staff.is_active).order_by(Staff.name).all()
     ]
 
@@ -177,57 +186,7 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "customers": customers,
         "balances": balances,
         "loss_chips": LOSS_MEMO_CHIPS,
-        "has_codes": db.query(Staff).filter(Staff.discount_code != None,  # noqa: E711
-                                            Staff.is_active).first() is not None,
-    }
-
-
-def _code_used_today(db, person_id):
-    start = datetime.combine(_today(), datetime.min.time()).replace(tzinfo=_tz())
-    return int(db.query(func.coalesce(func.sum(Transaction.discounted_qty), 0))
-               .filter(Transaction.type == TX_CASH_SALE,
-                       Transaction.discount_person_id == person_id,
-                       Transaction.occurred_at >= start).scalar() or 0)
-
-
-def _resolve_code(db, code):
-    """Look up a person by their personal discount code and the active pricing
-    tier for their type. Returns (person, group) or (None, None)."""
-    c = (code or "").strip().upper()
-    if not c:
-        return None, None
-    person = (db.query(Staff)
-              .filter(func.upper(Staff.discount_code) == c,
-                      Staff.is_active, Staff.person_type != None).first())  # noqa: E711
-    if not person or not person.person_type:
-        return None, None
-    group = (db.query(PricingGroup)
-             .filter(PricingGroup.kind == person.person_type, PricingGroup.is_active)
-             .order_by(PricingGroup.id).first())
-    if not group:
-        return None, None
-    return person, group
-
-
-@router.post("/api/m/discount-code")
-def check_discount_code(request: Request, code: str = Form(...),
-                        db: Session = Depends(get_db)):
-    """Validate a discount code and return its tier so the Sell screen can preview."""
-    staff = current_staff(request, db)
-    if not staff or not can_sell(staff):
-        return _err("Not allowed", 403)
-    person, g = _resolve_code(db, code)
-    if not person or not g:
-        return _err("Invalid or inactive code", 404)
-    limit = g.daily_item_limit
-    used = _code_used_today(db, person.id) if limit else 0
-    return {
-        "ok": True,
-        "code": person.discount_code, "holder": person.name, "kind": g.kind, "tier": g.name,
-        "discount": float(g.discount_percent or 0), "round_up": bool(g.round_up),
-        "product_ids": sorted(g.eligible_ids()),
-        "daily_limit": limit, "used_today": used,
-        "remaining": (max(0, limit - used) if limit else None),
+        "levels": [{"id": g.id, "name": g.name} for g in levels],
     }
 
 
@@ -294,7 +253,6 @@ async def create_sale(
     items: str = Form(...),
     payment: str = Form(...),
     customer_id: str = Form(None),
-    discount_code: str = Form(None),
     proof: UploadFile = File(None),
     db: Session = Depends(get_db),
 ):
@@ -303,16 +261,6 @@ async def create_sale(
         return _err("Not signed in", 401)
     if not can_sell(staff):
         return _err("You don't have permission to log sales", 403)
-
-    # Discount code → person + pricing tier (Employee / Affiliate). Server is authoritative.
-    person = group = None
-    remaining = None  # None = unlimited; else remaining discounted units today
-    if discount_code and discount_code.strip():
-        person, group = _resolve_code(db, discount_code)
-        if not person or not group:
-            return _err("Invalid or inactive discount code")
-        if group.daily_item_limit:
-            remaining = max(0, group.daily_item_limit - _code_used_today(db, person.id))
 
     payment = (payment or "").lower().strip()
     if payment not in ("unpaid", "cash", "bank"):
@@ -325,15 +273,27 @@ async def create_sale(
     if not raw:
         return _err("Add at least one item")
 
-    # Rule 1: cash/bank sale needs proof.  Rule 2: unpaid needs a customer.
+    # Buyer: the selected entity (customer/employee/affiliate/…). Required for an
+    # unpaid sale (they carry the balance); optional for cash/bank. Their assigned
+    # price level decides the per-item prices. Server is authoritative on pricing.
     is_credit = payment == "unpaid"
-    cust = None
-    if is_credit:
-        if not customer_id:
-            return _err("An unpaid sale needs a customer")
-        cust = db.get(Staff, int(customer_id))
-        if not cust:
+    buyer = None
+    if customer_id and str(customer_id).strip():
+        buyer = db.get(Staff, int(customer_id))
+        if not buyer:
             return _err("Customer not found")
+    if is_credit and not buyer:
+        return _err("An unpaid sale needs a customer")
+
+    # A buyer's active price level (if any).
+    group = None
+    if buyer and buyer.pricing_group_id:
+        g = db.get(PricingGroup, buyer.pricing_group_id)
+        if g and g.is_active:
+            group = g
+
+    # Rule 1: cash/bank sale needs proof.
+    if is_credit:
         proof_bytes = proof_mime = None
     else:
         if proof is None or not getattr(proof, "filename", ""):
@@ -356,43 +316,24 @@ async def create_sale(
         type=TX_CASH_SALE,
         status=("credit" if is_credit else "paid"),
         staff_id=staff.id,
-        customer_id=cust.id if cust else None,
+        customer_id=buyer.id if buyer else None,
         is_credit=is_credit,
         payment_method=None if is_credit else payment,
         proof=proof_bytes if not is_credit else None,
         proof_mime=proof_mime if not is_credit else None,
         pricing_group_id=group.id if group else None,
-        discount_person_id=person.id if person else None,
-        note=("%s (%s)" % (group.name, person.name)) if group else None,
+        note=("Price level: %s" % group.name) if group else None,
     )
     db.add(sale)
     db.flush()
-    discounted_qty = 0
     for p, qty in lines:
-        base = round(float(p.selling_price or 0), 2)
-        eligible = group is not None and p.id in group.eligible_ids()
-        # how many of this line's units can still be discounted (respects daily cap)
-        n = 0
-        if eligible:
-            n = qty if remaining is None else min(qty, remaining)
-            if remaining is not None:
-                remaining -= n
-        if eligible and n > 0:
-            disc = group.price_for(p)
-            db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
-                                   qty=n, unit_price=disc, cost_price=p.cost_price))
-            discounted_qty += n
-            if n < qty:  # remainder at full price (cap reached)
-                db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
-                                       qty=qty - n, unit_price=base, cost_price=p.cost_price))
-        else:
-            db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
-                                   qty=qty, unit_price=base, cost_price=p.cost_price))
-    sale.discounted_qty = discounted_qty
+        # buyer's level price if it overrides this item, else the base price
+        unit = group.price_for(p) if group else round(float(p.selling_price or 0), 2)
+        db.add(TransactionItem(transaction_id=sale.id, product_id=p.id, name=p.name,
+                               qty=qty, unit_price=unit, cost_price=p.cost_price))
     db.commit()
     db.refresh(sale)
-    return {"ok": True, "sale_id": sale.id, "total": sale.total,
-            "discounted_qty": discounted_qty}
+    return {"ok": True, "sale_id": sale.id, "total": sale.total}
 
 
 # ---------------------------------------------------------------- stock movement

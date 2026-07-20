@@ -248,16 +248,11 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     <div id="cart-lines"></div>
     <div class="carttot"><span>Total</span><span id="cart-total">₱0.00</span></div>
 
-    <div id="disc-wrap" class="hide">
-      <div class="section-label" style="margin-top:12px">Discount code <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)">— optional</span></div>
-      <div class="disc-entry" id="disc-entry">
-        <input class="txt" id="disc-input" placeholder="Employee / affiliate code" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase">
-        <button class="btn-apply" id="disc-apply" type="button">Apply</button>
-      </div>
-      <div class="disc-chip hide" id="disc-chip"></div>
-      <div class="note warn hide" id="disc-err"></div>
-      <div class="note ok hide" id="price-note"></div>
-    </div>
+    <!-- buyer: sets the price level & (for unpaid) who owes -->
+    <div class="section-label" style="margin-top:12px">Buyer <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)">— sets price level</span></div>
+    <button class="crow" id="cust-choose" type="button"><span class="cav">?</span><span class="cnm" id="cust-choose-lbl">Walk-in — base price</span><span>›</span></button>
+    <div class="disc-chip hide" id="buyer-chip"></div>
+    <div class="note ok hide" id="price-note"></div>
 
     <div class="section-label" style="margin-top:14px">Payment</div>
     <div class="seg" id="pay-seg">
@@ -276,10 +271,9 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
       </div>
     </div>
 
-    <!-- customer (unpaid) -->
+    <!-- unpaid reminder -->
     <div id="pay-cust" class="hide">
-      <div class="note warn">Unpaid sales become an outstanding balance for the customer.</div>
-      <button class="crow" id="cust-choose" type="button"><span class="cav">?</span><span class="cnm" id="cust-choose-lbl">Choose a customer…</span><span>›</span></button>
+      <div class="note warn">Unpaid sales become an outstanding balance for the buyer — choose one above.</div>
     </div>
 
     <button class="bigbtn" id="sell-submit" disabled style="margin-top:14px">Select payment</button>
@@ -434,50 +428,41 @@ function renderHomeBal(){
 }
 
 // ================= SELL =================
-let cart={}, payMode=null, proofFile=null, sellCustomer=null, appliedCode=null;
-function eligibleP(p){ return appliedCode && appliedCode.product_ids.includes(Number(p.id)); }
-function discUnitPrice(p){ const raw=p.price*(1-appliedCode.discount/100);
-  return appliedCode.round_up ? Math.ceil(raw-1e-9) : Math.round(raw*100)/100; }
+let cart={}, payMode=null, proofFile=null, sellCustomer=null;
+// The buyer's assigned price level overrides item prices; else base price.
+function priceFor(p){
+  if(sellCustomer && sellCustomer.level!=null && p.prices){
+    const ov=p.prices[String(sellCustomer.level)];
+    if(ov!=null) return Number(ov);
+  }
+  return Number(p.price);
+}
 function allocate(){
-  // Spread the discount across eligible units, respecting the code's daily cap.
-  let remaining = appliedCode ? (appliedCode.remaining==null?Infinity:appliedCode.remaining) : 0;
-  let total=0, saved=0, capHit=false; const rows=[];
+  let total=0, saved=0; const rows=[];
   Object.keys(cart).forEach(pid=>{
     const p=DATA.products.find(x=>x.id==pid), q=cart[pid];
-    let dn=0, dPrice=p.price;
-    if(eligibleP(p)){ dPrice=discUnitPrice(p); dn=Math.min(q,remaining); remaining-=dn; if(dn<q) capHit=true; }
-    const sub=dn*dPrice+(q-dn)*p.price; total+=sub; saved+=dn*(p.price-dPrice);
-    rows.push({p,q,dn,dPrice,sub});
+    const base=Number(p.price), unit=priceFor(p);
+    const sub=unit*q; total+=sub; saved+=(base-unit)*q;
+    rows.push({p,q,base,unit,sub});
   });
-  return {rows,total,saved,capHit};
+  return {rows,total,saved};
 }
-async function applyCode(){
-  const code=$('#disc-input').value.trim(); if(!code) return;
-  $('#disc-err').classList.add('hide');
-  const fd=new FormData(); fd.append('code',code);
-  const r=await fetch('/api/m/discount-code',{method:'POST',body:fd}); const j=await r.json();
-  if(!j.ok){ $('#disc-err').textContent=j.error||'Invalid code'; $('#disc-err').classList.remove('hide'); return; }
-  appliedCode=j; showCodeChip(); renderCart();
+function showBuyerChip(){
+  const chip=$('#buyer-chip');
+  if(!sellCustomer){ chip.classList.add('hide'); return; }
+  chip.classList.remove('hide');
+  const lvl = sellCustomer.level!=null ? (sellCustomer.level_name||'Price level') : 'Base price';
+  chip.innerHTML=`<span class="kt">${sellCustomer.type||'buyer'}</span><span class="who">${sellCustomer.name}<small>${lvl}</small></span><button class="rm" id="buyer-rm" type="button">×</button>`;
+  $('#buyer-rm').onclick=e=>{ e.stopPropagation(); clearBuyer(); };
 }
-function showCodeChip(){
-  $('#disc-entry').classList.add('hide');
-  const chip=$('#disc-chip'); chip.classList.remove('hide');
-  const cap = appliedCode.daily_limit ? ` · ${appliedCode.remaining} of ${appliedCode.daily_limit} left today` : '';
-  chip.innerHTML=`<span class="kt">${appliedCode.kind}</span><span class="who">${appliedCode.holder}<small>${appliedCode.tier} · −${appliedCode.discount}%${cap}</small></span><button class="rm" id="disc-rm" type="button">×</button>`;
-  $('#disc-rm').onclick=clearCode;
-}
-function clearCode(){ appliedCode=null; $('#disc-entry').classList.remove('hide'); $('#disc-input').value='';
-  $('#disc-chip').classList.add('hide'); $('#price-note').classList.add('hide'); $('#disc-err').classList.add('hide'); renderCart(); }
-$('#disc-apply').onclick=applyCode;
-$('#disc-input').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); applyCode(); }});
+function clearBuyer(){ sellCustomer=null; $('#cust-choose-lbl').textContent='Walk-in — base price';
+  $('#cust-choose .cav').textContent='?'; showBuyerChip(); renderCart(); updateSellBtn(); }
 function initSell(){
-  cart={}; payMode=null; proofFile=null; sellCustomer=null; appliedCode=null;
-  $('#disc-wrap').classList.toggle('hide', !DATA.has_codes);
-  $('#disc-entry').classList.remove('hide'); $('#disc-chip').classList.add('hide');
-  $('#disc-input').value=''; $('#disc-err').classList.add('hide'); $('#price-note').classList.add('hide');
+  cart={}; payMode=null; proofFile=null; sellCustomer=null;
+  $('#buyer-chip').classList.add('hide'); $('#price-note').classList.add('hide');
   $$('#pay-seg button').forEach(x=>x.classList.remove('on'));
   $('#pay-proof').classList.add('hide'); $('#pay-cust').classList.add('hide');
-  clearProof(); $('#cust-choose-lbl').textContent='Choose a customer…'; $('#cust-choose .cav').textContent='?';
+  clearProof(); $('#cust-choose-lbl').textContent='Walk-in — base price'; $('#cust-choose .cav').textContent='?';
   const g=$('#sell-grid'); g.innerHTML='';
   DATA.products.forEach(p=>{
     const t=document.createElement('button'); t.className='ptile'; t.dataset.pid=p.id;
@@ -501,14 +486,16 @@ function renderCart(){
     if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');}
     else{t.classList.remove('picked');b.classList.add('hide');}
   });
+  // reflect the buyer's level prices on the product tiles
+  $$('#sell-grid .ptile').forEach(t=>{
+    const p=DATA.products.find(x=>x.id==t.dataset.pid); if(!p) return;
+    const pp=$('.pp',t); if(pp) pp.textContent=peso(priceFor(p));
+  });
   const lines=$('#cart-lines'); lines.innerHTML='';
   const ids=Object.keys(cart);
   const al=allocate();
-  al.rows.forEach(({p,q,dn,dPrice,sub})=>{
-    let lbl;
-    if(dn===q && dn>0) lbl=`<s>${peso(p.price)}</s> ${peso(dPrice)} each`;
-    else if(dn>0) lbl=`${dn}×${peso(dPrice)} + ${q-dn}×${peso(p.price)}`;
-    else lbl=`${peso(p.price)} each`;
+  al.rows.forEach(({p,q,base,unit,sub})=>{
+    let lbl = (unit<base-0.005) ? `<s>${peso(base)}</s> ${peso(unit)} each` : `${peso(unit)} each`;
     const row=document.createElement('div'); row.className='cartline';
     row.innerHTML=`<div class="cn">${p.name}<small>${lbl}</small></div>
       <div class="stepper"><button data-m>−</button><input class="q" type="number" inputmode="numeric" min="0" value="${q}"><button data-p>+</button></div>
@@ -522,9 +509,9 @@ function renderCart(){
   });
   $('#cart-total').textContent=peso(al.total);
   const note=$('#price-note');
-  if(appliedCode){ let msg = al.saved>0.005 ? `Saves ${peso(al.saved)} on eligible items` : 'No eligible items in this cart';
-    if(al.capHit) msg += ' · daily cap reached — extra at full price';
-    note.textContent=msg; note.classList.remove('hide');
+  if(sellCustomer && sellCustomer.level!=null && al.saved>0.005){
+    note.textContent=`${sellCustomer.level_name||'Level'} pricing — saves ${peso(al.saved)}`;
+    note.classList.remove('hide');
   } else note.classList.add('hide');
   // peek bar summary
   const qty=al.rows.reduce((s,r)=>s+r.q,0);
@@ -561,17 +548,18 @@ $('#proof-rm').onclick=()=>{clearProof();updateSellBtn();};
 function setProof(f){ proofFile=f; const u=URL.createObjectURL(f);
   $('#proof-img').src=u; $('#proof-thumb').classList.remove('hide'); $('#proof-drop').classList.add('hide'); updateSellBtn(); }
 function clearProof(){ proofFile=null; $('#proof-input').value=''; $('#proof-thumb').classList.add('hide'); $('#proof-drop').classList.remove('hide'); }
-// customer choose
+// buyer choose (sets the price level & reprices the cart)
 $('#cust-choose').onclick=()=>openCustPicker(c=>{
   sellCustomer=c; $('#cust-choose-lbl').textContent=c.name;
-  $('#cust-choose .cav').textContent=c.name[0].toUpperCase(); updateSellBtn();
+  $('#cust-choose .cav').textContent=c.name[0].toUpperCase();
+  showBuyerChip(); renderCart(); updateSellBtn();
 });
 function updateSellBtn(){
   const btn=$('#sell-submit'); const n=Object.keys(cart).length;
   let label='Log sale', ok=true;
   if(!n){label='Add items';ok=false;}
   else if(!payMode){label='Select payment';ok=false;}
-  else if(payMode==='unpaid' && !sellCustomer){label='Add customer to log';ok=false;}
+  else if(payMode==='unpaid' && !sellCustomer){label='Add a buyer to log';ok=false;}
   else if(payMode!=='unpaid' && !proofFile){label='Attach proof to log';ok=false;}
   btn.textContent=label; btn.disabled=!ok;
 }
@@ -580,9 +568,8 @@ $('#sell-submit').onclick=async()=>{
   const fd=new FormData();
   fd.append('items', JSON.stringify(Object.entries(cart).map(([product_id,quantity])=>({product_id,quantity}))));
   fd.append('payment', payMode);
-  if(appliedCode) fd.append('discount_code', appliedCode.code);
-  if(payMode==='unpaid') fd.append('customer_id', sellCustomer.id);
-  else fd.append('proof', proofFile);
+  if(sellCustomer) fd.append('customer_id', sellCustomer.id);
+  if(payMode!=='unpaid') fd.append('proof', proofFile);
   const r=await fetch('/api/m/sale',{method:'POST',body:fd}); const j=await r.json();
   if(!j.ok){ alert(j.error||'Could not save'); btn.textContent=old; btn.disabled=false; return; }
   const lines=allocate().rows.map(({p,q,sub})=>({n:p.name,q,sub}));

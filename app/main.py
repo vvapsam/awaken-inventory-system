@@ -105,6 +105,9 @@ def startup():
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'employee'"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS round_up BOOLEAN NOT NULL DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
+        # Price levels v2: explicit per-item price + entity's assigned level.
+        conn.execute(text("ALTER TABLE pricing_group_items ADD COLUMN IF NOT EXISTS price NUMERIC(10,2)"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS discounted_qty INTEGER NOT NULL DEFAULT 0; END IF; END $$;"))
         # Unified people: staff table also holds employees/affiliates (may have no login)
         conn.execute(text("ALTER TABLE entity ALTER COLUMN username DROP NOT NULL"))
@@ -986,8 +989,7 @@ def staff_list(request: Request, type: str = "", db: Session = Depends(get_db)):
     if ftype:
         q = q.filter(Staff.person_type == ftype)
     people = q.order_by(Staff.is_active.desc(), Staff.name).all()
-    usage = {p.id: _code_used_today(db, p.id) for p in people if p.discount_code}
-    return render(request, "staff.html", db, staff, people=people, usage=usage,
+    return render(request, "staff.html", db, staff, people=people, usage={},
                   ftype=ftype, ftype_label=(ENTITY_TYPE_LABELS.get(ftype, "") if ftype else ""),
                   ENTITY_TYPES=ENTITY_TYPES)
 
@@ -997,9 +999,10 @@ def _roles(db):
 
 
 def _form(request, db, staff, person=None, error=None, preset_type=""):
+    levels = db.query(PricingGroup).order_by(PricingGroup.name).all()
     return render(request, "staff_form.html", db, staff, person=person, error=error,
                   ENTITY_TYPES=ENTITY_TYPES, DISCOUNT_TYPES=list(DISCOUNT_TYPES),
-                  roles=_roles(db), preset_type=preset_type)
+                  roles=_roles(db), preset_type=preset_type, price_levels=levels)
 
 
 @app.get("/admin/staff/new", response_class=HTMLResponse)
@@ -1074,23 +1077,18 @@ def _apply_access(db, person, form, err):
 
 
 def _apply_type(db, person, person_type, form, err):
-    """Apply the relationship type + discount code. Returns error or None."""
-    if person_type in DISCOUNT_TYPES:
-        wanted = _norm_code(form.get("discount_code"))
-        if not wanted:
-            wanted = person.discount_code or _gen_code(db, person.name, person_type,
-                                                       exclude_id=person.id)
-        if wanted != person.discount_code and db.query(Staff).filter(
-                Staff.discount_code == wanted, Staff.id != (person.id or -1)).first():
-            return err(f"Discount code '{wanted}' is already taken.")
-        person.person_type = person_type
-        person.discount_code = wanted
-    elif person_type:  # coach / supplier (no discount code)
-        person.person_type = person_type
-        person.discount_code = None
+    """Apply the relationship type + assigned price level. Returns error or None."""
+    person.person_type = person_type or None
+    # Price level (pricing_group). Blank = Base price.
+    pg = (form.get("pricing_group_id") or "").strip()
+    if pg:
+        try:
+            gid = int(pg)
+            person.pricing_group_id = gid if db.get(PricingGroup, gid) else None
+        except ValueError:
+            person.pricing_group_id = None
     else:
-        person.person_type = None
-        person.discount_code = None
+        person.pricing_group_id = None
     # Affiliate/coach billing fields (affiliates carry a fee + billing date).
     if person_type in ("affiliate", "coach"):
         person.start_date = _date_only(form.get("start_date"))
@@ -2458,77 +2456,75 @@ def pricing_list(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    groups = db.query(PricingGroup).order_by(PricingGroup.kind, PricingGroup.name).all()
-    return render(request, "pricing.html", db, staff, groups=groups, group=None,
-                  products=[], PRICING_KINDS=PRICING_KINDS)
+    groups = db.query(PricingGroup).order_by(PricingGroup.name).all()
+    products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+    # price_map[gid][pid] = explicit price (only where set)
+    price_map = {g.id: g.price_map() for g in groups}
+    return render(request, "pricing.html", db, staff, groups=groups, products=products,
+                  price_map=price_map)
 
 
 @app.post("/admin/pricing/new")
-def pricing_new(request: Request, name: str = Form(...), kind: str = Form("employee"),
-                discount_percent: str = Form("0"), db: Session = Depends(get_db)):
+def pricing_new(request: Request, name: str = Form(...), db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
-    try:
-        disc = max(0.0, min(100.0, float(discount_percent or 0)))
-    except ValueError:
-        disc = 0.0
-    kind = kind if kind in ("employee", "affiliate") else "employee"
-    g = PricingGroup(name=name.strip() or "Tier", kind=kind, discount_percent=disc,
-                     round_up=(kind == "employee"),
-                     daily_item_limit=(2 if kind == "employee" else None))
-    db.add(g)
-    db.commit()
-    return RedirectResponse(f"/admin/pricing/{g.id}", status_code=303)
+    nm = (name or "").strip()
+    if nm:
+        db.add(PricingGroup(name=nm, kind="level", discount_percent=0))
+        db.commit()
+    return RedirectResponse("/admin/pricing", status_code=303)
 
 
-@app.get("/admin/pricing/{gid}", response_class=HTMLResponse)
-def pricing_edit(request: Request, gid: int, db: Session = Depends(get_db)):
-    staff, redir = require(request, db, admin=True)
-    if redir:
-        return redir
-    group = db.get(PricingGroup, gid)
-    if not group:
-        return RedirectResponse("/admin/pricing", status_code=303)
-    groups = db.query(PricingGroup).order_by(PricingGroup.kind, PricingGroup.name).all()
-    products = db.query(Product).filter(Product.is_active).order_by(Product.name).all()
-    return render(request, "pricing.html", db, staff, groups=groups, group=group,
-                  products=products, eligible=group.eligible_ids(), PRICING_KINDS=PRICING_KINDS)
-
-
-@app.post("/admin/pricing/{gid}")
-def pricing_update(request: Request, gid: int, name: str = Form(...),
-                   kind: str = Form("employee"), discount_percent: str = Form("0"),
-                   round_up: str = Form(None), daily_item_limit: str = Form(""),
-                   product_ids: list[str] = Form(default=[]),
+@app.post("/admin/pricing/{gid}/rename")
+def pricing_rename(request: Request, gid: int, name: str = Form(...),
                    is_active: str = Form(None), db: Session = Depends(get_db)):
     staff, redir = require(request, db, admin=True)
     if redir:
         return redir
     group = db.get(PricingGroup, gid)
     if group:
-        try:
-            disc = max(0.0, min(100.0, float(discount_percent or 0)))
-        except ValueError:
-            disc = 0.0
-        group.name = name.strip() or group.name
-        group.kind = kind if kind in ("employee", "affiliate") else group.kind
-        group.discount_percent = disc
-        group.round_up = bool(round_up)
-        try:
-            group.daily_item_limit = int(daily_item_limit) if str(daily_item_limit).strip() else None
-        except ValueError:
-            group.daily_item_limit = None
+        group.name = (name or "").strip() or group.name
         group.is_active = bool(is_active)
-        group.items.clear()
-        db.flush()
-        for pid in product_ids:
-            try:
-                group.items.append(PricingGroupItem(product_id=int(pid)))
-            except ValueError:
-                pass
         db.commit()
-    return RedirectResponse(f"/admin/pricing/{gid}", status_code=303)
+    return RedirectResponse("/admin/pricing", status_code=303)
+
+
+@app.post("/admin/pricing/save")
+async def pricing_save(request: Request, db: Session = Depends(get_db)):
+    """Save the whole level×item price matrix. Fields: price_<gid>_<pid> = price
+    string (blank = use base price → no row)."""
+    staff, redir = require(request, db, admin=True)
+    if redir:
+        return redir
+    form = await request.form()
+    groups = db.query(PricingGroup).all()
+    product_ids = {p.id for p in db.query(Product.id).all()}
+    for g in groups:
+        g.items.clear()
+    db.flush()
+    for key, val in form.items():
+        if not key.startswith("price_"):
+            continue
+        try:
+            _, gs, ps = key.split("_", 2)
+            gid, pid = int(gs), int(ps)
+        except (ValueError, TypeError):
+            continue
+        sval = (val or "").strip()
+        if not sval or pid not in product_ids:
+            continue
+        try:
+            price = round(float(sval), 2)
+        except ValueError:
+            continue
+        if price < 0:
+            continue
+        group = next((g for g in groups if g.id == gid), None)
+        if group is not None:
+            group.items.append(PricingGroupItem(product_id=pid, price=price))
+    db.commit()
+    return RedirectResponse("/admin/pricing", status_code=303)
 
 
 @app.post("/admin/pricing/{gid}/delete")
@@ -2539,6 +2535,7 @@ def pricing_delete(request: Request, gid: int, db: Session = Depends(get_db)):
     g = db.get(PricingGroup, gid)
     if g:
         db.query(Transaction).filter(Transaction.pricing_group_id == gid).update({"pricing_group_id": None})
+        db.query(Staff).filter(Staff.pricing_group_id == gid).update({"pricing_group_id": None})
         db.flush()
         db.delete(g)
         db.commit()
