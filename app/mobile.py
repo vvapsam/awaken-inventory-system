@@ -105,6 +105,62 @@ def _on_hand(maps, pid):
     return int(maps["mov"].get(pid, 0)) - int(maps["sold"].get(pid, 0))
 
 
+# ---------------------------------------------------------------- sales history
+def _sees_all_sales(staff):
+    return staff.role == "admin" or can(staff, "view_reports")
+
+
+def _sale_scope(db, staff):
+    """Cash-sale query scoped to what this user may see: admins/reporters see
+    everyone's; regular staff see only their own."""
+    q = db.query(Transaction).filter(Transaction.type == TX_CASH_SALE)
+    if not _sees_all_sales(staff):
+        q = q.filter(Transaction.staff_id == staff.id)
+    return q
+
+
+def _sale_brief(s, tz):
+    local = s.occurred_at.astimezone(tz) if s.occurred_at else None
+    parts = [f"{int(i.qty)}× {i.name}" for i in s.items if (i.qty or 0) > 0]
+    pay = "unpaid" if s.is_credit else (s.payment_method or "cash")
+    return {
+        "id": s.id,
+        "summary": " · ".join(parts) if parts else "—",
+        "total": round(float(s.total or 0), 2),
+        "pay": pay,
+        "customer": (s.customer.name if (s.customer_id and s.customer) else None),
+        "staff": s.staff.name if s.staff else "",
+        "date": local.strftime("%Y-%m-%d") if local else "",
+        "time": (local.strftime("%I:%M %p").lstrip("0") if local else ""),
+    }
+
+
+def _sales_today(db, staff, tz):
+    start = datetime.combine(_today(), datetime.min.time()).replace(tzinfo=tz)
+    rows = _sale_scope(db, staff).filter(Transaction.occurred_at >= start).all()
+    total = sum(float(s.total or 0) for s in rows)
+    items = sum(int(i.qty) for s in rows for i in s.items if (i.qty or 0) > 0)
+    return {"total": round(total, 2), "count": len(rows), "items": items}
+
+
+@router.get("/api/m/history")
+def sales_history(request: Request, db: Session = Depends(get_db)):
+    staff = current_staff(request, db)
+    if not staff:
+        return _err("Not signed in", 401)
+    if not (can_sell(staff) or _sees_all_sales(staff)):
+        return _err("Not allowed", 403)
+    tz = _tz()
+    rows = (_sale_scope(db, staff)
+            .order_by(Transaction.occurred_at.desc()).limit(80).all())
+    return {
+        "ok": True,
+        "scope": "all" if _sees_all_sales(staff) else "mine",
+        "today": _sales_today(db, staff, tz),
+        "sales": [_sale_brief(s, tz) for s in rows],
+    }
+
+
 # ---------------------------------------------------------------- page shell
 @router.get("/m", response_class=HTMLResponse)
 def mobile_app(request: Request, db: Session = Depends(get_db)):
@@ -178,6 +234,13 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
             ],
         }
 
+    # Recent sales preview for the Home screen (scoped to what the user may see).
+    recent = []
+    if can_sell(staff) or _sees_all_sales(staff):
+        rrows = (_sale_scope(db, staff)
+                 .order_by(Transaction.occurred_at.desc()).limit(5).all())
+        recent = [_sale_brief(s, _tz()) for s in rrows]
+
     return {
         "ok": True,
         "staff": {"name": staff.name, "role": staff.role},
@@ -187,6 +250,8 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "balances": balances,
         "loss_chips": LOSS_MEMO_CHIPS,
         "levels": [{"id": g.id, "name": g.name} for g in levels],
+        "recent": recent,
+        "sales_scope": "all" if _sees_all_sales(staff) else "mine",
     }
 
 

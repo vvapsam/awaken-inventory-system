@@ -119,6 +119,36 @@ input,select{font-family:inherit;font-size:16px}
 .h-menu .hm-item:active{background:var(--paper)}
 .h-menu .hm-item.danger{color:#c0392b;border-top:1px solid var(--line)}
 .h-menu .hm-item.danger svg{color:#c0392b}
+/* recent sales (home) + history screen */
+.seclbl2{display:flex;align-items:center;justify-content:space-between;margin:10px 4px 0}
+.seclbl2 .t{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#9aa1aa}
+.seclbl2 .all{display:flex;align-items:center;gap:3px;font-size:.8rem;font-weight:700;color:var(--green-dark);background:none}
+.seclbl2 .all svg{width:14px;height:14px;stroke-width:3}
+.rlist{border-radius:20px;background:var(--white);box-shadow:0 12px 30px rgba(11,26,23,.10);overflow:hidden;margin-top:2px}
+.rrow{display:flex;align-items:center;gap:12px;padding:13px 15px;border-top:1px solid #f1f2f4;width:100%;text-align:left;background:none}
+.rrow:first-child{border-top:0}
+.rrow:active{background:#fafbfb}
+.rrow .ri{width:40px;height:40px;border-radius:11px;background:#f0f7f4;color:var(--green-dark);display:flex;align-items:center;justify-content:center;flex:none}
+.rrow .ri svg{width:20px;height:20px;stroke-width:1.9}
+.rrow .rc{flex:1;min-width:0}
+.rrow .rc .items{font-weight:600;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rrow .rc .meta{color:var(--muted);font-size:.78rem;margin-top:2px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.rrow .rr{text-align:right;flex:none}
+.rrow .rr .amt{font-family:Poppins;font-weight:700;font-size:.98rem}
+.rrow .rr .time{color:var(--muted);font-size:.74rem;margin-top:2px}
+.pay{font-size:.63rem;font-weight:700;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+.pay.cash{background:#e8f8f1;color:var(--green-dark)}
+.pay.bank{background:#eaf1ff;color:#3f6fd0}
+.pay.unpaid{background:var(--owed-tint,#fcefe9);color:#c0522f}
+.daygroup{margin-top:16px}
+.dayhead{display:flex;align-items:baseline;justify-content:space-between;margin:0 4px 8px}
+.dayhead .d{font-family:Poppins;font-weight:700;font-size:1rem}
+.dayhead .dt{color:var(--muted);font-size:.82rem;font-weight:600}
+.hist-sum{background:linear-gradient(135deg,#0b6b62,#0f9e91 70%,#18BE7C 135%);color:#fff;border-radius:18px;
+  padding:15px 18px;box-shadow:0 14px 30px -10px rgba(15,158,145,.5);display:flex;align-items:center;justify-content:space-between}
+.hist-sum .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.82);font-weight:600}
+.hist-sum .v{font-family:Poppins;font-weight:700;font-size:1.7rem;margin-top:2px}
+.hist-sum .r{text-align:right;font-size:.82rem;color:rgba(255,255,255,.9);line-height:1.4}
 .badge{position:absolute;top:14px;right:14px;background:var(--ink);color:#fff;font-weight:700;
   font-size:.78rem;border-radius:999px;padding:3px 10px}
 
@@ -307,6 +337,12 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
         <div id="home-low-list"></div>
       </div>
     </div>
+
+    <div id="home-recentwrap" class="hide">
+      <div class="seclbl2"><span class="t">Recent sales</span>
+        <button class="all" type="button" id="home-recent-all">See all <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></div>
+      <div class="rlist" id="home-recent-list"></div>
+    </div>
   </div>
 
   <!-- account menu -->
@@ -325,6 +361,16 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
       Sign out
     </a>
   </div>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section id="s-history" class="screen">
+  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">Recent sales</h2></div>
+  <div class="hist-sum" id="hist-sum">
+    <div><div class="k" id="hist-sum-k">Sales today</div><div class="v" id="hist-sum-v">₱0.00</div></div>
+    <div class="r" id="hist-sum-r">—</div>
+  </div>
+  <div id="hist-body" style="margin-top:16px"><div class="loader">Loading…</div></div>
 </section>
 
 <!-- ============ SELL ============ -->
@@ -501,7 +547,53 @@ function openScreen(name){
   if(name==='sell') initSell();
   if(name==='adjust') initAdjust();
   if(name==='balances') initBalances();
+  if(name==='history') initHistory();
   go(name);
+}
+
+// ---- sales history (home preview + full screen) ----
+const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>';
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function payTag(p){ const k=(p==='bank')?'bank':(p==='unpaid'?'unpaid':'cash'); const lbl=k.charAt(0).toUpperCase()+k.slice(1); return `<span class="pay ${k}">${lbl}</span>`; }
+function saleRow(s, withTime){
+  const meta = [payTag(s.pay)];
+  if(s.customer) meta.push(esc(s.customer));
+  if(withTime && s.staff) meta.push('by '+esc(s.staff)); else if(!withTime) meta.push(esc(s.time));
+  const right = withTime ? `<div class="amt">${peso(s.total)}</div><div class="time">${esc(s.time)}</div>` : `<div class="amt">${peso(s.total)}</div>`;
+  return `<div class="rrow"><div class="ri">${CART_SVG}</div>
+    <div class="rc"><div class="items">${esc(s.summary)}</div><div class="meta">${meta.join(' <span style="opacity:.5">·</span> ')}</div></div>
+    <div class="rr">${right}</div></div>`;
+}
+function renderRecent(){
+  const wrap=$('#home-recentwrap'), list=$('#home-recent-list');
+  const rec=DATA.recent||[];
+  if(!rec.length){ wrap.classList.add('hide'); return; }
+  wrap.classList.remove('hide');
+  list.innerHTML=rec.map(s=>saleRow(s,false)).join('');
+}
+$('#home-recent-all').onclick=()=>openScreen('history');
+async function initHistory(){
+  $('#hist-body').innerHTML='<div class="loader">Loading…</div>';
+  const r=await fetch('/api/m/history'); const j=await r.json();
+  if(!j.ok){ $('#hist-body').innerHTML='<div class="loader">'+(j.error||'Could not load')+'</div>'; return; }
+  $('#hist-sum-k').textContent = j.scope==='mine' ? 'My sales today' : 'Sales today';
+  $('#hist-sum-v').textContent = peso(j.today.total);
+  $('#hist-sum-r').innerHTML = `${j.today.count} sale${j.today.count==1?'':'s'}<br>${j.today.items} item${j.today.items==1?'':'s'}`;
+  const sales=j.sales||[];
+  if(!sales.length){ $('#hist-body').innerHTML='<div class="loader">No sales yet</div>'; return; }
+  // group by date, newest first (already sorted desc)
+  const today=new Date(); const y=new Date(); y.setDate(today.getDate()-1);
+  const fmtKey=d=>d.toISOString().slice(0,10);
+  const todayK=fmtKey(today), yestK=fmtKey(y);
+  const groups=[]; const idx={};
+  sales.forEach(s=>{ if(!(s.date in idx)){ idx[s.date]=groups.length; groups.push({date:s.date,rows:[],total:0}); } const g=groups[idx[s.date]]; g.rows.push(s); g.total+=Number(s.total)||0; });
+  const label=dstr=>{ if(dstr===todayK) return 'Today'; if(dstr===yestK) return 'Yesterday';
+    const d=new Date(dstr+'T00:00'); return d.toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric'}); };
+  let html='';
+  groups.forEach(g=>{
+    html+=`<div class="daygroup"><div class="dayhead"><span class="d">${label(g.date)}</span><span class="dt">${peso(g.total)} · ${g.rows.length} sale${g.rows.length==1?'':'s'}</span></div><div class="rlist">${g.rows.map(s=>saleRow(s,true)).join('')}</div></div>`;
+  });
+  $('#hist-body').innerHTML=html;
 }
 
 // ---- bootstrap ----
@@ -515,6 +607,7 @@ async function boot(){
   if(!DATA.perms.settle) $('.ncard.bal').classList.add('hide');
   renderHomeBal();
   renderLowStock();
+  renderRecent();
   // account menu: role label + admin-only dashboard shortcut
   const isAdmin = DATA.staff && DATA.staff.role === 'admin';
   $('#home-menu-role').textContent = isAdmin ? 'Administrator' : 'Staff';
