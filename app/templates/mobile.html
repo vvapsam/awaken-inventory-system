@@ -104,6 +104,21 @@ input,select{font-family:inherit;font-size:16px}
 .watch .wrow .q.warn{color:#c9821f}
 .watch .wrow .pill{font-size:.66rem;font-weight:700;color:#fff;background:var(--owed);border-radius:999px;padding:2px 8px}
 .watch .wrow .pill.warn{background:#E8A13C}
+/* account menu (tap avatar) */
+.h-av{cursor:pointer}
+.h-menu-bd{position:fixed;inset:0;z-index:60}
+.h-menu{position:fixed;top:calc(var(--safe-t) + 76px);right:16px;z-index:61;width:216px;background:#fff;
+  border-radius:16px;box-shadow:0 20px 46px rgba(11,26,23,.26);overflow:hidden;animation:popmenu .14s ease}
+@keyframes popmenu{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+.h-menu .hm-user{padding:14px 16px;border-bottom:1px solid var(--line)}
+.h-menu .hm-name{font-weight:700;font-size:.98rem;line-height:1.15}
+.h-menu .hm-role{color:var(--muted);font-size:.8rem;margin-top:2px}
+.h-menu .hm-item{display:flex;align-items:center;gap:11px;padding:13px 16px;color:var(--ink);
+  text-decoration:none;font-weight:600;font-size:.94rem;width:100%;text-align:left;background:none}
+.h-menu .hm-item svg{width:19px;height:19px;stroke-width:2;color:var(--muted)}
+.h-menu .hm-item:active{background:var(--paper)}
+.h-menu .hm-item.danger{color:#c0392b;border-top:1px solid var(--line)}
+.h-menu .hm-item.danger svg{color:#c0392b}
 .badge{position:absolute;top:14px;right:14px;background:var(--ink);color:#fff;font-weight:700;
   font-size:.78rem;border-radius:999px;padding:3px 10px}
 
@@ -255,7 +270,7 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
   <div class="h-hero">
     <div class="h-top">
       <div class="h-brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 20h16z"/></svg></span> AWAKEN</div>
-      <div class="h-av">{{ staff.name[0]|upper }}</div>
+      <button class="h-av" id="home-av" type="button" aria-label="Account menu">{{ staff.name[0]|upper }}</button>
     </div>
     <div class="h-greet">
       <h1 class="hd">Hi, {{ staff.name.split()[0] }} 👋</h1>
@@ -292,6 +307,23 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
         <div id="home-low-list"></div>
       </div>
     </div>
+  </div>
+
+  <!-- account menu -->
+  <div class="h-menu-bd hide" id="home-menu-bd"></div>
+  <div class="h-menu hide" id="home-menu">
+    <div class="hm-user">
+      <div class="hm-name">{{ staff.name }}</div>
+      <div class="hm-role" id="home-menu-role">Staff</div>
+    </div>
+    <a class="hm-item hide" id="home-menu-dash" href="/dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+      Full dashboard
+    </a>
+    <a class="hm-item danger" href="/logout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+      Sign out
+    </a>
   </div>
 </section>
 
@@ -483,9 +515,20 @@ async function boot(){
   if(!DATA.perms.settle) $('.ncard.bal').classList.add('hide');
   renderHomeBal();
   renderLowStock();
+  // account menu: role label + admin-only dashboard shortcut
+  const isAdmin = DATA.staff && DATA.staff.role === 'admin';
+  $('#home-menu-role').textContent = isAdmin ? 'Administrator' : 'Staff';
+  $('#home-menu-dash').classList.toggle('hide', !isAdmin);
   const d=new Date();
   $('#home-date').textContent=d.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'});
 }
+function toggleAcctMenu(open){
+  const m=$('#home-menu'), bd=$('#home-menu-bd');
+  const show = open===undefined ? m.classList.contains('hide') : open;
+  m.classList.toggle('hide', !show); bd.classList.toggle('hide', !show);
+}
+$('#home-av').onclick=e=>{ e.stopPropagation(); toggleAcctMenu(); };
+$('#home-menu-bd').onclick=()=>toggleAcctMenu(false);
 function renderHomeBal(){
   const b=DATA.balances||{count:0,total:0};
   const badge=$('#home-bal-badge');
