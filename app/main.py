@@ -525,6 +525,20 @@ def signed_qty(movement_type: str, qty: int, direction: str = "add") -> int:
 
 # ---------- auth ----------
 
+# Phones/tablets get sent to the mobile app (/m); desktops to the dashboard.
+_MOBILE_UA_HINTS = ("mobi", "android", "iphone", "ipod", "ipad", "windows phone",
+                    "blackberry", "webos", "opera mini", "iemobile", "silk")
+
+
+def _is_mobile_ua(request):
+    ua = (request.headers.get("user-agent") or "").lower()
+    return any(h in ua for h in _MOBILE_UA_HINTS)
+
+
+def _post_login_dest(request):
+    return "/m" if _is_mobile_ua(request) else "/dashboard"
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db)):
     # On the public payments subdomain (pay.awakengym.com), the root IS the
@@ -533,7 +547,7 @@ def home(request: Request, db: Session = Depends(get_db)):
     if host.startswith("pay."):
         return templates.TemplateResponse("order.html", {"request": request})
     staff = current_staff(request, db)
-    return RedirectResponse("/dashboard" if staff else "/login", status_code=303)
+    return RedirectResponse(_post_login_dest(request) if staff else "/login", status_code=303)
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -551,7 +565,7 @@ def login(request: Request, username: str = Form(...), pin: str = Form(...), db:
             "login.html", {"request": request, "error": "Wrong username or PIN."}
         )
     request.session["staff_id"] = staff.id
-    return RedirectResponse("/dashboard", status_code=303)
+    return RedirectResponse(_post_login_dest(request), status_code=303)
 
 
 @app.get("/logout")
