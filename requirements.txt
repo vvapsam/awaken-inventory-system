@@ -7,3 +7,4 @@ python-multipart==0.0.9
 itsdangerous==2.2.0
 pillow==10.4.0
 pytesseract==0.3.13
+qrcode==7.4.2

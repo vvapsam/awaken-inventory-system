@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AWAKEN — Liability Waiver</title>
+<title>AWAKEN — Member Waiver</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
@@ -19,17 +19,19 @@ h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em
   padding:calc(env(safe-area-inset-top,0px) + 34px) 24px 42px;border-radius:0 0 26px 26px;text-align:center}
 .logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:10px 16px;box-shadow:0 8px 22px rgba(11,26,23,.20)}
 .logoTile img{height:40px;width:auto;max-width:220px;display:block}
-.hero h1{font-size:1.65rem;margin-top:18px}
+.hero h1{font-size:1.6rem;margin-top:18px}
 .hero p{color:rgba(255,255,255,.85);margin:7px 0 0;font-size:.9rem}
 .card{background:var(--white);margin:16px;border-radius:18px;box-shadow:0 12px 30px rgba(11,26,23,.08);padding:20px}
-.legal{max-height:230px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:#fbfcfc;font-size:.86rem;line-height:1.55;color:#33383f}
-.legal h3{font-size:.92rem;margin:14px 0 5px}.legal h3:first-child{margin-top:0}
+.seclbl{font-family:Poppins;font-weight:700;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;color:var(--green-d);margin:0 0 12px}
+.legal{max-height:210px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:#fbfcfc;font-size:.85rem;line-height:1.55;color:#33383f}
+.legal h3{font-size:.9rem;margin:13px 0 5px}.legal h3:first-child{margin-top:0}
 .legal p{margin:0 0 9px}
 .lbl{display:block;font-weight:600;font-size:.85rem;margin:15px 2px 6px}
+.hintlbl{color:var(--muted);font-weight:500;font-size:.78rem}
 .req{color:var(--owed)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-input[type=text],input[type=email],input[type=tel]{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;font-family:inherit;outline:none;background:#fff}
-input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
+input[type=text],input[type=email],input[type=tel],select{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
+input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
 .two .fld .lbl{margin-top:0}
 .sigbox{position:relative;border:1.5px dashed #cfd5da;border-radius:12px;background:#fcfdfd;height:190px;touch-action:none;overflow:hidden}
 .sigbox canvas{width:100%;height:100%;display:block}
@@ -49,23 +51,36 @@ input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
 .foot{text-align:center;color:var(--muted);font-size:.76rem;margin-top:14px}
 .spin{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
+.gate{text-align:center;padding:26px 10px}
+.gate .qi{width:64px;height:64px;border-radius:16px;background:#eef3f2;color:var(--green-d);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.gate .qi svg{width:34px;height:34px;stroke-width:1.8}
+.gate h2{font-size:1.25rem}.gate p{color:var(--muted);margin:8px 0 0;font-size:.95rem;line-height:1.5}
 .done{display:none;text-align:center;padding:20px 8px}
 .done .chk{width:74px;height:74px;border-radius:999px;background:#e2f6ec;color:var(--green-d);display:flex;align-items:center;justify-content:center;margin:8px auto 14px}
 .done .chk svg{width:38px;height:38px;stroke-width:2.6}
-.done h2{font-size:1.4rem}
-.done p{color:var(--muted);margin:8px 0 0;font-size:.92rem}
+.done h2{font-size:1.4rem}.done p{color:var(--muted);margin:8px 0 0;font-size:.92rem}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="hero">
     <div class="logoTile"><img src="/order-logo" alt="AWAKEN"></div>
-    <h1>Liability Waiver &amp; Release</h1>
-    <p>Please read, fill in your details, and sign below.</p>
+    <h1>Member Waiver</h1>
+    <p>{% if valid %}Fill in your details and sign below.{% else %}Welcome to AWAKEN!{% endif %}</p>
   </div>
 
+  {% if not valid %}
+  <div class="card gate">
+    <div class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01"/></svg></div>
+    <h2>Please scan the QR at the front desk</h2>
+    <p>To sign our member waiver, scan the QR code posted at the AWAKEN front desk with your phone camera. See our staff if you need help.</p>
+  </div>
+  {% else %}
   <form id="waiver-form">
+    <input type="hidden" id="key" value="{{ k }}">
+
     <div class="card">
+      <div class="seclbl">The waiver</div>
       <div class="legal">
         <h3>Assumption of Risk</h3>
         <p>I understand that participation in physical exercise, fitness training, and use of the facilities and equipment at AWAKEN Fitness Center involves inherent risks, including but not limited to muscle strains, sprains, injury, or in rare cases more serious harm. I voluntarily choose to participate with full knowledge of these risks.</p>
@@ -79,6 +94,7 @@ input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
     </div>
 
     <div class="card">
+      <div class="seclbl">Your details</div>
       <div class="two">
         <div class="fld"><label class="lbl">First name <span class="req">*</span></label><input type="text" id="fname" autocomplete="given-name" required></div>
         <div class="fld"><label class="lbl">Last name <span class="req">*</span></label><input type="text" id="lname" autocomplete="family-name" required></div>
@@ -87,12 +103,27 @@ input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
       <input type="email" id="email" autocomplete="email" placeholder="you@email.com" required>
       <label class="lbl">Phone <span class="req">*</span></label>
       <input type="tel" id="phone" autocomplete="tel" placeholder="09xx xxx xxxx" required>
+      <label class="lbl">How did you find us? <span class="req">*</span></label>
+      <select id="referral" required>
+        <option value="" selected disabled>Choose one…</option>
+        {% for r in referrals %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+    </div>
 
-      <label class="lbl">Signature <span class="req">*</span></label>
+    <div class="card">
+      <div class="seclbl">Emergency contact <span class="hintlbl">(optional)</span></div>
+      <div class="two">
+        <div class="fld"><label class="lbl">Name</label><input type="text" id="ename" autocomplete="name"></div>
+        <div class="fld"><label class="lbl">Number</label><input type="tel" id="ephone" placeholder="09xx xxx xxxx"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="seclbl">Signature</div>
       <div class="sigbox" id="sigbox">
         <canvas id="sig"></canvas>
         <div class="line"></div>
-        <div class="hint">✍️ Sign with your finger or mouse</div>
+        <div class="hint">✍️ Sign with your finger</div>
       </div>
       <div class="sigtools"><span class="x" id="sig-date"></span><button type="button" class="clearbtn" id="clear">Clear</button></div>
 
@@ -106,11 +137,13 @@ input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
 
   <div class="card done" id="done">
     <div class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
-    <h2>Waiver signed 🎉</h2>
-    <p id="done-msg">Thanks! Your signed waiver is on file. You can hand the device back to staff.</p>
+    <h2>All set 🎉</h2>
+    <p id="done-msg">Thanks! Your signed waiver is on file. Welcome to AWAKEN — you can hand the device back to staff.</p>
   </div>
+  {% endif %}
 </div>
 
+{% if valid %}
 <script>
 const $=id=>document.getElementById(id);
 const box=$('sigbox'), canvas=$('sig'), ctx=canvas.getContext('2d');
@@ -128,26 +161,29 @@ canvas.addEventListener('touchstart',start,{passive:false}); canvas.addEventList
 $('clear').onclick=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); hasSig=false; box.classList.remove('signed'); update(); };
 $('sig-date').textContent='Date: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});
 
-const reqs=['fname','lname','email','phone'];
+const reqs=['fname','lname','email','phone','referral'];
 function ready(){ return reqs.every(id=>$(id).value.trim()) && $('agree').checked && hasSig; }
 function update(){ $('submit').disabled=!ready(); }
-reqs.forEach(id=>$(id).addEventListener('input',update));
+reqs.forEach(id=>{ $(id).addEventListener('input',update); $(id).addEventListener('change',update); });
 $('agree').addEventListener('change',update);
 
 $('waiver-form').addEventListener('submit',async e=>{
   e.preventDefault();
-  if(!ready()){ $('err').textContent='Please complete all fields, agree, and sign.'; return; }
+  if(!ready()){ $('err').textContent='Please complete all required fields, agree, and sign.'; return; }
   const btn=$('submit'); btn.disabled=true; const old=btn.textContent; btn.innerHTML='<span class="spin"></span>';
-  const payload={ first_name:$('fname').value.trim(), last_name:$('lname').value.trim(),
-    email:$('email').value.trim(), phone:$('phone').value.trim(), signature:canvas.toDataURL('image/png') };
+  const payload={ key:$('key').value, first_name:$('fname').value.trim(), last_name:$('lname').value.trim(),
+    email:$('email').value.trim(), phone:$('phone').value.trim(), referral:$('referral').value,
+    emergency_name:$('ename').value.trim(), emergency_phone:$('ephone').value.trim(),
+    signature:canvas.toDataURL('image/png') };
   try{
     const r=await fetch('/api/waiver',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await r.json();
     if(!j.ok){ $('err').textContent=j.error||'Could not submit'; btn.textContent=old; btn.disabled=false; return; }
-    $('done-msg').textContent='Thanks, '+payload.first_name+'! Your signed waiver is on file. You can hand the device back to staff.';
+    $('done-msg').textContent='Thanks, '+payload.first_name+'! Your signed waiver is on file. Welcome to AWAKEN — you can hand the device back to staff.';
     $('waiver-form').style.display='none'; $('done').style.display='block'; window.scrollTo({top:0,behavior:'smooth'});
   }catch(err){ $('err').textContent='Network error — please try again.'; btn.textContent=old; btn.disabled=false; }
 });
 </script>
+{% endif %}
 </body>
 </html>

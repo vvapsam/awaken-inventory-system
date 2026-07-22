@@ -1,31 +1,86 @@
 {% extends "base.html" %}
 {% block body %}
 <style>
-.wv-sig{height:40px;width:auto;max-width:150px;border:1px solid var(--line);border-radius:6px;background:#fff;vertical-align:middle}
-.wv-none{color:var(--muted)}
-.wv-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.wv-link{background:var(--teal-tint,#e6f7f4);border:1px solid rgba(15,158,145,.25);color:var(--teal-dark,#0b6b62);
-  border-radius:9px;padding:8px 12px;font-weight:600;font-size:.85rem;text-decoration:none}
+.wv-grid{display:grid;grid-template-columns:260px 1fr;gap:18px;align-items:start;margin:14px 0 22px}
+@media (max-width:720px){.wv-grid{grid-template-columns:1fr}}
+.qcard{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
+.qcard img{width:190px;height:190px;background:#fff;border-radius:10px;padding:6px}
+.qcard .cap{font-weight:600;font-size:.9rem;margin-top:8px}
+.qcard .sub{color:var(--muted);font-size:.8rem;margin-top:3px}
+.qcard .btns{display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+.qcard .btns .btn{padding:8px 12px;font-size:.85rem}
+.linkbox{margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:.72rem;color:var(--muted);word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.src{display:flex;flex-direction:column;gap:7px}
+.src .row{display:flex;align-items:center;gap:10px}
+.src .row .nm{width:160px;font-size:.86rem;font-weight:600}
+.src .row .bar{flex:1;height:10px;background:#eef1f2;border-radius:6px;overflow:hidden}
+.src .row .bar i{display:block;height:100%;background:linear-gradient(90deg,#18BE7C,#0f9e91);border-radius:6px}
+.src .row .n{width:34px;text-align:right;font-weight:700;font-size:.85rem}
+.wv-sig{height:38px;width:auto;max-width:140px;border:1px solid var(--line);border-radius:6px;background:#fff;vertical-align:middle}
+.wv-del{background:none;border:0;color:#9c2c1e;font-weight:600;font-size:.82rem;cursor:pointer}
+.muted-s{color:var(--muted)}
+@media print{.no-print{display:none!important}}
 </style>
 
-<div class="wv-head">
-  <div><h1 style="margin:0">Signed waivers</h1>
-    <p class="muted small" style="margin:2px 0 0">Liability waivers signed at <b>/waiver</b>. {{ waivers|length }} on file.</p></div>
-  <a class="wv-link" href="/waiver" target="_blank">Open waiver page ↗</a>
+<h1 style="margin:0">Signed waivers</h1>
+<p class="muted small" style="margin:2px 0 14px">Members sign at <b>/waiver</b> by scanning the QR below. {{ waivers|length }} on file.</p>
+
+<div class="wv-grid no-print">
+  <div class="qcard">
+    <img src="{{ waiver_qr }}" alt="Waiver QR">
+    <div class="cap">Scan to sign the waiver</div>
+    <div class="sub">Print this and post it at the front desk.</div>
+    <div class="btns">
+      <button class="btn" onclick="printQR()">🖨 Print poster</button>
+      <form method="post" action="/admin/waiver/rotate-key" style="display:inline" onsubmit="return confirm('Rotate the key? The current printed QR will stop working and you must reprint.')">
+        <button class="btn" type="submit" style="border-color:#e6a49b;color:#9c2c1e">↻ Rotate key</button>
+      </form>
+    </div>
+    <div class="linkbox" id="wlink">{{ waiver_link }}</div>
+  </div>
+
+  <div>
+    <h2 style="margin:0 0 10px;font-size:1.05rem">How members found us</h2>
+    {% if sources %}
+    <div class="src">
+      {% set top = sources[0][1] if sources else 1 %}
+      {% for name, n in sources %}
+      <div class="row"><span class="nm">{{ name }}</span><span class="bar"><i style="width:{{ (n / (top or 1) * 100)|round(0,'floor') }}%"></i></span><span class="n">{{ n }}</span></div>
+      {% endfor %}
+    </div>
+    {% else %}<p class="muted">No waivers yet.</p>{% endif %}
+  </div>
 </div>
 
-<table class="dt" style="margin-top:14px">
-  <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed</th><th>Signature</th></tr>
+<table class="dt">
+  <tr><th>Name</th><th>Email</th><th>Phone</th><th>Found us</th><th>Emergency</th><th>Signed</th><th>Signature</th><th></th></tr>
   {% for w in waivers %}
   <tr>
     <td>{{ w.first_name }} {{ w.last_name }}</td>
     <td>{{ w.email or '—' }}</td>
     <td>{{ w.phone or '—' }}</td>
+    <td>{{ w.referral or '—' }}</td>
+    <td>{% if w.emergency_name or w.emergency_phone %}{{ w.emergency_name or '' }}{% if w.emergency_phone %} · {{ w.emergency_phone }}{% endif %}{% else %}<span class="muted-s">—</span>{% endif %}</td>
     <td>{{ w.signed_at.astimezone().strftime('%Y-%m-%d %H:%M') if w.signed_at else '—' }}</td>
-    <td>{% if w.signature %}<img class="wv-sig" src="/waiver-sig/{{ w.id }}" alt="signature">{% else %}<span class="wv-none">—</span>{% endif %}</td>
+    <td>{% if w.signature %}<img class="wv-sig" src="/waiver-sig/{{ w.id }}" alt="signature">{% else %}<span class="muted-s">—</span>{% endif %}</td>
+    <td><form method="post" action="/admin/waivers/{{ w.id }}/delete" onsubmit="return confirm('Delete this waiver?')"><button class="wv-del" type="submit">Delete</button></form></td>
   </tr>
   {% else %}
-  <tr><td colspan="5" class="muted" style="padding:16px">No waivers signed yet. Share <b>/waiver</b> with your members.</td></tr>
+  <tr><td colspan="8" class="muted" style="padding:16px">No waivers signed yet. Print the QR above and post it at the desk.</td></tr>
   {% endfor %}
 </table>
+
+<script>
+function printQR(){
+  var img=document.querySelector('.qcard img').src, link=document.getElementById('wlink').textContent;
+  var w=window.open('','_blank');
+  w.document.write('<html><head><title>AWAKEN Waiver</title></head><body style="font-family:Poppins,Arial,sans-serif;text-align:center;padding:60px 20px">'+
+    '<div style="font-size:26px;font-weight:800;letter-spacing:.06em">AWAKEN FITNESS CENTER</div>'+
+    '<div style="font-size:34px;font-weight:800;margin:18px 0 6px">Sign our member waiver</div>'+
+    '<div style="font-size:18px;color:#555;margin-bottom:24px">Scan with your phone camera to sign on your own phone</div>'+
+    '<img src="'+img+'" style="width:340px;height:340px"><div style="margin-top:16px;color:#888;font-size:13px">'+link+'</div>'+
+    '</body></html>');
+  w.document.close(); setTimeout(function(){w.print();},300);
+}
+</script>
 {% endblock %}

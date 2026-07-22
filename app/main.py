@@ -105,6 +105,12 @@ def startup():
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS proof_mime VARCHAR; END IF; END $$;"))
         conn.execute(text("ALTER TABLE company_info ADD COLUMN IF NOT EXISTS logo BYTEA"))
         conn.execute(text("ALTER TABLE company_info ADD COLUMN IF NOT EXISTS logo_mime VARCHAR"))
+        conn.execute(text("ALTER TABLE company_info ADD COLUMN IF NOT EXISTS waiver_key VARCHAR"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.waivers') IS NOT NULL THEN "
+                          "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS referral VARCHAR; "
+                          "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS emergency_name VARCHAR; "
+                          "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR; "
+                          "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS ip VARCHAR; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL; END IF; END $$;"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'employee'"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS round_up BOOLEAN NOT NULL DEFAULT FALSE"))

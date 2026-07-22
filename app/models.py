@@ -340,6 +340,7 @@ class PaymentSetting(Base):
     qr_mime = Column(String)
     logo = Column(LargeBinary)                 # storefront logo (customer /order header)
     logo_mime = Column(String)
+    waiver_key = Column(String)                # secret token embedded in the /waiver QR
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
 
@@ -401,8 +402,12 @@ class Waiver(Base):
     last_name = Column(String, nullable=False)
     email = Column(String)
     phone = Column(String)
+    referral = Column(String)                       # "how did you find us"
+    emergency_name = Column(String)
+    emergency_phone = Column(String)
     signature = Column(LargeBinary)                 # signature PNG bytes
     signature_mime = Column(String, default="image/png")
+    ip = Column(String)                             # submitter IP (rate limiting)
     signed_at = Column(DateTime(timezone=True), default=now_utc)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
