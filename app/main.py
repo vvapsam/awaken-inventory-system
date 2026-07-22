@@ -560,6 +560,14 @@ def home(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(_post_login_dest(request) if staff else "/login", status_code=303)
 
 
+@app.get("/welcome", response_class=HTMLResponse)
+def welcome_hub(request: Request):
+    # Public QR-landing hub: member scans one QR at the desk and picks an
+    # action. "Buy drinks" links to the live /order self-checkout (same app on
+    # both hosts); Walk-in / Sign up / Pay balance are coming next.
+    return templates.TemplateResponse("welcome.html", {"request": request})
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("login.html", {"request": request, "error": None})
