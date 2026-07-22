@@ -182,7 +182,11 @@ def waivers_list(request: Request, db: Session = Depends(get_db)):
         sources[key] = sources.get(key, 0) + 1
     sources = sorted(sources.items(), key=lambda kv: -kv[1])
     key = _waiver_key(db)
-    host = (request.headers.get("host") or "pay.awakengym.com").split(",")[0].strip()
+    # The waiver belongs to the member portal, not the payment storefront — so the
+    # printed QR/link advertises portal.awakengym.com (both hosts serve this app).
+    host = (request.headers.get("host") or "").split(",")[0].strip()
+    if not host or host == "pay.awakengym.com":
+        host = "portal.awakengym.com"
     link = "https://%s/waiver?k=%s" % (host, key)
     return templates.TemplateResponse("waivers.html", {
         "request": request, "staff": staff, "waivers": rows, "sources": sources,
