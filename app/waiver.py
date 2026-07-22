@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .auth import current_staff
 from .db import get_db
-from .models import Waiver, PaymentSetting, can, can_any
+from .models import Waiver, WaiverToken, PaymentSetting, can, can_any
 
 router = APIRouter()
 BASE_DIR = os.path.dirname(__file__)
@@ -33,6 +33,7 @@ templates.env.globals["can_any"] = can_any
 MAX_SIG = 3 * 1024 * 1024          # 3 MB signature cap
 RATE_MAX = 8                        # max waivers per IP per hour
 RATE_WINDOW = timedelta(hours=1)
+TOKEN_TTL = timedelta(minutes=45)   # an opened waiver link is good for 45 min, one use
 
 REFERRAL_OPTIONS = [
     "Facebook", "Instagram", "TikTok", "Google search",
@@ -67,12 +68,25 @@ def _client_ip(request):
     return request.client.host if request.client else ""
 
 
+def _prune_tokens(db):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+    db.query(WaiverToken).filter(WaiverToken.created_at < cutoff).delete(synchronize_session=False)
+    db.commit()
+
+
 # ------------------------------------------------------------------ public page
 @router.get("/waiver", response_class=HTMLResponse)
 def waiver_page(request: Request, k: str = "", db: Session = Depends(get_db)):
     valid = bool(k) and k == _waiver_key(db)
+    token = ""
+    if valid:
+        _prune_tokens(db)
+        token = secrets.token_urlsafe(12)
+        db.add(WaiverToken(token=token))
+        db.commit()
     return templates.TemplateResponse("waiver.html", {
-        "request": request, "valid": valid, "k": k, "referrals": REFERRAL_OPTIONS})
+        "request": request, "valid": valid, "k": k, "token": token,
+        "referrals": REFERRAL_OPTIONS})
 
 
 @router.post("/api/waiver")
@@ -81,9 +95,20 @@ async def submit_waiver(request: Request, db: Session = Depends(get_db)):
     if (data.get("key") or "") != _waiver_key(db):
         return _err("This link is invalid or expired. Please scan the QR at the front desk.", 403)
 
+    # one-time link: the token issued when this page opened must be unused + fresh
+    tok = (data.get("token") or "").strip()
+    row = db.get(WaiverToken, tok) if tok else None
+    now = datetime.now(timezone.utc)
+    if (not row or row.used or
+            (row.created_at and (now - row.created_at) > TOKEN_TTL)):
+        return JSONResponse({"ok": False, "expired": True,
+                             "error": "This link has already been used or has expired. "
+                                      "Please scan the QR at the front desk again."},
+                            status_code=410)
+
     ip = _client_ip(request)
     if ip:
-        since = datetime.now(timezone.utc) - RATE_WINDOW
+        since = now - RATE_WINDOW
         recent = (db.query(func.count(Waiver.id))
                   .filter(Waiver.ip == ip, Waiver.created_at >= since).scalar() or 0)
         if recent >= RATE_MAX:
@@ -94,8 +119,6 @@ async def submit_waiver(request: Request, db: Session = Depends(get_db)):
     email = (data.get("email") or "").strip()
     phone = (data.get("phone") or "").strip()
     referral = (data.get("referral") or "").strip()
-    en = (data.get("emergency_name") or "").strip()
-    ep = (data.get("emergency_phone") or "").strip()
     sig = data.get("signature") or ""
     if not fn or not ln:
         return _err("First and last name are required")
@@ -119,10 +142,11 @@ async def submit_waiver(request: Request, db: Session = Depends(get_db)):
         mime = header[5:header.index(";")] or "image/png"
 
     w = Waiver(first_name=fn, last_name=ln, email=email or None, phone=phone or None,
-               referral=referral or None, emergency_name=en or None, emergency_phone=ep or None,
+               referral=referral or None,
                signature=raw, signature_mime=mime, ip=ip or None,
-               signed_at=datetime.now(timezone.utc))
+               signed_at=now)
     db.add(w)
+    row.used = True                 # consume the one-time link
     db.commit()
     return {"ok": True, "id": w.id}
 

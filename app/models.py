@@ -410,6 +410,16 @@ class Waiver(Base):
     ip = Column(String)                             # submitter IP (rate limiting)
     signed_at = Column(DateTime(timezone=True), default=now_utc)
     created_at = Column(DateTime(timezone=True), default=now_utc)
+    # emergency_name / emergency_phone columns retained (unused) — see WaiverToken
+
+
+class WaiverToken(Base):
+    """A one-time token issued when someone opens /waiver via the QR. Consumed on
+    submit (or expires after a while), so an opened waiver link can't be reused."""
+    __tablename__ = "waiver_tokens"
+    token = Column(String, primary_key=True)
+    used = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
 
 
 # Legacy `discount_codes` (per-person codes) were folded into the Staff entity

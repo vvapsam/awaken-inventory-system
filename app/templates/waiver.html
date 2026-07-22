@@ -78,6 +78,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
   {% else %}
   <form id="waiver-form">
     <input type="hidden" id="key" value="{{ k }}">
+    <input type="hidden" id="token" value="{{ token }}">
 
     <div class="card">
       <div class="seclbl">The waiver</div>
@@ -110,13 +111,6 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
       </select>
     </div>
 
-    <div class="card">
-      <div class="seclbl">Emergency contact <span class="hintlbl">(optional)</span></div>
-      <div class="two">
-        <div class="fld"><label class="lbl">Name</label><input type="text" id="ename" autocomplete="name"></div>
-        <div class="fld"><label class="lbl">Number</label><input type="tel" id="ephone" placeholder="09xx xxx xxxx"></div>
-      </div>
-    </div>
 
     <div class="card">
       <div class="seclbl">Signature</div>
@@ -171,13 +165,14 @@ $('waiver-form').addEventListener('submit',async e=>{
   e.preventDefault();
   if(!ready()){ $('err').textContent='Please complete all required fields, agree, and sign.'; return; }
   const btn=$('submit'); btn.disabled=true; const old=btn.textContent; btn.innerHTML='<span class="spin"></span>';
-  const payload={ key:$('key').value, first_name:$('fname').value.trim(), last_name:$('lname').value.trim(),
+  const payload={ key:$('key').value, token:$('token').value,
+    first_name:$('fname').value.trim(), last_name:$('lname').value.trim(),
     email:$('email').value.trim(), phone:$('phone').value.trim(), referral:$('referral').value,
-    emergency_name:$('ename').value.trim(), emergency_phone:$('ephone').value.trim(),
     signature:canvas.toDataURL('image/png') };
   try{
     const r=await fetch('/api/waiver',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await r.json();
+    if(j.expired){ document.body.innerHTML='<div style="max-width:420px;margin:80px auto;text-align:center;font-family:Inter,sans-serif;padding:0 24px"><div style="font-size:44px">🔄</div><h2 style="font-family:Poppins,sans-serif">This link has expired</h2><p style="color:#8A9099;line-height:1.5">Please scan the QR code at the front desk again to sign.</p></div>'; return; }
     if(!j.ok){ $('err').textContent=j.error||'Could not submit'; btn.textContent=old; btn.disabled=false; return; }
     $('done-msg').textContent='Thanks, '+payload.first_name+'! Your signed waiver is on file. Welcome to AWAKEN — you can hand the device back to staff.';
     $('waiver-form').style.display='none'; $('done').style.display='block'; window.scrollTo({top:0,behavior:'smooth'});

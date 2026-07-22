@@ -53,20 +53,19 @@
 </div>
 
 <table class="dt">
-  <tr><th>Name</th><th>Email</th><th>Phone</th><th>Found us</th><th>Emergency</th><th>Signed</th><th>Signature</th><th></th></tr>
+  <tr><th>Name</th><th>Email</th><th>Phone</th><th>Found us</th><th>Signed</th><th>Signature</th><th></th></tr>
   {% for w in waivers %}
   <tr>
     <td>{{ w.first_name }} {{ w.last_name }}</td>
     <td>{{ w.email or '—' }}</td>
     <td>{{ w.phone or '—' }}</td>
     <td>{{ w.referral or '—' }}</td>
-    <td>{% if w.emergency_name or w.emergency_phone %}{{ w.emergency_name or '' }}{% if w.emergency_phone %} · {{ w.emergency_phone }}{% endif %}{% else %}<span class="muted-s">—</span>{% endif %}</td>
     <td>{{ w.signed_at.astimezone().strftime('%Y-%m-%d %H:%M') if w.signed_at else '—' }}</td>
     <td>{% if w.signature %}<img class="wv-sig" src="/waiver-sig/{{ w.id }}" alt="signature">{% else %}<span class="muted-s">—</span>{% endif %}</td>
     <td><form method="post" action="/admin/waivers/{{ w.id }}/delete" onsubmit="return confirm('Delete this waiver?')"><button class="wv-del" type="submit">Delete</button></form></td>
   </tr>
   {% else %}
-  <tr><td colspan="8" class="muted" style="padding:16px">No waivers signed yet. Print the QR above and post it at the desk.</td></tr>
+  <tr><td colspan="7" class="muted" style="padding:16px">No waivers signed yet. Print the QR above and post it at the desk.</td></tr>
   {% endfor %}
 </table>
 
