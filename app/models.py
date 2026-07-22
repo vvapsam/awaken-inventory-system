@@ -393,6 +393,20 @@ class PricingGroupItem(Base):
     price = Column(Numeric(10, 2))                              # explicit price at this level
 
 
+class Waiver(Base):
+    """A signed liability waiver from the public /waiver page."""
+    __tablename__ = "waivers"
+    id = Column(Integer, primary_key=True)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
+    email = Column(String)
+    phone = Column(String)
+    signature = Column(LargeBinary)                 # signature PNG bytes
+    signature_mime = Column(String, default="image/png")
+    signed_at = Column(DateTime(timezone=True), default=now_utc)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+
 # Legacy `discount_codes` (per-person codes) were folded into the Staff entity
 # table; the table is migrated then dropped at startup. No ORM model remains.
 

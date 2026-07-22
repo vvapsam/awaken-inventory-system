@@ -62,6 +62,10 @@ app.include_router(mobile_router)
 from .order import router as order_router  # noqa: E402
 app.include_router(order_router)
 
+# Public liability waiver page + staff review list
+from .waiver import router as waiver_router  # noqa: E402
+app.include_router(waiver_router)
+
 
 def _slugify(s):
     return "".join(c for c in (s or "").lower() if c.isalnum()) or "user"

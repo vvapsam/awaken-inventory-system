@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AWAKEN — Liability Waiver</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--line:#E4E7EA;--paper:#EEF1F2;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--owed:#E2683F;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center}
+h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
+.wrap{width:100%;max-width:560px;padding:0 0 48px}
+.hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 130%);color:#fff;
+  padding:calc(env(safe-area-inset-top,0px) + 34px) 24px 42px;border-radius:0 0 26px 26px;text-align:center}
+.logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:10px 16px;box-shadow:0 8px 22px rgba(11,26,23,.20)}
+.logoTile img{height:40px;width:auto;max-width:220px;display:block}
+.hero h1{font-size:1.65rem;margin-top:18px}
+.hero p{color:rgba(255,255,255,.85);margin:7px 0 0;font-size:.9rem}
+.card{background:var(--white);margin:16px;border-radius:18px;box-shadow:0 12px 30px rgba(11,26,23,.08);padding:20px}
+.legal{max-height:230px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:#fbfcfc;font-size:.86rem;line-height:1.55;color:#33383f}
+.legal h3{font-size:.92rem;margin:14px 0 5px}.legal h3:first-child{margin-top:0}
+.legal p{margin:0 0 9px}
+.lbl{display:block;font-weight:600;font-size:.85rem;margin:15px 2px 6px}
+.req{color:var(--owed)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input[type=text],input[type=email],input[type=tel]{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;font-family:inherit;outline:none;background:#fff}
+input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
+.two .fld .lbl{margin-top:0}
+.sigbox{position:relative;border:1.5px dashed #cfd5da;border-radius:12px;background:#fcfdfd;height:190px;touch-action:none;overflow:hidden}
+.sigbox canvas{width:100%;height:100%;display:block}
+.sigbox .hint{position:absolute;left:0;right:0;bottom:16px;text-align:center;color:#c0c6cc;font-size:.9rem;pointer-events:none}
+.sigbox .line{position:absolute;left:22px;right:22px;bottom:44px;border-top:1px solid #dfe4e8;pointer-events:none}
+.sigbox.signed .hint,.sigbox.signed .line{display:none}
+.sigtools{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.sigtools .x{font-size:.78rem;color:var(--muted)}
+.clearbtn{background:none;border:0;color:var(--green-d);font-weight:700;font-size:.85rem;cursor:pointer;padding:4px}
+.agree{display:flex;gap:10px;align-items:flex-start;margin-top:18px;font-size:.86rem;line-height:1.5}
+.agree input{width:20px;height:20px;margin-top:1px;accent-color:var(--green)}
+.submit{margin-top:20px;width:100%;padding:16px;border:0;border-radius:14px;background:var(--green);color:#fff;
+  font-family:Poppins;font-weight:700;font-size:1.05rem;cursor:pointer}
+.submit:disabled{background:#dbe0e3;color:#a3a9af;cursor:not-allowed}
+.submit:not(:disabled):active{transform:scale(.99)}
+.err{color:var(--owed);font-size:.82rem;margin-top:8px;text-align:center;min-height:1em}
+.foot{text-align:center;color:var(--muted);font-size:.76rem;margin-top:14px}
+.spin{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.done{display:none;text-align:center;padding:20px 8px}
+.done .chk{width:74px;height:74px;border-radius:999px;background:#e2f6ec;color:var(--green-d);display:flex;align-items:center;justify-content:center;margin:8px auto 14px}
+.done .chk svg{width:38px;height:38px;stroke-width:2.6}
+.done h2{font-size:1.4rem}
+.done p{color:var(--muted);margin:8px 0 0;font-size:.92rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="logoTile"><img src="/order-logo" alt="AWAKEN"></div>
+    <h1>Liability Waiver &amp; Release</h1>
+    <p>Please read, fill in your details, and sign below.</p>
+  </div>
+
+  <form id="waiver-form">
+    <div class="card">
+      <div class="legal">
+        <h3>Assumption of Risk</h3>
+        <p>I understand that participation in physical exercise, fitness training, and use of the facilities and equipment at AWAKEN Fitness Center involves inherent risks, including but not limited to muscle strains, sprains, injury, or in rare cases more serious harm. I voluntarily choose to participate with full knowledge of these risks.</p>
+        <h3>Release of Liability</h3>
+        <p>In consideration of being permitted to use the facilities, I release and hold harmless AWAKEN Fitness Center, its owners, staff, and trainers from any and all claims, demands, or causes of action arising from my participation, except in cases of gross negligence.</p>
+        <h3>Health Declaration</h3>
+        <p>I confirm that I am in good physical condition and have no medical condition that would prevent safe participation. I will inform staff of any condition that may affect my ability to exercise safely.</p>
+        <h3>Rules &amp; Consent</h3>
+        <p>I agree to follow all gym rules and staff instructions, and I consent to AWAKEN keeping this signed waiver on record.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="two">
+        <div class="fld"><label class="lbl">First name <span class="req">*</span></label><input type="text" id="fname" autocomplete="given-name" required></div>
+        <div class="fld"><label class="lbl">Last name <span class="req">*</span></label><input type="text" id="lname" autocomplete="family-name" required></div>
+      </div>
+      <label class="lbl">Email <span class="req">*</span></label>
+      <input type="email" id="email" autocomplete="email" placeholder="you@email.com" required>
+      <label class="lbl">Phone <span class="req">*</span></label>
+      <input type="tel" id="phone" autocomplete="tel" placeholder="09xx xxx xxxx" required>
+
+      <label class="lbl">Signature <span class="req">*</span></label>
+      <div class="sigbox" id="sigbox">
+        <canvas id="sig"></canvas>
+        <div class="line"></div>
+        <div class="hint">✍️ Sign with your finger or mouse</div>
+      </div>
+      <div class="sigtools"><span class="x" id="sig-date"></span><button type="button" class="clearbtn" id="clear">Clear</button></div>
+
+      <label class="agree"><input type="checkbox" id="agree"> <span>I have read and understood this waiver, and I agree to its terms. I confirm the information above is accurate.</span></label>
+
+      <button type="submit" class="submit" id="submit" disabled>Agree &amp; Sign</button>
+      <div class="err" id="err"></div>
+      <div class="foot">AWAKEN Fitness Center · signed electronically</div>
+    </div>
+  </form>
+
+  <div class="card done" id="done">
+    <div class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <h2>Waiver signed 🎉</h2>
+    <p id="done-msg">Thanks! Your signed waiver is on file. You can hand the device back to staff.</p>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const box=$('sigbox'), canvas=$('sig'), ctx=canvas.getContext('2d');
+let drawing=false, hasSig=false, last=null;
+function fit(){ const r=canvas.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  canvas.width=r.width*dpr; canvas.height=r.height*dpr; ctx.scale(dpr,dpr);
+  ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#12303a'; }
+setTimeout(fit,60); window.addEventListener('resize',()=>{ if(!hasSig) fit(); });
+function pos(e){ const r=canvas.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-r.left,y:t.clientY-r.top}; }
+function start(e){ e.preventDefault(); drawing=true; last=pos(e); if(!hasSig){hasSig=true; box.classList.add('signed'); update();} }
+function move(e){ if(!drawing) return; e.preventDefault(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; }
+function end(){ drawing=false; }
+canvas.addEventListener('mousedown',start); canvas.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+canvas.addEventListener('touchstart',start,{passive:false}); canvas.addEventListener('touchmove',move,{passive:false}); canvas.addEventListener('touchend',end);
+$('clear').onclick=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); hasSig=false; box.classList.remove('signed'); update(); };
+$('sig-date').textContent='Date: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});
+
+const reqs=['fname','lname','email','phone'];
+function ready(){ return reqs.every(id=>$(id).value.trim()) && $('agree').checked && hasSig; }
+function update(){ $('submit').disabled=!ready(); }
+reqs.forEach(id=>$(id).addEventListener('input',update));
+$('agree').addEventListener('change',update);
+
+$('waiver-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!ready()){ $('err').textContent='Please complete all fields, agree, and sign.'; return; }
+  const btn=$('submit'); btn.disabled=true; const old=btn.textContent; btn.innerHTML='<span class="spin"></span>';
+  const payload={ first_name:$('fname').value.trim(), last_name:$('lname').value.trim(),
+    email:$('email').value.trim(), phone:$('phone').value.trim(), signature:canvas.toDataURL('image/png') };
+  try{
+    const r=await fetch('/api/waiver',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(!j.ok){ $('err').textContent=j.error||'Could not submit'; btn.textContent=old; btn.disabled=false; return; }
+    $('done-msg').textContent='Thanks, '+payload.first_name+'! Your signed waiver is on file. You can hand the device back to staff.';
+    $('waiver-form').style.display='none'; $('done').style.display='block'; window.scrollTo({top:0,behavior:'smooth'});
+  }catch(err){ $('err').textContent='Network error — please try again.'; btn.textContent=old; btn.disabled=false; }
+});
+</script>
+</body>
+</html>

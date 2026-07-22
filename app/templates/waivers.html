@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.wv-sig{height:40px;width:auto;max-width:150px;border:1px solid var(--line);border-radius:6px;background:#fff;vertical-align:middle}
+.wv-none{color:var(--muted)}
+.wv-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.wv-link{background:var(--teal-tint,#e6f7f4);border:1px solid rgba(15,158,145,.25);color:var(--teal-dark,#0b6b62);
+  border-radius:9px;padding:8px 12px;font-weight:600;font-size:.85rem;text-decoration:none}
+</style>
+
+<div class="wv-head">
+  <div><h1 style="margin:0">Signed waivers</h1>
+    <p class="muted small" style="margin:2px 0 0">Liability waivers signed at <b>/waiver</b>. {{ waivers|length }} on file.</p></div>
+  <a class="wv-link" href="/waiver" target="_blank">Open waiver page ↗</a>
+</div>
+
+<table class="dt" style="margin-top:14px">
+  <tr><th>Name</th><th>Email</th><th>Phone</th><th>Signed</th><th>Signature</th></tr>
+  {% for w in waivers %}
+  <tr>
+    <td>{{ w.first_name }} {{ w.last_name }}</td>
+    <td>{{ w.email or '—' }}</td>
+    <td>{{ w.phone or '—' }}</td>
+    <td>{{ w.signed_at.astimezone().strftime('%Y-%m-%d %H:%M') if w.signed_at else '—' }}</td>
+    <td>{% if w.signature %}<img class="wv-sig" src="/waiver-sig/{{ w.id }}" alt="signature">{% else %}<span class="wv-none">—</span>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted" style="padding:16px">No waivers signed yet. Share <b>/waiver</b> with your members.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
