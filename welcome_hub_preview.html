@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWAKEN — Welcome hub (QR landing)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--line:#E9EBEE;--paper:#F4F6F7;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--teal:#0F9E91;--amber:#E8A13C;--owed:#E2683F;}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
+  background:radial-gradient(1200px 600px at 50% -10%,#eef3f2,#e7ebec),linear-gradient(180deg,#eef1f2,#e6eaec);
+  min-height:100vh;padding:34px 18px 60px}
+h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
+.pagehead{text-align:center;max-width:900px;margin:0 auto 26px}
+.pagehead h1{font-size:1.5rem}.pagehead p{color:#5c636c;margin:8px 0 0;font-size:.98rem}
+.stage{display:flex;gap:44px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+.variant{display:flex;flex-direction:column;align-items:center;gap:14px}
+.vlabel{font-family:Poppins;font-weight:700;font-size:.82rem;letter-spacing:.05em;text-transform:uppercase;color:#6b7280;background:#fff;border:1px solid var(--line);padding:7px 16px;border-radius:999px;box-shadow:0 4px 14px rgba(15,15,15,.05)}
+.vlabel b{color:var(--green-d)}
+.phone{width:352px;height:720px;border-radius:46px;background:#0b0d10;padding:12px;box-shadow:0 30px 70px -20px rgba(16,20,26,.5),0 0 0 2px rgba(255,255,255,.04) inset;position:relative}
+.screen{width:100%;height:100%;border-radius:36px;overflow:hidden;position:relative;background:var(--paper)}
+.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#0b0d10;border-radius:0 0 16px 16px;z-index:40}
+.app{height:100%;overflow-y:auto;display:flex;flex-direction:column}
+.app::-webkit-scrollbar{display:none}
+.hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 130%);color:#fff;padding:46px 24px 54px;text-align:center;position:relative;flex:none}
+.hero:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:34px;background:var(--paper);border-radius:26px 26px 0 0}
+.logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:9px 15px;box-shadow:0 8px 22px rgba(11,26,23,.2)}
+.logoTile img{height:38px;width:auto;max-width:200px;display:block}
+.hero h1{font-size:1.7rem;margin-top:16px}
+.hero p{color:rgba(255,255,255,.86);margin:7px 0 0;font-size:.92rem}
+.body{margin-top:-24px;position:relative;z-index:3;padding:0 18px 22px;display:flex;flex-direction:column;gap:13px}
+.opt{display:flex;align-items:center;gap:14px;background:#fff;border-radius:20px;box-shadow:0 12px 30px rgba(11,26,23,.1);padding:17px 16px;position:relative;text-align:left}
+.opt .ic{width:52px;height:52px;border-radius:15px;display:flex;align-items:center;justify-content:center;flex:none}
+.opt .ic svg{width:27px;height:27px;stroke-width:1.9}
+.opt .tx{flex:1}
+.opt .tx h3{font-size:1.18rem;font-weight:700}
+.opt .tx p{margin:2px 0 0;color:var(--muted);font-size:.86rem}
+.opt .arw{color:#c3c8ce}.opt .arw svg{width:16px;height:16px;stroke-width:2.6}
+.opt.walkin .ic{background:#e8f8f1;color:var(--green-d)}
+.opt.signup{background:linear-gradient(135deg,#0F0F0F,#232a30)}
+.opt.signup h3{color:#fff}.opt.signup p{color:rgba(255,255,255,.72)}.opt.signup .ic{background:linear-gradient(135deg,#18BE7C,#0F9E91);color:#fff}.opt.signup .arw{color:rgba(255,255,255,.6)}
+.opt.buy .ic{background:#eaf1ff;color:#3f6fd0}
+.opt.pay .ic{background:#fdf3e2;color:#c9821f}
+.tag{position:absolute;top:12px;right:14px;font-size:.6rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:999px}
+.tag.live{background:#e2f6ec;color:#0b8a4f}
+.tag.soon{background:#eef1f2;color:#98a0a8}
+.opt.signup .tag.soon{background:rgba(255,255,255,.16);color:rgba(255,255,255,.75)}
+.foot{text-align:center;color:var(--muted);font-size:.76rem;margin-top:6px}
+.note{max-width:900px;margin:32px auto 0;text-align:center;color:#6b7280;font-size:.9rem;line-height:1.6}.note b{color:#0F1115}
+</style>
+</head>
+<body>
+<div class="pagehead">
+  <h1>AWAKEN — "What would you like to do?" hub</h1>
+  <p>One QR at the desk → member scans → this menu → taps an option → goes to that flow. Example option set below; you pick which appear.</p>
+</div>
+
+<div class="stage">
+  <div class="variant">
+    <div class="vlabel">QR landing · <b>pick an action</b></div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app">
+        <div class="hero">
+          <div class="logoTile"><img src="https://portal.awakengym.com/order-logo" alt="AWAKEN" onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<b style=\'font-family:Poppins;letter-spacing:.16em;color:#0b2a26\'>AWAKEN</b>')"></div>
+          <h1>Welcome to AWAKEN 👋</h1>
+          <p>What would you like to do today?</p>
+        </div>
+        <div class="body">
+          <div class="opt walkin">
+            <span class="tag soon">Soon</span>
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20l-5.5-2.5a1 1 0 0 1-.5-1.3l3-7"/><path d="M14 4.5a2 2 0 1 0 0 .01"/><path d="M10 9l3-2 3 3 3 1"/><path d="M13 7l-2 5 3 2 1 6"/></svg></div>
+            <div class="tx"><h3>Walk-in today</h3><p>Just visiting — sign the waiver &amp; get a day pass</p></div>
+            <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+
+          <div class="opt signup">
+            <span class="tag soon">Soon</span>
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></div>
+            <div class="tx"><h3>Sign up</h3><p>Become an AWAKEN member</p></div>
+            <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+
+          <div class="opt buy">
+            <span class="tag live">Live</span>
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div>
+            <div class="tx"><h3>Buy drinks &amp; snacks</h3><p>Order &amp; pay from the menu</p></div>
+            <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+
+          <div class="opt pay">
+            <span class="tag soon">Soon</span>
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></div>
+            <div class="tx"><h3>Pay my balance</h3><p>Settle what you owe (utang)</p></div>
+            <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+
+          <div class="foot">AWAKEN Fitness Center</div>
+        </div>
+      </div>
+    </div></div>
+    <div style="max-width:320px;text-align:center;color:#6b7280;font-size:.82rem;line-height:1.45">Tapping <b>Walk-in</b> or <b>Sign up</b> would lead into the waiver (already built) and their own steps. <b>Buy drinks</b> jumps to your existing order page.</div>
+  </div>
+</div>
+
+<div class="note">
+  This is the <b>hub</b>: a single public page (e.g. <b>portal.awakengym.com/welcome</b>) behind one QR poster. "Live" = already built (Buy drinks → your /order page; the waiver is done). "Soon" = flows we'd design next (Walk-in day pass, Sign-up/registration, Pay balance).<br>
+  Tell me which options you want on it (and their exact labels) and I'll build the hub + point each button to the right flow. Want me to also fold the <b>waiver</b> in as a step of Walk-in / Sign up?
+</div>
+</body>
+</html>
