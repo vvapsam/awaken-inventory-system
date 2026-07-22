@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWAKEN — Kiosk flows</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--line:#E9EBEE;--paper:#F4F6F7;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--teal:#0F9E91;--amber:#E8A13C;--owed:#E2683F;--bank:#3f6fd0;}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
+  background:radial-gradient(1400px 700px at 50% -10%,#eef3f2,#e7ebec),linear-gradient(180deg,#eef1f2,#e6eaec);padding:34px 20px 70px}
+h1,h2,h3,h4,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
+.pagehead{text-align:center;max-width:1000px;margin:0 auto 8px}
+.pagehead h1{font-size:1.6rem}.pagehead p{color:#5c636c;margin:8px 0 0;font-size:.98rem}
+.legend{display:flex;gap:14px;justify-content:center;margin:14px 0 30px;font-size:.82rem;color:#5c636c;flex-wrap:wrap}
+.legend .t{display:inline-flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:3px}.dot.live{background:#0b8a4f}.dot.soon{background:#b6bcc3}
+.flow{max-width:1240px;margin:0 auto 40px}
+.flow > h2{font-size:1.15rem;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+.flow > h2 .n{width:30px;height:30px;border-radius:9px;background:#0b2a26;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.9rem}
+.flow > .sub{color:var(--muted);font-size:.88rem;margin:0 0 16px 40px}
+.row{display:flex;align-items:center;gap:6px;overflow-x:auto;padding:6px 2px 14px}
+.arrow{color:#b7bdc4;font-size:1.5rem;flex:none;padding:0 2px}
+/* phone */
+.ph{width:236px;flex:none;border-radius:34px;background:#0b0d10;padding:8px;box-shadow:0 16px 40px -14px rgba(16,20,26,.45)}
+.sc{width:100%;height:462px;border-radius:27px;overflow:hidden;background:var(--paper);display:flex;flex-direction:column;position:relative}
+.cap{text-align:center;font-size:.76rem;color:#6b7280;margin-top:7px;font-weight:600}
+.cap .b{display:inline-block;font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:1px 6px;border-radius:999px;margin-left:5px}
+.b.live{background:#e2f6ec;color:#0b8a4f}.b.soon{background:#eef1f2;color:#98a0a8}
+/* mini hero */
+.mh{background:linear-gradient(160deg,#0b6b62,#0f9e91 60%,#18BE7C 130%);color:#fff;padding:20px 16px 22px;text-align:center;flex:none}
+.mh .lg{display:inline-block;background:#fff;color:#0b2a26;font-family:Poppins;font-weight:800;letter-spacing:.14em;font-size:.6rem;padding:5px 9px;border-radius:8px}
+.mh h3{font-size:1.05rem;margin-top:10px}
+.mh p{font-size:.72rem;color:rgba(255,255,255,.85);margin:4px 0 0}
+.mtop{display:flex;align-items:center;gap:8px;background:linear-gradient(160deg,#0b6b62,#0f9e91 120%);color:#fff;padding:16px 14px;flex:none}
+.mtop .bk{width:24px;height:24px;border-radius:999px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:.9rem}
+.mtop h3{font-size:.95rem}
+.bd{padding:12px 14px;display:flex;flex-direction:column;gap:9px;overflow:auto}
+/* bits */
+.fld{font-size:.72rem}.fld .l{font-weight:600;margin-bottom:3px;display:block}
+.inp{height:34px;border:1px solid var(--line);border-radius:9px;background:#fff}
+.inp.sel{display:flex;align-items:center;padding:0 10px;color:var(--muted);font-size:.72rem;justify-content:space-between}
+.sig{height:70px;border:1.4px dashed #cfd5da;border-radius:9px;background:#fcfdfd;display:flex;align-items:flex-end;justify-content:center;color:#c0c6cc;font-size:.68rem;padding-bottom:8px}
+.card2{border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px 12px}
+.card2.sel{border-color:var(--green);box-shadow:0 0 0 2px rgba(24,190,124,.15)}
+.card2 .t{font-weight:700;font-size:.86rem}.card2 .s{color:var(--muted);font-size:.7rem;margin-top:2px}.card2 .pr{float:right;font-family:Poppins;font-weight:700;font-size:.9rem}
+.seg{display:flex;gap:8px}
+.seg .s{flex:1;border:1px solid var(--line);border-radius:10px;text-align:center;padding:9px 0;font-weight:700;font-size:.76rem;background:#fff}
+.seg .s.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.seg .s.g.on{background:var(--green);border-color:var(--green)}
+.btn{margin-top:auto;background:var(--green);color:#fff;text-align:center;padding:11px;border-radius:11px;font-family:Poppins;font-weight:700;font-size:.86rem}
+.btn.dark{background:var(--ink)}
+.qr{width:92px;height:92px;margin:4px auto;border-radius:8px;background:
+  conic-gradient(#0b2a26 25%,#fff 0 50%,#0b2a26 0 75%,#fff 0),
+  conic-gradient(#0b2a26 25%,#fff 0 50%,#0b2a26 0 75%,#fff 0);background-size:16px 16px;border:5px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.drop{border:1.4px dashed #cfd5da;border-radius:10px;text-align:center;padding:14px 8px;color:var(--muted);font-size:.72rem;background:#fcfdfd}
+.big{text-align:center;padding:14px 8px}
+.big .ic{width:56px;height:56px;border-radius:999px;background:#e2f6ec;color:#0b8a4f;display:flex;align-items:center;justify-content:center;margin:6px auto 10px;font-size:1.7rem}
+.big h3{font-size:1.05rem}.big p{color:var(--muted);font-size:.74rem;margin-top:6px;line-height:1.4}
+.sum{background:linear-gradient(135deg,#0b6b62,#0f9e91 70%,#18BE7C 130%);color:#fff;border-radius:12px;padding:12px 14px}
+.sum .k{font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.82);font-weight:600}
+.sum .v{font-family:Poppins;font-weight:700;font-size:1.4rem;margin-top:2px}
+.crow{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff}
+.crow .av{width:26px;height:26px;border-radius:999px;background:#eef3f2;color:var(--green-d);font-weight:700;font-size:.72rem;display:flex;align-items:center;justify-content:center}
+.crow .nm{flex:1;font-weight:600;font-size:.78rem}.crow .bl{font-family:Poppins;font-weight:700;font-size:.78rem;color:#c9502b}
+.muted{color:var(--muted)}
+.lbltiny{font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:#9aa1aa;font-weight:700;margin-top:2px}
+.note{max-width:1000px;margin:26px auto 0;text-align:center;color:#6b7280;font-size:.9rem;line-height:1.6}.note b{color:#0F1115}
+</style>
+</head>
+<body>
+<div class="pagehead">
+  <h1>AWAKEN kiosk — every flow, screen by screen</h1>
+  <p>Scan the one QR → the hub → pick an option → these are the steps that follow.</p>
+</div>
+<div class="legend">
+  <span class="t"><span class="dot live"></span> Live — already built</span>
+  <span class="t"><span class="dot soon"></span> Soon — to build (prices/plans are placeholders)</span>
+</div>
+
+<!-- HUB -->
+<div class="flow">
+  <h2><span class="n">0</span> The hub <span style="font-weight:500;color:var(--muted);font-size:.85rem">(one QR)</span></h2>
+  <div class="sub">Every option below starts here.</div>
+  <div class="row">
+    <div><div class="ph"><div class="sc">
+      <div class="mh"><span class="lg">AWAKEN</span><h3>Welcome 👋</h3><p>What would you like to do?</p></div>
+      <div class="bd">
+        <div class="card2"><span class="pr">›</span><div class="t">🚶 Walk-in today</div><div class="s">Sign waiver &amp; get a day pass</div></div>
+        <div class="card2"><span class="pr">›</span><div class="t">⭐ Sign up</div><div class="s">Become a member</div></div>
+        <div class="card2"><span class="pr">›</span><div class="t">🥤 Buy drinks &amp; snacks</div><div class="s">Order &amp; pay</div></div>
+        <div class="card2"><span class="pr">›</span><div class="t">💳 Pay my balance</div><div class="s">Settle utang</div></div>
+      </div>
+    </div></div><div class="cap">Hub menu <span class="b live">live-ish</span></div></div>
+  </div>
+</div>
+
+<!-- WALK-IN -->
+<div class="flow">
+  <h2><span class="n">1</span> Walk-in today</h2>
+  <div class="sub">A visitor for a single day: sign the waiver, then pay a day pass.</div>
+  <div class="row">
+    <div><div class="ph"><div class="sc">
+      <div class="mh"><span class="lg">AWAKEN</span><h3>Member Waiver</h3><p>Fill in &amp; sign</p></div>
+      <div class="bd">
+        <div class="fld"><span class="l">Name</span><div class="inp"></div></div>
+        <div class="fld"><span class="l">Email · Phone</span><div class="inp"></div></div>
+        <div class="fld"><span class="l">How did you find us?</span><div class="inp sel">Choose one… <span>▾</span></div></div>
+        <div class="fld"><span class="l">Signature</span><div class="sig">✍️ sign here</div></div>
+        <div class="btn">Agree &amp; Sign</div>
+      </div>
+    </div></div><div class="cap">1 · Waiver <span class="b live">live</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mtop"><span class="bk">‹</span><h3>Day pass</h3></div>
+      <div class="bd">
+        <div class="card2 sel"><span class="pr">₱150</span><div class="t">Day Pass</div><div class="s">Full-day gym access</div></div>
+        <div class="lbltiny">Pay with</div>
+        <div class="seg"><div class="s g on">Cash</div><div class="s">Bank transfer</div></div>
+        <div class="muted" style="font-size:.7rem">Cash: pay at the counter. Bank: scan the QR &amp; upload your receipt.</div>
+        <div class="btn">Continue</div>
+      </div>
+    </div></div><div class="cap">2 · Day pass <span class="b soon">soon</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mtop"><span class="bk">‹</span><h3>Bank transfer</h3></div>
+      <div class="bd">
+        <div style="text-align:center"><div class="muted" style="font-size:.7rem">Send ₱150 to</div><div class="qr"></div><div style="font-weight:700;font-size:.78rem">AWAKEN · BPI ****1234</div></div>
+        <div class="drop">📷 Tap to upload your receipt</div>
+        <div class="btn">Submit</div>
+      </div>
+    </div></div><div class="cap">3 · Pay (if bank) <span class="b soon">soon</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mh" style="padding-bottom:16px"><span class="lg">AWAKEN</span></div>
+      <div class="bd"><div class="big"><div class="ic">✓</div><h3>You're all set!</h3><p>Day pass active. Enjoy your workout — show this to staff if asked.</p></div></div>
+    </div></div><div class="cap">4 · Done <span class="b soon">soon</span></div></div>
+  </div>
+</div>
+
+<!-- SIGN UP -->
+<div class="flow">
+  <h2><span class="n">2</span> Sign up (become a member)</h2>
+  <div class="sub">Sign the waiver, pick a plan, pay — and you're registered.</div>
+  <div class="row">
+    <div><div class="ph"><div class="sc">
+      <div class="mh"><span class="lg">AWAKEN</span><h3>Member Waiver</h3><p>Fill in &amp; sign</p></div>
+      <div class="bd">
+        <div class="fld"><span class="l">Name</span><div class="inp"></div></div>
+        <div class="fld"><span class="l">Email · Phone</span><div class="inp"></div></div>
+        <div class="fld"><span class="l">How did you find us?</span><div class="inp sel">Choose one… <span>▾</span></div></div>
+        <div class="fld"><span class="l">Signature</span><div class="sig">✍️ sign here</div></div>
+        <div class="btn">Agree &amp; Sign</div>
+      </div>
+    </div></div><div class="cap">1 · Waiver <span class="b live">live</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mtop"><span class="bk">‹</span><h3>Choose a plan</h3></div>
+      <div class="bd">
+        <div class="card2 sel"><span class="pr">₱1,000</span><div class="t">Monthly</div><div class="s">Unlimited access · 30 days</div></div>
+        <div class="card2"><span class="pr">₱2,700</span><div class="t">Quarterly</div><div class="s">3 months · save 10%</div></div>
+        <div class="card2"><span class="pr">₱9,600</span><div class="t">Annual</div><div class="s">12 months · best value</div></div>
+        <div class="btn">Continue</div>
+      </div>
+    </div></div><div class="cap">2 · Pick plan <span class="b soon">soon</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mtop"><span class="bk">‹</span><h3>Payment</h3></div>
+      <div class="bd">
+        <div class="sum"><div class="k">Monthly plan</div><div class="v">₱1,000</div></div>
+        <div class="lbltiny">Pay with</div>
+        <div class="seg"><div class="s g on">Cash</div><div class="s">Bank transfer</div></div>
+        <div class="drop">📷 Upload receipt (if bank)</div>
+        <div class="btn">Submit</div>
+      </div>
+    </div></div><div class="cap">3 · Pay <span class="b soon">soon</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mh" style="padding-bottom:16px"><span class="lg">AWAKEN</span></div>
+      <div class="bd"><div class="big"><div class="ic">🎉</div><h3>Welcome, Juan!</h3><p>You're now an AWAKEN member. Staff will confirm your payment and activate your plan.</p></div></div>
+    </div></div><div class="cap">4 · Welcome <span class="b soon">soon</span></div></div>
+  </div>
+</div>
+
+<!-- PAY BALANCE -->
+<div class="flow">
+  <h2><span class="n">3</span> Pay my balance (utang)</h2>
+  <div class="sub">Find yourself, see what you owe, pay by bank transfer.</div>
+  <div class="row">
+    <div><div class="ph"><div class="sc">
+      <div class="mtop"><span class="bk">‹</span><h3>Find your name</h3></div>
+      <div class="bd">
+        <div class="inp sel">🔍 Search your name… </div>
+        <div class="crow"><span class="av">D</span><span class="nm">Dom Roque</span><span class="bl">₱935</span></div>
+        <div class="crow"><span class="av">M</span><span class="nm">Melvin Te</span><span class="bl">₱281</span></div>
+        <div class="crow"><span class="av">B</span><span class="nm">Benjo Austria</span><span class="bl">₱45</span></div>
+      </div>
+    </div></div><div class="cap">1 · Find you <span class="b soon">soon</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mtop"><span class="bk">‹</span><h3>Dom Roque</h3></div>
+      <div class="bd">
+        <div class="sum"><div class="k">Balance owed</div><div class="v">₱935.00</div></div>
+        <div class="lbltiny">Pay with</div>
+        <div class="seg"><div class="s g on">Cash</div><div class="s">Bank transfer</div></div>
+        <div class="muted" style="font-size:.7rem">Full balance clears everything and marks your orders paid.</div>
+        <div class="btn dark">Pay ₱935</div>
+      </div>
+    </div></div><div class="cap">2 · Your balance <span class="b soon">soon</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mtop"><span class="bk">‹</span><h3>Bank transfer</h3></div>
+      <div class="bd">
+        <div style="text-align:center"><div class="muted" style="font-size:.7rem">Send ₱935 to</div><div class="qr"></div><div style="font-weight:700;font-size:.78rem">AWAKEN · BPI ****1234</div></div>
+        <div class="drop">📷 Upload receipt</div>
+        <div class="btn">Submit for approval</div>
+      </div>
+    </div></div><div class="cap">3 · Pay <span class="b soon">soon</span></div></div>
+    <span class="arrow">›</span>
+    <div><div class="ph"><div class="sc">
+      <div class="mh" style="padding-bottom:16px"><span class="lg">AWAKEN</span></div>
+      <div class="bd"><div class="big"><div class="ic">✓</div><h3>Sent for approval</h3><p>Staff will confirm your payment and your balance will be cleared.</p></div></div>
+    </div></div><div class="cap">4 · Done <span class="b soon">soon</span></div></div>
+  </div>
+</div>
+
+<!-- BUY DRINKS -->
+<div class="flow">
+  <h2><span class="n">4</span> Buy drinks &amp; snacks</h2>
+  <div class="sub">This one already exists — it jumps to your live Order &amp; Pay page.</div>
+  <div class="row">
+    <div><div class="ph"><div class="sc">
+      <div class="mh"><span class="lg">AWAKEN</span><h3>Order &amp; Pay</h3><p>Tap items to add</p></div>
+      <div class="bd">
+        <div class="card2"><span class="pr">₱80</span><div class="t">Pocari 500ml</div></div>
+        <div class="card2"><span class="pr">₱75</span><div class="t">Sip Pink 500ml</div></div>
+        <div class="card2"><span class="pr">₱25</span><div class="t">Sip Water 500ml</div></div>
+        <div class="btn">Review &amp; pay</div>
+      </div>
+    </div></div><div class="cap">Existing /order page <span class="b live">live</span></div></div>
+    <span class="arrow">›</span>
+    <div style="align-self:center;max-width:200px;color:#6b7280;font-size:.82rem;line-height:1.45">…then the existing cart → Cash/Bank → confirmation you already have. No new build — the hub just links to it.</div>
+  </div>
+</div>
+
+<div class="note">
+  These are wireframes to agree the <b>flow</b> — the real screens would use the full AWAKEN styling like the waiver.<br>
+  <b>To build these I need a few things from you:</b> your <b>day-pass price</b>, your <b>membership plans + prices</b>, and whether <b>Walk-in</b> and <b>Sign up</b> should create a customer/member record automatically. Everything money-related still lands in your staff <b>approval</b> queue. Tell me and I'll build them one flow at a time.
+</div>
+</body>
+</html>
