@@ -68,7 +68,7 @@ input,select{font-family:inherit;font-size:16px}
 .h-greet{margin-top:22px;position:relative;z-index:2}
 .h-greet h1{font-size:1.9rem;line-height:1.06}
 .h-greet .h-date{color:rgba(255,255,255,.82);font-weight:500;font-size:.9rem;margin-top:6px}
-.h-owed{margin-top:16px;display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,.16);
+.h-owed{display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,.16);
   border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:10px 14px;position:relative;z-index:2}
 .h-owed .lbl{font-size:.8rem;color:rgba(255,255,255,.88)}
 .h-owed .amt{font-family:Poppins;font-weight:700}
@@ -172,6 +172,16 @@ input,select{font-family:inherit;font-size:16px}
 .proofview{position:fixed;inset:0;z-index:80;background:rgba(6,10,9,.92);display:flex;align-items:center;justify-content:center;padding:20px}
 .proofview img{max-width:100%;max-height:100%;border-radius:12px}
 .proofview .close{position:absolute;top:calc(var(--safe-t) + 14px);right:16px;width:40px;height:40px;border-radius:999px;background:rgba(255,255,255,.16);color:#fff;font-size:1.4rem;display:flex;align-items:center;justify-content:center}
+/* header pills + approval chip (option B) */
+.h-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;position:relative;z-index:2}
+.h-appr{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.92);border-radius:13px;padding:9px 12px;color:#b06a12;font-weight:700;font-size:.8rem}
+.h-appr:active{transform:scale(.97)}
+.h-appr svg{width:15px;height:15px;stroke-width:2.4}
+.h-appr .c{background:var(--owed);color:#fff;border-radius:999px;font-size:.66rem;font-weight:700;padding:1px 6px}
+/* self-checkout tag */
+.tag.sc{font-size:.62rem;font-weight:700;padding:2px 6px;border-radius:999px;background:#eef1ff;color:#5566cc;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+/* customers list extras */
+.cbal.paidup{color:var(--muted);font-weight:600;font-size:.82rem}
 .badge{position:absolute;top:14px;right:14px;background:var(--ink);color:#fff;font-weight:700;
   font-size:.78rem;border-radius:999px;padding:3px 10px}
 
@@ -328,7 +338,13 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     <div class="h-greet">
       <h1 class="hd">Hi, {{ staff.name.split()[0] }} 👋</h1>
       <div class="h-date" id="home-date"></div>
-      <div class="h-owed" id="home-owed"><span class="lbl" id="home-owed-lbl">All paid up</span></div>
+      <div class="h-pills">
+        <div class="h-owed" id="home-owed"><span class="lbl" id="home-owed-lbl">All paid up</span></div>
+        <button class="h-appr hide" id="home-appr-chip" type="button" data-go="approvals">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          Approve <span class="c" id="home-appr-c">0</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -345,14 +361,8 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     </button>
     <button class="ncard bal" data-go="balances">
       <span class="nbadge hide" id="home-bal-badge"></span>
-      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="3"/><path d="M1 10h22"/></svg></div>
-      <div class="tx"><h3>Balances</h3><p id="home-bal-sub">Settle unpaid customers</p></div>
-      <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
-    </button>
-    <button class="ncard approve hide" data-go="approvals" id="home-approve-card">
-      <span class="nbadge hide" id="home-appr-badge"></span>
-      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
-      <div class="tx"><h3>For approval</h3><p id="home-appr-sub">Self-checkout orders</p></div>
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></div>
+      <div class="tx"><h3>Customers</h3><p>Balances &amp; purchase history</p></div>
       <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
     </button>
 
@@ -503,12 +513,13 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 
 <!-- ============ BALANCES ============ -->
 <section id="s-balances" class="screen">
-  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">Balances</h2></div>
+  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">Customers</h2></div>
   <div class="summary">
     <div class="lbl">Total outstanding</div>
     <div class="amt" id="bal-total">₱0.00</div>
     <div class="sub" id="bal-sub">across 0 customers</div>
   </div>
+  <div class="seg two" id="cust-seg" style="margin-bottom:12px"><button data-tab="owing" class="on">Owing</button><button data-tab="all">All customers</button></div>
   <input class="txt" id="bal-search" placeholder="🔍 Search a customer…" style="margin-bottom:12px">
   <div class="clist" id="bal-list"></div>
 </section>
@@ -595,6 +606,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 function payTag(p){ const k=(p==='bank')?'bank':(p==='unpaid'?'unpaid':'cash'); const lbl=k.charAt(0).toUpperCase()+k.slice(1); return `<span class="pay ${k}">${lbl}</span>`; }
 function saleRow(s, withTime){
   const meta = [payTag(s.pay)];
+  if(s.sc) meta.push('<span class="tag sc">Self-checkout</span>');
   if(s.customer) meta.push(esc(s.customer));
   if(withTime && s.staff) meta.push('by '+esc(s.staff)); else if(!withTime) meta.push(esc(s.time));
   const right = withTime ? `<div class="amt">${peso(s.total)}</div><div class="time">${esc(s.time)}</div>` : `<div class="amt">${peso(s.total)}</div>`;
@@ -637,9 +649,9 @@ async function initHistory(){
 // ---- for approval (self-checkout orders) ----
 function renderApproveBadge(){
   const n=DATA.orders_pending||0;
-  const b=$('#home-appr-badge');
-  if(n>0){ b.textContent=n; b.classList.remove('hide'); $('#home-appr-sub').textContent=`${n} order${n==1?'':'s'} waiting`; }
-  else{ b.classList.add('hide'); $('#home-appr-sub').textContent='Self-checkout orders'; }
+  const chip=$('#home-appr-chip');
+  if(n>0 && DATA.perms && DATA.perms.orders){ $('#home-appr-c').textContent=n; chip.classList.remove('hide'); }
+  else chip.classList.add('hide');
 }
 function openProof(id){ $('#proofview-img').src='/order-proof/'+id; $('#proofview').classList.remove('hide'); }
 $('#proofview-close').onclick=()=>$('#proofview').classList.add('hide');
@@ -688,7 +700,6 @@ async function boot(){
   if(!DATA.perms.sell) $('.ncard.sell').classList.add('hide');
   if(!DATA.perms.adjust) $('.ncard.adjust').classList.add('hide');
   if(!DATA.perms.settle) $('.ncard.bal').classList.add('hide');
-  $('#home-approve-card').classList.toggle('hide', !DATA.perms.orders);
   renderApproveBadge();
   renderHomeBal();
   renderLowStock();
@@ -974,23 +985,43 @@ $('#adj-submit').onclick=async()=>{
 };
 
 // ================= BALANCES =================
+let custTab='owing';
 function initBalances(){
-  const b=DATA.balances;
+  const b=DATA.balances||{total:0,count:0,customers:[]};
   $('#bal-total').textContent=peso(b.total);
-  $('#bal-sub').textContent=`across ${b.count} customer${b.count==1?'':'s'}`;
+  const allN=(DATA.customers||[]).length;
+  $('#bal-sub').textContent=`${b.count} owing · ${allN} customer${allN==1?'':'s'}`;
+  custTab='owing';
+  $$('#cust-seg button').forEach(x=>x.classList.toggle('on', x.dataset.tab==='owing'));
   $('#bal-search').value=''; renderBalList('');
   $('#bal-search').oninput=e=>renderBalList(e.target.value);
 }
+$$('#cust-seg button').forEach(b=>b.onclick=()=>{
+  custTab=b.dataset.tab; $$('#cust-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  renderBalList($('#bal-search').value);
+});
+function _owingMap(){ const m={}; (DATA.balances&&DATA.balances.customers||[]).forEach(c=>m[c.id]=c.balance); return m; }
+function custRow(id,name,bal){
+  const el=document.createElement('button'); el.className='crow';
+  const right=(bal&&bal>0.005)?`<span class="cbal">${peso(bal)}</span>`:`<span class="cbal paidup">paid up</span>`;
+  el.innerHTML=`<span class="cav">${(name[0]||'?').toUpperCase()}</span><span class="cnm">${esc(name)}</span>${right}`;
+  el.onclick=()=>openDetail(id,name); return el;
+}
 function renderBalList(q){
-  q=(q||'').toLowerCase();
-  const list=$('#bal-list'); list.innerHTML='';
-  const rows=DATA.balances.customers.filter(c=>c.name.toLowerCase().includes(q));
-  if(!rows.length){list.innerHTML='<div class="loader">No customers owing</div>';return;}
-  rows.forEach(c=>{
-    const el=document.createElement('button'); el.className='crow';
-    el.innerHTML=`<span class="cav">${c.name[0].toUpperCase()}</span><span class="cnm">${c.name}</span><span class="cbal">${peso(c.balance)}</span>`;
-    el.onclick=()=>openDetail(c.id,c.name); list.appendChild(el);
-  });
+  q=(q||'').toLowerCase().trim();
+  const list=$('#bal-list'); list.innerHTML=''; const ow=_owingMap();
+  if(custTab==='owing'){
+    const rows=(DATA.balances&&DATA.balances.customers||[]).filter(c=>c.name.toLowerCase().includes(q));
+    if(!rows.length){ list.innerHTML='<div class="loader">'+(q?'No match':'No customers owing')+'</div>'; return; }
+    rows.forEach(c=>list.appendChild(custRow(c.id,c.name,ow[c.id])));
+  } else {
+    let all=(DATA.customers||[]).slice();
+    if(q) all=all.filter(c=>c.name.toLowerCase().includes(q));
+    all.sort((a,b)=>{ const ao=ow[a.id]?1:0, bo=ow[b.id]?1:0; if(ao!==bo) return bo-ao; return a.name.localeCompare(b.name); });
+    if(!all.length){ list.innerHTML='<div class="loader">No match</div>'; return; }
+    all.slice(0,200).forEach(c=>list.appendChild(custRow(c.id,c.name,ow[c.id])));
+    if(all.length>200){ const m=document.createElement('div'); m.className='loader'; m.textContent=`Showing first 200 of ${all.length} — search to narrow`; list.appendChild(m); }
+  }
 }
 let detailCust=null;
 async function openDetail(cid,name){
@@ -1007,8 +1038,20 @@ async function openDetail(cid,name){
   });
   if(j.payments.length){ h+=`<div class="section-label" style="margin-top:6px">Payments received</div>`;
     j.payments.forEach(p=>{h+=`<div class="paidrow"><span>${p.date} · ${p.method||'—'}</span><span class="green">${peso(p.amount)}</span></div>`;}); }
+  if(j.history && j.history.length){
+    h+=`<div class="section-label" style="margin-top:14px">Purchase history <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:500">· ${j.purchases}</span></div>`;
+    h+=`<div class="rlist">`+j.history.map(custHistRow).join('')+`</div>`;
+  }
   $('#det-body').innerHTML=h;
   $('#det-settle').classList.toggle('hide', !DATA.perms.settle || j.balance<=0);
+}
+function custHistRow(s){
+  const tags=[payTag(s.pay)];
+  if(s.sc) tags.push('<span class="tag sc">Self-checkout</span>');
+  tags.push(esc(s.datelabel));
+  return `<div class="rrow"><div class="ri">${CART_SVG}</div>
+    <div class="rc"><div class="items">${esc(s.summary)}</div><div class="meta">${tags.join(' <span style="opacity:.5">·</span> ')}</div></div>
+    <div class="rr"><div class="amt">${peso(s.total)}</div></div></div>`;
 }
 $('#det-settle').onclick=()=>openSettle();
 

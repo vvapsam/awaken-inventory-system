@@ -131,7 +131,9 @@ def _sale_brief(s, tz):
         "customer": (s.customer.name if (s.customer_id and s.customer) else None),
         "staff": s.staff.name if s.staff else "",
         "date": local.strftime("%Y-%m-%d") if local else "",
+        "datelabel": local.strftime("%b %d") if local else "",
         "time": (local.strftime("%I:%M %p").lstrip("0") if local else ""),
+        "sc": bool(s.note and str(s.note).startswith("Self-checkout")),
     }
 
 
@@ -540,11 +542,19 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
     ]
     paid = sum(p["amount"] for p in payments)
 
+    tz = _tz()
+    hist_rows = (db.query(Transaction)
+                 .filter(Transaction.type == TX_CASH_SALE, Transaction.customer_id == cid)
+                 .order_by(Transaction.occurred_at.desc()).limit(60).all())
+    history = [_sale_brief(s, tz) for s in hist_rows]
+
     return {
         "ok": True,
         "customer": {"id": c.id, "name": c.name, "phone": c.phone or ""},
         "orders": orders,
         "payments": payments,
+        "history": history,
+        "purchases": len(hist_rows),
         "charges": round(charges, 2),
         "paid": round(paid, 2),
         "balance": round(charges - paid, 2),
