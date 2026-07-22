@@ -119,10 +119,45 @@ def _sale_scope(db, staff):
     return q
 
 
-def _sale_brief(s, tz):
+def _covered_credit_ids(db):
+    """Credit-sale ids that count as PAID because that customer's total payments
+    cover them (oldest first). The balance math is unchanged — this only decides
+    which past orders display as Paid. Since settling always clears the full
+    balance, a settled customer's orders are all covered."""
+    pay = dict(
+        db.query(Transaction.customer_id,
+                 func.coalesce(func.sum(TransactionItem.qty * TransactionItem.unit_price), 0))
+        .join(TransactionItem, TransactionItem.transaction_id == Transaction.id)
+        .filter(Transaction.type == TX_PAYMENT, Transaction.parent_id == None,  # noqa: E711
+                Transaction.customer_id != None)  # noqa: E711
+        .group_by(Transaction.customer_id).all())
+    if not pay:
+        return set()
+    sales = (db.query(Transaction)
+             .filter(Transaction.type == TX_CASH_SALE, Transaction.is_credit == True,  # noqa: E712
+                     Transaction.customer_id != None)  # noqa: E711
+             .order_by(Transaction.customer_id, Transaction.occurred_at.asc()).all())
+    covered, budget = set(), {}
+    for s in sales:
+        cid = s.customer_id
+        if cid not in budget:
+            budget[cid] = float(pay.get(cid, 0) or 0)
+        t = float(s.total or 0)
+        if budget[cid] + 1e-6 >= t:
+            covered.add(s.id)
+            budget[cid] -= t
+        else:
+            budget[cid] = -1  # once uncovered, everything after stays unpaid
+    return covered
+
+
+def _sale_brief(s, tz, covered=None):
     local = s.occurred_at.astimezone(tz) if s.occurred_at else None
     parts = [f"{int(i.qty)}× {i.name}" for i in s.items if (i.qty or 0) > 0]
-    pay = "unpaid" if s.is_credit else (s.payment_method or "cash")
+    if s.is_credit:
+        pay = "paid" if (covered and s.id in covered) else "unpaid"
+    else:
+        pay = s.payment_method or "cash"
     return {
         "id": s.id,
         "summary": " · ".join(parts) if parts else "—",
@@ -153,13 +188,14 @@ def sales_history(request: Request, db: Session = Depends(get_db)):
     if not (can_sell(staff) or _sees_all_sales(staff)):
         return _err("Not allowed", 403)
     tz = _tz()
+    covered = _covered_credit_ids(db)
     rows = (_sale_scope(db, staff)
             .order_by(Transaction.occurred_at.desc()).limit(80).all())
     return {
         "ok": True,
         "scope": "all" if _sees_all_sales(staff) else "mine",
         "today": _sales_today(db, staff, tz),
-        "sales": [_sale_brief(s, tz) for s in rows],
+        "sales": [_sale_brief(s, tz, covered) for s in rows],
     }
 
 
@@ -242,7 +278,7 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
     if can_sell(staff) or _sees_all_sales(staff):
         rrows = (_sale_scope(db, staff)
                  .order_by(Transaction.occurred_at.desc()).limit(5).all())
-        recent = [_sale_brief(s, _tz()) for s in rrows]
+        recent = [_sale_brief(s, _tz(), _covered_credit_ids(db)) for s in rrows]
 
     return {
         "ok": True,
@@ -506,6 +542,7 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
         return _err("Customer not found", 404)
 
     orders = []
+    covered = _covered_credit_ids(db)
     charges = 0.0
     credit_sales = (
         db.query(Transaction)
@@ -514,7 +551,9 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
         .order_by(Transaction.occurred_at.desc()).all()
     )
     for s in credit_sales:
-        charges += s.total
+        charges += s.total          # balance math counts every credit sale (unchanged)
+        if s.id in covered:
+            continue                # covered by payments → shown as Paid in history, not "unpaid"
         orders.append({
             "id": s.id,
             "date": (s.occurred_at.astimezone().strftime("%b %d, %Y")
@@ -546,7 +585,7 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
     hist_rows = (db.query(Transaction)
                  .filter(Transaction.type == TX_CASH_SALE, Transaction.customer_id == cid)
                  .order_by(Transaction.occurred_at.desc()).limit(60).all())
-    history = [_sale_brief(s, tz) for s in hist_rows]
+    history = [_sale_brief(s, tz, covered) for s in hist_rows]
 
     return {
         "ok": True,
@@ -595,13 +634,9 @@ async def settle(
     from .main import customer_balances
     row = next((r for r in customer_balances(db) if r["customer"].id == c.id), None)
     balance = round(row["balance"], 2) if row else 0.0
-    if amount is None or str(amount).strip() == "":
-        amt = balance
-    else:
-        try:
-            amt = float(amount)
-        except ValueError:
-            return _err("Invalid amount")
+    # Settling always clears the FULL balance (no partial payments) — this is
+    # what lets every order flip to Paid on settle.
+    amt = balance
     if amt <= 0:
         return _err("Nothing to settle")
 
