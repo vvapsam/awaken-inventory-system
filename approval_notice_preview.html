@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWAKEN — smaller approval notice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--line:#E9EBEE;--paper:#F4F6F7;--green:#18BE7C;--green-d:#0FA268;--owed:#E2683F;--amber:#E8A13C;--amber-tint:#fdf3e2;--bank:#3f6fd0;--bank-tint:#eaf1ff;--owed-tint:#fcefe9;}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:radial-gradient(1200px 600px at 50% -10%,#eef3f2,#e7ebec),linear-gradient(180deg,#eef1f2,#e6eaec);min-height:100vh;padding:34px 18px 60px}
+h1,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
+.pagehead{text-align:center;max-width:1000px;margin:0 auto 26px}
+.pagehead h1{font-size:1.5rem}.pagehead p{color:#5c636c;margin:8px 0 0;font-size:.98rem}
+.stage{display:flex;gap:38px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+.variant{display:flex;flex-direction:column;align-items:center;gap:12px}
+.vlabel{font-family:Poppins;font-weight:700;font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;background:#fff;border:1px solid var(--line);padding:7px 15px;border-radius:999px;box-shadow:0 4px 14px rgba(15,15,15,.05);text-align:center}
+.vlabel b{color:var(--green-d)}
+.phone{width:340px;height:600px;border-radius:44px;background:#0b0d10;padding:11px;box-shadow:0 26px 60px -20px rgba(16,20,26,.5),0 0 0 2px rgba(255,255,255,.04) inset;position:relative}
+.screen{width:100%;height:100%;border-radius:34px;overflow:hidden;position:relative;background:var(--paper)}
+.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:112px;height:24px;background:#0b0d10;border-radius:0 0 15px 15px;z-index:40}
+.app{height:100%;overflow:hidden;display:flex;flex-direction:column}
+.hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 120%);color:#fff;padding:40px 22px 52px;position:relative;flex:none}
+.hero:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:30px;background:var(--paper);border-radius:22px 22px 0 0}
+.toprow{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:2}
+.brand{display:flex;align-items:center;gap:9px;font-family:Poppins;font-weight:700;letter-spacing:.16em;font-size:.74rem;color:rgba(255,255,255,.92)}
+.brand .mk{width:24px;height:24px;border-radius:8px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}.brand .mk svg{width:14px;height:14px;stroke-width:2.4}
+.rightbtns{display:flex;align-items:center;gap:10px}
+.bell{position:relative;width:37px;height:37px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center}
+.bell svg{width:19px;height:19px;stroke-width:2;color:#fff}
+.bell .dot{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:var(--owed);color:#fff;font-size:.62rem;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #0c7a6f}
+.av{width:37px;height:37px;border-radius:999px;background:rgba(255,255,255,.2);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.3)}
+.greet{margin-top:18px;position:relative;z-index:2}.greet h1{font-size:1.7rem;line-height:1.05}.greet .date{color:rgba(255,255,255,.82);font-weight:500;font-size:.85rem;margin-top:5px}
+.pills{margin-top:13px;display:flex;gap:8px;flex-wrap:wrap;position:relative;z-index:2}
+.owed{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:8px 12px}
+.owed .lbl{font-size:.76rem;color:rgba(255,255,255,.88)}.owed .amt{font-family:Poppins;font-weight:700;font-size:.9rem}
+.apill{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.92);border-radius:12px;padding:8px 11px;color:#b06a12;font-weight:700;font-size:.8rem}
+.apill svg{width:15px;height:15px;stroke-width:2.4}
+.apill .c{background:var(--owed);color:#fff;border-radius:999px;font-size:.66rem;padding:1px 6px}
+.body{margin-top:-18px;position:relative;z-index:3;padding:0 18px;display:flex;flex-direction:column;gap:10px}
+/* slim one-line bar */
+.slimbar{display:flex;align-items:center;gap:9px;background:#fff;border-radius:13px;padding:10px 13px;box-shadow:0 8px 20px rgba(11,26,23,.08);border-left:3px solid var(--amber)}
+.slimbar svg{width:17px;height:17px;stroke-width:2.2;color:#c9821f;flex:none}
+.slimbar .t{flex:1;font-weight:600;font-size:.85rem}
+.slimbar .t b{color:#c9821f}
+.slimbar .go{color:#c9821f;font-weight:700;font-size:.8rem}
+.card{border-radius:18px;background:#fff;box-shadow:0 10px 26px rgba(11,26,23,.1);padding:14px 15px;display:flex;align-items:center;gap:12px}
+.card .ic{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex:none}.card .ic svg{width:23px;height:23px;stroke-width:1.9}
+.card .tx{flex:1}.card .tx h3{font-size:1.08rem;font-weight:700}.card .tx p{margin:2px 0 0;color:var(--muted);font-size:.82rem}
+.card .arw{color:#c3c8ce}.card .arw svg{width:15px;height:15px;stroke-width:2.6}
+.card.sell{background:linear-gradient(135deg,#0F0F0F,#232a30)}.card.sell h3{color:#fff}.card.sell p{color:rgba(255,255,255,.7)}.card.sell .ic{background:linear-gradient(135deg,#18BE7C,#0F9E91);color:#fff}.card.sell .arw{color:rgba(255,255,255,.6)}
+.card.adjust .ic{background:#eaf1ff;color:#3f6fd0}.card.cust .ic{background:#e8f8f1;color:var(--green-d)}
+.note{max-width:1000px;margin:30px auto 0;text-align:center;color:#6b7280;font-size:.9rem;line-height:1.6}.note b{color:#0F1115}
+.cap{font-size:.82rem;color:#6b7280;max-width:320px;text-align:center;line-height:1.45}
+</style>
+</head>
+<body>
+<div class="pagehead">
+  <h1>Smaller approval notice — pick one</h1>
+  <p>Three compact takes. All tap through to the approval queue and disappear when nothing's pending.</p>
+</div>
+
+<div class="stage">
+
+  <!-- A: bell icon in header -->
+  <div class="variant">
+    <div class="vlabel">A · <b>Bell icon</b> (smallest)</div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app">
+        <div class="hero">
+          <div class="toprow">
+            <div class="brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 20h16z"/></svg></span> AWAKEN</div>
+            <div class="rightbtns">
+              <div class="bell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot">2</span></div>
+              <div class="av">V</div>
+            </div>
+          </div>
+          <div class="greet"><h1>Hi, Vanessa 👋</h1><div class="date">Wednesday, 22 July</div>
+            <div class="pills"><div class="owed"><span class="lbl">3 owe</span> <span class="amt">₱1,466</span></div></div></div>
+        </div>
+        <div class="body">
+          <div class="card sell"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="tx"><h3>Sell</h3><p>Log a sale</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+          <div class="card adjust"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div><div class="tx"><h3>Adjust</h3><p>Receive or correct stock</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+          <div class="card cust"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div class="tx"><h3>Customers</h3><p>Balances &amp; history</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="cap">A bell beside your avatar with a red count. Zero body space. Tap → approval queue.</div>
+  </div>
+
+  <!-- B: tiny pill in hero -->
+  <div class="variant">
+    <div class="vlabel">B · <b>Tiny pill</b> in header</div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app">
+        <div class="hero">
+          <div class="toprow"><div class="brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 20h16z"/></svg></span> AWAKEN</div><div class="av">V</div></div>
+          <div class="greet"><h1>Hi, Vanessa 👋</h1><div class="date">Wednesday, 22 July</div>
+            <div class="pills">
+              <div class="owed"><span class="lbl">3 owe</span> <span class="amt">₱1,466</span></div>
+              <div class="apill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> Approve <span class="c">2</span></div>
+            </div></div>
+        </div>
+        <div class="body">
+          <div class="card sell"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="tx"><h3>Sell</h3><p>Log a sale</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+          <div class="card adjust"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div><div class="tx"><h3>Adjust</h3><p>Receive or correct stock</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+          <div class="card cust"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div class="tx"><h3>Customers</h3><p>Balances &amp; history</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="cap">A small "Approve · 2" chip sitting next to the balances pill in the header. Still tiny, but says what it is.</div>
+  </div>
+
+  <!-- C: slim one-line bar -->
+  <div class="variant">
+    <div class="vlabel">C · <b>Slim one-line bar</b></div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app">
+        <div class="hero">
+          <div class="toprow"><div class="brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 20h16z"/></svg></span> AWAKEN</div><div class="av">V</div></div>
+          <div class="greet"><h1>Hi, Vanessa 👋</h1><div class="date">Wednesday, 22 July</div>
+            <div class="pills"><div class="owed"><span class="lbl">3 owe</span> <span class="amt">₱1,466</span></div></div></div>
+        </div>
+        <div class="body">
+          <div class="slimbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><div class="t"><b>2 orders</b> waiting for approval</div><div class="go">Review ›</div></div>
+          <div class="card sell"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="tx"><h3>Sell</h3><p>Log a sale</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+          <div class="card adjust"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div><div class="tx"><h3>Adjust</h3><p>Receive or correct stock</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="cap">One thin line above the cards — about half the height of the earlier banner.</div>
+  </div>
+
+</div>
+
+<div class="note">
+  My pick: <b>A (bell icon)</b> — cleanest and takes no space, matches how most apps show a notification. <b>B</b> if you want it to say the word "Approve". <b>C</b> if you like a full-width line. All hide when there's nothing pending. Say A, B, or C.
+</div>
+</body>
+</html>
