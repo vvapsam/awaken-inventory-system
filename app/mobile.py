@@ -18,7 +18,7 @@ from .auth import current_staff
 from .db import get_db
 from .models import (
     Product, Staff, PricingGroup, can, can_any,
-    Transaction, TransactionItem, TX_CASH_SALE, TX_PAYMENT, TX_INVENTORY,
+    Transaction, TransactionItem, TX_CASH_SALE, TX_PAYMENT, TX_INVENTORY, TX_ORDER,
 )
 
 router = APIRouter()
@@ -184,6 +184,7 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "loss": can_loss(staff),
         "settle": can_settle(staff),
         "view_costs": can(staff, "view_costs"),
+        "orders": can(staff, "sales.create") or staff.role == "admin",
     }
 
     maps = _on_hand_map(db)
@@ -252,6 +253,10 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "levels": [{"id": g.id, "name": g.name} for g in levels],
         "recent": recent,
         "sales_scope": "all" if _sees_all_sales(staff) else "mine",
+        "orders_pending": (db.query(func.count(Transaction.id))
+                           .filter(Transaction.type == TX_ORDER,
+                                   Transaction.status == "pending").scalar() or 0
+                           if perms["orders"] else 0),
     }
 
 

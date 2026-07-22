@@ -345,6 +345,97 @@ def pending_order_count(db):
         Transaction.type == TX_ORDER, Transaction.status == "pending").scalar() or 0
 
 
+def _confirm_order(db, o, staff):
+    """Turn a pending order into a real paid sale (deducts stock)."""
+    sale = Transaction(
+        type=TX_CASH_SALE, status="paid", staff_id=staff.id, is_credit=False,
+        payment_method=o.payment_method, proof=o.proof, proof_mime=o.proof_mime,
+        note="Self-checkout %s · %s" % (o.number, o.customer_name))
+    db.add(sale)
+    db.flush()
+    for it in o.items:
+        prod = db.get(Product, it.product_id) if it.product_id else None
+        db.add(TransactionItem(transaction_id=sale.id, product_id=it.product_id,
+                               name=it.name, qty=it.qty, unit_price=it.unit_price,
+                               cost_price=(prod.cost_price if prod else None)))
+    o.status = "confirmed"
+    o.converted_id = sale.id
+    o.staff_id = staff.id
+    o.decided_at = datetime.now(timezone.utc)
+    return sale
+
+
+def _reject_order(db, o, staff):
+    o.status = "rejected"
+    o.staff_id = staff.id
+    o.decided_at = datetime.now(timezone.utc)
+
+
+def _order_brief(o, tz):
+    local = o.created_at.astimezone(tz) if o.created_at else None
+    parts = [f"{int(i.qty)}× {i.name}" for i in o.items if (i.qty or 0) > 0]
+    return {
+        "id": o.id,
+        "number": o.number or "",
+        "customer": o.customer_name or "Walk-in",
+        "summary": " · ".join(parts) if parts else "—",
+        "total": round(float(o.total or 0), 2),
+        "pay": (o.payment_method or "cash"),
+        "has_proof": bool(o.proof),
+        "time": (local.strftime("%I:%M %p").lstrip("0") if local else ""),
+    }
+
+
+# ---- mobile JSON: approval queue ----
+@router.get("/api/m/orders")
+def m_orders(request: Request, db: Session = Depends(get_db)):
+    staff = current_staff(request, db)
+    if not staff:
+        return _err("Not signed in", 401)
+    if not can_orders(staff):
+        return _err("Not allowed", 403)
+    tz = _tz()
+    pending = (db.query(Transaction)
+               .filter(Transaction.type == TX_ORDER, Transaction.status == "pending")
+               .order_by(Transaction.created_at.desc()).all())
+    return {"ok": True, "count": len(pending),
+            "orders": [_order_brief(o, tz) for o in pending]}
+
+
+@router.post("/api/m/orders/{oid}/confirm")
+def m_order_confirm(request: Request, oid: int, db: Session = Depends(get_db)):
+    staff = current_staff(request, db)
+    if not staff:
+        return _err("Not signed in", 401)
+    if not can_orders(staff):
+        return _err("Not allowed", 403)
+    o = db.get(Transaction, oid)
+    if not o or o.type != TX_ORDER:
+        return _err("Order not found", 404)
+    if o.status != "pending":
+        return _err("This order was already %s" % (o.status or "decided"))
+    _confirm_order(db, o, staff)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/m/orders/{oid}/reject")
+def m_order_reject(request: Request, oid: int, db: Session = Depends(get_db)):
+    staff = current_staff(request, db)
+    if not staff:
+        return _err("Not signed in", 401)
+    if not can_orders(staff):
+        return _err("Not allowed", 403)
+    o = db.get(Transaction, oid)
+    if not o or o.type != TX_ORDER:
+        return _err("Order not found", 404)
+    if o.status != "pending":
+        return _err("This order was already %s" % (o.status or "decided"))
+    _reject_order(db, o, staff)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/orders", response_class=HTMLResponse)
 def orders_queue(request: Request, db: Session = Depends(get_db)):
     staff, redir = _require_orders(request, db)
@@ -395,22 +486,7 @@ def order_confirm(request: Request, oid: int, db: Session = Depends(get_db)):
         return redir
     o = db.get(Transaction, oid)
     if o and o.type == TX_ORDER and o.status == "pending":
-        # Turn the order into a real paid sale (deducts stock, shows in Retail).
-        sale = Transaction(
-            type=TX_CASH_SALE, status="paid", staff_id=staff.id, is_credit=False,
-            payment_method=o.payment_method, proof=o.proof, proof_mime=o.proof_mime,
-            note="Self-checkout %s · %s" % (o.number, o.customer_name))
-        db.add(sale)
-        db.flush()
-        for it in o.items:
-            prod = db.get(Product, it.product_id) if it.product_id else None
-            db.add(TransactionItem(transaction_id=sale.id, product_id=it.product_id,
-                                   name=it.name, qty=it.qty, unit_price=it.unit_price,
-                                   cost_price=(prod.cost_price if prod else None)))
-        o.status = "confirmed"
-        o.converted_id = sale.id
-        o.staff_id = staff.id
-        o.decided_at = datetime.now(timezone.utc)
+        _confirm_order(db, o, staff)
         db.commit()
     return RedirectResponse("/orders", status_code=303)
 
@@ -422,9 +498,7 @@ def order_reject(request: Request, oid: int, db: Session = Depends(get_db)):
         return redir
     o = db.get(Transaction, oid)
     if o and o.type == TX_ORDER and o.status == "pending":
-        o.status = "rejected"
-        o.staff_id = staff.id
-        o.decided_at = datetime.now(timezone.utc)
+        _reject_order(db, o, staff)
         db.commit()
     return RedirectResponse("/orders", status_code=303)
 

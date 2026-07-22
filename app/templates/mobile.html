@@ -149,6 +149,29 @@ input,select{font-family:inherit;font-size:16px}
 .hist-sum .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.82);font-weight:600}
 .hist-sum .v{font-family:Poppins;font-weight:700;font-size:1.7rem;margin-top:2px}
 .hist-sum .r{text-align:right;font-size:.82rem;color:rgba(255,255,255,.9);line-height:1.4}
+.ncard.approve .ic{background:#fff4e6;color:#d98324}
+/* approvals screen */
+.appr-empty{text-align:center;color:var(--muted);padding:48px 20px}
+.appr-empty .big{font-size:2.2rem;margin-bottom:8px}
+.ordcard{background:#fff;border-radius:18px;box-shadow:0 12px 30px rgba(11,26,23,.10);padding:15px 16px;margin-bottom:13px}
+.ordcard .oh{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ordcard .oh .num{font-family:Poppins;font-weight:700;font-size:.82rem;color:var(--muted);letter-spacing:.02em}
+.ordcard .oh .amt{font-family:Poppins;font-weight:700;font-size:1.15rem}
+.ordcard .cust{font-weight:700;font-size:1.02rem;margin-top:6px}
+.ordcard .sub{color:var(--muted);font-size:.82rem;margin-top:3px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ordcard .items{margin-top:9px;font-size:.9rem;line-height:1.4}
+.ordcard .proofthumb{margin-top:11px;display:inline-flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:8px 12px;font-weight:600;font-size:.85rem;color:var(--ink)}
+.ordcard .proofthumb img{width:34px;height:34px;border-radius:7px;object-fit:cover}
+.ordcard .proofthumb svg{width:17px;height:17px;color:var(--muted)}
+.ordbtns{display:grid;grid-template-columns:1fr 1.4fr;gap:10px;margin-top:14px}
+.ordbtns button{padding:13px;border-radius:12px;font-family:Poppins;font-weight:600;font-size:.98rem}
+.ordbtns .rej{background:#fff;border:1.5px solid #e6a49b;color:#b23b28}
+.ordbtns .app{background:var(--green);color:#fff}
+.ordbtns button:disabled{opacity:.5}
+.ordbtns button:active{transform:scale(.99)}
+.proofview{position:fixed;inset:0;z-index:80;background:rgba(6,10,9,.92);display:flex;align-items:center;justify-content:center;padding:20px}
+.proofview img{max-width:100%;max-height:100%;border-radius:12px}
+.proofview .close{position:absolute;top:calc(var(--safe-t) + 14px);right:16px;width:40px;height:40px;border-radius:999px;background:rgba(255,255,255,.16);color:#fff;font-size:1.4rem;display:flex;align-items:center;justify-content:center}
 .badge{position:absolute;top:14px;right:14px;background:var(--ink);color:#fff;font-weight:700;
   font-size:.78rem;border-radius:999px;padding:3px 10px}
 
@@ -326,6 +349,12 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
       <div class="tx"><h3>Balances</h3><p id="home-bal-sub">Settle unpaid customers</p></div>
       <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
     </button>
+    <button class="ncard approve hide" data-go="approvals" id="home-approve-card">
+      <span class="nbadge hide" id="home-appr-badge"></span>
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+      <div class="tx"><h3>For approval</h3><p id="home-appr-sub">Self-checkout orders</p></div>
+      <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+    </button>
 
     <div id="home-lowwrap" class="hide">
       <div class="h-seclbl">Needs attention</div>
@@ -372,6 +401,14 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
   </div>
   <div id="hist-body" style="margin-top:16px"><div class="loader">Loading…</div></div>
 </section>
+
+<!-- ============ FOR APPROVAL ============ -->
+<section id="s-approvals" class="screen">
+  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">For approval</h2></div>
+  <div class="section-label" id="appr-count">Self-checkout orders awaiting confirmation</div>
+  <div id="appr-body"><div class="loader">Loading…</div></div>
+</section>
+<div class="proofview hide" id="proofview"><button class="close" id="proofview-close" type="button">×</button><img id="proofview-img" alt="proof"></div>
 
 <!-- ============ SELL ============ -->
 <section id="s-sell" class="screen">
@@ -548,6 +585,7 @@ function openScreen(name){
   if(name==='adjust') initAdjust();
   if(name==='balances') initBalances();
   if(name==='history') initHistory();
+  if(name==='approvals') initApprovals();
   go(name);
 }
 
@@ -596,6 +634,51 @@ async function initHistory(){
   $('#hist-body').innerHTML=html;
 }
 
+// ---- for approval (self-checkout orders) ----
+function renderApproveBadge(){
+  const n=DATA.orders_pending||0;
+  const b=$('#home-appr-badge');
+  if(n>0){ b.textContent=n; b.classList.remove('hide'); $('#home-appr-sub').textContent=`${n} order${n==1?'':'s'} waiting`; }
+  else{ b.classList.add('hide'); $('#home-appr-sub').textContent='Self-checkout orders'; }
+}
+function openProof(id){ $('#proofview-img').src='/order-proof/'+id; $('#proofview').classList.remove('hide'); }
+$('#proofview-close').onclick=()=>$('#proofview').classList.add('hide');
+$('#proofview').onclick=e=>{ if(e.target.id==='proofview') $('#proofview').classList.add('hide'); };
+async function initApprovals(){
+  $('#appr-body').innerHTML='<div class="loader">Loading…</div>';
+  const r=await fetch('/api/m/orders'); const j=await r.json();
+  if(!j.ok){ $('#appr-body').innerHTML='<div class="loader">'+(j.error||'Could not load')+'</div>'; return; }
+  renderApprList(j.orders||[]);
+}
+function renderApprList(orders){
+  $('#appr-count').textContent = orders.length ? `${orders.length} order${orders.length==1?'':'s'} awaiting confirmation` : 'Self-checkout orders awaiting confirmation';
+  if(!orders.length){ $('#appr-body').innerHTML='<div class="appr-empty"><div class="big">✓</div>No orders waiting for approval.</div>'; return; }
+  const body=$('#appr-body'); body.innerHTML='';
+  orders.forEach(o=>{
+    const proof = o.has_proof ? `<button class="proofthumb" type="button" onclick="openProof(${o.id})"><img src="/order-proof/${o.id}" alt=""> View payment proof</button>` : '';
+    const el=document.createElement('div'); el.className='ordcard';
+    el.innerHTML=`<div class="oh"><span class="num">${esc(o.number||'ORDER')}</span><span class="amt">${peso(o.total)}</span></div>
+      <div class="cust">${esc(o.customer)}</div>
+      <div class="sub">${payTag(o.pay)} <span style="opacity:.5">·</span> ${esc(o.time)}</div>
+      <div class="items">${esc(o.summary)}</div>
+      ${proof}
+      <div class="ordbtns"><button class="rej" type="button">Reject</button><button class="app" type="button">Approve</button></div>`;
+    const rej=el.querySelector('.rej'), app=el.querySelector('.app');
+    rej.onclick=()=>decideOrder(o.id,'reject',el,[rej,app]);
+    app.onclick=()=>decideOrder(o.id,'confirm',el,[rej,app]);
+    body.appendChild(el);
+  });
+}
+async function decideOrder(id,action,card,btns){
+  btns.forEach(b=>b.disabled=true);
+  const r=await fetch(`/api/m/orders/${id}/${action}`,{method:'POST'}); const j=await r.json();
+  if(!j.ok){ alert(j.error||'Could not update'); btns.forEach(b=>b.disabled=false); return; }
+  card.style.transition='opacity .2s'; card.style.opacity='0';
+  await boot();                         // refresh badge, recent sales, balances
+  const rr=await fetch('/api/m/orders'); const jj=await rr.json();
+  if(jj.ok) renderApprList(jj.orders||[]);
+}
+
 // ---- bootstrap ----
 async function boot(){
   const r=await fetch('/api/m/bootstrap');
@@ -605,6 +688,8 @@ async function boot(){
   if(!DATA.perms.sell) $('.ncard.sell').classList.add('hide');
   if(!DATA.perms.adjust) $('.ncard.adjust').classList.add('hide');
   if(!DATA.perms.settle) $('.ncard.bal').classList.add('hide');
+  $('#home-approve-card').classList.toggle('hide', !DATA.perms.orders);
+  renderApproveBadge();
   renderHomeBal();
   renderLowStock();
   renderRecent();
