@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWAKEN Mobile — Approval notice + Customers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--line:#E9EBEE;--paper:#F4F6F7;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--owed:#E2683F;--owed-tint:#fcefe9;--bank:#3f6fd0;--bank-tint:#eaf1ff;--amber:#E8A13C;--amber-tint:#fdf3e2;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
+  background:radial-gradient(1200px 600px at 50% -10%,#eef3f2,#e7ebec),linear-gradient(180deg,#eef1f2,#e6eaec);min-height:100vh;padding:34px 18px 60px}
+h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
+.pagehead{text-align:center;max-width:1000px;margin:0 auto 26px}
+.pagehead h1{font-size:1.5rem}.pagehead p{color:#5c636c;margin:8px 0 0;font-size:.98rem}
+.stage{display:flex;gap:40px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+.variant{display:flex;flex-direction:column;align-items:center;gap:14px}
+.vlabel{font-family:Poppins;font-weight:700;font-size:.8rem;letter-spacing:.05em;text-transform:uppercase;color:#6b7280;background:#fff;border:1px solid var(--line);padding:7px 15px;border-radius:999px;box-shadow:0 4px 14px rgba(15,15,15,.05)}
+.vlabel b{color:var(--green-d)}
+.phone{width:344px;height:716px;border-radius:46px;background:#0b0d10;padding:12px;box-shadow:0 30px 70px -20px rgba(16,20,26,.5),0 0 0 2px rgba(255,255,255,.04) inset;position:relative}
+.screen{width:100%;height:100%;border-radius:36px;overflow:hidden;position:relative;background:var(--paper)}
+.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:118px;height:26px;background:#0b0d10;border-radius:0 0 16px 16px;z-index:40}
+.app{height:100%;overflow-y:auto;display:flex;flex-direction:column}
+.app::-webkit-scrollbar{display:none}
+/* hero */
+.hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 120%);color:#fff;padding:42px 22px 56px;position:relative;flex:none}
+.hero:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:32px;background:var(--paper);border-radius:24px 24px 0 0}
+.toprow{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:2}
+.brand{display:flex;align-items:center;gap:9px;font-family:Poppins;font-weight:700;letter-spacing:.16em;font-size:.76rem;color:rgba(255,255,255,.92)}
+.brand .mk{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
+.brand .mk svg{width:15px;height:15px;stroke-width:2.4}
+.av{width:37px;height:37px;border-radius:999px;background:rgba(255,255,255,.2);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.3)}
+.greet{margin-top:18px;position:relative;z-index:2}
+.greet h1{font-size:1.75rem;line-height:1.05}
+.greet .date{color:rgba(255,255,255,.82);font-weight:500;font-size:.86rem;margin-top:5px}
+.owed{margin-top:14px;display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);border-radius:13px;padding:9px 13px;position:relative;z-index:2}
+.owed .lbl{font-size:.78rem;color:rgba(255,255,255,.88)}.owed .amt{font-family:Poppins;font-weight:700}
+.body{margin-top:-20px;position:relative;z-index:3;padding:0 18px 20px;display:flex;flex-direction:column;gap:11px}
+/* approval notification banner */
+.notif{display:flex;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:13px 15px;box-shadow:0 12px 30px rgba(11,26,23,.1);border-left:4px solid var(--amber)}
+.notif .nic{width:38px;height:38px;border-radius:11px;background:var(--amber-tint);color:#c9821f;display:flex;align-items:center;justify-content:center;flex:none;position:relative}
+.notif .nic svg{width:21px;height:21px;stroke-width:2}
+.notif .nic .dot{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:var(--owed);color:#fff;font-size:.64rem;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
+.notif .nt{flex:1}.notif .nt .a{font-weight:700;font-size:.92rem}.notif .nt .b{color:var(--muted);font-size:.78rem;margin-top:1px}
+.notif .go{color:#c9821f;font-weight:700;font-size:.82rem;white-space:nowrap}
+/* cards */
+.card{border-radius:20px;background:#fff;box-shadow:0 12px 30px rgba(11,26,23,.12);padding:15px 16px;display:flex;align-items:center;gap:13px;position:relative}
+.card .ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.card .ic svg{width:25px;height:25px;stroke-width:1.9}
+.card .tx{flex:1}.card .tx h3{font-size:1.15rem;font-weight:700}.card .tx p{margin:2px 0 0;color:var(--muted);font-size:.85rem}
+.card .arw{color:#c3c8ce}.card .arw svg{width:16px;height:16px;stroke-width:2.6}
+.card.sell{background:linear-gradient(135deg,#0F0F0F,#232a30)}.card.sell h3{color:#fff}.card.sell p{color:rgba(255,255,255,.7)}
+.card.sell .ic{background:linear-gradient(135deg,#18BE7C,#0F9E91);color:#fff}.card.sell .arw{color:rgba(255,255,255,.6)}
+.card.adjust .ic{background:#eaf1ff;color:#3f6fd0}.card.cust .ic{background:#e8f8f1;color:var(--green-d)}
+/* section + rows */
+.seclbl{display:flex;align-items:center;justify-content:space-between;margin:8px 4px 0}
+.seclbl .t{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#9aa1aa}
+.seclbl .all{font-size:.8rem;font-weight:700;color:var(--green-d);display:flex;align-items:center;gap:3px}.seclbl .all svg{width:14px;height:14px;stroke-width:3}
+.rlist{border-radius:20px;background:#fff;box-shadow:0 12px 30px rgba(11,26,23,.1);overflow:hidden;margin-top:2px}
+.rrow{display:flex;align-items:center;gap:12px;padding:12px 15px;border-top:1px solid #f1f2f4}
+.rrow:first-child{border-top:0}
+.rrow .ri{width:38px;height:38px;border-radius:11px;background:#f0f7f4;color:var(--green-d);display:flex;align-items:center;justify-content:center;flex:none;font-weight:700}
+.rrow .ri svg{width:19px;height:19px;stroke-width:1.9}
+.rrow .rc{flex:1;min-width:0}.rrow .rc .nm{font-weight:600;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rrow .rc .meta{color:var(--muted);font-size:.77rem;margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rrow .rr{text-align:right;flex:none}.rrow .rr .amt{font-family:Poppins;font-weight:700;font-size:.96rem}.rrow .rr .amt.owe{color:#c9502b}.rrow .rr .amt.ok{color:var(--muted);font-weight:600;font-size:.85rem}
+.rrow .rr .time{color:var(--muted);font-size:.72rem;margin-top:1px}
+.pay{font-size:.62rem;font-weight:700;padding:2px 6px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}
+.pay.cash{background:#e8f8f1;color:var(--green-d)}.pay.bank{background:var(--bank-tint);color:var(--bank)}.pay.unpaid{background:var(--owed-tint);color:#c0522f}
+.tag.sc{font-size:.62rem;font-weight:700;padding:2px 6px;border-radius:999px;background:#eef1ff;color:#5566cc;text-transform:uppercase;letter-spacing:.03em}
+/* topbar */
+.topbar{display:flex;align-items:center;gap:12px;padding:42px 18px 16px;background:linear-gradient(160deg,#0b6b62,#0f9e91 65%,#18BE7C 135%);border-radius:0 0 22px 22px;flex:none}
+.back{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.32);color:#fff;border-radius:999px;padding:7px 13px 7px 10px;font-weight:600;font-size:.85rem}
+.back svg{width:17px;height:17px;stroke-width:2.4}.topbar h2{font-size:1.15rem;color:#fff}
+.pbody{padding:16px 18px 22px}
+.gsum{background:linear-gradient(135deg,#0b6b62,#0f9e91 70%,#18BE7C 135%);color:#fff;border-radius:18px;padding:15px 18px;box-shadow:0 14px 30px -10px rgba(15,158,145,.5);display:flex;align-items:center;justify-content:space-between}
+.gsum .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.82);font-weight:600}
+.gsum .v{font-family:Poppins;font-weight:700;font-size:1.7rem;margin-top:2px}.gsum .r{text-align:right;font-size:.82rem;color:rgba(255,255,255,.9)}
+.search{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 14px;margin-top:14px;color:var(--muted)}
+.search svg{width:18px;height:18px}
+.seg{display:flex;gap:0;background:#eceef0;border-radius:12px;padding:4px;margin-top:12px}
+.seg button{flex:1;padding:9px;border:0;border-radius:9px;background:none;font-weight:700;font-size:.86rem;color:var(--muted)}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(15,15,15,.08)}
+.settle{margin-top:14px;width:100%;padding:15px;border:0;border-radius:14px;background:var(--ink);color:#fff;font-family:Poppins;font-weight:600;font-size:1rem}
+.dhead{display:flex;align-items:baseline;justify-content:space-between;margin:18px 4px 8px}
+.dhead .d{font-family:Poppins;font-weight:700;font-size:1rem}.dhead .dt{color:var(--muted);font-size:.82rem;font-weight:600}
+.note{max-width:1000px;margin:32px auto 0;text-align:center;color:#6b7280;font-size:.9rem;line-height:1.6}.note b{color:#0F1115}
+</style>
+</head>
+<body>
+<div class="pagehead">
+  <h1>AWAKEN Mobile — approval notice + Customers</h1>
+  <p>1) "For approval" moves to a slim notification at the top of Home. 2) Balances becomes a full <b>Customers</b> browser — search anyone, see balances, open a customer to view their <b>history</b>. Approved self-checkout orders show in history tagged. Sample data.</p>
+</div>
+
+<div class="stage">
+
+  <!-- ===== HOME with approval notification ===== -->
+  <div class="variant">
+    <div class="vlabel">Home · <b>approval as a top notice</b></div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app">
+        <div class="hero">
+          <div class="toprow"><div class="brand"><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 20h16z"/></svg></span> AWAKEN</div><div class="av">V</div></div>
+          <div class="greet"><h1>Hi, Vanessa 👋</h1><div class="date">Wednesday, 22 July</div>
+            <div class="owed"><span class="lbl">3 customers owe</span> <span class="amt">₱1,466.00</span></div></div>
+        </div>
+        <div class="body">
+          <div class="notif">
+            <div class="nic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot">2</span></div>
+            <div class="nt"><div class="a">2 orders waiting for approval</div><div class="b">Self-checkout · tap to review</div></div>
+            <div class="go">Review ›</div>
+          </div>
+          <div class="card sell"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="tx"><h3>Sell</h3><p>Log a sale at the counter</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+          <div class="card adjust"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg></div><div class="tx"><h3>Adjust</h3><p>Receive or correct stock</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+          <div class="card cust"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></div><div class="tx"><h3>Customers</h3><p>Balances &amp; purchase history</p></div><div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div></div>
+
+          <div class="seclbl"><span class="t">Recent sales</span><span class="all">See all <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span></div>
+          <div class="rlist">
+            <div class="rrow"><div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="rc"><div class="nm">2× Pocari · 1× Sip Pink</div><div class="meta"><span class="pay bank">Bank</span> <span class="tag sc">Self-checkout</span> 2:41 PM</div></div><div class="rr"><div class="amt">₱235</div></div></div>
+            <div class="rrow"><div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="rc"><div class="nm">3× Sip Water</div><div class="meta"><span class="pay unpaid">Unpaid</span> Dom Roque · 1:58 PM</div></div><div class="rr"><div class="amt">₱75</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ===== CUSTOMERS list ===== -->
+  <div class="variant">
+    <div class="vlabel">Customers · <b>search &amp; balances</b></div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app">
+        <div class="topbar"><button class="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">Customers</h2></div>
+        <div class="pbody">
+          <div class="gsum"><div><div class="k">Total outstanding</div><div class="v">₱1,466.00</div></div><div class="r">3 owing<br>of 912 customers</div></div>
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Search a customer…</div>
+          <div class="seg"><button class="on">Owing (3)</button><button>All customers</button></div>
+          <div class="rlist" style="margin-top:12px">
+            <div class="rrow"><div class="ri">D</div><div class="rc"><div class="nm">Dom Roque</div><div class="meta">5 unpaid orders</div></div><div class="rr"><div class="amt owe">₱935.00</div></div></div>
+            <div class="rrow"><div class="ri">M</div><div class="rc"><div class="nm">Melvin Te</div><div class="meta">2 unpaid orders</div></div><div class="rr"><div class="amt owe">₱281.00</div></div></div>
+            <div class="rrow"><div class="ri">B</div><div class="rc"><div class="nm">Benjo Austria</div><div class="meta">1 unpaid order</div></div><div class="rr"><div class="amt owe">₱250.00</div></div></div>
+          </div>
+          <div class="seclbl" style="margin-top:18px"><span class="t">A · all customers</span></div>
+          <div class="rlist" style="margin-top:6px">
+            <div class="rrow"><div class="ri">A</div><div class="rc"><div class="nm">Aaron Villa</div><div class="meta">12 purchases</div></div><div class="rr"><div class="amt ok">paid up</div></div></div>
+            <div class="rrow"><div class="ri">A</div><div class="rc"><div class="nm">Abigail Reyes</div><div class="meta">3 purchases</div></div><div class="rr"><div class="amt ok">paid up</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ===== CUSTOMER detail ===== -->
+  <div class="variant">
+    <div class="vlabel">Customer · <b>balance + history</b></div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="app">
+        <div class="topbar"><button class="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Back</button><h2 class="hd">Dom Roque</h2></div>
+        <div class="pbody">
+          <div class="gsum"><div><div class="k">Balance owed</div><div class="v">₱935.00</div></div><div class="r">5 unpaid<br>28 purchases</div></div>
+          <button class="settle">Settle balance</button>
+          <div class="dhead"><span class="d">Purchase history</span><span class="dt">28 total</span></div>
+          <div class="rlist">
+            <div class="rrow"><div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="rc"><div class="nm">3× Sip Water</div><div class="meta"><span class="pay unpaid">Unpaid</span> Jul 22</div></div><div class="rr"><div class="amt">₱75</div></div></div>
+            <div class="rrow"><div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="rc"><div class="nm">1× Pocari</div><div class="meta"><span class="pay bank">Bank</span> <span class="tag sc">Self-checkout</span> Jul 21</div></div><div class="rr"><div class="amt">₱80</div></div></div>
+            <div class="rrow"><div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><div class="rc"><div class="nm">2× Sip Pink</div><div class="meta"><span class="pay cash">Cash</span> Jul 20</div></div><div class="rr"><div class="amt">₱150</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+<div class="note">
+  <b>Approval notice:</b> the "For approval" card becomes a slim banner at the top of Home (bell + count), tap to review — hidden when nothing's pending.<br>
+  <b>Customers:</b> the Balances card becomes <b>Customers</b> — a green "Total outstanding" summary, a search box, and an <b>Owing / All customers</b> toggle. Tap anyone to see their <b>balance</b>, a <b>Settle balance</b> button (if they owe), and their full <b>purchase history</b> — approved self-checkout orders included, tagged.<br>
+  Tell me any tweaks (or "build it") and I'll do it on dev first.
+</div>
+</body>
+</html>
