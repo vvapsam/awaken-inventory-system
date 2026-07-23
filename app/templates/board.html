@@ -97,7 +97,7 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
     <div id="rows"></div>
   </div>
 
-  <div class="foot">Ranked by progress · the running time is each team's own clock, ticking live.</div>
+  <div class="foot">In start order within each group · the running time is each team's own clock, ticking from its start time.</div>
 </div>
 
 <script>
@@ -121,8 +121,8 @@ function rowHtml(g,i){
   const stnName = fin ? 'Finished 🏁' : (STATIONS[g.done]||'—');
   const sub = fin ? ('Done '+(g.finish_clock||'')) : 'Station <b>'+cur+' / '+N()+'</b>';
   const startTag = g.start_clock ? '<span class="stt">🏁 '+g.start_clock+'</span>' : '';
-  return '<div class="grid row'+(i===0?' lead':'')+(fin?' fin':'')+(g.started?'':' pre')+'">'+
-      '<div class="cell rank">'+(i+1)+(i===0?'<small>LEAD</small>':'')+'</div>'+
+  return '<div class="grid row'+(fin?' fin':'')+(g.started?'':' pre')+'">'+
+      '<div class="cell rank">'+(i+1)+'</div>'+
       '<div class="cell team"><span class="emb" style="background:'+hexA(g.color,.14)+';color:'+(g.color||'#18BE7C')+'">'+g.emblem+'</span>'+
         '<span><span class="nm">'+g.name+'<span class="tag">'+g.tag+'</span></span>'+startTag+'</span></div>'+
       '<div class="cell stn"><span class="pin">'+PIN+'</span><span><span class="nm">'+stnName+'</span><span class="sub">'+sub+'</span></span></div>'+
@@ -130,18 +130,13 @@ function rowHtml(g,i){
       '<div class="cell prog"><div class="barrow"><span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div></div>'+
     '</div>';
 }
-function rankKey(g){
-  // Furthest along leads; among finished, fastest final time; among running, most elapsed.
-  return [ g.finished?2:(g.started?1:0), g.done, g.finished?-g.total:liveTotal(g) ];
-}
-function cmp(a,b){ const ka=rankKey(a),kb=rankKey(b);
-  if(kb[0]!==ka[0])return kb[0]-ka[0];        // finished/running before not-started
-  if(kb[1]!==ka[1])return kb[1]-ka[1];        // more stations done first
-  return kb[2]-ka[2]; }
+function startMs(g){ return g.start_at ? Date.parse(g.start_at) : Infinity; }
 function render(){
   rows.innerHTML='';
+  // Grouping is retained (Group A / Group B sections); within each, teams are
+  // ordered by their gun-start time (earliest first).
   [['A',GROUPS.filter(g=>g.tag==='A')],['B',GROUPS.filter(g=>g.tag==='B')]].forEach(([label,list])=>{
-    list.sort(cmp);
+    list.sort((a,b)=>startMs(a)-startMs(b) || a.id-b.id);
     rows.insertAdjacentHTML('beforeend','<div class="grouphdr">Group '+label+'<span class="cnt">'+list.length+' teams</span></div>');
     list.forEach((g,i)=>rows.insertAdjacentHTML('beforeend', rowHtml(g,i)));
   });

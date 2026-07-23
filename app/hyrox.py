@@ -62,11 +62,19 @@ def _splits(g):
     return [int(x) for x in (g.splits or "").split(",") if x.strip()]
 
 
+def _schedule_order(g):
+    """Gun-start ordering: all Team A first, then all Team B; within each tag, by
+    team (Eagles, Foxes, Pulag, Logan — from the seeded sort). So A's take the early
+    slots (5:00, 5:15, …) and B's the later ones (6:00, 6:15, …)."""
+    return (0 if (g.tag or "").upper() == "A" else 1, g.sort)
+
+
 def apply_schedule(db, base_local_naive, interval=SLOT_MIN):
-    """Set each group's gun start at `interval`-minute steps in sort order.
+    """Set each group's gun start at `interval`-minute steps in schedule order.
     `base_local_naive` is a naive datetime interpreted in Manila local time."""
     base = base_local_naive.replace(tzinfo=MNL).astimezone(timezone.utc)
-    for i, g in enumerate(db.query(HyroxGroup).order_by(HyroxGroup.sort).all()):
+    rows = sorted(db.query(HyroxGroup).all(), key=_schedule_order)
+    for i, g in enumerate(rows):
         g.start_at = base + timedelta(minutes=interval * i)
         g.finished_at = None
     db.commit()
@@ -121,7 +129,7 @@ def _state(g):
 # --------------------------------------------------------------- coach pages
 @router.get("/coach", response_class=HTMLResponse)
 def coach_pick(request: Request, db: Session = Depends(get_db)):
-    groups = [_state(g) for g in db.query(HyroxGroup).order_by(HyroxGroup.sort).all()]
+    groups = [_state(g) for g in db.query(HyroxGroup).order_by(HyroxGroup.start_at.asc(), HyroxGroup.sort).all()]
     return templates.TemplateResponse("coach_pick.html", {"request": request, "groups": groups})
 
 
@@ -137,7 +145,7 @@ def coach_timer(gid: int, request: Request, db: Session = Depends(get_db)):
 # --------------------------------------------------------------- live data API
 @router.get("/api/hyrox/state")
 def hyrox_state(db: Session = Depends(get_db)):
-    gs = db.query(HyroxGroup).order_by(HyroxGroup.sort).all()
+    gs = db.query(HyroxGroup).order_by(HyroxGroup.start_at.asc(), HyroxGroup.sort).all()
     return {"ok": True, "stations": HYROX_STATIONS, "groups": [_state(g) for g in gs]}
 
 
@@ -222,7 +230,7 @@ def hyrox_admin(request: Request, db: Session = Depends(get_db)):
     staff, redir = _require_admin(request, db)
     if redir:
         return redir
-    rows = db.query(HyroxGroup).order_by(HyroxGroup.sort).all()
+    rows = db.query(HyroxGroup).order_by(HyroxGroup.start_at.asc(), HyroxGroup.sort).all()
     gs = [_state(g) for g in rows]
     base = _host_base(request)
     coach_url = base + "/coach"
