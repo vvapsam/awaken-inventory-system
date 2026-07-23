@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AWAKEN — Coach Timer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--faint:#aab2b8;--line:#E7EAEC;--paper:#EEF1F2;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--red:#e2463a;--gold:#e0a021;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);min-height:100vh}
+.mono{font-family:'Space Grotesk',Inter,sans-serif;font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
+.wrap{width:100%;max-width:440px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.hero{background:linear-gradient(150deg,#0b6b62,#0f9e91 60%,#18BE7C 130%);color:#fff;
+  padding:calc(env(safe-area-inset-top,0px) + 20px) 20px 22px;border-radius:0 0 24px 24px}
+.hero .r1{display:flex;align-items:center;gap:10px}
+.hero .lg{font-family:'Space Grotesk';font-weight:800;letter-spacing:.18em;font-size:.78rem;opacity:.92}
+.hero .role{margin-left:auto;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);padding:5px 11px;border-radius:999px}
+.hero h1{font-size:1.5rem;margin-top:16px}
+.hero p{color:rgba(255,255,255,.86);font-size:.9rem;margin:5px 0 0}
+.screen{display:none;flex-direction:column;flex:1}
+.screen.active{display:flex}
+/* ---- select group ---- */
+.pick{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.gcard{background:var(--white);border-radius:18px;box-shadow:0 10px 24px rgba(11,26,23,.08);padding:18px 14px;text-align:center;border:2px solid transparent}
+.gcard:active{transform:scale(.98)}
+.gcard .emb{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:1.9rem;margin:0 auto 10px}
+.gcard .nm{font-family:'Space Grotesk';font-weight:700;font-size:1rem;line-height:1.15}
+.gcard .tag{display:inline-block;margin-top:5px;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:2px 9px;border-radius:6px;background:#eef1f2;color:#8a9099}
+.pickfoot{text-align:center;color:var(--muted);font-size:.82rem;padding:4px 20px 20px}
+/* ---- timer ---- */
+.thero .team{display:flex;align-items:center;gap:12px;margin-top:16px}
+.thero .emb{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:1.5rem}
+.thero .nm{font-family:'Space Grotesk';font-weight:800;font-size:1.3rem}
+.thero .nm .tag{font-size:.66rem;background:rgba(255,255,255,.2);padding:2px 7px;border-radius:6px;margin-left:6px;vertical-align:middle;font-weight:700}
+.thero .sw{margin-left:auto;font-size:.78rem;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);padding:8px 12px;border-radius:10px;font-weight:600}
+.body{padding:16px;display:flex;flex-direction:column;gap:14px;flex:1}
+.now{background:var(--white);border-radius:20px;box-shadow:0 12px 30px rgba(11,26,23,.09);padding:22px 20px;text-align:center}
+.now .lbl{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--green-d)}
+.now h2{font-size:1.9rem;margin:6px 0 0}
+.now .timer{font-family:'Space Grotesk';font-weight:800;font-size:4rem;line-height:1;margin:16px 0 4px;font-variant-numeric:tabular-nums}
+.now.run .timer{color:var(--green-d)}
+.now .hint{color:var(--muted);font-size:.82rem;min-height:1.1em}
+.btn{width:100%;margin-top:16px;padding:20px;border:0;border-radius:16px;color:#fff;font-family:'Space Grotesk';font-weight:800;font-size:1.2rem;display:flex;align-items:center;justify-content:center;gap:10px}
+.btn.start{background:var(--green)}.btn.stop{background:var(--red)}
+.btn:active{transform:scale(.99)}.btn svg{width:22px;height:22px}
+.undo{margin-top:12px;background:none;border:0;color:var(--muted);font-weight:600;font-size:.86rem;padding:6px}
+.sec{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:6px 2px 2px}
+.stations{display:flex;flex-direction:column;gap:8px}
+.st{display:flex;align-items:center;gap:13px;background:var(--white);border-radius:14px;padding:13px 15px;box-shadow:0 6px 16px rgba(11,26,23,.05)}
+.st .n{width:26px;height:26px;border-radius:999px;background:#eef1f2;color:#98a0a8;font-family:'Space Grotesk';font-weight:700;font-size:.82rem;display:flex;align-items:center;justify-content:center;flex:none}
+.st.done .n{background:var(--green);color:#062018}.st.done .n svg{width:14px;height:14px;stroke-width:3}
+.st.cur .n{background:var(--gold);color:#3a2a05}
+.st .nm{flex:1;font-weight:600;font-size:.98rem}
+.st .nm small{display:block;color:var(--muted);font-weight:500;font-size:.74rem;margin-top:1px}
+.st .split{font-family:'Space Grotesk';font-weight:700;font-size:.98rem;color:#5c636c}
+.st.cur{box-shadow:0 0 0 2px rgba(224,160,33,.35),0 6px 16px rgba(11,26,23,.05)}.st.cur .split{color:var(--gold)}
+.st.todo .nm{color:#aab2b8}.st.todo .split{color:#cfd5da}
+.total{display:flex;justify-content:space-between;align-items:center;background:#0f1613;color:#fff;border-radius:14px;padding:14px 16px;margin-top:4px}
+.total .k{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:#9fb1aa;font-weight:700}
+.total .v{font-family:'Space Grotesk';font-weight:800;font-size:1.4rem;font-variant-numeric:tabular-nums}
+.note{margin:14px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;color:#5c636c;font-size:.88rem;line-height:1.55}
+.note b{color:#0F1115}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- SCREEN 1: pick group -->
+  <div class="screen active" id="screen-select">
+    <div class="hero">
+      <div class="r1"><span class="lg">AWAKEN</span><span class="role">Coach · Timer</span></div>
+      <h1>Which group are you timing?</h1>
+      <p>Tap your group to start.</p>
+    </div>
+    <div class="pick" id="pick"></div>
+    <div class="pickfoot">You'll time all 9 stations for the group you pick.</div>
+  </div>
+
+  <!-- SCREEN 2: timer -->
+  <div class="screen" id="screen-timer">
+    <div class="hero thero">
+      <div class="r1"><span class="lg">AWAKEN</span><span class="role">Coach · Timer</span></div>
+      <div class="team">
+        <span class="emb" id="tEmb">🦅</span>
+        <span class="nm" id="tName">Eagles<span class="tag">A</span></span>
+        <button class="sw" id="switch">Switch group ▾</button>
+      </div>
+    </div>
+    <div class="body">
+      <div class="now" id="now">
+        <div class="lbl" id="nowLbl">Station 1 of 9</div>
+        <h2 id="nowName">Run</h2>
+        <div class="timer mono" id="timer">00:00</div>
+        <div class="hint" id="hint">Tap start when the team begins this station.</div>
+        <button class="btn start" id="btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span id="btnLbl">Start station</span></button>
+        <button class="undo" id="undo">↶ Undo last split</button>
+      </div>
+      <div class="sec">Stations</div>
+      <div class="stations" id="stations"></div>
+      <div class="total"><span class="k">Total time</span><span class="v mono" id="total">0:00</span></div>
+    </div>
+  </div>
+
+  <div class="note">
+    Full coach flow: <b>pick your group</b> → time each station (<b>Start</b> → <b>Finish</b>) → it auto-rolls to the next. <b>Switch group</b> up top jumps back to the picker. Each finish feeds the live scoreboard.
+  </div>
+</div>
+
+<script>
+const STATIONS=["Run","Ski","Sled Push","Sled Pull","Burpee Broad Jump","Row","Lunges","Farmer Carry","Wallballs"];
+const GROUPS=[
+  {name:"Eagles",tag:"A",emb:"🦅",c:"#c99a3f"},{name:"Eagles",tag:"B",emb:"🦅",c:"#c99a3f"},
+  {name:"Foxes",tag:"A",emb:"🦊",c:"#e8703a"},{name:"Foxes",tag:"B",emb:"🦊",c:"#e8703a"},
+  {name:"Pulag Pythons",tag:"A",emb:"🐍",c:"#18BE7C"},{name:"Pulag Pythons",tag:"B",emb:"🐍",c:"#18BE7C"},
+  {name:"Logan Leopards",tag:"A",emb:"🐆",c:"#e0a021"},{name:"Logan Leopards",tag:"B",emb:"🐆",c:"#e0a021"},
+];
+const $=id=>document.getElementById(id);
+function hexA(h,a){const n=parseInt(h.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+function fmt(s){s=Math.max(0,Math.floor(s));const m=Math.floor(s/60),ss=s%60;return m+':'+String(ss).padStart(2,'0');}
+const CHK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+// ---- pick screen ----
+GROUPS.forEach((g,i)=>{
+  $('pick').insertAdjacentHTML('beforeend',
+    '<button class="gcard" data-i="'+i+'" style="border-color:'+hexA(g.c,.0)+'">'+
+      '<div class="emb" style="background:'+hexA(g.c,.14)+';color:'+g.c+'">'+g.emb+'</div>'+
+      '<div class="nm">'+g.name+'</div><div class="tag">Group '+g.tag+'</div></button>');
+});
+document.querySelectorAll('.gcard').forEach(b=>b.onclick=()=>selectGroup(GROUPS[+b.dataset.i]));
+
+// ---- timer state ----
+let group=null, splits=[], idx=0, running=false, startAt=0, tick=null;
+function selectGroup(g){
+  group=g; splits=[]; idx=0; running=false; if(tick)clearInterval(tick);
+  $('tEmb').textContent=g.emb; $('tEmb').style.color=g.c;
+  $('tName').innerHTML=g.name+'<span class="tag">'+g.tag+'</span>';
+  $('timer').textContent='00:00';
+  $('screen-select').classList.remove('active'); $('screen-timer').classList.add('active');
+  window.scrollTo(0,0); renderNow(); renderList();
+}
+$('switch').onclick=()=>{ if(tick)clearInterval(tick); running=false;
+  $('screen-timer').classList.remove('active'); $('screen-select').classList.add('active'); window.scrollTo(0,0); };
+
+function renderList(){
+  const el=$('stations');el.innerHTML='';
+  STATIONS.forEach((nm,i)=>{
+    let cls='st', n=(i+1), split='—';
+    if(i<splits.length){ cls+=' done'; n=CHK; split=fmt(splits[i]); }
+    else if(i===idx){ cls+=' cur'; split=running?'timing…':'ready'; }
+    else { cls+=' todo'; }
+    el.insertAdjacentHTML('beforeend','<div class="'+cls+'"><span class="n">'+n+'</span><span class="nm">'+nm+
+      (i===idx&&i>=splits.length?'<small>current station</small>':'')+'</span><span class="split">'+split+'</span></div>');
+  });
+  $('total').textContent=fmt(splits.reduce((a,b)=>a+b,0)+(running?(Date.now()-startAt)/1000:0));
+}
+function renderNow(){
+  const fin=idx>=STATIONS.length;
+  $('nowLbl').textContent=fin?'All stations done':'Station '+(idx+1)+' of 9';
+  $('nowName').textContent=fin?'Finished 🏁':STATIONS[idx];
+  $('now').classList.toggle('run',running);
+  const b=$('btn');
+  if(fin){ b.style.display='none'; $('hint').textContent='Great work — all 9 stations recorded.'; return; }
+  b.style.display='flex';
+  if(running){ b.className='btn stop'; $('btnLbl').textContent='Finish station';
+    b.querySelector('svg').innerHTML='<rect x="6" y="6" width="12" height="12" rx="2"/>'; $('hint').textContent='Timing… tap finish when they complete it.'; }
+  else { b.className='btn start'; $('btnLbl').textContent='Start station';
+    b.querySelector('svg').innerHTML='<path d="M8 5v14l11-7z"/>'; $('hint').textContent='Tap start when the team begins this station.'; }
+}
+function loop(){ $('timer').textContent=fmt((Date.now()-startAt)/1000); $('total').textContent=fmt(splits.reduce((a,b)=>a+b,0)+(Date.now()-startAt)/1000); }
+$('btn').onclick=()=>{
+  if(idx>=STATIONS.length) return;
+  if(!running){ running=true; startAt=Date.now(); tick=setInterval(loop,200); }
+  else{ running=false; clearInterval(tick); splits[idx]=Math.round((Date.now()-startAt)/1000); idx++; $('timer').textContent='00:00'; }
+  renderNow(); renderList();
+};
+$('undo').onclick=()=>{
+  if(running){ running=false; clearInterval(tick); $('timer').textContent='00:00'; }
+  else if(splits.length>0){ idx--; splits.pop(); }
+  renderNow(); renderList();
+};
+</script>
+</body>
+</html>
