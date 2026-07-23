@@ -414,7 +414,7 @@ class Waiver(Base):
 
 
 HYROX_STATIONS = ["Run", "Ski", "Sled Push", "Sled Pull", "Burpee Broad Jump",
-                  "Row", "Lunges", "Farmer Carry", "Wallballs"]
+                  "Row", "Farmer Carry", "Lunges", "Wallballs"]
 
 
 class HyroxGroup(Base):
