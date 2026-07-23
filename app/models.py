@@ -429,6 +429,7 @@ class HyroxGroup(Base):
     emblem = Column(String)                                 # emoji
     color = Column(String)
     sort = Column(Integer, nullable=False, default=0)
+    coach = Column(String)                                  # coach name shown on the board
     splits = Column(Text, nullable=False, default="")       # CSV secs, one per done station
     running_since = Column(DateTime(timezone=True))         # set while current station times
     start_at = Column(DateTime(timezone=True))             # fixed gun start (schedule)
@@ -436,15 +437,23 @@ class HyroxGroup(Base):
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
 
+# Coach per (team, tag). Backfilled onto existing rows on startup if unset.
+HYROX_COACH_DEFAULTS = {
+    ("Eagles", "A"): "AR", ("Eagles", "B"): "AR",
+    ("Foxes", "A"): "Jan", ("Foxes", "B"): "Jan",
+    ("Pulag Pythons", "A"): "Van", ("Pulag Pythons", "B"): "JC",
+    ("Logan Leopards", "A"): "Melvin", ("Logan Leopards", "B"): "Corbett",
+}
+
 HYROX_GROUP_DEFAULTS = [
-    dict(name="Eagles", tag="A", emblem="🦅", color="#c99a3f", sort=0),
-    dict(name="Eagles", tag="B", emblem="🦅", color="#c99a3f", sort=1),
-    dict(name="Foxes", tag="A", emblem="🦊", color="#e8703a", sort=2),
-    dict(name="Foxes", tag="B", emblem="🦊", color="#e8703a", sort=3),
-    dict(name="Pulag Pythons", tag="A", emblem="🐍", color="#18BE7C", sort=4),
-    dict(name="Pulag Pythons", tag="B", emblem="🐍", color="#18BE7C", sort=5),
-    dict(name="Logan Leopards", tag="A", emblem="🐆", color="#e0a021", sort=6),
-    dict(name="Logan Leopards", tag="B", emblem="🐆", color="#e0a021", sort=7),
+    dict(name="Eagles", tag="A", emblem="🦅", color="#c99a3f", sort=0, coach="AR"),
+    dict(name="Eagles", tag="B", emblem="🦅", color="#c99a3f", sort=1, coach="AR"),
+    dict(name="Foxes", tag="A", emblem="🦊", color="#e8703a", sort=2, coach="Jan"),
+    dict(name="Foxes", tag="B", emblem="🦊", color="#e8703a", sort=3, coach="Jan"),
+    dict(name="Pulag Pythons", tag="A", emblem="🐍", color="#18BE7C", sort=4, coach="Van"),
+    dict(name="Pulag Pythons", tag="B", emblem="🐍", color="#18BE7C", sort=5, coach="JC"),
+    dict(name="Logan Leopards", tag="A", emblem="🐆", color="#e0a021", sort=6, coach="Melvin"),
+    dict(name="Logan Leopards", tag="B", emblem="🐆", color="#e0a021", sort=7, coach="Corbett"),
 ]
 
 

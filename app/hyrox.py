@@ -117,7 +117,7 @@ def _state(g):
         total = 0
     return {
         "id": g.id, "name": g.name, "tag": g.tag, "emblem": g.emblem or "",
-        "color": g.color or "#18BE7C", "done": done, "splits": sl,
+        "coach": g.coach or "", "color": g.color or "#18BE7C", "done": done, "splits": sl,
         "station_running": station_running, "station_elapsed": station_elapsed,
         "finished": finished, "started": started, "ticking": ticking,
         "start_at": start_at.isoformat() if start_at else None,
