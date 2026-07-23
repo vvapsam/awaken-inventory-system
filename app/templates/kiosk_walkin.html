@@ -128,6 +128,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
   <!-- EMAIL -->
   <div class="screen active" id="s-email">
     <div class="card">
+      <button type="button" class="back" id="emailBack">‹ Back</button>
       <div class="seclbl">Your email</div>
       <label class="lbl">Enter your email to get started</label>
       <input type="email" id="email" autocomplete="email" placeholder="you@email.com">
@@ -180,6 +181,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
   <!-- WELCOME BACK (returning) -->
   <div class="screen" id="s-welcome">
     <div class="card">
+      <button type="button" class="back" data-back="s-email">‹ Back</button>
       <div class="welc">
         <div class="av" id="wAv">·</div>
         <h2 id="wHi">Welcome back!</h2>
@@ -192,6 +194,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
   <!-- ACTIVITY -->
   <div class="screen" id="s-activity">
     <div class="card">
+      <button type="button" class="back" id="actBack">‹ Back</button>
       <div class="seclbl">Today</div>
       <label class="lbl" style="margin-top:0">What are you doing today?</label>
       <div id="actList"></div>
@@ -276,6 +279,8 @@ function show(id){
 }
 function go(id){stack.push(document.querySelector('.screen.active')?.id); show(id);}
 document.querySelectorAll('.back').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.back) show(b.dataset.back); }));
+$('emailBack').onclick=()=>{ location.href='/welcome'; };          // back to the hub
+$('actBack').onclick=()=>{ show(state.identFrom||'s-email'); };    // back to waiver / welcome
 
 /* ---------- email + lookup ---------- */
 function validEmail(e){ return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); }
@@ -321,8 +326,8 @@ function readyW(){ return wreq.every(id=>$(id).value.trim()) && $('agree').check
 function upW(){ $('waiverNext').disabled=!readyW(); }
 wreq.forEach(id=>{ $(id).addEventListener('input',upW); $(id).addEventListener('change',upW); });
 $('agree').addEventListener('change',upW);
-$('waiverNext').onclick=()=>{ if(readyW()) go('s-activity'); };
-$('welcomeNext').onclick=()=>go('s-activity');
+$('waiverNext').onclick=()=>{ if(readyW()){ state.identFrom='s-waiver'; go('s-activity'); } };
+$('welcomeNext').onclick=()=>{ state.identFrom='s-welcome'; go('s-activity'); };
 
 /* ---------- activity ---------- */
 function actCard(icon,title,sub,price,extra){
