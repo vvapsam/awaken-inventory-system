@@ -111,6 +111,16 @@ with TestClient(app) as c:
         "email":"dom@x.com","plan_id":OPEN,"method":"bank"})
     ck("walk-in bank ok without proof", bk.json().get("ok"))
 
+    # ClassPass check-in: no plan/payment, creates a pending ClassPass order
+    t9,_=wk_token(c,KEY)
+    cp=c.post("/api/kiosk/submit", json={"flow":"walkin","token":t9,"returning":True,
+        "email":"dom@x.com","classpass":True})
+    ck("ClassPass check-in ok (no plan/pay)", cp.json().get("ok") and cp.json().get("classpass") is True)
+    with Session(engine) as db:
+        co=db.query(M.Transaction).filter(M.Transaction.note=="Walk-in · ClassPass").first()
+        ck("ClassPass -> pending order @0, method classpass", co is not None and co.status=="pending"
+           and float(co.amount_snapshot or 0)==0 and co.payment_method=="classpass")
+
     # wrong-kind plan (membership id in walk-in) rejected
     t5,_=wk_token(c,KEY)
     wr=c.post("/api/kiosk/submit", json={"flow":"walkin","token":t5,"returning":True,

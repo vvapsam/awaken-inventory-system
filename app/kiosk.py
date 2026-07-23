@@ -182,33 +182,40 @@ async def kiosk_submit(request: Request, db: Session = Depends(get_db)):
         if recent >= RATE_MAX:
             return _err("Too many submissions from this device. Please try again later.", 429)
 
-    method = (data.get("method") or "").lower().strip()
-    if method not in ("cash", "bank"):
-        return _err("Choose a payment method")
-
-    # chosen plan must exist, be active, match this flow, and be priced
-    want_kind = KIOSK_MEMBERSHIP if flow == "signup" else KIOSK_WALKIN
-    try:
-        plan = db.get(KioskPlan, int(data.get("plan_id")))
-    except (TypeError, ValueError):
-        plan = None
-    if not plan or plan.kind != want_kind or not plan.is_active:
-        return _err("Please choose a valid option")
-    price = float(plan.price or 0)
-    if price <= 0:
-        return _err("This option isn't priced yet — please see the front desk.")
-
-    # Bank proof: required for Sign-up; optional for Walk-in (it's a reservation
-    # confirmed at the front desk, so a screenshot isn't mandatory).
+    # ClassPass check-in (walk-in only): no payment, no plan — the member already
+    # booked in ClassPass; they just confirm at the front desk.
+    classpass = flow == "walkin" and bool(data.get("classpass"))
     proof_bytes = proof_mime = None
-    if method == "bank":
-        raw_proof = data.get("proof") or ""
-        if raw_proof:
-            proof_bytes, proof_mime = _decode_data_uri(raw_proof, MAX_PROOF, "image/jpeg")
-            if proof_bytes is None:
-                return _err("Screenshot is too large or unreadable.")
-        elif flow == "signup":
-            return _err("Please attach your payment screenshot")
+    if classpass:
+        method = "classpass"
+        plan_name = "ClassPass booking"
+        price = 0.0
+    else:
+        method = (data.get("method") or "").lower().strip()
+        if method not in ("cash", "bank"):
+            return _err("Choose a payment method")
+        # chosen plan must exist, be active, match this flow, and be priced
+        want_kind = KIOSK_MEMBERSHIP if flow == "signup" else KIOSK_WALKIN
+        try:
+            plan = db.get(KioskPlan, int(data.get("plan_id")))
+        except (TypeError, ValueError):
+            plan = None
+        if not plan or plan.kind != want_kind or not plan.is_active:
+            return _err("Please choose a valid option")
+        price = float(plan.price or 0)
+        if price <= 0:
+            return _err("This option isn't priced yet — please see the front desk.")
+        plan_name = plan.name
+        # Bank proof: required for Sign-up; optional for Walk-in (reservation
+        # confirmed at the front desk, so a screenshot isn't mandatory).
+        if method == "bank":
+            raw_proof = data.get("proof") or ""
+            if raw_proof:
+                proof_bytes, proof_mime = _decode_data_uri(raw_proof, MAX_PROOF, "image/jpeg")
+                if proof_bytes is None:
+                    return _err("Screenshot is too large or unreadable.")
+            elif flow == "signup":
+                return _err("Please attach your payment screenshot")
 
     # ---- identity: returning walk-in matched by email; everyone else signs ----
     fn = (data.get("first_name") or "").strip()
@@ -244,22 +251,26 @@ async def kiosk_submit(request: Request, db: Session = Depends(get_db)):
 
     # ---- pending order (lands in the staff approval queue) ----
     subtype = "kiosk_membership" if flow == "signup" else "kiosk_walkin"
-    label = "Membership sign-up" if flow == "signup" else "Walk-in"
+    if classpass:
+        note = "Walk-in · ClassPass"
+    elif flow == "signup":
+        note = "Membership sign-up · %s" % plan_name
+    else:
+        note = "Walk-in · %s" % plan_name
     order = Transaction(
         type=TX_ORDER, subtype=subtype, number=next_order_number(db),
         customer_name=("%s %s" % (fn, ln)).strip(), customer_phone=phone or None,
         payment_method=method, proof=proof_bytes, proof_mime=proof_mime,
-        amount_snapshot=price, status="pending",
-        note="%s · %s" % (label, plan.name))
+        amount_snapshot=price, status="pending", note=note)
     db.add(order)
     db.flush()
-    db.add(TransactionItem(transaction_id=order.id, product_id=None, name=plan.name,
+    db.add(TransactionItem(transaction_id=order.id, product_id=None, name=plan_name,
                            qty=1, unit_price=price))
     row.used = True                     # consume the one-time link
     db.commit()
     db.refresh(order)
-    return {"ok": True, "number": order.number, "flow": flow, "plan": plan.name,
-            "price": price, "method": method, "first_name": fn}
+    return {"ok": True, "number": order.number, "flow": flow, "plan": plan_name,
+            "price": price, "method": method, "first_name": fn, "classpass": classpass}
 
 
 # ------------------------------------------------------------------ staff admin

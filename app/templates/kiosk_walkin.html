@@ -65,6 +65,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
 .opt.sel{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.15)}
 .opt .ic{width:44px;height:44px;border-radius:12px;background:#e8f8f1;color:var(--green-d);display:flex;align-items:center;justify-content:center;flex:none}
 .opt .ic svg{width:23px;height:23px;stroke-width:1.9}
+.opt[data-act="classpass"] .ic{background:#fdeae7;color:#e2683f}
 .opt .tx{flex:1;min-width:0}.opt .tx .t{font-weight:700;font-size:1rem}.opt .tx .s{color:var(--muted);font-size:.78rem;margin-top:2px}
 .opt .pr{font-family:Poppins;font-weight:800;font-size:1.05rem}
 .opt .rad{width:22px;height:22px;border-radius:999px;border:2px solid #cfd5da;flex:none;position:relative}
@@ -333,15 +334,17 @@ function actCard(icon,title,sub,price,extra){
   const hyIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7v10M18 7v10M4 9v6M20 9v6M6 12h12"/></svg>';
   const pvIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
   const ogIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M14 12h.01"/></svg>';
+  const cpIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2 2 2 0 0 0 0 4 2 2 0 0 1-2 2H5a2 2 0 0 1-2-2 2 2 0 0 0 0-4z"/><path d="M13 5v2M13 11v2M13 17v2"/></svg>';
   if(HYROX && HYROX.length) html+=actCard(hyIcon,'HYROX Simulation','Self-paced or coached · solo or doubles',null,'data-act="hyrox"');
   if(PRIVATE) html+=actCard(pvIcon,PRIVATE.name,PRIVATE.subtitle||'1-on-1 session',PRIVATE.price,'data-act="private"');
   if(OPEN_GYM) html+=actCard(ogIcon,OPEN_GYM.name,OPEN_GYM.subtitle||'Full-day access',OPEN_GYM.price,'data-act="open"');
-  if(!html) html='<div class="noplan">No activities are set up yet. Please see the front desk.</div>';
+  html+=actCard(cpIcon,'Book thru ClassPass','Already booked on ClassPass? Check in here',null,'data-act="classpass"');
   $('actList').innerHTML=html;
   document.querySelectorAll('#actList .opt').forEach(el=>el.onclick=()=>{
     const a=el.dataset.act;
     if(a==='open'){ setPlan(OPEN_GYM); go('s-pay'); }
     else if(a==='private'){ setPlan(PRIVATE); go('s-pay'); }
+    else if(a==='classpass'){ submitClassPass(el); }
     else { go('s-hyrox1'); }
   });
 })();
@@ -386,34 +389,57 @@ $('mCash').onclick=()=>setM('cash'); $('mBank').onclick=()=>setM('bank');
 const _show=show;
 show=function(id){ _show(id); if(id==='s-pay') enterPay(); };
 
+function addIdentity(p){
+  p.returning=state.returning; p.email=$('email').value.trim();
+  if(!state.returning){
+    p.first_name=$('fname').value.trim(); p.last_name=$('lname').value.trim();
+    p.phone=$('phone').value.trim(); p.referral=$('referral').value;
+    p.signature=canvas.toDataURL('image/png');
+  }
+  return p;
+}
+function expiredBody(){ document.body.innerHTML='<div style="max-width:420px;margin:80px auto;text-align:center;font-family:Inter,sans-serif;padding:0 24px"><div style="font-size:44px">🔄</div><h2 style="font-family:Poppins,sans-serif">This link has expired</h2><p style="color:#8A9099;line-height:1.5">Please scan the QR code at the front desk again.</p></div>'; }
+function showDone(j){
+  if(j.classpass){
+    $('doneTitle').textContent='Booking noted'+(j.first_name?(', '+j.first_name):'')+'!';
+    $('doneMsg').textContent='Please confirm your ClassPass booking with the front desk — our staff will check you in.';
+  }else if(j.method==='bank'){
+    $('doneTitle').textContent='Booking sent'+(j.first_name?(', '+j.first_name):'')+'!';
+    $('doneMsg').textContent='Successful — please approach the front desk to confirm your appointment.';
+  }else{
+    $('doneTitle').textContent='Almost done'+(j.first_name?(', '+j.first_name):'')+'!';
+    $('doneMsg').textContent='Please pay '+money(j.price)+' at the front desk to confirm your appointment.';
+  }
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  $('done').style.display='block'; window.scrollTo({top:0,behavior:'smooth'});
+}
+
 $('submit').onclick=async()=>{
   if(!state.plan){ show('s-activity'); return; }
   const btn=$('submit'), old=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
-  const payload={ flow:'walkin', token:$('token').value,
-    returning:state.returning, email:$('email').value.trim(),
-    plan_id:state.plan.id, method:method };
-  if(!state.returning){
-    payload.first_name=$('fname').value.trim(); payload.last_name=$('lname').value.trim();
-    payload.phone=$('phone').value.trim(); payload.referral=$('referral').value;
-    payload.signature=canvas.toDataURL('image/png');
-  }
+  const payload=addIdentity({ flow:'walkin', token:$('token').value, plan_id:state.plan.id, method:method });
   try{
     const r=await fetch('/api/kiosk/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await r.json();
-    if(j.expired){ document.body.innerHTML='<div style="max-width:420px;margin:80px auto;text-align:center;font-family:Inter,sans-serif;padding:0 24px"><div style="font-size:44px">🔄</div><h2 style="font-family:Poppins,sans-serif">This link has expired</h2><p style="color:#8A9099;line-height:1.5">Please scan the QR code at the front desk again.</p></div>'; return; }
+    if(j.expired){ expiredBody(); return; }
     if(j.need_waiver){ btn.textContent=old; btn.disabled=false; state.returning=false; $('errPay').textContent=''; go('s-waiver'); return; }
     if(!j.ok){ $('errPay').textContent=j.error||'Could not submit'; btn.textContent=old; btn.disabled=false; return; }
-    if(j.method==='bank'){
-      $('doneTitle').textContent='Booking sent'+(j.first_name?(', '+j.first_name):'')+'!';
-      $('doneMsg').textContent='Successful — please approach the front desk to confirm your appointment.';
-    }else{
-      $('doneTitle').textContent='Almost done'+(j.first_name?(', '+j.first_name):'')+'!';
-      $('doneMsg').textContent='Please pay '+money(j.price)+' at the front desk to confirm your appointment.';
-    }
-    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-    $('done').style.display='block'; window.scrollTo({top:0,behavior:'smooth'});
+    showDone(j);
   }catch(e){ $('errPay').textContent='Network error — please try again.'; btn.textContent=old; btn.disabled=false; }
 };
+
+async function submitClassPass(cardEl){
+  cardEl.style.pointerEvents='none'; cardEl.style.opacity='.55'; $('errAct').textContent='';
+  const payload=addIdentity({ flow:'walkin', token:$('token').value, classpass:true });
+  try{
+    const r=await fetch('/api/kiosk/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(j.expired){ expiredBody(); return; }
+    if(j.need_waiver){ state.returning=false; go('s-waiver'); cardEl.style.pointerEvents=''; cardEl.style.opacity=''; return; }
+    if(!j.ok){ $('errAct').textContent=j.error||'Could not submit'; cardEl.style.pointerEvents=''; cardEl.style.opacity=''; return; }
+    showDone(j);
+  }catch(e){ $('errAct').textContent='Network error — please try again.'; cardEl.style.pointerEvents=''; cardEl.style.opacity=''; }
+}
 </script>
 {% endif %}
 </body>
