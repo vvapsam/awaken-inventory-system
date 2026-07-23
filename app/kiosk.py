@@ -15,6 +15,7 @@ waiver) keep the public URL from being flooded.
 import base64
 import io
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 
@@ -47,6 +48,11 @@ templates.env.globals["can_any"] = can_any
 MAX_PROOF = 10 * 1024 * 1024               # 10 MB payment screenshot cap
 
 FLOWS = ("walkin", "signup")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _valid_email(e):
+    return bool(EMAIL_RE.match((e or "").strip()))
 
 
 def _err(msg, code=400, **extra):
@@ -135,8 +141,8 @@ async def kiosk_lookup(request: Request, db: Session = Depends(get_db)):
     """Walk-in email lookup: has this person signed a waiver before?"""
     data = await request.json()
     email = (data.get("email") or "").strip()
-    if not email or "@" not in email:
-        return _err("Please enter a valid email")
+    if not _valid_email(email):
+        return _err("Please enter a valid email address")
     w = _latest_waiver_by_email(db, email)
     if w:
         return {"ok": True, "found": True, "first_name": w.first_name,
@@ -221,15 +227,16 @@ async def kiosk_submit(request: Request, db: Session = Depends(get_db)):
         referral = (data.get("referral") or "").strip()
         if not fn or not ln:
             return _err("First and last name are required")
-        if not email:
-            return _err("Email is required")
+        if not _valid_email(email):
+            return _err("Please enter a valid email address")
         if not phone:
             return _err("Phone is required")
         if not referral:
             return _err("Please tell us how you found us")
+        # A signed waiver is mandatory for anyone new.
         sig_raw, sig_mime = _decode_data_uri(data.get("signature") or "", MAX_SIG, "image/png")
         if sig_raw is None:
-            return _err("Please sign before submitting" if sig_mime == "missing"
+            return _err("Please sign the waiver before submitting" if sig_mime == "missing"
                         else "Signature is missing or too large")
         db.add(Waiver(first_name=fn, last_name=ln, email=email or None, phone=phone or None,
                       referral=referral or None, signature=sig_raw, signature_mime=sig_mime,

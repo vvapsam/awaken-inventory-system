@@ -277,9 +277,10 @@ function go(id){stack.push(document.querySelector('.screen.active')?.id); show(i
 document.querySelectorAll('.back').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.back) show(b.dataset.back); }));
 
 /* ---------- email + lookup ---------- */
+function validEmail(e){ return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); }
 $('emailNext').onclick=async()=>{
   const email=$('email').value.trim();
-  if(!email||email.indexOf('@')<0){ $('errEmail').textContent='Please enter a valid email.'; return; }
+  if(!validEmail(email)){ $('errEmail').textContent='Please enter a valid email address.'; return; }
   const btn=$('emailNext'), old=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try{
     const r=await fetch('/api/kiosk/lookup',{method:'POST',headers:{'Content-Type':'application/json'},

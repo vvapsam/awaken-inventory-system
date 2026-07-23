@@ -122,14 +122,15 @@ async def submit_waiver(request: Request, db: Session = Depends(get_db)):
     sig = data.get("signature") or ""
     if not fn or not ln:
         return _err("First and last name are required")
-    if not email:
-        return _err("Email is required")
+    import re as _re
+    if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return _err("Please enter a valid email address")
     if not phone:
         return _err("Phone is required")
     if not referral:
         return _err("Please tell us how you found us")
     if not sig.startswith("data:image/"):
-        return _err("Please sign before submitting")
+        return _err("Please sign the waiver before submitting")
     try:
         header, b64 = sig.split(",", 1)
         raw = base64.b64decode(b64)
