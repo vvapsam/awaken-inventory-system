@@ -431,6 +431,8 @@ class HyroxGroup(Base):
     sort = Column(Integer, nullable=False, default=0)
     splits = Column(Text, nullable=False, default="")       # CSV secs, one per done station
     running_since = Column(DateTime(timezone=True))         # set while current station times
+    start_at = Column(DateTime(timezone=True))             # fixed gun start (schedule)
+    finished_at = Column(DateTime(timezone=True))          # stamped when Wallballs finished
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
 

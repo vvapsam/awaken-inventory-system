@@ -19,11 +19,19 @@ h1{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
 .hero h1{font-size:1.5rem;margin-top:16px}
 .hero p{color:rgba(255,255,255,.86);font-size:.9rem;margin:5px 0 0}
 .pick{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.gcard{background:var(--white);border-radius:18px;box-shadow:0 10px 24px rgba(11,26,23,.08);padding:18px 14px;text-align:center;text-decoration:none;color:inherit;display:block}
+.gcard{background:var(--white);border-radius:18px;box-shadow:0 10px 24px rgba(11,26,23,.08);padding:18px 14px;text-align:center;text-decoration:none;color:inherit;display:block;position:relative}
 .gcard:active{transform:scale(.98)}
 .gcard .emb{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:1.9rem;margin:0 auto 10px}
 .gcard .nm{font-family:'Space Grotesk';font-weight:700;font-size:1rem;line-height:1.15}
 .gcard .tag{display:inline-block;margin-top:5px;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:2px 9px;border-radius:6px;background:#eef1f2;color:#8a9099}
+.gcard .st{margin-top:9px;font-size:.72rem;font-weight:700;letter-spacing:.02em}
+.gcard .st.run{color:#b5771b}
+.gcard .st.wait{color:var(--muted);font-weight:600}
+/* finished: disabled, shows the frozen total time */
+.gcard.done{background:#eef7f2;box-shadow:none;cursor:default;pointer-events:none;opacity:.96}
+.gcard.done .emb{filter:grayscale(.15)}
+.gcard.done .fin{margin-top:9px;font-family:'Space Grotesk';font-weight:800;font-size:1.15rem;color:#0b8a4f;font-variant-numeric:tabular-nums}
+.gcard.done .finlbl{font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#7bbf9f;margin-top:2px}
 .foot{text-align:center;color:var(--muted);font-size:.82rem;padding:4px 20px 26px}
 </style>
 </head>
@@ -36,14 +44,36 @@ h1{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
   </div>
   <div class="pick">
     {% for g in groups %}
-    <a class="gcard" href="/coach/{{ g.id }}">
+    {% if g.finished %}
+    <div class="gcard done">
       <div class="emb" style="background:{{ g.color }}22;color:{{ g.color }}">{{ g.emblem }}</div>
       <div class="nm">{{ g.name }}</div>
       <div class="tag">Group {{ g.tag }}</div>
+      <div class="fin" data-fin="{{ g.total }}">{{ '%d:%02d'|format(g.total // 60, g.total % 60) }}</div>
+      <div class="finlbl">✓ Finished</div>
+    </div>
+    {% else %}
+    <a class="gcard" href="/coach/{{ g.id }}" onclick="try{localStorage.setItem('awaken_coach_gid',String({{ g.id }}))}catch(e){}">
+      <div class="emb" style="background:{{ g.color }}22;color:{{ g.color }}">{{ g.emblem }}</div>
+      <div class="nm">{{ g.name }}</div>
+      <div class="tag">Group {{ g.tag }}</div>
+      {% if g.station_running %}<div class="st run">● Timing station {{ g.done + 1 }}</div>
+      {% elif g.started %}<div class="st wait">In progress · {{ g.done }}/9</div>
+      {% elif g.start_clock %}<div class="st wait">Starts {{ g.start_clock }}</div>{% endif %}
     </a>
+    {% endif %}
     {% endfor %}
   </div>
   <div class="foot">You'll time all 9 stations for the group you pick.</div>
 </div>
+<script>
+// Retain the coach's group: reopening /coach returns to their team automatically.
+// "Switch group" links to /coach?pick=1 to force this picker.
+(function(){
+  if(location.search.indexOf('pick')>=0) return;
+  var g; try{ g=localStorage.getItem('awaken_coach_gid'); }catch(e){}
+  if(g) location.replace('/coach/'+g);
+})();
+</script>
 </body>
 </html>

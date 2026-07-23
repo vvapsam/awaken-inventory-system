@@ -49,6 +49,10 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
 .emb{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.55rem;flex:none;border:1px solid rgba(15,17,21,.06)}
 .team .nm{font-family:'Space Grotesk';font-weight:700;font-size:1.16rem;line-height:1.1}
 .team .tag{display:inline-block;margin-left:7px;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:1px 7px;border-radius:5px;background:#eef1f2;color:#8a9099;vertical-align:middle}
+.team .stt{display:block;margin-top:4px;font-size:.74rem;font-weight:600;color:var(--muted);letter-spacing:.01em}
+.row.pre{opacity:.72}
+.time.pre{color:var(--muted)}
+.time.pre .mono{font-size:1.5rem}
 /* current station */
 .stn{display:flex;align-items:center;gap:11px}
 .stn .pin{width:34px;height:34px;border-radius:10px;background:#e8f8f1;color:var(--green-d);display:flex;align-items:center;justify-content:center;flex:none}
@@ -101,33 +105,51 @@ let STATIONS=[], GROUPS=[], syncAt=Date.now();
 const PIN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.3-7-11a7 7 0 0 1 14 0c0 4.7-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
 function hexA(h,a){h=h||'#18BE7C';const n=parseInt(h.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
 function fmt(s){s=Math.max(0,Math.floor(s));const m=Math.floor(s/60),ss=s%60;return m+':'+String(ss).padStart(2,'0');}
-function liveTotal(g){ return g.total + (g.running ? (Date.now()-syncAt)/1000 : 0); }
+// The race clock: runs continuously from the gun start and only freezes once the
+// coach finishes Wallballs (server sends ticking=false + the frozen total then).
+function liveTotal(g){ return g.total + (g.ticking ? (Date.now()-syncAt)/1000 : 0); }
 const rows=document.getElementById('rows');
 const N=()=>STATIONS.length||9;
+function timeCell(g){
+  if(g.finished) return '<div class="time"><span class="cap">Final</span><span class="mono" id="tm'+g.id+'">'+fmt(g.total)+'</span></div>';
+  if(g.started)  return '<div class="time"><span class="cap">Running</span><span class="mono" id="tm'+g.id+'">'+fmt(liveTotal(g))+'</span></div>';
+  return '<div class="time pre"><span class="cap">Starts</span><span class="mono" id="tm'+g.id+'">'+(g.start_clock||'—')+'</span></div>';
+}
 function rowHtml(g,i){
-  const fin=g.done>=N(), cur=Math.min(g.done+1,N()), pct=Math.round(cur/N()*100);
+  const fin=g.finished, cur=Math.min(g.done+1,N());
+  const pct = !g.started ? 0 : Math.round((fin?N():cur)/N()*100);
   const stnName = fin ? 'Finished 🏁' : (STATIONS[g.done]||'—');
-  const sub = fin ? 'All 9 complete' : 'Station <b>'+cur+' / '+N()+'</b>';
-  return '<div class="grid row'+(i===0?' lead':'')+(fin?' fin':'')+'">'+
+  const sub = fin ? ('Done '+(g.finish_clock||'')) : 'Station <b>'+cur+' / '+N()+'</b>';
+  const startTag = g.start_clock ? '<span class="stt">🏁 '+g.start_clock+'</span>' : '';
+  return '<div class="grid row'+(i===0?' lead':'')+(fin?' fin':'')+(g.started?'':' pre')+'">'+
       '<div class="cell rank">'+(i+1)+(i===0?'<small>LEAD</small>':'')+'</div>'+
       '<div class="cell team"><span class="emb" style="background:'+hexA(g.color,.14)+';color:'+(g.color||'#18BE7C')+'">'+g.emblem+'</span>'+
-        '<span class="nm">'+g.name+'<span class="tag">'+g.tag+'</span></span></div>'+
+        '<span><span class="nm">'+g.name+'<span class="tag">'+g.tag+'</span></span>'+startTag+'</span></div>'+
       '<div class="cell stn"><span class="pin">'+PIN+'</span><span><span class="nm">'+stnName+'</span><span class="sub">'+sub+'</span></span></div>'+
-      '<div class="cell"><div class="time"><span class="cap">Running</span><span class="mono" id="tm'+g.id+'">'+fmt(liveTotal(g))+'</span></div></div>'+
+      '<div class="cell">'+timeCell(g)+'</div>'+
       '<div class="cell prog"><div class="barrow"><span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div></div>'+
     '</div>';
 }
+function rankKey(g){
+  // Furthest along leads; among finished, fastest final time; among running, most elapsed.
+  return [ g.finished?2:(g.started?1:0), g.done, g.finished?-g.total:liveTotal(g) ];
+}
+function cmp(a,b){ const ka=rankKey(a),kb=rankKey(b);
+  if(kb[0]!==ka[0])return kb[0]-ka[0];        // finished/running before not-started
+  if(kb[1]!==ka[1])return kb[1]-ka[1];        // more stations done first
+  return kb[2]-ka[2]; }
 function render(){
   rows.innerHTML='';
   [['A',GROUPS.filter(g=>g.tag==='A')],['B',GROUPS.filter(g=>g.tag==='B')]].forEach(([label,list])=>{
-    list.sort((a,b)=>b.done-a.done || liveTotal(a)-liveTotal(b));
+    list.sort(cmp);
     rows.insertAdjacentHTML('beforeend','<div class="grouphdr">Group '+label+'<span class="cnt">'+list.length+' teams</span></div>');
     list.forEach((g,i)=>rows.insertAdjacentHTML('beforeend', rowHtml(g,i)));
   });
 }
 function ticktimes(){
   let ev=0;
-  GROUPS.forEach(g=>{ const t=liveTotal(g); if(t>ev)ev=t; const el=document.getElementById('tm'+g.id); if(el) el.textContent=fmt(t); });
+  GROUPS.forEach(g=>{ const t=liveTotal(g); if((g.started||g.finished)&&t>ev)ev=t;
+    if(g.ticking){ const el=document.getElementById('tm'+g.id); if(el) el.textContent=fmt(t); } });
   document.getElementById('eventClock').textContent=fmt(ev);
 }
 async function poll(){

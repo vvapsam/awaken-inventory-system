@@ -19,6 +19,14 @@
 .gt .fin{background:#e2f6ec;color:#0b8a4f}
 .dz{background:#fdeee8;border:1px solid #f0c3b2;border-radius:12px;padding:14px 16px;margin-top:18px}
 .dz b{color:#9c2c1e}
+.sched{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:16px}
+.sched h3{margin:0 0 3px;font-size:1rem}
+.sched .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:12px}
+.sched label{display:block;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:5px}
+.sched input{border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:.92rem;font-family:inherit}
+.sched input[type=number]{width:88px}
+.gt td .clk{font-variant-numeric:tabular-nums;font-weight:600}
+.gt .fintime{font-family:ui-monospace,Menlo,monospace;font-weight:700;color:#0b8a4f}
 </style>
 
 <h1 style="margin:0">HYROX event</h1>
@@ -36,15 +44,27 @@
       <a class="btn primary" href="{{ board_url }}" target="_blank">📺 Open scoreboard</a>
       <a class="btn" href="{{ coach_url }}" target="_blank">⏱ Open coach app</a>
     </div>
+    <div class="sched">
+      <h3>Start schedule</h3>
+      <p class="muted small" style="margin:0">Each group's clock runs from a fixed gun start, {{ sched_interval }} min apart in order. The clock keeps running until the coach finishes Wallballs.</p>
+      <form method="post" action="/admin/hyrox/schedule" class="row">
+        <div><label>Event date</label><input type="date" name="date" value="{{ sched_date }}" required></div>
+        <div><label>First group starts</label><input type="time" name="time" value="{{ sched_time }}" required></div>
+        <div><label>Interval (min)</label><input type="number" name="interval" min="1" max="120" value="{{ sched_interval }}"></div>
+        <div><button class="btn primary" type="submit">Set start times</button></div>
+      </form>
+    </div>
+
     <table class="gt">
-      <tr><th></th><th>Group</th><th>Current station</th><th>Done</th><th>Status</th></tr>
+      <tr><th></th><th>Group</th><th>Start</th><th>Current station</th><th>Done</th><th>Status</th></tr>
       {% for g in groups %}
       <tr>
         <td class="em">{{ g.emblem }}</td>
         <td><b>{{ g.name }}</b> <span class="pill">{{ g.tag }}</span></td>
-        <td>{% if g.finished %}Finished{% else %}Station {{ g.done + 1 }}/9{% endif %}</td>
+        <td class="clk">{{ g.start_clock or '—' }}</td>
+        <td>{% if g.finished %}<span class="fintime">{{ '%d:%02d'|format(g.total // 60, g.total % 60) }}</span> total{% else %}Station {{ g.done + 1 }}/9{% endif %}</td>
         <td>{{ g.done }}/9</td>
-        <td>{% if g.finished %}<span class="pill fin">Done</span>{% elif g.running %}<span class="pill run">Timing…</span>{% else %}<span class="pill">Idle</span>{% endif %}</td>
+        <td>{% if g.finished %}<span class="pill fin">Done · {{ g.finish_clock }}</span>{% elif g.station_running %}<span class="pill run">Timing…</span>{% elif g.started %}<span class="pill run">Racing</span>{% else %}<span class="pill">Scheduled</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </table>

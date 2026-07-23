@@ -22,6 +22,7 @@ h2{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
 .emb{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:1.5rem}
 .team .nm{font-family:'Space Grotesk';font-weight:800;font-size:1.3rem}
 .team .nm .tag{font-size:.66rem;background:rgba(255,255,255,.2);padding:2px 7px;border-radius:6px;margin-left:6px;vertical-align:middle;font-weight:700}
+.startline{margin-top:12px;font-size:.82rem;font-weight:600;color:#eafff6;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24);border-radius:10px;padding:8px 12px;display:inline-block}
 .sw{margin-left:auto;font-size:.78rem;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);padding:8px 12px;border-radius:10px;font-weight:600;text-decoration:none}
 .body{padding:16px;display:flex;flex-direction:column;gap:14px;flex:1}
 .now{background:var(--white);border-radius:20px;box-shadow:0 12px 30px rgba(11,26,23,.09);padding:22px 20px;text-align:center}
@@ -58,8 +59,9 @@ h2{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
     <div class="team">
       <span class="emb" id="tEmb">{{ g.emblem }}</span>
       <span class="nm">{{ g.name }}<span class="tag">{{ g.tag }}</span></span>
-      <a class="sw" href="/coach">Switch group ▾</a>
+      <a class="sw" href="/coach?pick=1">Switch group ▾</a>
     </div>
+    {% if g.start_clock %}<div class="startline" id="startLine">🏁 Team start · {{ g.start_clock }}</div>{% endif %}
   </div>
   <div class="body">
     <div class="now" id="now">
@@ -79,39 +81,44 @@ h2{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
 <script>
 const GID={{ g.id }};
 const STATIONS={{ stations|tojson }};
-let G={{ g|tojson }};              // server state: done, splits, running, station_elapsed, total
+let G={{ g|tojson }};              // server state: done, splits, station_running, station_elapsed, started, ticking, total, start_clock
 let syncAt=Date.now(), tick=null;
 const $=id=>document.getElementById(id);
+// Retain this coach's group on the device so reopening the app returns here.
+try{ localStorage.setItem('awaken_coach_gid', String(GID)); }catch(e){}
 const CHK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 function fmt(s){s=Math.max(0,Math.floor(s));const m=Math.floor(s/60),ss=s%60;return m+':'+String(ss).padStart(2,'0');}
-function stationSecs(){ return (G.running? G.station_elapsed+(Date.now()-syncAt)/1000 : 0); }
-function totalSecs(){ const base=(G.splits||[]).reduce((a,b)=>a+b,0); return base + stationSecs(); }
+function stationSecs(){ return (G.station_running? G.station_elapsed+(Date.now()-syncAt)/1000 : 0); }
+// Total = the race clock, running from the fixed gun start (frozen at finish).
+function totalSecs(){ return G.total + (G.ticking ? (Date.now()-syncAt)/1000 : 0); }
+function totalText(){ if(!G.started) return G.start_clock ? 'Starts '+G.start_clock : '0:00'; return fmt(totalSecs()); }
 
 function apply(state){ G=state; syncAt=Date.now(); render(); startStopTick(); }
-function startStopTick(){ if(tick)clearInterval(tick); if(G.running){ tick=setInterval(loop,200); } }
-function loop(){ $('timer').textContent=fmt(stationSecs()); $('total').textContent=fmt(totalSecs()); }
+function startStopTick(){ if(tick)clearInterval(tick); if(G.station_running||G.ticking){ tick=setInterval(loop,200); } }
+function loop(){ $('timer').textContent=fmt(stationSecs()); $('total').textContent=totalText(); }
 
 function render(){
   const fin=G.done>=STATIONS.length;
   $('nowLbl').textContent=fin?'All stations done':'Station '+(G.done+1)+' of 9';
   $('nowName').textContent=fin?'Finished 🏁':STATIONS[G.done];
-  $('now').classList.toggle('run',G.running);
+  $('now').classList.toggle('run',G.station_running);
   $('timer').textContent=fmt(stationSecs());
-  $('total').textContent=fmt(totalSecs());
+  $('total').textContent=totalText();
   const b=$('btn');
   if(fin){ b.style.display='none'; $('hint').textContent='Great work — all 9 stations recorded.'; }
   else{
     b.style.display='flex';
-    if(G.running){ b.className='btn stop'; $('btnLbl').textContent='Finish station';
+    if(G.station_running){ b.className='btn stop'; $('btnLbl').textContent='Finish station';
       b.querySelector('svg').innerHTML='<rect x="6" y="6" width="12" height="12" rx="2"/>'; $('hint').textContent='Timing… tap finish when they complete it.'; }
     else{ b.className='btn start'; $('btnLbl').textContent='Start station';
-      b.querySelector('svg').innerHTML='<path d="M8 5v14l11-7z"/>'; $('hint').textContent='Tap start when the team begins this station.'; }
+      b.querySelector('svg').innerHTML='<path d="M8 5v14l11-7z"/>';
+      $('hint').textContent=(!G.started&&G.start_clock)?('Team starts at '+G.start_clock+' — the clock runs from then.'):'Tap start when the team begins this station.'; }
   }
   const el=$('stations'); el.innerHTML='';
   STATIONS.forEach((nm,i)=>{
     let cls='st', n=(i+1), split='—';
     if(i<G.splits.length){ cls+=' done'; n=CHK; split=fmt(G.splits[i]); }
-    else if(i===G.done){ cls+=' cur'; split=G.running?'timing…':'ready'; }
+    else if(i===G.done){ cls+=' cur'; split=G.station_running?'timing…':'ready'; }
     else { cls+=' todo'; }
     el.insertAdjacentHTML('beforeend','<div class="'+cls+'"><span class="n">'+n+'</span><span class="nm">'+nm+
       (i===G.done&&!fin?'<small>current station</small>':'')+'</span><span class="split">'+split+'</span></div>');
@@ -125,10 +132,11 @@ async function post(path){
   catch(e){ $('hint').textContent='Network hiccup — try again.'; }
   b.disabled=false;
 }
-$('btn').onclick=()=>{ if(G.done>=STATIONS.length) return; post(G.running?'finish':'start'); };
+$('btn').onclick=()=>{ if(G.done>=STATIONS.length) return; post(G.station_running?'finish':'start'); };
 $('undo').onclick=()=>post('undo');
 
-// resync from server every 6s (in case another device also viewed this group)
+// resync from server every 6s (in case another device also viewed this group, or
+// the gun-start time arrives so the race clock should begin ticking).
 setInterval(async()=>{
   try{ const r=await fetch('/api/hyrox/state'); const j=await r.json();
     const s=(j.groups||[]).find(x=>x.id===GID); if(s){ G=s; syncAt=Date.now(); render(); startStopTick(); } }catch(e){}

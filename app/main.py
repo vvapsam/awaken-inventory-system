@@ -172,6 +172,10 @@ def startup():
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.invoices') IS NOT NULL THEN ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.payments') IS NOT NULL THEN ALTER TABLE payments ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.stock_movements') IS NOT NULL THEN ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
+        # HYROX relay: fixed gun-start schedule + Wallballs finish stamp.
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.hyrox_groups') IS NOT NULL THEN "
+                          "ALTER TABLE hyrox_groups ADD COLUMN IF NOT EXISTS start_at TIMESTAMPTZ; "
+                          "ALTER TABLE hyrox_groups ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ; END IF; END $$;"))
     db = next(get_db())
     try:
         # Backfill usernames only for people WITH system access who are missing one.
@@ -235,6 +239,10 @@ def startup():
             for d in HYROX_GROUP_DEFAULTS:
                 db.add(HyroxGroup(**d))
             db.commit()
+        # Give the relay a default 15-min-interval start schedule (upcoming 5:00 AM)
+        # so the board shows start times out of the box; admin can re-set the date/time.
+        from .hyrox import ensure_default_schedule
+        ensure_default_schedule(db)
         # One-time migration: fold legacy discount_codes into the people table.
         # Each code becomes a non-access person (Employee/Affiliate) carrying the code.
         # Read via raw SQL so the ORM model can be removed and the table dropped.
