@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWAKEN — HYROX Relay Live Board</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0f0d; --panel:#111a17; --panel2:#0e1513; --line:#22322d; --ink:#eef4f2;
+  --muted:#8ea39c; --faint:#5f726b; --green:#18BE7C; --green-d:#0e9b64; --gold:#e8b53a;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
+  background:radial-gradient(1400px 700px at 50% -20%,#0f1a17,#080c0b) fixed;padding:26px 20px 60px}
+.mono{font-family:'Space Grotesk',Inter,sans-serif}
+.wrap{max-width:1280px;margin:0 auto}
+/* header */
+.top{display:flex;align-items:center;gap:16px;margin-bottom:8px}
+.logo{font-family:'Space Grotesk';font-weight:800;letter-spacing:.22em;font-size:1.15rem}
+.divider{width:1px;height:26px;background:var(--line)}
+.title{font-family:'Space Grotesk';font-weight:700;font-size:1.15rem;letter-spacing:.02em}
+.title span{color:var(--green)}
+.live{display:inline-flex;align-items:center;gap:8px;margin-left:auto;background:rgba(24,190,124,.12);
+  border:1px solid rgba(24,190,124,.35);color:#8ff0c6;font-weight:700;font-size:.8rem;letter-spacing:.08em;
+  padding:7px 14px;border-radius:999px;text-transform:uppercase;font-family:'Space Grotesk'}
+.live .dot{width:9px;height:9px;border-radius:999px;background:#28e58c;box-shadow:0 0 0 0 rgba(40,229,140,.7);animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(40,229,140,.6)}70%{box-shadow:0 0 0 9px rgba(40,229,140,0)}100%{box-shadow:0 0 0 0 rgba(40,229,140,0)}}
+.sub{color:var(--muted);font-size:.9rem;margin:0 0 20px 2px}
+/* board */
+.board{background:linear-gradient(180deg,#0e1613,#0b120f);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.grid{display:grid;grid-template-columns:56px 236px repeat(9,1fr) 168px;align-items:center}
+.head{position:sticky;top:0;background:#0d1512;border-bottom:1px solid var(--line)}
+.head .c{padding:14px 6px;font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);text-align:center;line-height:1.25}
+.head .c.l{text-align:left;padding-left:18px}
+.head .st{color:var(--muted)}
+.head .st b{display:block;color:#c9d6d1;font-family:'Space Grotesk';font-size:.7rem;margin-bottom:2px}
+.row{border-bottom:1px solid #182420;position:relative}
+.row:last-child{border-bottom:0}
+.row:nth-child(even){background:rgba(255,255,255,.012)}
+.row.lead{background:linear-gradient(90deg,rgba(232,181,58,.10),rgba(232,181,58,.02) 40%,transparent)}
+.cell{padding:16px 6px;text-align:center}
+/* rank */
+.rank{font-family:'Space Grotesk';font-weight:800;font-size:1.35rem;color:#cdd8d3}
+.row.lead .rank{color:var(--gold)}
+.rank small{display:block;font-size:.52rem;color:var(--faint);font-weight:700;letter-spacing:.1em;margin-top:-2px}
+/* team */
+.team{display:flex;align-items:center;gap:12px;padding-left:18px;text-align:left}
+.emb{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.35rem;flex:none;border:1px solid rgba(255,255,255,.08)}
+.team .nm{font-family:'Space Grotesk';font-weight:700;font-size:.98rem;line-height:1.1}
+.team .tag{display:inline-block;margin-left:6px;font-size:.6rem;font-weight:800;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:rgba(255,255,255,.08);color:#b9c7c1;vertical-align:middle}
+.team .meta{color:var(--muted);font-size:.72rem;margin-top:2px}
+/* station nodes with a connecting track */
+.track{position:relative}
+.node{position:relative;z-index:2;width:30px;height:30px;border-radius:999px;margin:0 auto;display:flex;align-items:center;justify-content:center;
+  background:#0e1613;border:2px solid #2a3a35;color:#54655f;font-family:'Space Grotesk';font-weight:700;font-size:.78rem}
+.node.done{background:var(--green);border-color:var(--green);color:#062018}
+.node.done svg{width:15px;height:15px;stroke-width:3}
+.node.cur{border-color:var(--gold);color:#fff;background:#14201c;box-shadow:0 0 0 4px rgba(232,181,58,.16)}
+.node.cur:before{content:"";position:absolute;inset:-6px;border-radius:999px;border:2px solid rgba(232,181,58,.5);animation:ring 1.6s infinite}
+@keyframes ring{0%{transform:scale(.85);opacity:.9}100%{transform:scale(1.3);opacity:0}}
+/* connector line: from each node to the next (no bleed into the team column) */
+.track:before{content:"";position:absolute;left:50%;right:-50%;top:50%;height:2px;background:#1c2a26;z-index:1}
+.cell.track.tdone:before{background:var(--green)}
+.cell.track.nline:before{display:none}
+/* status */
+.status{padding:12px 16px 12px 8px;text-align:left}
+.status .cur-lbl{font-family:'Space Grotesk';font-weight:700;font-size:.9rem}
+.status .cur-lbl.fin{color:var(--gold)}
+.status .cnt{color:var(--muted);font-size:.72rem;margin-top:3px;display:flex;align-items:center;gap:8px}
+.bar{flex:1;height:6px;border-radius:6px;background:#1b2723;overflow:hidden;max-width:90px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green-d),var(--green))}
+/* legend */
+.legend{display:flex;gap:20px;justify-content:center;margin-top:20px;color:var(--muted);font-size:.82rem;flex-wrap:wrap}
+.legend .k{display:inline-flex;align-items:center;gap:8px}
+.kd{width:16px;height:16px;border-radius:999px}
+.kd.done{background:var(--green)}.kd.cur{background:#14201c;border:2px solid var(--gold)}.kd.todo{background:#0e1613;border:2px solid #2a3a35}
+.note{max-width:1000px;margin:22px auto 0;text-align:center;color:var(--muted);font-size:.9rem;line-height:1.6}
+.note b{color:#dfe8e5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="logo">AWAKEN</span>
+    <span class="divider"></span>
+    <span class="title">HYROX Relay — <span>Live Board</span></span>
+    <span class="live"><span class="dot"></span> Live</span>
+  </div>
+  <p class="sub">Where every team is right now across the 9 stations · updates in real time</p>
+
+  <div class="board">
+    <!-- header -->
+    <div class="grid head">
+      <div class="c">#</div>
+      <div class="c l">Team</div>
+      <div class="c st"><b>1</b>Run</div>
+      <div class="c st"><b>2</b>Ski</div>
+      <div class="c st"><b>3</b>Sled Push</div>
+      <div class="c st"><b>4</b>Sled Pull</div>
+      <div class="c st"><b>5</b>Burpee BJ</div>
+      <div class="c st"><b>6</b>Row</div>
+      <div class="c st"><b>7</b>Lunges</div>
+      <div class="c st"><b>8</b>Farmer Carry</div>
+      <div class="c st"><b>9</b>Wallballs</div>
+      <div class="c">Now</div>
+    </div>
+
+    <!-- rows: generated below by a tiny script so states are easy to read -->
+    <div id="rows"></div>
+  </div>
+
+  <div class="legend">
+    <span class="k"><span class="kd done"></span> Completed</span>
+    <span class="k"><span class="kd cur"></span> Currently on</span>
+    <span class="k"><span class="kd todo"></span> Up next</span>
+  </div>
+
+  <div class="note">
+    This is a mockup of the <b>live relay board</b>. Each team's dot shows exactly which station they're on; finished stations turn green, and the board re-sorts by who's furthest along. Staff would tap a team to advance it to the next station (or it can auto-advance from timing gates later).<br>
+    Tell me: should this live at something like <b>portal.awakengym.com/board</b> for a big screen, and do you want a simple <b>staff control</b> to tap each team forward? I can also add elapsed time per station.
+  </div>
+</div>
+
+<script>
+const STATIONS=["Run","Ski","Sled Push","Sled Pull","Burpee Broad Jump","Row","Lunges","Farmer Carry","Wallballs"];
+// done = number of stations completed; current station index = done (0-based). 9 = finished.
+const TEAMS=[
+  {name:"Logan Leopards",tag:"A",emb:"🐆",c:"#e8b53a",done:7},
+  {name:"Foxes",tag:"A",emb:"🦊",c:"#e8703a",done:6},
+  {name:"Eagles",tag:"A",emb:"🦅",c:"#c99a3f",done:6},
+  {name:"Pulag Pythons",tag:"B",emb:"🐍",c:"#18BE7C",done:5},
+  {name:"Eagles",tag:"B",emb:"🦅",c:"#c99a3f",done:4},
+  {name:"Logan Leopards",tag:"B",emb:"🐆",c:"#e8b53a",done:4},
+  {name:"Foxes",tag:"B",emb:"🦊",c:"#e8703a",done:3},
+  {name:"Pulag Pythons",tag:"A",emb:"🐍",c:"#18BE7C",done:2},
+];
+const CHK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const rows=document.getElementById('rows');
+TEAMS.sort((a,b)=>b.done-a.done);
+TEAMS.forEach((t,i)=>{
+  const lead=i===0?' lead':'';
+  let cells='';
+  for(let s=0;s<9;s++){
+    let cls='node', inner=(s+1);
+    if(s<t.done){ cls+=' done'; inner=CHK; }
+    else if(s===t.done){ cls+=' cur'; inner='▶'; }
+    const tdone = s < t.done ? ' tdone' : '';
+    const nline = s===8 ? ' nline' : '';
+    cells+='<div class="cell track'+tdone+nline+'"><div class="'+cls+'"'+(s===t.done?' style="border-color:'+t.c+';box-shadow:0 0 0 4px '+hexA(t.c,.18)+'"':'')+'>'+inner+'</div></div>';
+  }
+  const fin = t.done>=9;
+  const curName = fin ? 'Finished 🏁' : STATIONS[t.done];
+  const status='<div class="cell status"><div class="cur-lbl'+(fin?' fin':'')+'">'+curName+'</div>'+
+    '<div class="cnt">'+(fin?'9 / 9':(t.done)+' / 9')+'<span class="bar"><i style="width:'+Math.round(t.done/9*100)+'%"></i></span></div></div>';
+  rows.insertAdjacentHTML('beforeend',
+    '<div class="grid row'+lead+'">'+
+      '<div class="cell rank">'+(i+1)+(i===0?'<small>LEAD</small>':'')+'</div>'+
+      '<div class="cell team"><span class="emb" style="background:'+hexA(t.c,.16)+';color:'+t.c+'">'+t.emb+'</span>'+
+        '<span><span class="nm">'+t.name+'<span class="tag">'+t.tag+'</span></span></span></div>'+
+      cells+status+
+    '</div>');
+});
+function hexA(h,a){const n=parseInt(h.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+</script>
+</body>
+</html>
