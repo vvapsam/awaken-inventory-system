@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AWAKEN — {% if flow == 'walkin' %}Walk-in{% else %}Sign up{% endif %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--line:#E4E7EA;--paper:#EEF1F2;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--owed:#E2683F;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center}
+h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
+.wrap{width:100%;max-width:560px;padding:0 0 48px}
+.hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 130%);color:#fff;
+  padding:calc(env(safe-area-inset-top,0px) + 30px) 24px 40px;border-radius:0 0 26px 26px;text-align:center}
+.logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:9px 15px;box-shadow:0 8px 22px rgba(11,26,23,.20);min-height:52px}
+.logoTile img{height:36px;width:auto;max-width:210px;display:block}
+.logoTile b{font-family:Poppins;letter-spacing:.16em;color:#0b2a26;font-size:1.05rem}
+.hero h1{font-size:1.5rem;margin-top:14px}
+.hero p{color:rgba(255,255,255,.85);margin:6px 0 0;font-size:.9rem}
+.steps{display:flex;justify-content:center;gap:7px;margin:16px 0 0}
+.steps i{width:26px;height:5px;border-radius:3px;background:rgba(255,255,255,.32)}
+.steps i.on{background:#fff}
+.card{background:var(--white);margin:16px;border-radius:18px;box-shadow:0 12px 30px rgba(11,26,23,.08);padding:20px}
+.seclbl{font-family:Poppins;font-weight:700;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;color:var(--green-d);margin:0 0 12px}
+.legal{max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:#fbfcfc;font-size:.85rem;line-height:1.55;color:#33383f}
+.legal h3{font-size:.9rem;margin:13px 0 5px}.legal h3:first-child{margin-top:0}
+.legal p{margin:0 0 9px}
+.lbl{display:block;font-weight:600;font-size:.85rem;margin:15px 2px 6px}
+.req{color:var(--owed)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input[type=text],input[type=email],input[type=tel],select{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
+input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
+.two .fld .lbl{margin-top:0}
+.sigbox{position:relative;border:1.5px dashed #cfd5da;border-radius:12px;background:#fcfdfd;height:180px;touch-action:none;overflow:hidden}
+.sigbox canvas{width:100%;height:100%;display:block}
+.sigbox .hint{position:absolute;left:0;right:0;bottom:16px;text-align:center;color:#c0c6cc;font-size:.9rem;pointer-events:none}
+.sigbox .line{position:absolute;left:22px;right:22px;bottom:44px;border-top:1px solid #dfe4e8;pointer-events:none}
+.sigbox.signed .hint,.sigbox.signed .line{display:none}
+.sigtools{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.sigtools .x{font-size:.78rem;color:var(--muted)}
+.clearbtn{background:none;border:0;color:var(--green-d);font-weight:700;font-size:.85rem;cursor:pointer;padding:4px}
+.agree{display:flex;gap:10px;align-items:flex-start;margin-top:18px;font-size:.86rem;line-height:1.5}
+.agree input{width:20px;height:20px;margin-top:1px;accent-color:var(--green)}
+.btn{margin-top:20px;width:100%;padding:16px;border:0;border-radius:14px;background:var(--green);color:#fff;
+  font-family:Poppins;font-weight:700;font-size:1.05rem;cursor:pointer}
+.btn:disabled{background:#dbe0e3;color:#a3a9af;cursor:not-allowed}
+.btn:not(:disabled):active{transform:scale(.99)}
+.btn.dark{background:var(--ink)}
+.back{background:none;border:0;color:var(--muted);font-weight:600;font-size:.9rem;cursor:pointer;padding:8px 2px;margin-bottom:2px;display:inline-flex;align-items:center;gap:5px}
+.err{color:var(--owed);font-size:.82rem;margin-top:8px;text-align:center;min-height:1em}
+.foot{text-align:center;color:var(--muted);font-size:.76rem;margin-top:14px}
+.spin{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.gate{text-align:center;padding:26px 10px}
+.gate .qi{width:64px;height:64px;border-radius:16px;background:#eef3f2;color:var(--green-d);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.gate .qi svg{width:34px;height:34px;stroke-width:1.8}
+.gate h2{font-size:1.25rem}.gate p{color:var(--muted);margin:8px 0 0;font-size:.95rem;line-height:1.5}
+/* plan cards */
+.plan{display:flex;align-items:center;gap:12px;border:1.6px solid var(--line);border-radius:14px;padding:14px 15px;margin-top:11px;cursor:pointer;background:#fff;transition:border-color .12s,box-shadow .12s}
+.plan.sel{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.15)}
+.plan .rad{width:22px;height:22px;border-radius:999px;border:2px solid #cfd5da;flex:none;position:relative}
+.plan.sel .rad{border-color:var(--green)}
+.plan.sel .rad:after{content:"";position:absolute;inset:4px;border-radius:999px;background:var(--green)}
+.plan .tx{flex:1;min-width:0}.plan .tx .t{font-weight:700;font-size:1rem}.plan .tx .s{color:var(--muted);font-size:.8rem;margin-top:2px}
+.plan .pr{font-family:Poppins;font-weight:800;font-size:1.1rem}
+.noplan{color:var(--muted);text-align:center;padding:18px;font-size:.9rem}
+/* pay */
+.seg{display:flex;gap:10px;margin-top:6px}
+.seg .s{flex:1;border:1.6px solid var(--line);border-radius:12px;text-align:center;padding:14px 0;font-weight:700;font-size:.92rem;background:#fff;cursor:pointer}
+.seg .s.on{background:var(--green);color:#fff;border-color:var(--green)}
+.amt{background:linear-gradient(135deg,#0b6b62,#0f9e91 70%,#18BE7C 130%);color:#fff;border-radius:14px;padding:15px 17px;display:flex;justify-content:space-between;align-items:center}
+.amt .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.82);font-weight:600}
+.amt .v{font-family:Poppins;font-weight:800;font-size:1.5rem;margin-top:2px}
+.amt .pl{text-align:right;font-size:.82rem;color:rgba(255,255,255,.9)}
+.bankbox{border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center;margin-top:14px;background:#fbfcfc}
+.bankbox img{width:170px;height:170px;background:#fff;border-radius:10px;padding:6px;border:1px solid var(--line)}
+.bankbox .bn{font-weight:700;margin-top:8px}.bankbox .an{color:var(--muted);font-size:.85rem}
+.drop{border:1.6px dashed #cfd5da;border-radius:12px;text-align:center;padding:18px 10px;color:var(--muted);font-size:.9rem;background:#fcfdfd;cursor:pointer;margin-top:14px}
+.drop.has{border-color:var(--green);color:var(--green-d);background:#f2fbf7}
+.drop img{max-height:150px;max-width:100%;border-radius:8px;margin-top:8px;display:block;margin-left:auto;margin-right:auto}
+.hintp{color:var(--muted);font-size:.8rem;margin-top:10px;line-height:1.45;text-align:center}
+.done{display:none;text-align:center;padding:22px 8px}
+.done .chk{width:74px;height:74px;border-radius:999px;background:#e2f6ec;color:var(--green-d);display:flex;align-items:center;justify-content:center;margin:8px auto 14px}
+.done .chk svg{width:38px;height:38px;stroke-width:2.6}
+.done h2{font-size:1.4rem}.done p{color:var(--muted);margin:8px 0 0;font-size:.92rem;line-height:1.5}
+.step{display:none}.step.active{display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="logoTile"><img src="/order-logo" alt="AWAKEN"
+      onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<b>AWAKEN</b>')"></div>
+    <h1>{% if flow == 'walkin' %}Walk-in today{% else %}Become a member{% endif %}</h1>
+    <p>{% if valid %}{% if flow == 'walkin' %}Sign the waiver, then grab a day pass.{% else %}Sign the waiver, pick a plan, and you're in.{% endif %}{% else %}Welcome to AWAKEN!{% endif %}</p>
+    {% if valid %}<div class="steps"><i id="d1" class="on"></i><i id="d2"></i><i id="d3"></i></div>{% endif %}
+  </div>
+
+  {% if not valid %}
+  <div class="card gate">
+    <div class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01"/></svg></div>
+    <h2>Please scan the QR at the front desk</h2>
+    <p>To get started, scan the QR code posted at the AWAKEN front desk with your phone camera. See our staff if you need help.</p>
+  </div>
+  {% else %}
+  <input type="hidden" id="flow" value="{{ flow }}">
+  <input type="hidden" id="key" value="{{ k }}">
+  <input type="hidden" id="token" value="{{ token }}">
+
+  <!-- STEP 1 — waiver -->
+  <div class="step active" id="step1">
+    <div class="card">
+      <div class="seclbl">The waiver</div>
+      <div class="legal">
+        <h3>Assumption of Risk</h3>
+        <p>I understand that participation in physical exercise, fitness training, and use of the facilities and equipment at AWAKEN Fitness Center involves inherent risks, including but not limited to muscle strains, sprains, injury, or in rare cases more serious harm. I voluntarily choose to participate with full knowledge of these risks.</p>
+        <h3>Release of Liability</h3>
+        <p>In consideration of being permitted to use the facilities, I release and hold harmless AWAKEN Fitness Center, its owners, staff, and trainers from any and all claims, demands, or causes of action arising from my participation, except in cases of gross negligence.</p>
+        <h3>Health Declaration</h3>
+        <p>I confirm that I am in good physical condition and have no medical condition that would prevent safe participation. I will inform staff of any condition that may affect my ability to exercise safely.</p>
+        <h3>Rules &amp; Consent</h3>
+        <p>I agree to follow all gym rules and staff instructions, and I consent to AWAKEN keeping this signed waiver on record.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="seclbl">Your details</div>
+      <div class="two">
+        <div class="fld"><label class="lbl">First name <span class="req">*</span></label><input type="text" id="fname" autocomplete="given-name"></div>
+        <div class="fld"><label class="lbl">Last name <span class="req">*</span></label><input type="text" id="lname" autocomplete="family-name"></div>
+      </div>
+      <label class="lbl">Email <span class="req">*</span></label>
+      <input type="email" id="email" autocomplete="email" placeholder="you@email.com">
+      <label class="lbl">Phone <span class="req">*</span></label>
+      <input type="tel" id="phone" autocomplete="tel" placeholder="09xx xxx xxxx">
+      <label class="lbl">How did you find us? <span class="req">*</span></label>
+      <select id="referral">
+        <option value="" selected disabled>Choose one…</option>
+        {% for r in referrals %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="seclbl">Signature</div>
+      <div class="sigbox" id="sigbox">
+        <canvas id="sig"></canvas>
+        <div class="line"></div>
+        <div class="hint">✍️ Sign with your finger</div>
+      </div>
+      <div class="sigtools"><span class="x" id="sig-date"></span><button type="button" class="clearbtn" id="clear">Clear</button></div>
+      <label class="agree"><input type="checkbox" id="agree"> <span>I have read and understood this waiver, and I agree to its terms. I confirm the information above is accurate.</span></label>
+      <button type="button" class="btn" id="to2" disabled>Continue</button>
+      <div class="err" id="err1"></div>
+    </div>
+  </div>
+
+  <!-- STEP 2 — choose plan -->
+  <div class="step" id="step2">
+    <div class="card">
+      <button type="button" class="back" data-back="1">‹ Back</button>
+      <div class="seclbl">{% if flow == 'walkin' %}Day pass{% else %}Choose your plan{% endif %}</div>
+      {% if plans %}
+      <div id="planlist">
+        {% for p in plans %}
+        <div class="plan" data-id="{{ p.id }}" data-price="{{ p.price }}" data-name="{{ p.name }}">
+          <span class="rad"></span>
+          <div class="tx"><div class="t">{{ p.name }}</div>{% if p.subtitle %}<div class="s">{{ p.subtitle }}</div>{% endif %}</div>
+          <div class="pr">{{ peso(p.price) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn" id="to3" disabled>Continue</button>
+      {% else %}
+      <div class="noplan">No options are set up yet. Please see the front desk.</div>
+      {% endif %}
+      <div class="err" id="err2"></div>
+    </div>
+  </div>
+
+  <!-- STEP 3 — pay -->
+  <div class="step" id="step3">
+    <div class="card">
+      <button type="button" class="back" data-back="2">‹ Back</button>
+      <div class="seclbl">Payment</div>
+      <div class="amt"><div><div class="k">Amount due</div><div class="v" id="amtv">₱0</div></div><div class="pl" id="amtplan"></div></div>
+
+      <label class="lbl">Pay with</label>
+      <div class="seg">
+        <div class="s on" id="mCash" data-m="cash">Cash</div>
+        <div class="s" id="mBank" data-m="bank">Bank transfer</div>
+      </div>
+
+      <div id="cashInfo" class="hintp">Pay at the counter — staff will confirm your payment.</div>
+
+      <div id="bankInfo" style="display:none">
+        <div class="bankbox">
+          {% if bank.has_qr %}<img src="/order-qr" alt="Payment QR">{% endif %}
+          <div class="bn">{{ bank.bank_name or 'AWAKEN' }}</div>
+          {% if bank.account_name %}<div class="an">{{ bank.account_name }}</div>{% endif %}
+        </div>
+        <div class="drop" id="drop"><span id="dropTxt">📷 Tap to upload your payment screenshot</span>
+          <img id="preview" style="display:none"></div>
+        <input type="file" id="file" accept="image/*" capture="environment" style="display:none">
+      </div>
+
+      <button type="button" class="btn" id="submit">Submit</button>
+      <div class="err" id="err3"></div>
+      <div class="foot">Your payment goes to AWAKEN staff for approval.</div>
+    </div>
+  </div>
+
+  <!-- DONE -->
+  <div class="card done" id="done">
+    <div class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <h2 id="done-title">You're all set 🎉</h2>
+    <p id="done-msg"></p>
+  </div>
+  {% endif %}
+</div>
+
+{% if valid %}
+<script>
+const $=id=>document.getElementById(id);
+const flow=$('flow').value;
+
+/* ---- steps ---- */
+let step=1;
+function show(n){
+  step=n;
+  ['step1','step2','step3'].forEach((s,i)=>$(s).classList.toggle('active',i===n-1));
+  ['d1','d2','d3'].forEach((d,i)=>$(d).classList.toggle('on',i<=n-1));
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('.back').forEach(b=>b.onclick=()=>show(parseInt(b.dataset.back)));
+
+/* ---- signature ---- */
+const box=$('sigbox'), canvas=$('sig'), ctx=canvas.getContext('2d');
+let drawing=false, hasSig=false, last=null;
+function fit(){ const r=canvas.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  canvas.width=r.width*dpr; canvas.height=r.height*dpr; ctx.scale(dpr,dpr);
+  ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#12303a'; }
+setTimeout(fit,60); window.addEventListener('resize',()=>{ if(!hasSig) fit(); });
+function pos(e){ const r=canvas.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-r.left,y:t.clientY-r.top}; }
+function sstart(e){ e.preventDefault(); drawing=true; last=pos(e); if(!hasSig){hasSig=true; box.classList.add('signed'); upd1();} }
+function smove(e){ if(!drawing) return; e.preventDefault(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; }
+function send(){ drawing=false; }
+canvas.addEventListener('mousedown',sstart); canvas.addEventListener('mousemove',smove); window.addEventListener('mouseup',send);
+canvas.addEventListener('touchstart',sstart,{passive:false}); canvas.addEventListener('touchmove',smove,{passive:false}); canvas.addEventListener('touchend',send);
+$('clear').onclick=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); hasSig=false; box.classList.remove('signed'); upd1(); };
+$('sig-date').textContent='Date: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});
+
+/* ---- step 1 validation ---- */
+const reqs=['fname','lname','email','phone','referral'];
+function ready1(){ return reqs.every(id=>$(id).value.trim()) && $('agree').checked && hasSig; }
+function upd1(){ $('to2').disabled=!ready1(); }
+reqs.forEach(id=>{ $(id).addEventListener('input',upd1); $(id).addEventListener('change',upd1); });
+$('agree').addEventListener('change',upd1);
+$('to2').onclick=()=>{ if(ready1()) show(2); };
+
+/* ---- step 2 plan pick ---- */
+let plan=null;
+document.querySelectorAll('.plan').forEach(el=>el.onclick=()=>{
+  document.querySelectorAll('.plan').forEach(p=>p.classList.remove('sel'));
+  el.classList.add('sel'); plan={id:el.dataset.id,price:parseFloat(el.dataset.price),name:el.dataset.name};
+  $('to3').disabled=false;
+});
+// preselect if only one option (typical for Walk-in day pass)
+(function(){ const ps=document.querySelectorAll('.plan'); if(ps.length===1) ps[0].click(); })();
+$('to3') && ($('to3').onclick=()=>{
+  if(!plan){ $('err2').textContent='Please choose an option.'; return; }
+  $('amtv').textContent='₱'+plan.price.toLocaleString('en-PH',{minimumFractionDigits:0});
+  $('amtplan').textContent=plan.name;
+  show(3);
+});
+
+/* ---- step 3 pay ---- */
+let method='cash', proof=null;
+function setM(m){ method=m;
+  $('mCash').classList.toggle('on',m==='cash'); $('mBank').classList.toggle('on',m==='bank');
+  $('cashInfo').style.display=m==='cash'?'block':'none';
+  $('bankInfo').style.display=m==='bank'?'block':'none';
+}
+$('mCash').onclick=()=>setM('cash'); $('mBank').onclick=()=>setM('bank');
+$('drop').onclick=()=>$('file').click();
+$('file').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ proof=rd.result; $('preview').src=proof; $('preview').style.display='block';
+    $('dropTxt').textContent='✓ Screenshot attached — tap to change'; $('drop').classList.add('has'); };
+  rd.readAsDataURL(f);
+};
+
+$('submit').onclick=async()=>{
+  if(!plan){ show(2); return; }
+  if(method==='bank' && !proof){ $('err3').textContent='Please attach your payment screenshot.'; return; }
+  const btn=$('submit'), old=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  const payload={ flow:flow, key:$('key').value, token:$('token').value,
+    first_name:$('fname').value.trim(), last_name:$('lname').value.trim(),
+    email:$('email').value.trim(), phone:$('phone').value.trim(), referral:$('referral').value,
+    signature:canvas.toDataURL('image/png'), plan_id:plan.id, method:method,
+    proof: method==='bank'?proof:null };
+  try{
+    const r=await fetch('/api/kiosk/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(j.expired){ document.body.innerHTML='<div style="max-width:420px;margin:80px auto;text-align:center;font-family:Inter,sans-serif;padding:0 24px"><div style="font-size:44px">🔄</div><h2 style="font-family:Poppins,sans-serif">This link has expired</h2><p style="color:#8A9099;line-height:1.5">Please scan the QR code at the front desk again.</p></div>'; return; }
+    if(!j.ok){ $('err3').textContent=j.error||'Could not submit'; btn.textContent=old; btn.disabled=false; return; }
+    const paidLine = j.method==='bank' ? 'We received your screenshot.' : 'Please pay ₱'+j.price.toLocaleString('en-PH')+' at the counter.';
+    if(flow==='signup'){
+      $('done-title').textContent='Welcome, '+j.first_name+'! 🎉';
+      $('done-msg').textContent='Your '+j.plan+' membership request is in. '+paidLine+' Staff will confirm your payment and activate your plan.';
+    }else{
+      $('done-title').textContent='You’re all set!';
+      $('done-msg').textContent='Your '+j.plan+' is requested. '+paidLine+' Enjoy your workout — hand the device back to staff.';
+    }
+    document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
+    $('done').style.display='block'; window.scrollTo({top:0,behavior:'smooth'});
+  }catch(err){ $('err3').textContent='Network error — please try again.'; btn.textContent=old; btn.disabled=false; }
+};
+</script>
+{% endif %}
+</body>
+</html>

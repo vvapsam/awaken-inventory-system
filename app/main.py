@@ -28,6 +28,7 @@ from .models import (
     ENTITY_TYPES, DISCOUNT_TYPES, Role,
     Transaction, TransactionItem,
     TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE, TX_PAYMENT, TX_INVENTORY,
+    KioskPlan, KIOSK_PLAN_DEFAULTS,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -65,6 +66,10 @@ app.include_router(order_router)
 # Public liability waiver page + staff review list
 from .waiver import router as waiver_router  # noqa: E402
 app.include_router(waiver_router)
+
+# Public kiosk flows (Walk-in day pass / Sign-up membership) + admin plans
+from .kiosk import router as kiosk_router  # noqa: E402
+app.include_router(kiosk_router)
 
 
 def _slugify(s):
@@ -194,6 +199,11 @@ def startup():
         for st in db.query(Staff).filter(Staff.role_id == None).all():  # noqa: E711
             st.role_id = admin_role.id if st.role == "admin" else staff_role.id
         db.commit()
+        # Seed the kiosk plans (Day Pass + memberships) once, if none exist.
+        if not db.query(KioskPlan.id).first():
+            for d in KIOSK_PLAN_DEFAULTS:
+                db.add(KioskPlan(**d))
+            db.commit()
         # One-time migration: fold legacy discount_codes into the people table.
         # Each code becomes a non-access person (Employee/Affiliate) carrying the code.
         # Read via raw SQL so the ORM model can be removed and the table dropped.
@@ -558,6 +568,15 @@ def home(request: Request, db: Session = Depends(get_db)):
         return templates.TemplateResponse("order.html", {"request": request})
     staff = current_staff(request, db)
     return RedirectResponse(_post_login_dest(request) if staff else "/login", status_code=303)
+
+
+@app.get("/welcome", response_class=HTMLResponse)
+def welcome_hub(request: Request, k: str = ""):
+    # Public QR-landing hub: member scans one QR at the desk and picks an
+    # action. The QR carries the secret key (?k=), which the hub forwards to the
+    # Walk-in / Sign-up kiosk flows. "Buy drinks" links to the live /order
+    # self-checkout (same app on both hosts).
+    return templates.TemplateResponse("welcome.html", {"request": request, "k": k})
 
 
 @app.get("/login", response_class=HTMLResponse)

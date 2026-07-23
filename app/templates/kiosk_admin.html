@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.kk-grid{display:grid;grid-template-columns:260px 1fr;gap:18px;align-items:start;margin:14px 0 22px}
+@media (max-width:760px){.kk-grid{grid-template-columns:1fr}}
+.qcard{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
+.qcard img{width:190px;height:190px;background:#fff;border-radius:10px;padding:6px}
+.qcard .cap{font-weight:600;font-size:.9rem;margin-top:8px}
+.qcard .sub{color:var(--muted);font-size:.8rem;margin-top:3px}
+.qcard .btns{display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+.qcard .btns .btn{padding:8px 12px;font-size:.85rem}
+.linkbox{margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:.72rem;color:var(--muted);word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.plan-tbl{width:100%;border-collapse:collapse;margin-top:6px}
+.plan-tbl th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 8px}
+.plan-tbl td{padding:6px 8px;border-top:1px solid var(--line);vertical-align:middle}
+.plan-tbl input[type=text],.plan-tbl input[type=number]{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:.9rem;font-family:inherit}
+.plan-tbl input[type=number]{max-width:120px}
+.plan-tbl .nm{min-width:130px}
+.chk{width:18px;height:18px;accent-color:var(--green)}
+.section-h{font-size:1.02rem;margin:22px 0 4px}
+.hint{color:var(--muted);font-size:.85rem;margin:2px 0 8px}
+.saverow{margin-top:20px}
+.pill{display:inline-block;font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;background:#e2f6ec;color:#0b8a4f}
+@media print{.no-print{display:none!important}}
+</style>
+
+<h1 style="margin:0">Kiosk &amp; plans</h1>
+<p class="muted small" style="margin:2px 0 14px">One QR at the desk opens the <b>Welcome hub</b>, where members choose Walk-in, Sign up, or Buy drinks. Set your day-pass and membership prices below.</p>
+
+<div class="kk-grid no-print">
+  <div class="qcard">
+    <img src="{{ hub_qr }}" alt="Welcome hub QR">
+    <div class="cap">Scan to open the Welcome hub</div>
+    <div class="sub">Print this and post it at the front desk.</div>
+    <div class="btns">
+      <button class="btn" onclick="printQR()">🖨 Print poster</button>
+    </div>
+    <div class="linkbox" id="hlink">{{ hub_link }}</div>
+  </div>
+
+  <div>
+    <form method="post" action="/admin/kiosk">
+      <div class="section-h" style="margin-top:0">Walk-in — day pass</div>
+      <div class="hint">Shown when a visitor taps “Walk-in today”.</div>
+      <table class="plan-tbl">
+        <tr><th>Name</th><th>Description</th><th>Price ₱</th><th>Active</th><th></th></tr>
+        {% for p in daypasses %}
+        <tr>
+          <td class="nm"><input type="text" name="name_{{ p.id }}" value="{{ p.name }}"></td>
+          <td><input type="text" name="sub_{{ p.id }}" value="{{ p.subtitle or '' }}" placeholder="Full-day gym access"></td>
+          <td><input type="number" step="0.01" min="0" name="price_{{ p.id }}" value="{{ '%.2f'|format(p.price) }}"></td>
+          <td style="text-align:center"><input class="chk" type="checkbox" name="active_{{ p.id }}" {% if p.is_active %}checked{% endif %}></td>
+          <td style="text-align:center"><label style="font-size:.78rem;color:#9c2c1e"><input type="checkbox" name="del_{{ p.id }}"> del</label></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted" style="padding:12px">No day pass set. Add one as a membership row below, or contact support.</td></tr>
+        {% endfor %}
+      </table>
+
+      <div class="section-h">Sign up — membership plans</div>
+      <div class="hint">Shown when someone taps “Sign up”. Add as many plans as you like.</div>
+      <table class="plan-tbl">
+        <tr><th>Name</th><th>Description</th><th>Price ₱</th><th>Active</th><th></th></tr>
+        {% for p in memberships %}
+        <tr>
+          <td class="nm"><input type="text" name="name_{{ p.id }}" value="{{ p.name }}"></td>
+          <td><input type="text" name="sub_{{ p.id }}" value="{{ p.subtitle or '' }}" placeholder="Unlimited access · 30 days"></td>
+          <td><input type="number" step="0.01" min="0" name="price_{{ p.id }}" value="{{ '%.2f'|format(p.price) }}"></td>
+          <td style="text-align:center"><input class="chk" type="checkbox" name="active_{{ p.id }}" {% if p.is_active %}checked{% endif %}></td>
+          <td style="text-align:center"><label style="font-size:.78rem;color:#9c2c1e"><input type="checkbox" name="del_{{ p.id }}"> del</label></td>
+        </tr>
+        {% endfor %}
+        <!-- add new rows -->
+        <tr><td colspan="5" style="padding-top:12px"><span class="pill">Add new</span></td></tr>
+        {% for i in [1,2,3] %}
+        <tr>
+          <td class="nm"><input type="text" name="new_name_{{ i }}" placeholder="e.g. Weekly"></td>
+          <td><input type="text" name="new_sub_{{ i }}" placeholder="Short description"></td>
+          <td><input type="number" step="0.01" min="0" name="new_price_{{ i }}" placeholder="0.00"></td>
+          <td colspan="2" class="muted" style="font-size:.78rem">leave blank to skip</td>
+        </tr>
+        {% endfor %}
+      </table>
+
+      <div class="saverow"><button class="btn primary" type="submit">Save plans</button></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function printQR(){
+  var img=document.querySelector('.qcard img').src, link=document.getElementById('hlink').textContent;
+  var w=window.open('','_blank');
+  w.document.write('<html><head><title>AWAKEN Welcome</title></head><body style="font-family:Poppins,Arial,sans-serif;text-align:center;padding:60px 20px">'+
+    '<div style="font-size:26px;font-weight:800;letter-spacing:.06em">AWAKEN FITNESS CENTER</div>'+
+    '<div style="font-size:34px;font-weight:800;margin:18px 0 6px">Scan to get started</div>'+
+    '<div style="font-size:18px;color:#555;margin-bottom:24px">Walk-in · Sign up · Buy drinks — scan with your phone camera</div>'+
+    '<img src="'+img+'" style="width:340px;height:340px"><div style="margin-top:16px;color:#888;font-size:13px">'+link+'</div>'+
+    '</body></html>');
+  w.document.close(); setTimeout(function(){w.print();},300);
+}
+</script>
+{% endblock %}

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    PaymentSetting, Product, can, can_any,
+    PaymentSetting, Product, Staff, can, can_any,
     Transaction, TransactionItem, TX_ORDER, TX_CASH_SALE,
 )
 
@@ -345,12 +345,46 @@ def pending_order_count(db):
         Transaction.type == TX_ORDER, Transaction.status == "pending").scalar() or 0
 
 
+def _ensure_member(db, o):
+    """Find-or-create the member entity for a confirmed kiosk Sign-up.
+
+    Matches an existing active person by exact phone (avoids duplicates when a
+    returning member signs up again); otherwise creates a new non-login member.
+    """
+    phone = (o.customer_phone or "").strip()
+    name = (o.customer_name or "").strip() or "New member"
+    ent = None
+    if phone:
+        ent = (db.query(Staff)
+               .filter(Staff.phone == phone, Staff.is_active == True)  # noqa: E712
+               .order_by(Staff.id).first())
+    if not ent:
+        ent = Staff(name=name, person_type="member", phone=phone or None,
+                    has_access=False, role="staff", is_active=True)
+        db.add(ent)
+        db.flush()
+    return ent
+
+
 def _confirm_order(db, o, staff):
-    """Turn a pending order into a real paid sale (deducts stock)."""
+    """Turn a pending order into a real paid sale (deducts stock).
+
+    Kiosk orders (subtype kiosk_daypass / kiosk_membership) flow through the
+    same path; a Sign-up (kiosk_membership) additionally creates/links a member.
+    """
+    is_kiosk = (o.subtype or "").startswith("kiosk_")
+    member = _ensure_member(db, o) if o.subtype == "kiosk_membership" else None
+
+    if is_kiosk:
+        note = "%s · %s · %s" % (o.number, o.customer_name, o.note or "kiosk")
+    else:
+        note = "Self-checkout %s · %s" % (o.number, o.customer_name)
+
     sale = Transaction(
         type=TX_CASH_SALE, status="paid", staff_id=staff.id, is_credit=False,
+        customer_id=(member.id if member else None),
         payment_method=o.payment_method, proof=o.proof, proof_mime=o.proof_mime,
-        note="Self-checkout %s · %s" % (o.number, o.customer_name))
+        note=note)
     db.add(sale)
     db.flush()
     for it in o.items:
@@ -361,6 +395,8 @@ def _confirm_order(db, o, staff):
     o.status = "confirmed"
     o.converted_id = sale.id
     o.staff_id = staff.id
+    if member:
+        o.customer_id = member.id
     o.decided_at = datetime.now(timezone.utc)
     return sale
 

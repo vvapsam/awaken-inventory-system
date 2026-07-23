@@ -422,6 +422,38 @@ class WaiverToken(Base):
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
 
+class KioskPlan(Base):
+    """A priced option offered in the public kiosk flows (behind the QR hub):
+    a `daypass` (Walk-in) or a `membership` plan (Sign up). Admin-editable at
+    /admin/kiosk so the owner sets real prices without a redeploy."""
+    __tablename__ = "kiosk_plans"
+    id = Column(Integer, primary_key=True)
+    kind = Column(String, nullable=False)                   # 'daypass' | 'membership'
+    name = Column(String, nullable=False)                   # e.g. "Day Pass", "Monthly"
+    subtitle = Column(String)                               # e.g. "Full-day gym access"
+    price = Column(Numeric(10, 2), nullable=False, default=0)
+    sort = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+KIOSK_DAYPASS = "daypass"
+KIOSK_MEMBERSHIP = "membership"
+
+# Default plans seeded on first startup (placeholders — owner edits at /admin/kiosk).
+KIOSK_PLAN_DEFAULTS = [
+    dict(kind=KIOSK_DAYPASS, name="Day Pass", subtitle="Full-day gym access",
+         price=150, sort=0),
+    dict(kind=KIOSK_MEMBERSHIP, name="Monthly", subtitle="Unlimited access · 30 days",
+         price=1000, sort=0),
+    dict(kind=KIOSK_MEMBERSHIP, name="Quarterly", subtitle="3 months · save 10%",
+         price=2700, sort=1),
+    dict(kind=KIOSK_MEMBERSHIP, name="Annual", subtitle="12 months · best value",
+         price=9600, sort=2),
+]
+
+
 # Legacy `discount_codes` (per-person codes) were folded into the Staff entity
 # table; the table is migrated then dropped at startup. No ORM model remains.
 
