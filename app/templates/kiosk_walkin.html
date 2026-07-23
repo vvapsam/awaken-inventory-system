@@ -81,6 +81,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
 .pair .p .pp{font-family:Poppins;font-weight:800;font-size:.92rem;color:var(--green-d);margin-top:6px}
 .partnote{background:#fff7ec;border:1px solid #f4e2c2;color:#8a6410;border-radius:12px;padding:11px 13px;font-size:.82rem;line-height:1.45;margin-top:12px}
 .pendpill{display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:#fff4e0;color:#b5771b;border:1px solid #f2ddb4;font-family:Poppins;font-weight:700;font-size:.8rem;padding:7px 14px;border-radius:999px}
+.greet{font-family:Poppins;font-weight:700;font-size:1.2rem;letter-spacing:-.02em;margin:2px 0 12px}
 .welc{text-align:center;padding:12px 4px}
 .welc .av{width:66px;height:66px;border-radius:999px;background:linear-gradient(135deg,#18BE7C,#0b6b62);color:#fff;display:flex;align-items:center;justify-content:center;margin:8px auto 14px;font-family:Poppins;font-weight:800;font-size:1.6rem}
 .welc h2{font-size:1.35rem}.welc p{color:var(--muted);font-size:.86rem;margin-top:7px}
@@ -178,23 +179,11 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
     </div>
   </div>
 
-  <!-- WELCOME BACK (returning) -->
-  <div class="screen" id="s-welcome">
-    <div class="card">
-      <button type="button" class="back" data-back="s-email">‹ Back</button>
-      <div class="welc">
-        <div class="av" id="wAv">·</div>
-        <h2 id="wHi">Welcome back!</h2>
-        <p>Good to see you again.</p>
-      </div>
-      <button type="button" class="btn" id="welcomeNext">What are you doing today? ›</button>
-    </div>
-  </div>
-
   <!-- ACTIVITY -->
   <div class="screen" id="s-activity">
     <div class="card">
       <button type="button" class="back" id="actBack">‹ Back</button>
+      <div id="actGreet" class="greet" style="display:none"></div>
       <div class="seclbl">Today</div>
       <label class="lbl" style="margin-top:0">What are you doing today?</label>
       <div id="actList"></div>
@@ -295,12 +284,13 @@ $('emailNext').onclick=async()=>{
     btn.textContent=old; btn.disabled=false;
     if(!j.ok){ $('errEmail').textContent=j.error||'Could not check that email.'; return; }
     if(j.found){
-      state.returning=true; state.name=j.first_name||'';
-      $('wAv').textContent=(j.first_name||'·').slice(0,1).toUpperCase();
-      $('wHi').textContent='Welcome back, '+(j.first_name||'')+'!';
-      go('s-welcome');
+      // returning member — skip the waiver, greet them on the activity page
+      state.returning=true; state.name=j.first_name||''; state.identFrom='s-email';
+      const g=$('actGreet');
+      g.textContent='Welcome back, '+(j.first_name||'')+'! 👋'; g.style.display='block';
+      go('s-activity');
     }else{
-      state.returning=false;
+      state.returning=false; $('actGreet').style.display='none';
       go('s-waiver');
     }
   }catch(e){ btn.textContent=old; btn.disabled=false; $('errEmail').textContent='Network error — please try again.'; }
@@ -326,8 +316,7 @@ function readyW(){ return wreq.every(id=>$(id).value.trim()) && $('agree').check
 function upW(){ $('waiverNext').disabled=!readyW(); }
 wreq.forEach(id=>{ $(id).addEventListener('input',upW); $(id).addEventListener('change',upW); });
 $('agree').addEventListener('change',upW);
-$('waiverNext').onclick=()=>{ if(readyW()){ state.identFrom='s-waiver'; go('s-activity'); } };
-$('welcomeNext').onclick=()=>{ state.identFrom='s-welcome'; go('s-activity'); };
+$('waiverNext').onclick=()=>{ if(readyW()){ state.identFrom='s-waiver'; $('actGreet').style.display='none'; go('s-activity'); } };
 
 /* ---------- activity ---------- */
 function actCard(icon,title,sub,price,extra){
