@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from .auth import current_staff
 from .db import get_db
-from .models import HyroxGroup, HYROX_STATIONS, can, can_any
+from .models import HyroxGroup, HYROX_STATIONS, HYROX_STATION_DETAIL, can, can_any
 
 try:
     from zoneinfo import ZoneInfo
@@ -139,7 +139,8 @@ def coach_timer(gid: int, request: Request, db: Session = Depends(get_db)):
     if not g:
         return RedirectResponse("/coach", status_code=303)
     return templates.TemplateResponse("coach_timer.html", {
-        "request": request, "g": _state(g), "stations": HYROX_STATIONS})
+        "request": request, "g": _state(g), "stations": HYROX_STATIONS,
+        "details": [HYROX_STATION_DETAIL.get(s, "") for s in HYROX_STATIONS]})
 
 
 # --------------------------------------------------------------- live data API

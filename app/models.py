@@ -416,6 +416,19 @@ class Waiver(Base):
 HYROX_STATIONS = ["Run", "Ski", "Sled Push", "Sled Pull", "Burpee Broad Jump",
                   "Row", "Farmer Carry", "Lunges", "Wallballs"]
 
+# Per-station target shown on the coach app.
+HYROX_STATION_DETAIL = {
+    "Run": "2 laps each",
+    "Ski": "200m each",
+    "Sled Push": "12.5m each",
+    "Sled Pull": "12.5m each",
+    "Burpee Broad Jump": "10m",
+    "Row": "200m each",
+    "Farmer Carry": "10m each",
+    "Lunges": "10m each",
+    "Wallballs": "5 reps each",
+}
+
 
 class HyroxGroup(Base):
     """A team in the HYROX relay. Progress is stored as `splits` (CSV of completed

@@ -28,6 +28,7 @@ h2{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
 .now{background:var(--white);border-radius:20px;box-shadow:0 12px 30px rgba(11,26,23,.09);padding:22px 20px;text-align:center}
 .now .lbl{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--green-d)}
 .now h2{font-size:1.9rem;margin:6px 0 0}
+.now .ndet{font-size:.92rem;font-weight:700;color:var(--gold);margin-top:4px;min-height:1.1em}
 .now .timer{font-family:'Space Grotesk';font-weight:800;font-size:4rem;line-height:1;margin:16px 0 4px;font-variant-numeric:tabular-nums}
 .now.run .timer{color:var(--green-d)}
 .now .hint{color:var(--muted);font-size:.82rem;min-height:1.1em}
@@ -67,6 +68,7 @@ h2{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
     <div class="now" id="now">
       <div class="lbl" id="nowLbl">Station 1 of 9</div>
       <h2 id="nowName">Run</h2>
+      <div class="ndet" id="nowDetail"></div>
       <div class="timer mono" id="timer">00:00</div>
       <div class="hint" id="hint">Tap start when the team begins this station.</div>
       <button class="btn start" id="btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span id="btnLbl">Start station</span></button>
@@ -81,6 +83,7 @@ h2{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
 <script>
 const GID={{ g.id }};
 const STATIONS={{ stations|tojson }};
+const DETAILS={{ details|tojson }};
 let G={{ g|tojson }};              // server state: done, splits, station_running, station_elapsed, started, ticking, total, start_clock
 let syncAt=Date.now(), tick=null;
 const $=id=>document.getElementById(id);
@@ -101,6 +104,7 @@ function render(){
   const fin=G.done>=STATIONS.length;
   $('nowLbl').textContent=fin?'All stations done':'Station '+(G.done+1)+' of 9';
   $('nowName').textContent=fin?'Finished 🏁':STATIONS[G.done];
+  $('nowDetail').textContent=fin?'':(DETAILS[G.done]||'');
   $('now').classList.toggle('run',G.station_running);
   $('timer').textContent=fmt(stationSecs());
   $('total').textContent=totalText();
@@ -120,8 +124,9 @@ function render(){
     if(i<G.splits.length){ cls+=' done'; n=CHK; split=fmt(G.splits[i]); }
     else if(i===G.done){ cls+=' cur'; split=G.station_running?'timing…':'ready'; }
     else { cls+=' todo'; }
+    const sub = (i===G.done&&!fin) ? ('current station'+(DETAILS[i]?' · '+DETAILS[i]:'')) : (DETAILS[i]||'');
     el.insertAdjacentHTML('beforeend','<div class="'+cls+'"><span class="n">'+n+'</span><span class="nm">'+nm+
-      (i===G.done&&!fin?'<small>current station</small>':'')+'</span><span class="split">'+split+'</span></div>');
+      (sub?'<small>'+sub+'</small>':'')+'</span><span class="split">'+split+'</span></div>');
   });
 }
 
