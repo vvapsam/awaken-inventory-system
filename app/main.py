@@ -591,6 +591,13 @@ def home(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(_post_login_dest(request) if staff else "/login", status_code=303)
 
 
+@app.get("/board", response_class=HTMLResponse)
+def hyrox_board(request: Request):
+    # Public big-screen HYROX relay scoreboard. Currently shows sample data with
+    # client-side ticking clocks; will be wired to live coach timings next.
+    return templates.TemplateResponse("board.html", {"request": request})
+
+
 @app.get("/welcome", response_class=HTMLResponse)
 def welcome_hub(request: Request):
     # Public QR-landing hub: member scans one QR at the desk and picks an action.
