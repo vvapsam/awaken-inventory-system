@@ -61,7 +61,7 @@ h2{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
       <span class="nm">{{ g.name }}<span class="tag">{{ g.tag }}</span></span>
       <a class="sw" href="/coach?pick=1">Switch group ▾</a>
     </div>
-    {% if g.start_clock %}<div class="startline" id="startLine">🏁 Team start · {{ g.start_clock }}</div>{% endif %}
+    {% if g.coach or g.start_clock %}<div class="startline" id="startLine">{% if g.coach %}👤 Coach {{ g.coach }}{% endif %}{% if g.coach and g.start_clock %}&nbsp;&nbsp;·&nbsp;&nbsp;{% endif %}{% if g.start_clock %}🏁 Start {{ g.start_clock }}{% endif %}</div>{% endif %}
   </div>
   <div class="body">
     <div class="now" id="now">
