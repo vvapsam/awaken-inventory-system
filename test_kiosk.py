@@ -62,10 +62,11 @@ with TestClient(app) as c:
         mem=db.query(M.Staff).filter(M.Staff.person_type=="member").first()
         ck("signup approval creates member", mem is not None and mem.name=="Mel Te")
 
-    # ---- hub (links open the flows directly, no key) ----
+    # ---- hub: walk-in + buy are live links; sign-up is coming-soon ----
     hub=c.get("/welcome").text
-    ck("hub links to walkin+signup (no key)", 'href="/kiosk/walkin"' in hub and 'href="/kiosk/signup"' in hub)
-    ck("hub buy drinks + no pay balance", 'href="/order"' in hub and "Pay my balance" not in hub)
+    ck("hub walk-in + buy are live links", 'href="/kiosk/walkin"' in hub and 'href="/order"' in hub)
+    ck("hub sign-up is coming-soon (not a link)", 'href="/kiosk/signup"' not in hub and 'data-soon' in hub)
+    ck("hub no pay balance", "Pay my balance" not in hub)
 
     # ---- admin ----
     a=c.get("/admin/kiosk")

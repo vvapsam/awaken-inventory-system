@@ -77,17 +77,33 @@ input{font-family:inherit;font-size:16px}
 .spin{width:20px;height:20px;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:999px;display:inline-block;animation:sp .7s linear infinite;vertical-align:-4px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .loader{padding:50px;text-align:center;color:var(--muted)}
+/* AWAKEN green hero — aligns the store screen with the hub/kiosk styling */
+.ohero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 130%);color:#fff;
+  margin:-14px -18px 0;padding:calc(30px + env(safe-area-inset-top,0px)) 24px 42px;text-align:center;position:relative}
+.ohero:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:30px;background:var(--paper);border-radius:24px 24px 0 0}
+.ohero .logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:8px 14px;box-shadow:0 8px 22px rgba(11,26,23,.2);min-height:50px}
+.ohero .logoTile img{height:34px;max-width:200px;object-fit:contain;display:block}
+.ohero .logoTile b{font-family:Poppins;letter-spacing:.16em;color:#0b2a26;font-size:1.05rem}
+.ohero h1{font-size:1.5rem;margin-top:14px}
+.ohero p{color:rgba(255,255,255,.86);font-size:.9rem;margin-top:5px}
+.storebody{position:relative;z-index:2}
+.ptile{box-shadow:0 8px 20px rgba(11,26,23,.06)}
+.ptile .thumb{height:72px;border-radius:12px}
+.ptile{border-radius:16px;padding:9px}
 </style></head>
 <body>
 
 <section id="s-store" class="screen active">
-  <div class="brandhead">
-    <img id="brand-logo" class="brand-logo hide" alt="AWAKEN">
-    <svg id="brand-mark" class="mark" viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg>
+  <div class="ohero">
+    <div class="logoTile"><img src="/order-logo" alt="AWAKEN"
+      onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<b>AWAKEN</b>')"></div>
+    <h1>Order &amp; Pay</h1>
+    <p>Tap what you'd like — pay by cash or bank transfer.</p>
   </div>
-  <div class="hero center"><h1>Order &amp; Pay</h1><p>Tap what you'd like — pay by cash or bank transfer.</p></div>
-  <div class="section-label">Menu</div>
-  <div class="pgrid" id="store-grid"><div class="loader">Loading…</div></div>
+  <div class="storebody">
+    <div class="section-label" style="margin-top:16px">Menu</div>
+    <div class="pgrid" id="store-grid"><div class="loader">Loading…</div></div>
+  </div>
   <div class="cartbar"><button class="cta" id="to-review" disabled><span id="cta1-l">Add items</span><span class="amt" id="cta1-amt"></span></button></div>
 </section>
 
@@ -155,7 +171,7 @@ async function boot(){
   // storefront logo (uploaded in admin) — falls back to the AWAKEN mark placeholder,
   // reflected on every screen (landing header + the small icon on all pages)
   if(d.has_logo){const src='/order-logo?ts='+Date.now();
-    $('#brand-logo').src=src;$('#brand-logo').classList.remove('hide');$('#brand-mark').classList.add('hide');
+    // store hero uses /order-logo directly; update the small icons on other screens
     $$('.mini-logo').forEach(i=>{i.src=src;i.classList.remove('hide');});
     $$('.mini-mark').forEach(m=>m.classList.add('hide'));}
   const g=$('#store-grid');g.innerHTML='';

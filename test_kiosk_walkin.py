@@ -46,6 +46,20 @@ with TestClient(app) as c:
     lk=c.post("/api/kiosk/lookup", json={"email":"nobody@x.com"})
     ck("lookup unknown -> not found", lk.json().get("ok") and lk.json().get("found") is False)
 
+    # email format validation
+    ck("lookup rejects bad email", not c.post("/api/kiosk/lookup", json={"email":"not-an-email"}).json().get("ok"))
+    tb0,_=wk_token(c,KEY)
+    be=c.post("/api/kiosk/submit", json={"flow":"walkin","token":tb0,"returning":False,
+        "first_name":"A","last_name":"B","email":"bad@","phone":"1","referral":"X",
+        "signature":sig(),"plan_id":OPEN,"method":"cash"})
+    ck("new-visitor bad email rejected", not be.json().get("ok"))
+    # signature required for new visitors
+    tb1,_=wk_token(c,KEY)
+    ns=c.post("/api/kiosk/submit", json={"flow":"walkin","token":tb1,"returning":False,
+        "first_name":"A","last_name":"B","email":"a@b.com","phone":"1","referral":"X",
+        "plan_id":OPEN,"method":"cash"})
+    ck("new-visitor without signature rejected", not ns.json().get("ok") and "sign" in (ns.json().get("error") or "").lower())
+
     # NEW visitor: sign waiver + Open Gym (cash)
     t1,_=wk_token(c,KEY)
     r=c.post("/api/kiosk/submit", json={"flow":"walkin","key":KEY,"token":t1,"returning":False,
