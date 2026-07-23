@@ -97,49 +97,45 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
 </div>
 
 <script>
-const STATIONS=["Run","Ski","Sled Push","Sled Pull","Burpee Broad Jump","Row","Lunges","Farmer Carry","Wallballs"];
-// done = stations completed; baseSec = seconds already elapsed for this team at load.
-const TEAMS=[
-  {name:"Logan Leopards",tag:"A",emb:"🐆",c:"#e0a021",done:7,baseSec:27*60+38},
-  {name:"Foxes",tag:"A",emb:"🦊",c:"#e8703a",done:6,baseSec:26*60+12},
-  {name:"Eagles",tag:"A",emb:"🦅",c:"#c99a3f",done:6,baseSec:25*60+50},
-  {name:"Pulag Pythons",tag:"B",emb:"🐍",c:"#18BE7C",done:5,baseSec:24*60+20},
-  {name:"Eagles",tag:"B",emb:"🦅",c:"#c99a3f",done:4,baseSec:22*60+5},
-  {name:"Logan Leopards",tag:"B",emb:"🐆",c:"#e0a021",done:4,baseSec:21*60+48},
-  {name:"Foxes",tag:"B",emb:"🦊",c:"#e8703a",done:3,baseSec:19*60+33},
-  {name:"Pulag Pythons",tag:"A",emb:"🐍",c:"#18BE7C",done:2,baseSec:17*60+14},
-];
+let STATIONS=[], GROUPS=[], syncAt=Date.now();
 const PIN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.3-7-11a7 7 0 0 1 14 0c0 4.7-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
-function hexA(h,a){const n=parseInt(h.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
-function fmt(s){const m=Math.floor(s/60),ss=s%60;return m+':'+String(ss).padStart(2,'0');}
+function hexA(h,a){h=h||'#18BE7C';const n=parseInt(h.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+function fmt(s){s=Math.max(0,Math.floor(s));const m=Math.floor(s/60),ss=s%60;return m+':'+String(ss).padStart(2,'0');}
+function liveTotal(g){ return g.total + (g.running ? (Date.now()-syncAt)/1000 : 0); }
 const rows=document.getElementById('rows');
-function rowHtml(t,i,gi){
-  const fin=t.done>=9, cur=Math.min(t.done+1,9), pct=Math.round(cur/9*100);
-  const stnName = fin ? 'Finished 🏁' : STATIONS[t.done];
-  const sub = fin ? 'All 9 complete' : 'Station <b>'+cur+' / 9</b>';
+const N=()=>STATIONS.length||9;
+function rowHtml(g,i){
+  const fin=g.done>=N(), cur=Math.min(g.done+1,N()), pct=Math.round(cur/N()*100);
+  const stnName = fin ? 'Finished 🏁' : (STATIONS[g.done]||'—');
+  const sub = fin ? 'All 9 complete' : 'Station <b>'+cur+' / '+N()+'</b>';
   return '<div class="grid row'+(i===0?' lead':'')+(fin?' fin':'')+'">'+
       '<div class="cell rank">'+(i+1)+(i===0?'<small>LEAD</small>':'')+'</div>'+
-      '<div class="cell team"><span class="emb" style="background:'+hexA(t.c,.14)+';color:'+t.c+'">'+t.emb+'</span>'+
-        '<span class="nm">'+t.name+'<span class="tag">'+t.tag+'</span></span></div>'+
+      '<div class="cell team"><span class="emb" style="background:'+hexA(g.color,.14)+';color:'+(g.color||'#18BE7C')+'">'+g.emblem+'</span>'+
+        '<span class="nm">'+g.name+'<span class="tag">'+g.tag+'</span></span></div>'+
       '<div class="cell stn"><span class="pin">'+PIN+'</span><span><span class="nm">'+stnName+'</span><span class="sub">'+sub+'</span></span></div>'+
-      '<div class="cell"><div class="time"><span class="cap">Running</span><span class="mono" id="tm'+gi+'">'+fmt(t.baseSec)+'</span></div></div>'+
+      '<div class="cell"><div class="time"><span class="cap">Running</span><span class="mono" id="tm'+g.id+'">'+fmt(liveTotal(g))+'</span></div></div>'+
       '<div class="cell prog"><div class="barrow"><span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div></div>'+
     '</div>';
 }
-// group by A / B, each section ranked by progress
-let gi=0;
-[['A',TEAMS.filter(t=>t.tag==='A')],['B',TEAMS.filter(t=>t.tag==='B')]].forEach(([label,list])=>{
-  list.sort((a,b)=>b.done-a.done);
-  rows.insertAdjacentHTML('beforeend','<div class="grouphdr">Group '+label+'<span class="cnt">'+list.length+' teams</span></div>');
-  list.forEach((t,i)=>{ t._gi=gi; rows.insertAdjacentHTML('beforeend', rowHtml(t,i,gi)); gi++; });
-});
-// live ticking
-const T0=Date.now(), EVENT_BASE=28*60+40;
-setInterval(()=>{
-  const d=Math.floor((Date.now()-T0)/1000);
-  document.getElementById('eventClock').textContent=fmt(EVENT_BASE+d);
-  TEAMS.forEach(t=>{ const el=document.getElementById('tm'+t._gi); if(el&&t.done<9) el.textContent=fmt(t.baseSec+d); });
-},1000);
+function render(){
+  rows.innerHTML='';
+  [['A',GROUPS.filter(g=>g.tag==='A')],['B',GROUPS.filter(g=>g.tag==='B')]].forEach(([label,list])=>{
+    list.sort((a,b)=>b.done-a.done || liveTotal(a)-liveTotal(b));
+    rows.insertAdjacentHTML('beforeend','<div class="grouphdr">Group '+label+'<span class="cnt">'+list.length+' teams</span></div>');
+    list.forEach((g,i)=>rows.insertAdjacentHTML('beforeend', rowHtml(g,i)));
+  });
+}
+function ticktimes(){
+  let ev=0;
+  GROUPS.forEach(g=>{ const t=liveTotal(g); if(t>ev)ev=t; const el=document.getElementById('tm'+g.id); if(el) el.textContent=fmt(t); });
+  document.getElementById('eventClock').textContent=fmt(ev);
+}
+async function poll(){
+  try{ const r=await fetch('/api/hyrox/state',{cache:'no-store'}); const j=await r.json();
+    STATIONS=j.stations||STATIONS; GROUPS=j.groups||[]; syncAt=Date.now(); render(); ticktimes(); }catch(e){}
+}
+setInterval(ticktimes,1000);
+poll(); setInterval(poll,4000);
 </script>
 </body>
 </html>
