@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWAKEN — HYROX Live Scoreboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--faint:#aab2b8;--line:#E9EBEE;--paper:#EFF2F1;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--gold:#e0a021;}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
+  background:radial-gradient(1400px 600px at 50% -12%,#eef3f2,#e7ebec),linear-gradient(180deg,#eef1f2,#e6eaec);
+  min-height:100vh;padding:24px 26px 40px}
+.mono{font-family:'Space Grotesk',Inter,sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:1220px;margin:0 auto}
+/* header */
+.hero{background:linear-gradient(120deg,#0b6b62,#0f9e91 55%,#18BE7C 130%);color:#fff;border-radius:22px;
+  padding:20px 26px;display:flex;align-items:center;gap:20px;box-shadow:0 18px 44px -18px rgba(11,60,52,.6)}
+.hero .lg{font-family:'Space Grotesk';font-weight:800;letter-spacing:.2em;font-size:.9rem;opacity:.92}
+.hero .divider{width:1px;height:30px;background:rgba(255,255,255,.28)}
+.hero h1{font-family:'Space Grotesk';font-weight:800;font-size:1.5rem;letter-spacing:-.01em}
+.hero .spacer{flex:1}
+.hero .clock{text-align:right}
+.hero .clock .k{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.8);font-weight:700}
+.hero .clock .v{font-family:'Space Grotesk';font-weight:800;font-size:2rem;line-height:1;margin-top:2px;font-variant-numeric:tabular-nums}
+.hero .live{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);
+  font-weight:700;font-size:.7rem;letter-spacing:.08em;padding:6px 12px;border-radius:999px;text-transform:uppercase}
+.hero .live .d{width:8px;height:8px;border-radius:999px;background:#c8ffe6;animation:pl 1.6s infinite}
+@keyframes pl{0%{box-shadow:0 0 0 0 rgba(200,255,230,.7)}70%{box-shadow:0 0 0 8px rgba(200,255,230,0)}100%{box-shadow:0 0 0 0 rgba(200,255,230,0)}}
+/* board */
+.board{background:var(--white);border-radius:20px;box-shadow:0 16px 40px rgba(11,26,23,.10);margin-top:16px;overflow:hidden}
+.grid{display:grid;grid-template-columns:60px 300px 1fr 190px 300px;align-items:center}
+.colhead{background:#f7f9f8;border-bottom:1px solid var(--line)}
+.colhead .c{padding:13px 8px;font-size:.66rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+.colhead .c.l{padding-left:22px}.colhead .c.r{text-align:right;padding-right:22px}
+.row{border-bottom:1px solid #f0f2f1;position:relative;transition:background .2s}
+.row:last-child{border-bottom:0}
+.row.lead{background:linear-gradient(90deg,rgba(224,160,33,.10),rgba(224,160,33,.02) 45%,transparent)}
+.row.lead:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#f4cf7a,#e0a021)}
+.cell{padding:16px 8px}
+.rank{font-family:'Space Grotesk';font-weight:800;font-size:1.5rem;color:#c2c8ce;text-align:center}
+.row.lead .rank{color:var(--gold)}
+.rank small{display:block;font-size:.5rem;letter-spacing:.1em;color:var(--gold);font-weight:800;margin-top:-3px}
+.team{display:flex;align-items:center;gap:14px;padding-left:22px}
+.emb{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.55rem;flex:none;border:1px solid rgba(15,17,21,.06)}
+.team .nm{font-family:'Space Grotesk';font-weight:700;font-size:1.16rem;line-height:1.1}
+.team .tag{display:inline-block;margin-left:7px;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:1px 7px;border-radius:5px;background:#eef1f2;color:#8a9099;vertical-align:middle}
+/* current station */
+.stn{display:flex;align-items:center;gap:11px}
+.stn .pin{width:34px;height:34px;border-radius:10px;background:#e8f8f1;color:var(--green-d);display:flex;align-items:center;justify-content:center;flex:none}
+.stn .pin svg{width:18px;height:18px;stroke-width:2}
+.stn .nm{display:block;font-family:'Space Grotesk';font-weight:700;font-size:1.1rem;line-height:1.15}
+.stn .sub{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
+.stn .sub b{color:var(--green-d)}
+/* running time — the hero */
+.time{font-family:'Space Grotesk';font-weight:800;font-size:2rem;letter-spacing:.01em;text-align:left;line-height:1;font-variant-numeric:tabular-nums}
+.time .cap{display:block;font-family:Inter;font-weight:600;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+.row.fin .time{color:var(--green-d)}
+/* progress (secondary) */
+.prog{padding-right:22px}
+.prog .barrow{display:flex;align-items:center;gap:12px}
+.prog .bar{flex:1;height:9px;border-radius:999px;background:#eef1f2;overflow:hidden}
+.prog .bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--green-d),var(--green))}
+.prog .pct{font-family:'Space Grotesk';font-weight:700;font-size:.95rem;color:#5c636c;min-width:42px;text-align:right}
+.foot{display:flex;justify-content:center;gap:22px;margin-top:16px;color:var(--muted);font-size:.85rem}
+.note{max-width:1220px;margin:16px auto 0;background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px 20px;color:#5c636c;font-size:.9rem;line-height:1.6}
+.note b{color:#0F1115}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <span class="lg">AWAKEN</span>
+    <span class="divider"></span>
+    <h1>HYROX Relay</h1>
+    <span class="spacer"></span>
+    <span class="live"><span class="d"></span> Live</span>
+    <div class="clock"><div class="k">Event time</div><div class="v mono" id="eventClock">00:00</div></div>
+  </div>
+
+  <div class="board">
+    <div class="grid colhead">
+      <div class="c" style="text-align:center">#</div>
+      <div class="c l">Team</div>
+      <div class="c">Current station</div>
+      <div class="c">Running time</div>
+      <div class="c r">Progress</div>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <div class="foot">Ranked by progress · the running time is each team's own clock, ticking live.</div>
+</div>
+
+<script>
+const STATIONS=["Run","Ski","Sled Push","Sled Pull","Burpee Broad Jump","Row","Lunges","Farmer Carry","Wallballs"];
+// done = stations completed; baseSec = seconds already elapsed for this team at load.
+const TEAMS=[
+  {name:"Logan Leopards",tag:"A",emb:"🐆",c:"#e0a021",done:7,baseSec:27*60+38},
+  {name:"Foxes",tag:"A",emb:"🦊",c:"#e8703a",done:6,baseSec:26*60+12},
+  {name:"Eagles",tag:"A",emb:"🦅",c:"#c99a3f",done:6,baseSec:25*60+50},
+  {name:"Pulag Pythons",tag:"B",emb:"🐍",c:"#18BE7C",done:5,baseSec:24*60+20},
+  {name:"Eagles",tag:"B",emb:"🦅",c:"#c99a3f",done:4,baseSec:22*60+5},
+  {name:"Logan Leopards",tag:"B",emb:"🐆",c:"#e0a021",done:4,baseSec:21*60+48},
+  {name:"Foxes",tag:"B",emb:"🦊",c:"#e8703a",done:3,baseSec:19*60+33},
+  {name:"Pulag Pythons",tag:"A",emb:"🐍",c:"#18BE7C",done:2,baseSec:17*60+14},
+];
+const PIN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.3-7-11a7 7 0 0 1 14 0c0 4.7-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
+function hexA(h,a){const n=parseInt(h.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+function fmt(s){const m=Math.floor(s/60),ss=s%60;return m+':'+String(ss).padStart(2,'0');}
+const rows=document.getElementById('rows');
+TEAMS.sort((a,b)=>b.done-a.done);
+TEAMS.forEach((t,i)=>{
+  const fin=t.done>=9, cur=Math.min(t.done+1,9), pct=Math.round(cur/9*100);
+  const stnName = fin ? 'Finished 🏁' : STATIONS[t.done];
+  const sub = fin ? 'All 9 complete' : 'Station <b>'+cur+' / 9</b>';
+  rows.insertAdjacentHTML('beforeend',
+    '<div class="grid row'+(i===0?' lead':'')+(fin?' fin':'')+'">'+
+      '<div class="cell rank">'+(i+1)+(i===0?'<small>LEAD</small>':'')+'</div>'+
+      '<div class="cell team"><span class="emb" style="background:'+hexA(t.c,.14)+';color:'+t.c+'">'+t.emb+'</span>'+
+        '<span class="nm">'+t.name+'<span class="tag">'+t.tag+'</span></span></div>'+
+      '<div class="cell stn"><span class="pin">'+PIN+'</span><span><span class="nm">'+stnName+'</span><span class="sub">'+sub+'</span></span></div>'+
+      '<div class="cell"><div class="time"><span class="cap">Running</span><span class="mono" id="tm'+i+'">'+fmt(t.baseSec)+'</span></div></div>'+
+      '<div class="cell prog"><div class="barrow"><span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div></div>'+
+    '</div>');
+});
+// live ticking
+const T0=Date.now(), EVENT_BASE=28*60+40;
+setInterval(()=>{
+  const d=Math.floor((Date.now()-T0)/1000);
+  document.getElementById('eventClock').textContent=fmt(EVENT_BASE+d);
+  TEAMS.forEach((t,i)=>{ const el=document.getElementById('tm'+i); if(el&&t.done<9) el.textContent=fmt(t.baseSec+d); });
+},1000);
+</script>
+</body>
+</html>
