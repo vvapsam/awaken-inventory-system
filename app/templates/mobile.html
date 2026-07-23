@@ -392,6 +392,14 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
       <div class="hm-name">{{ staff.name }}</div>
       <div class="hm-role" id="home-menu-role">Staff</div>
     </div>
+    <a class="hm-item hide" id="home-menu-kiosk" href="/admin/kiosk">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01"/></svg>
+      Kiosk &amp; plans
+    </a>
+    <a class="hm-item hide" id="home-menu-waivers" href="/admin/waivers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg>
+      Signed waivers
+    </a>
     <a class="hm-item hide" id="home-menu-dash" href="/dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
       Full dashboard
@@ -716,6 +724,8 @@ async function boot(){
   const isAdmin = DATA.staff && DATA.staff.role === 'admin';
   $('#home-menu-role').textContent = isAdmin ? 'Administrator' : 'Staff';
   $('#home-menu-dash').classList.toggle('hide', !isAdmin);
+  $('#home-menu-kiosk').classList.toggle('hide', !isAdmin);
+  $('#home-menu-waivers').classList.toggle('hide', !isAdmin);
   const d=new Date();
   $('#home-date').textContent=d.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'});
 }
