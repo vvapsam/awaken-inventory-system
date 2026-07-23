@@ -10,10 +10,10 @@
   --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--gold:#e0a021;}
 *{box-sizing:border-box}
 body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
-  background:radial-gradient(1400px 600px at 50% -12%,#eef3f2,#e7ebec),linear-gradient(180deg,#eef1f2,#e6eaec);
-  min-height:100vh;padding:24px 26px 40px}
+  background:radial-gradient(1600px 600px at 50% -12%,#eef3f2,#e7ebec),linear-gradient(180deg,#eef1f2,#e6eaec);
+  min-height:100vh;padding:16px 20px 34px}
 .mono{font-family:'Space Grotesk',Inter,sans-serif;font-variant-numeric:tabular-nums}
-.wrap{max-width:1220px;margin:0 auto}
+.wrap{width:100%;max-width:1840px;margin:0 auto}
 /* header */
 .hero{background:linear-gradient(120deg,#0b6b62,#0f9e91 55%,#18BE7C 130%);color:#fff;border-radius:22px;
   padding:20px 26px;display:flex;align-items:center;gap:20px;box-shadow:0 18px 44px -18px rgba(11,60,52,.6)}
@@ -30,7 +30,10 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
 @keyframes pl{0%{box-shadow:0 0 0 0 rgba(200,255,230,.7)}70%{box-shadow:0 0 0 8px rgba(200,255,230,0)}100%{box-shadow:0 0 0 0 rgba(200,255,230,0)}}
 /* board */
 .board{background:var(--white);border-radius:20px;box-shadow:0 16px 40px rgba(11,26,23,.10);margin-top:16px;overflow:hidden}
-.grid{display:grid;grid-template-columns:60px 300px 1fr 190px 300px;align-items:center}
+.grid{display:grid;grid-template-columns:64px 340px 1.1fr 210px 1.4fr;align-items:center}
+.grouphdr{padding:12px 24px;font-family:'Space Grotesk';font-weight:800;font-size:.9rem;letter-spacing:.06em;text-transform:uppercase;color:var(--green-dk);background:#eef4f2;border-top:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.grouphdr .cnt{font-family:Inter;font-weight:600;font-size:.72rem;color:var(--muted);letter-spacing:.02em;text-transform:none}
+.grouphdr:first-child{border-top:0}
 .colhead{background:#f7f9f8;border-bottom:1px solid var(--line)}
 .colhead .c{padding:13px 8px;font-size:.66rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
 .colhead .c.l{padding-left:22px}.colhead .c.r{text-align:right;padding-right:22px}
@@ -110,27 +113,32 @@ const PIN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-lin
 function hexA(h,a){const n=parseInt(h.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
 function fmt(s){const m=Math.floor(s/60),ss=s%60;return m+':'+String(ss).padStart(2,'0');}
 const rows=document.getElementById('rows');
-TEAMS.sort((a,b)=>b.done-a.done);
-TEAMS.forEach((t,i)=>{
+function rowHtml(t,i,gi){
   const fin=t.done>=9, cur=Math.min(t.done+1,9), pct=Math.round(cur/9*100);
   const stnName = fin ? 'Finished 🏁' : STATIONS[t.done];
   const sub = fin ? 'All 9 complete' : 'Station <b>'+cur+' / 9</b>';
-  rows.insertAdjacentHTML('beforeend',
-    '<div class="grid row'+(i===0?' lead':'')+(fin?' fin':'')+'">'+
+  return '<div class="grid row'+(i===0?' lead':'')+(fin?' fin':'')+'">'+
       '<div class="cell rank">'+(i+1)+(i===0?'<small>LEAD</small>':'')+'</div>'+
       '<div class="cell team"><span class="emb" style="background:'+hexA(t.c,.14)+';color:'+t.c+'">'+t.emb+'</span>'+
         '<span class="nm">'+t.name+'<span class="tag">'+t.tag+'</span></span></div>'+
       '<div class="cell stn"><span class="pin">'+PIN+'</span><span><span class="nm">'+stnName+'</span><span class="sub">'+sub+'</span></span></div>'+
-      '<div class="cell"><div class="time"><span class="cap">Running</span><span class="mono" id="tm'+i+'">'+fmt(t.baseSec)+'</span></div></div>'+
+      '<div class="cell"><div class="time"><span class="cap">Running</span><span class="mono" id="tm'+gi+'">'+fmt(t.baseSec)+'</span></div></div>'+
       '<div class="cell prog"><div class="barrow"><span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div></div>'+
-    '</div>');
+    '</div>';
+}
+// group by A / B, each section ranked by progress
+let gi=0;
+[['A',TEAMS.filter(t=>t.tag==='A')],['B',TEAMS.filter(t=>t.tag==='B')]].forEach(([label,list])=>{
+  list.sort((a,b)=>b.done-a.done);
+  rows.insertAdjacentHTML('beforeend','<div class="grouphdr">Group '+label+'<span class="cnt">'+list.length+' teams</span></div>');
+  list.forEach((t,i)=>{ t._gi=gi; rows.insertAdjacentHTML('beforeend', rowHtml(t,i,gi)); gi++; });
 });
 // live ticking
 const T0=Date.now(), EVENT_BASE=28*60+40;
 setInterval(()=>{
   const d=Math.floor((Date.now()-T0)/1000);
   document.getElementById('eventClock').textContent=fmt(EVENT_BASE+d);
-  TEAMS.forEach((t,i)=>{ const el=document.getElementById('tm'+i); if(el&&t.done<9) el.textContent=fmt(t.baseSec+d); });
+  TEAMS.forEach(t=>{ const el=document.getElementById('tm'+t._gi); if(el&&t.done<9) el.textContent=fmt(t.baseSec+d); });
 },1000);
 </script>
 </body>
