@@ -30,7 +30,7 @@ from .models import (
     TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE, TX_PAYMENT, TX_INVENTORY,
     KioskPlan, KIOSK_PLAN_DEFAULTS, KIOSK_WALKIN_DEFAULTS, KIOSK_WALKIN,
     KIOSK_HYROX_RATES,
-    HyroxGroup, HYROX_GROUP_DEFAULTS,
+    HyroxGroup, HYROX_GROUP_DEFAULTS, HYROX_COACH_DEFAULTS,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -172,10 +172,11 @@ def startup():
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.invoices') IS NOT NULL THEN ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.payments') IS NOT NULL THEN ALTER TABLE payments ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.stock_movements') IS NOT NULL THEN ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS tx_id INTEGER; END IF; END $$;"))
-        # HYROX relay: fixed gun-start schedule + Wallballs finish stamp.
+        # HYROX relay: fixed gun-start schedule + Wallballs finish stamp + coach name.
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.hyrox_groups') IS NOT NULL THEN "
                           "ALTER TABLE hyrox_groups ADD COLUMN IF NOT EXISTS start_at TIMESTAMPTZ; "
-                          "ALTER TABLE hyrox_groups ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ; END IF; END $$;"))
+                          "ALTER TABLE hyrox_groups ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ; "
+                          "ALTER TABLE hyrox_groups ADD COLUMN IF NOT EXISTS coach VARCHAR; END IF; END $$;"))
     db = next(get_db())
     try:
         # Backfill usernames only for people WITH system access who are missing one.
@@ -238,6 +239,16 @@ def startup():
         if not db.query(HyroxGroup.id).first():
             for d in HYROX_GROUP_DEFAULTS:
                 db.add(HyroxGroup(**d))
+            db.commit()
+        # Backfill coach names onto existing groups that don't have one yet.
+        _cbf = False
+        for g in db.query(HyroxGroup).all():
+            if not g.coach:
+                nm = HYROX_COACH_DEFAULTS.get((g.name, g.tag))
+                if nm:
+                    g.coach = nm
+                    _cbf = True
+        if _cbf:
             db.commit()
         # Give the relay a default 15-min-interval start schedule (upcoming 5:00 AM)
         # so the board shows start times out of the box; admin can re-set the date/time.

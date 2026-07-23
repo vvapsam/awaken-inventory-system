@@ -49,7 +49,8 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
 .emb{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.55rem;flex:none;border:1px solid rgba(15,17,21,.06)}
 .team .nm{font-family:'Space Grotesk';font-weight:700;font-size:1.16rem;line-height:1.1}
 .team .tag{display:inline-block;margin-left:7px;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:1px 7px;border-radius:5px;background:#eef1f2;color:#8a9099;vertical-align:middle}
-.team .stt{display:block;margin-top:4px;font-size:.74rem;font-weight:600;color:var(--muted);letter-spacing:.01em}
+.team .stt{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:.74rem;font-weight:600;color:var(--muted);letter-spacing:.01em}
+.team .stt .cch{color:var(--green-dk);font-weight:700}
 .row.pre{opacity:.72}
 .time.pre{color:var(--muted)}
 .time.pre .mono{font-size:1.5rem}
@@ -120,7 +121,8 @@ function rowHtml(g,i){
   const pct = !g.started ? 0 : Math.round((fin?N():cur)/N()*100);
   const stnName = fin ? 'Finished 🏁' : (STATIONS[g.done]||'—');
   const sub = fin ? ('Done '+(g.finish_clock||'')) : 'Station <b>'+cur+' / '+N()+'</b>';
-  const startTag = g.start_clock ? '<span class="stt">🏁 '+g.start_clock+'</span>' : '';
+  const coachTag = g.coach ? '<span class="cch">👤 '+g.coach+'</span>' : '';
+  const startTag = (g.start_clock || g.coach) ? '<span class="stt">'+coachTag+(g.start_clock?'<span class="stx">🏁 '+g.start_clock+'</span>':'')+'</span>' : '';
   return '<div class="grid row'+(fin?' fin':'')+(g.started?'':' pre')+'">'+
       '<div class="cell rank">'+(i+1)+'</div>'+
       '<div class="cell team"><span class="emb" style="background:'+hexA(g.color,.14)+';color:'+(g.color||'#18BE7C')+'">'+g.emblem+'</span>'+

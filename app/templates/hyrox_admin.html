@@ -56,11 +56,12 @@
     </div>
 
     <table class="gt">
-      <tr><th></th><th>Group</th><th>Start</th><th>Current station</th><th>Done</th><th>Status</th></tr>
+      <tr><th></th><th>Group</th><th>Coach</th><th>Start</th><th>Current station</th><th>Done</th><th>Status</th></tr>
       {% for g in groups %}
       <tr>
         <td class="em">{{ g.emblem }}</td>
         <td><b>{{ g.name }}</b> <span class="pill">{{ g.tag }}</span></td>
+        <td>{{ g.coach or '—' }}</td>
         <td class="clk">{{ g.start_clock or '—' }}</td>
         <td>{% if g.finished %}<span class="fintime">{{ '%d:%02d'|format(g.total // 60, g.total % 60) }}</span> total{% else %}Station {{ g.done + 1 }}/9{% endif %}</td>
         <td>{{ g.done }}/9</td>
