@@ -40,22 +40,40 @@
 
   <div>
     <form method="post" action="/admin/kiosk">
-      <div class="section-h" style="margin-top:0">Walk-in — day pass</div>
-      <div class="hint">Shown when a visitor taps “Walk-in today”.</div>
+      <div class="section-h" style="margin-top:0">Walk-in — activities</div>
+      <div class="hint">Shown after a visitor enters their email on “Walk-in today”.</div>
       <table class="plan-tbl">
-        <tr><th>Name</th><th>Description</th><th>Price ₱</th><th>Active</th><th></th></tr>
-        {% for p in daypasses %}
+        <tr><th>Activity</th><th>Description</th><th>Price ₱</th></tr>
+        {% if open_gym %}
         <tr>
-          <td class="nm"><input type="text" name="name_{{ p.id }}" value="{{ p.name }}"></td>
-          <td><input type="text" name="sub_{{ p.id }}" value="{{ p.subtitle or '' }}" placeholder="Full-day gym access"></td>
-          <td><input type="number" step="0.01" min="0" name="price_{{ p.id }}" value="{{ '%.2f'|format(p.price) }}"></td>
-          <td style="text-align:center"><input class="chk" type="checkbox" name="active_{{ p.id }}" {% if p.is_active %}checked{% endif %}></td>
-          <td style="text-align:center"><label style="font-size:.78rem;color:#9c2c1e"><input type="checkbox" name="del_{{ p.id }}"> del</label></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="muted" style="padding:12px">No day pass set. Add one as a membership row below, or contact support.</td></tr>
-        {% endfor %}
+          <td class="nm"><input type="text" name="name_{{ open_gym.id }}" value="{{ open_gym.name }}"></td>
+          <td><input type="text" name="sub_{{ open_gym.id }}" value="{{ open_gym.subtitle or '' }}" placeholder="Full-day access"></td>
+          <td><input type="number" step="0.01" min="0" name="price_{{ open_gym.id }}" value="{{ '%.2f'|format(open_gym.price) }}"></td>
+        </tr>{% endif %}
+        {% if private %}
+        <tr>
+          <td class="nm"><input type="text" name="name_{{ private.id }}" value="{{ private.name }}"></td>
+          <td><input type="text" name="sub_{{ private.id }}" value="{{ private.subtitle or '' }}" placeholder="1-on-1 session"></td>
+          <td><input type="number" step="0.01" min="0" name="price_{{ private.id }}" value="{{ '%.2f'|format(private.price) }}"></td>
+        </tr>{% endif %}
       </table>
+
+      <div class="section-h">HYROX Simulation — rate grid</div>
+      <div class="hint">Four rates: self-paced / with a coach × solo / doubles.</div>
+      <table class="plan-tbl">
+        <tr><th>HYROX</th><th>Solo ₱</th><th>Doubles ₱</th></tr>
+        <tr>
+          <td class="nm"><b>Self-paced</b></td>
+          <td>{% if hyrox.self_solo %}<input type="number" step="0.01" min="0" name="price_{{ hyrox.self_solo.id }}" value="{{ '%.2f'|format(hyrox.self_solo.price) }}" placeholder="set price">{% endif %}</td>
+          <td>{% if hyrox.self_dbl %}<input type="number" step="0.01" min="0" name="price_{{ hyrox.self_dbl.id }}" value="{{ '%.2f'|format(hyrox.self_dbl.price) }}" placeholder="set price">{% endif %}</td>
+        </tr>
+        <tr>
+          <td class="nm"><b>With a coach</b></td>
+          <td>{% if hyrox.coach_solo %}<input type="number" step="0.01" min="0" name="price_{{ hyrox.coach_solo.id }}" value="{{ '%.2f'|format(hyrox.coach_solo.price) }}" placeholder="set price">{% endif %}</td>
+          <td>{% if hyrox.coach_dbl %}<input type="number" step="0.01" min="0" name="price_{{ hyrox.coach_dbl.id }}" value="{{ '%.2f'|format(hyrox.coach_dbl.price) }}" placeholder="set price">{% endif %}</td>
+        </tr>
+      </table>
+      <div class="hint" style="color:#b5771b">HYROX rates start at ₱0 — visitors can't book an activity until it has a price.</div>
 
       <div class="section-h">Sign up — membership plans</div>
       <div class="hint">Shown when someone taps “Sign up”. Add as many plans as you like.</div>
@@ -63,7 +81,7 @@
         <tr><th>Name</th><th>Description</th><th>Price ₱</th><th>Active</th><th></th></tr>
         {% for p in memberships %}
         <tr>
-          <td class="nm"><input type="text" name="name_{{ p.id }}" value="{{ p.name }}"></td>
+          <td class="nm"><input type="hidden" name="hasactive_{{ p.id }}" value="1"><input type="text" name="name_{{ p.id }}" value="{{ p.name }}"></td>
           <td><input type="text" name="sub_{{ p.id }}" value="{{ p.subtitle or '' }}" placeholder="Unlimited access · 30 days"></td>
           <td><input type="number" step="0.01" min="0" name="price_{{ p.id }}" value="{{ '%.2f'|format(p.price) }}"></td>
           <td style="text-align:center"><input class="chk" type="checkbox" name="active_{{ p.id }}" {% if p.is_active %}checked{% endif %}></td>
