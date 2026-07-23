@@ -74,6 +74,39 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
 .foot{display:flex;justify-content:center;gap:22px;margin-top:16px;color:var(--muted);font-size:.85rem}
 .note{max-width:1220px;margin:16px auto 0;background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px 20px;color:#5c636c;font-size:.9rem;line-height:1.6}
 .note b{color:#0F1115}
+/* rows are clickable → open the per-team split detail */
+.row{cursor:pointer}
+.row:hover{background:#f4f9f7}
+.row.lead:hover{background:linear-gradient(90deg,rgba(224,160,33,.14),rgba(224,160,33,.03) 45%,#f4f9f7)}
+.foot .hint2{color:var(--faint)}
+/* detail overlay */
+.overlay{position:fixed;inset:0;background:rgba(10,22,19,.55);display:none;align-items:center;justify-content:center;z-index:60;backdrop-filter:blur(3px);padding:20px}
+.overlay.on{display:flex}
+.dcard{background:#fff;border-radius:22px;width:min(560px,94vw);max-height:88vh;overflow:auto;box-shadow:0 34px 90px rgba(6,20,16,.4)}
+.dhd{display:flex;align-items:center;gap:14px;padding:20px 22px 14px}
+.dhd .demb{width:54px;height:54px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:1.7rem;flex:none;border:1px solid rgba(15,17,21,.06)}
+.dhd .dttl{flex:1}
+.dhd .dnmt{font-family:'Space Grotesk';font-weight:800;font-size:1.35rem;line-height:1.1}
+.dhd .dnmt .tag{font-size:.66rem;font-weight:800;letter-spacing:.05em;padding:2px 8px;border-radius:6px;background:#eef1f2;color:#8a9099;margin-left:7px;vertical-align:middle}
+.dhd .dsub{color:var(--muted);font-size:.9rem;font-weight:600;margin-top:4px}
+.dhd .dx{border:0;background:#f0f2f1;color:#5c636c;width:36px;height:36px;border-radius:999px;font-size:1rem;cursor:pointer;flex:none}
+.dhd .dx:hover{background:#e4e8e6}
+.dtot{display:flex;align-items:baseline;justify-content:space-between;margin:0 22px;padding:14px 18px;background:#0f1613;color:#fff;border-radius:14px}
+.dtot .cap{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:#9fb1aa;font-weight:700}
+.dtot .mono{font-family:'Space Grotesk';font-weight:800;font-size:1.9rem;font-variant-numeric:tabular-nums}
+.dlist{padding:14px 22px 22px}
+.dsec{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:2px 2px 8px}
+.drow{display:flex;align-items:center;gap:13px;padding:11px 4px;border-bottom:1px solid #f0f2f1}
+.drow:last-child{border-bottom:0}
+.drow .dn{width:26px;height:26px;border-radius:999px;background:#eef1f2;color:#98a0a8;font-family:'Space Grotesk';font-weight:700;font-size:.8rem;display:flex;align-items:center;justify-content:center;flex:none}
+.drow.done .dn{background:var(--green);color:#062018}
+.drow.cur .dn{background:var(--gold);color:#3a2a05}
+.drow .dnm{flex:1;font-weight:600;font-size:1rem}
+.drow .dsub2{display:block;color:var(--muted);font-weight:500;font-size:.76rem;margin-top:1px}
+.drow.todo .dnm{color:#aab2b8}
+.drow .dsp{font-family:'Space Grotesk';font-weight:700;font-size:1rem;color:#5c636c;font-variant-numeric:tabular-nums}
+.drow.cur .dsp{color:var(--gold)}
+.drow.todo .dsp{color:#cfd5da}
 </style>
 </head>
 <body>
@@ -98,7 +131,11 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);
     <div id="rows"></div>
   </div>
 
-  <div class="foot">In start order within each group · the running time is each team's own clock, ticking from its start time.</div>
+  <div class="foot">In start order within each group · <span class="hint2">tap any team to see its station splits</span></div>
+</div>
+
+<div id="detail" class="overlay" onclick="if(event.target===this)closeDetail()">
+  <div class="dcard" id="dcard"></div>
 </div>
 
 <script>
@@ -123,7 +160,7 @@ function rowHtml(g,i){
   const sub = fin ? ('Done '+(g.finish_clock||'')) : 'Station <b>'+cur+' / '+N()+'</b>';
   const coachTag = g.coach ? '<span class="cch">👤 '+g.coach+'</span>' : '';
   const startTag = (g.start_clock || g.coach) ? '<span class="stt">'+coachTag+(g.start_clock?'<span class="stx">🏁 '+g.start_clock+'</span>':'')+'</span>' : '';
-  return '<div class="grid row'+(fin?' fin':'')+(g.started?'':' pre')+'">'+
+  return '<div class="grid row'+(fin?' fin':'')+(g.started?'':' pre')+'" onclick="openDetail('+g.id+')">'+
       '<div class="cell rank">'+(i+1)+'</div>'+
       '<div class="cell team"><span class="emb" style="background:'+hexA(g.color,.14)+';color:'+(g.color||'#18BE7C')+'">'+g.emblem+'</span>'+
         '<span><span class="nm">'+g.name+'<span class="tag">'+g.tag+'</span></span>'+startTag+'</span></div>'+
@@ -148,7 +185,44 @@ function ticktimes(){
   GROUPS.forEach(g=>{ const t=liveTotal(g); if((g.started||g.finished)&&t>ev)ev=t;
     if(g.ticking){ const el=document.getElementById('tm'+g.id); if(el) el.textContent=fmt(t); } });
   document.getElementById('eventClock').textContent=fmt(ev);
+  if(detailId!=null){ const g=GROUPS.find(x=>x.id===detailId); if(g) renderDetail(g); }
 }
+
+/* ---- per-team split detail (tap a row) ---- */
+let detailId=null;
+function stationRows(g){
+  let html='';
+  for(let i=0;i<N();i++){
+    const nm=STATIONS[i]||('Station '+(i+1));
+    let cls='drow', val='—', note='';
+    if(i<g.done){ cls+=' done'; val=fmt((g.splits||[])[i]||0); }
+    else if(i===g.done && !g.finished){ cls+=' cur';
+      if(g.station_running){ val=fmt(g.station_elapsed+(Date.now()-syncAt)/1000); note='timing now'; }
+      else { val='—'; note=g.started?'up next':'not started'; } }
+    else { cls+=' todo'; }
+    html+='<div class="'+cls+'"><span class="dn">'+(i+1)+'</span>'+
+      '<span class="dnm">'+nm+(note?'<span class="dsub2">'+note+'</span>':'')+'</span>'+
+      '<span class="dsp">'+val+'</span></div>';
+  }
+  return html;
+}
+function renderDetail(g){
+  const box=document.getElementById('dcard');
+  const totalTxt=g.finished?fmt(g.total):(g.started?fmt(liveTotal(g)):(g.start_clock||'—'));
+  const cap=g.finished?'Final time':(g.started?'Running time':'Starts at');
+  box.innerHTML=
+    '<div class="dhd"><span class="demb" style="background:'+hexA(g.color,.16)+';color:'+(g.color||'#18BE7C')+'">'+g.emblem+'</span>'+
+      '<div class="dttl"><div class="dnmt">'+g.name+'<span class="tag">'+g.tag+'</span></div>'+
+        '<div class="dsub">'+(g.coach?'👤 '+g.coach+' · ':'')+'🏁 '+(g.start_clock||'—')+'</div></div>'+
+      '<button class="dx" onclick="closeDetail()">✕</button></div>'+
+    '<div class="dtot"><span class="cap">'+cap+'</span><span class="mono">'+totalTxt+'</span></div>'+
+    '<div class="dlist"><div class="dsec">Station splits</div>'+stationRows(g)+'</div>';
+}
+function openDetail(id){ detailId=id; const g=GROUPS.find(x=>x.id===id); if(!g)return;
+  renderDetail(g); document.getElementById('detail').classList.add('on'); }
+function closeDetail(){ detailId=null; document.getElementById('detail').classList.remove('on'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape')closeDetail(); });
+
 async function poll(){
   try{ const r=await fetch('/api/hyrox/state',{cache:'no-store'}); const j=await r.json();
     STATIONS=j.stations||STATIONS; GROUPS=j.groups||[]; syncAt=Date.now(); render(); ticktimes(); }catch(e){}
