@@ -41,10 +41,9 @@ with TestClient(app) as c:
            all(float(p.price)==0 for p in walkin if p.activity=="hyrox"))
         MONTHLY=[p.id for p in members if p.name=="Monthly"][0]
 
-    # ---- sign-up flow still works ----
-    ck("signup gate w/o key", "front desk" in c.get("/kiosk/signup").text)
-    sh=c.get("/kiosk/signup?k="+KEY).text
-    ck("signup shows plans", "Monthly" in sh and "Quarterly" in sh)
+    # ---- sign-up flow still works (opens directly, no key gate) ----
+    sh=c.get("/kiosk/signup").text
+    ck("signup opens (no gate) + shows plans", "Please scan the QR at the front desk" not in sh and "Monthly" in sh and "Quarterly" in sh)
     ts=token_of(c,"signup",KEY)
     s=c.post("/api/kiosk/submit", json={"flow":"signup","key":KEY,"token":ts,
         "first_name":"Mel","last_name":"Te","email":"mel@x.com","phone":"0922",
@@ -62,9 +61,9 @@ with TestClient(app) as c:
         mem=db.query(M.Staff).filter(M.Staff.person_type=="member").first()
         ck("signup approval creates member", mem is not None and mem.name=="Mel Te")
 
-    # ---- hub ----
-    hub=c.get("/welcome?k="+KEY).text
-    ck("hub walkin+signup carry key", "/kiosk/walkin?k=%s"%KEY in hub and "/kiosk/signup?k=%s"%KEY in hub)
+    # ---- hub (links open the flows directly, no key) ----
+    hub=c.get("/welcome").text
+    ck("hub links to walkin+signup (no key)", 'href="/kiosk/walkin"' in hub and 'href="/kiosk/signup"' in hub)
     ck("hub buy drinks + no pay balance", 'href="/order"' in hub and "Pay my balance" not in hub)
 
     # ---- admin ----
@@ -72,7 +71,7 @@ with TestClient(app) as c:
     ck("admin 200 + hub QR", a.status_code==200 and "data:image/png;base64" in a.text)
     ck("admin shows walk-in + HYROX + memberships", "Open Gym" in a.text and "HYROX" in a.text and "membership" in a.text.lower())
     ap=c.get("/admin/kiosk", headers={"host":"pay.awakengym.com"})
-    ck("pay host rewritten to portal", "portal.awakengym.com/welcome?k=" in ap.text)
+    ck("pay host rewritten to portal", "portal.awakengym.com/welcome" in ap.text)
     # edit membership + add one
     c.post("/admin/kiosk", data={"hasactive_%d"%MONTHLY:"1","name_%d"%MONTHLY:"Monthly",
         "sub_%d"%MONTHLY:"30 days","price_%d"%MONTHLY:"1200","active_%d"%MONTHLY:"on",

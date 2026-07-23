@@ -32,7 +32,7 @@ from .models import (
     KIOSK_MEMBERSHIP, KIOSK_WALKIN, can, can_any,
 )
 from .waiver import (
-    _waiver_key, _settings, _client_ip, _prune_tokens,
+    _settings, _client_ip, _prune_tokens,
     REFERRAL_OPTIONS, TOKEN_TTL, RATE_WINDOW, RATE_MAX, MAX_SIG,
 )
 from .order import next_order_number
@@ -104,28 +104,28 @@ def _decode_data_uri(s, cap, default_mime):
 
 # ------------------------------------------------------------------ public flow
 @router.get("/kiosk/{flow}", response_class=HTMLResponse)
-def kiosk_page(flow: str, request: Request, k: str = "", db: Session = Depends(get_db)):
+def kiosk_page(flow: str, request: Request, db: Session = Depends(get_db)):
     if flow not in FLOWS:
         return RedirectResponse("/welcome", status_code=303)
-    valid = bool(k) and k == _waiver_key(db)
-    token = ""
-    if valid:
-        _prune_tokens(db)
-        token = secrets.token_urlsafe(12)
-        db.add(WaiverToken(token=token))
-        db.commit()
+    # Reached from the public Welcome hub, so no secret key is required here — a
+    # one-time token + per-IP rate limit + staff approval guard against abuse.
+    # (The standalone /waiver page keeps its own key gate.)
+    _prune_tokens(db)
+    token = secrets.token_urlsafe(12)
+    db.add(WaiverToken(token=token))
+    db.commit()
     ps = _settings(db)
     bank = {"bank_name": ps.bank_name or "", "account_name": ps.account_name or "",
             "has_qr": bool(ps.qr)}
     if flow == "signup":
         plans = [_plan_brief(p) for p in _active_plans(db, KIOSK_MEMBERSHIP)]
         return templates.TemplateResponse("kiosk.html", {
-            "request": request, "flow": "signup", "valid": valid, "k": k,
+            "request": request, "flow": "signup", "valid": True, "k": "",
             "token": token, "plans": plans, "bank": bank, "referrals": REFERRAL_OPTIONS})
     # walk-in: email lookup → (new: waiver / returning: skip) → activity → pay
     wk = _walkin_context(db)
     return templates.TemplateResponse("kiosk_walkin.html", {
-        "request": request, "valid": valid, "k": k, "token": token,
+        "request": request, "valid": True, "k": "", "token": token,
         "open_gym": wk["open_gym"], "private": wk["private"], "hyrox": wk["hyrox"],
         "bank": bank, "referrals": REFERRAL_OPTIONS})
 
@@ -134,8 +134,6 @@ def kiosk_page(flow: str, request: Request, k: str = "", db: Session = Depends(g
 async def kiosk_lookup(request: Request, db: Session = Depends(get_db)):
     """Walk-in email lookup: has this person signed a waiver before?"""
     data = await request.json()
-    if (data.get("key") or "") != _waiver_key(db):
-        return _err("This link is invalid or expired. Please scan the QR at the front desk.", 403)
     email = (data.get("email") or "").strip()
     if not email or "@" not in email:
         return _err("Please enter a valid email")
@@ -164,8 +162,6 @@ async def kiosk_submit(request: Request, db: Session = Depends(get_db)):
     flow = (data.get("flow") or "").strip()
     if flow not in FLOWS:
         return _err("Unknown flow")
-    if (data.get("key") or "") != _waiver_key(db):
-        return _err("This link is invalid or expired. Please scan the QR at the front desk.", 403)
 
     row, terr = _check_token(db, (data.get("token") or "").strip())
     if terr:
@@ -275,11 +271,10 @@ def _qr_data_uri(text):
 
 
 def _hub_link(request, db):
-    key = _waiver_key(db)
     host = (request.headers.get("host") or "").split(",")[0].strip()
     if not host or host == "pay.awakengym.com":
         host = "portal.awakengym.com"
-    return "https://%s/welcome?k=%s" % (host, key)
+    return "https://%s/welcome" % host
 
 
 def _hyrox_grid(rows):

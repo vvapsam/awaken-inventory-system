@@ -35,14 +35,15 @@ with TestClient(app) as c:
         HY_CD=[p.id for p in wk if p.activity=="hyrox" and p.coached and p.doubles][0]
         MONTHLY=db.query(M.KioskPlan).filter(M.KioskPlan.kind==M.KIOSK_MEMBERSHIP).first().id
 
-    # page gate + valid
-    ck("walkin gate w/o key", "front desk" in c.get("/kiosk/walkin").text and 'id="s-email"' not in c.get("/kiosk/walkin").text)
-    tok, html = wk_token(c, KEY)
-    ck("walkin valid: email step + token", bool(tok) and 'id="s-email"' in html)
+    # page opens directly (no key gate) — reached from the public hub
+    html=c.get("/kiosk/walkin").text
+    ck("walkin opens to email step (no gate)", 'id="s-email"' in html and "Please scan the QR at the front desk" not in html)
+    tok=re.search(r'id="token" value="([^"]*)"', html).group(1)
+    ck("walkin issues a one-time token", bool(tok))
     ck("walkin renders activities + hyrox data", "Open Gym" in html and "HYROX" in html)
 
-    # lookup: unknown email -> not found
-    lk=c.post("/api/kiosk/lookup", json={"key":KEY,"email":"nobody@x.com"})
+    # lookup: unknown email -> not found (no key needed)
+    lk=c.post("/api/kiosk/lookup", json={"email":"nobody@x.com"})
     ck("lookup unknown -> not found", lk.json().get("ok") and lk.json().get("found") is False)
 
     # NEW visitor: sign waiver + Open Gym (cash)
