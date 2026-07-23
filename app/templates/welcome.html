@@ -65,19 +65,17 @@ h1,h2,h3{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
   </div>
 
   <div class="body">
-    <button class="opt walkin soon" type="button" data-soon="Walk-in day passes are coming soon — please see the front desk.">
-      <span class="tag soon">Soon</span>
+    <a class="opt walkin" href="/kiosk/walkin{% if k %}?k={{ k }}{% endif %}">
       <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20l-5.5-2.5a1 1 0 0 1-.5-1.3l3-7"/><path d="M14 4.5a2 2 0 1 0 0 .01"/><path d="M10 9l3-2 3 3 3 1"/><path d="M13 7l-2 5 3 2 1 6"/></svg></div>
       <div class="tx"><h3>Walk-in today</h3><p>Just visiting — sign the waiver &amp; get a day pass</p></div>
       <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
-    </button>
+    </a>
 
-    <button class="opt signup soon" type="button" data-soon="Membership sign-up is coming soon — please see the front desk.">
-      <span class="tag soon">Soon</span>
+    <a class="opt signup" href="/kiosk/signup{% if k %}?k={{ k }}{% endif %}">
       <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></div>
       <div class="tx"><h3>Sign up</h3><p>Become an AWAKEN member</p></div>
       <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
-    </button>
+    </a>
 
     <a class="opt buy" href="/order">
       <span class="tag live">Live</span>
@@ -85,13 +83,6 @@ h1,h2,h3{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
       <div class="tx"><h3>Buy drinks &amp; snacks</h3><p>Order &amp; pay from the menu</p></div>
       <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
     </a>
-
-    <button class="opt pay soon" type="button" data-soon="Online balance payments are coming soon — please see the front desk.">
-      <span class="tag soon">Soon</span>
-      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></div>
-      <div class="tx"><h3>Pay my balance</h3><p>Settle what you owe (utang)</p></div>
-      <div class="arw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
-    </button>
 
     <div class="foot">AWAKEN Fitness Center</div>
   </div>
