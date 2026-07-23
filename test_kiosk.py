@@ -37,8 +37,9 @@ with TestClient(app) as c:
         ck("open gym 1000 + private 2000",
            any(p.activity=="open_gym" and float(p.price)==1000 for p in walkin) and
            any(p.activity=="private" and float(p.price)==2000 for p in walkin))
-        ck("4 HYROX rows at 0", len([p for p in walkin if p.activity=="hyrox"])==4 and
-           all(float(p.price)==0 for p in walkin if p.activity=="hyrox"))
+        hy={(bool(p.coached),bool(p.doubles)):float(p.price) for p in walkin if p.activity=="hyrox"}
+        ck("4 HYROX rows priced (1000/1000/3000/2500)", len(hy)==4 and
+           hy[(False,False)]==1000 and hy[(False,True)]==1000 and hy[(True,False)]==3000 and hy[(True,True)]==2500)
         MONTHLY=[p.id for p in members if p.name=="Monthly"][0]
 
     # ---- sign-up flow still works (opens directly, no key gate) ----

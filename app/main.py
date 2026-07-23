@@ -29,6 +29,7 @@ from .models import (
     Transaction, TransactionItem,
     TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE, TX_PAYMENT, TX_INVENTORY,
     KioskPlan, KIOSK_PLAN_DEFAULTS, KIOSK_WALKIN_DEFAULTS, KIOSK_WALKIN,
+    KIOSK_HYROX_RATES,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -214,6 +215,15 @@ def startup():
         if not db.query(KioskPlan.id).filter(KioskPlan.kind == KIOSK_WALKIN).first():
             for d in KIOSK_WALKIN_DEFAULTS:
                 db.add(KioskPlan(**d))
+            db.commit()
+        # Backfill HYROX rates onto rows first seeded at ₱0 (before rates were known,
+        # 23 Jul). Runs only while the whole grid is still unpriced, so it never
+        # clobbers an owner's later edits.
+        hy = db.query(KioskPlan).filter(KioskPlan.kind == KIOSK_WALKIN,
+                                        KioskPlan.activity == "hyrox").all()
+        if hy and all(float(p.price or 0) == 0 for p in hy):
+            for p in hy:
+                p.price = KIOSK_HYROX_RATES[(bool(p.coached), bool(p.doubles))]
             db.commit()
         # One-time migration: fold legacy discount_codes into the people table.
         # Each code becomes a non-access person (Employee/Affiliate) carrying the code.

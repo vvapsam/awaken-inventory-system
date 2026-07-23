@@ -464,14 +464,18 @@ KIOSK_WALKIN_DEFAULTS = [
     dict(kind=KIOSK_WALKIN, activity="private", name="Private Coaching",
          subtitle="1-on-1 session", price=2000, sort=1),
     dict(kind=KIOSK_WALKIN, activity="hyrox", name="Self-paced · Solo",
-         coached=False, doubles=False, price=0, sort=10),
+         coached=False, doubles=False, price=1000, sort=10),
     dict(kind=KIOSK_WALKIN, activity="hyrox", name="Self-paced · Doubles",
-         coached=False, doubles=True, price=0, sort=11),
+         coached=False, doubles=True, price=1000, sort=11),
     dict(kind=KIOSK_WALKIN, activity="hyrox", name="With a coach · Solo",
-         coached=True, doubles=False, price=0, sort=12),
+         coached=True, doubles=False, price=3000, sort=12),
     dict(kind=KIOSK_WALKIN, activity="hyrox", name="With a coach · Doubles",
-         coached=True, doubles=True, price=0, sort=13),
+         coached=True, doubles=True, price=2500, sort=13),
 ]
+
+# HYROX rates by (coached, doubles) — used to backfill rows first seeded at ₱0.
+KIOSK_HYROX_RATES = {(False, False): 1000, (False, True): 1000,
+                     (True, False): 3000, (True, True): 2500}
 
 
 # Legacy `discount_codes` (per-person codes) were folded into the Staff entity

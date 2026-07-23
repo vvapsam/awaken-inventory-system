@@ -79,28 +79,38 @@ with TestClient(app) as c:
         "email":"ghost@x.com","plan_id":OPEN,"method":"cash"})
     ck("returning unknown -> need_waiver 409", nw.status_code==409 and nw.json().get("need_waiver"))
 
-    # HYROX at 0 -> blocked
+    # HYROX self-solo books at seeded ₱1,000 (returning, cash)
     t4,_=wk_token(c,KEY)
-    hz=c.post("/api/kiosk/submit", json={"flow":"walkin","key":KEY,"token":t4,"returning":True,
+    hs=c.post("/api/kiosk/submit", json={"flow":"walkin","token":t4,"returning":True,
         "email":"dom@x.com","plan_id":HY_SS,"method":"cash"})
-    ck("HYROX unpriced blocked", not hz.json().get("ok") and "priced" in (hz.json().get("error") or ""))
-    ck("blocked submit did NOT consume token", Session(engine).get(M.WaiverToken,t4).used is False)
+    ck("HYROX self-solo books @1000", hs.json().get("ok") and hs.json().get("price")==1000)
+
+    # HYROX coach-doubles books at seeded ₱2,500
+    t6,_=wk_token(c,KEY)
+    hb=c.post("/api/kiosk/submit", json={"flow":"walkin","token":t6,"returning":True,
+        "email":"dom@x.com","plan_id":HY_CD,"method":"cash"})
+    ck("HYROX coach-doubles books @2500", hb.json().get("ok") and hb.json().get("price")==2500)
+
+    # walk-in BANK needs no screenshot (reservation confirmed at the desk)
+    t7,_=wk_token(c,KEY)
+    bk=c.post("/api/kiosk/submit", json={"flow":"walkin","token":t7,"returning":True,
+        "email":"dom@x.com","plan_id":OPEN,"method":"bank"})
+    ck("walk-in bank ok without proof", bk.json().get("ok"))
 
     # wrong-kind plan (membership id in walk-in) rejected
     t5,_=wk_token(c,KEY)
-    wr=c.post("/api/kiosk/submit", json={"flow":"walkin","key":KEY,"token":t5,"returning":True,
+    wr=c.post("/api/kiosk/submit", json={"flow":"walkin","token":t5,"returning":True,
         "email":"dom@x.com","plan_id":MONTHLY,"method":"cash"})
     ck("wrong-kind plan rejected", not wr.json().get("ok"))
 
-    # admin sets a HYROX price, then it books
+    # admin can zero a HYROX rate to disable it -> booking blocked
     c.post("/login", data={"username":"admin","pin":"123456"})
-    c.post("/admin/kiosk", data={"price_%d"%HY_CD:"2500"})
-    with Session(engine) as db:
-        ck("admin set HYROX coach/doubles = 2500", float(db.get(M.KioskPlan,HY_CD).price)==2500)
-    t6,_=wk_token(c,KEY)
-    hb=c.post("/api/kiosk/submit", json={"flow":"walkin","key":KEY,"token":t6,"returning":True,
-        "email":"dom@x.com","plan_id":HY_CD,"method":"cash"})
-    ck("HYROX books after pricing @2500", hb.json().get("ok") and hb.json().get("price")==2500)
+    c.post("/admin/kiosk", data={"price_%d"%HY_SS:"0"})
+    t8,_=wk_token(c,KEY)
+    hz=c.post("/api/kiosk/submit", json={"flow":"walkin","token":t8,"returning":True,
+        "email":"dom@x.com","plan_id":HY_SS,"method":"cash"})
+    ck("zeroed HYROX blocked", not hz.json().get("ok") and "priced" in (hz.json().get("error") or ""))
+    ck("blocked submit did NOT consume token", Session(engine).get(M.WaiverToken,t8).used is False)
 
     # approve a walk-in order -> paid sale, NO member created
     c.post("/api/m/orders/%d/confirm"%WOID)
