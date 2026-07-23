@@ -28,7 +28,7 @@ from .models import (
     ENTITY_TYPES, DISCOUNT_TYPES, Role,
     Transaction, TransactionItem,
     TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE, TX_PAYMENT, TX_INVENTORY,
-    KioskPlan, KIOSK_PLAN_DEFAULTS,
+    KioskPlan, KIOSK_PLAN_DEFAULTS, KIOSK_WALKIN_DEFAULTS, KIOSK_WALKIN,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -117,6 +117,12 @@ def startup():
                           "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR; "
                           "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS ip VARCHAR; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL; END IF; END $$;"))
+        # Kiosk walk-in activities (Open Gym / Private Coaching / HYROX matrix) —
+        # kiosk_plans already exists (seeded 23 Jul), so these need explicit ALTERs.
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.kiosk_plans') IS NOT NULL THEN "
+                          "ALTER TABLE kiosk_plans ADD COLUMN IF NOT EXISTS activity VARCHAR; "
+                          "ALTER TABLE kiosk_plans ADD COLUMN IF NOT EXISTS coached BOOLEAN; "
+                          "ALTER TABLE kiosk_plans ADD COLUMN IF NOT EXISTS doubles BOOLEAN; END IF; END $$;"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS kind VARCHAR NOT NULL DEFAULT 'employee'"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS round_up BOOLEAN NOT NULL DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE pricing_groups ADD COLUMN IF NOT EXISTS daily_item_limit INTEGER"))
@@ -199,9 +205,14 @@ def startup():
         for st in db.query(Staff).filter(Staff.role_id == None).all():  # noqa: E711
             st.role_id = admin_role.id if st.role == "admin" else staff_role.id
         db.commit()
-        # Seed the kiosk plans (Day Pass + memberships) once, if none exist.
-        if not db.query(KioskPlan.id).first():
+        # Seed the kiosk membership plans once, if none exist.
+        if not db.query(KioskPlan.id).filter(KioskPlan.kind == "membership").first():
             for d in KIOSK_PLAN_DEFAULTS:
+                db.add(KioskPlan(**d))
+            db.commit()
+        # Seed the walk-in activities once (Open Gym / Private / HYROX matrix).
+        if not db.query(KioskPlan.id).filter(KioskPlan.kind == KIOSK_WALKIN).first():
+            for d in KIOSK_WALKIN_DEFAULTS:
                 db.add(KioskPlan(**d))
             db.commit()
         # One-time migration: fold legacy discount_codes into the people table.

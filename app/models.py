@@ -428,29 +428,49 @@ class KioskPlan(Base):
     /admin/kiosk so the owner sets real prices without a redeploy."""
     __tablename__ = "kiosk_plans"
     id = Column(Integer, primary_key=True)
-    kind = Column(String, nullable=False)                   # 'daypass' | 'membership'
-    name = Column(String, nullable=False)                   # e.g. "Day Pass", "Monthly"
-    subtitle = Column(String)                               # e.g. "Full-day gym access"
+    kind = Column(String, nullable=False)                   # 'walkin' | 'membership' | 'daypass'(legacy)
+    name = Column(String, nullable=False)                   # e.g. "Open Gym", "Monthly"
+    subtitle = Column(String)                               # e.g. "Full-day access"
     price = Column(Numeric(10, 2), nullable=False, default=0)
     sort = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
+    # --- walk-in activities only ---
+    activity = Column(String)                               # 'open_gym' | 'private' | 'hyrox'
+    coached = Column(Boolean)                               # HYROX variant: with a coach?
+    doubles = Column(Boolean)                               # HYROX variant: doubles?
     created_at = Column(DateTime(timezone=True), default=now_utc)
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
 
-KIOSK_DAYPASS = "daypass"
+KIOSK_DAYPASS = "daypass"          # legacy (superseded by walk-in activities)
 KIOSK_MEMBERSHIP = "membership"
+KIOSK_WALKIN = "walkin"
 
-# Default plans seeded on first startup (placeholders — owner edits at /admin/kiosk).
+# Membership plans seeded on first startup (placeholders — owner edits at /admin/kiosk).
 KIOSK_PLAN_DEFAULTS = [
-    dict(kind=KIOSK_DAYPASS, name="Day Pass", subtitle="Full-day gym access",
-         price=150, sort=0),
     dict(kind=KIOSK_MEMBERSHIP, name="Monthly", subtitle="Unlimited access · 30 days",
          price=1000, sort=0),
     dict(kind=KIOSK_MEMBERSHIP, name="Quarterly", subtitle="3 months · save 10%",
          price=2700, sort=1),
     dict(kind=KIOSK_MEMBERSHIP, name="Annual", subtitle="12 months · best value",
          price=9600, sort=2),
+]
+
+# Walk-in activities seeded on first startup. Open Gym + Private Coaching prices
+# are confirmed; the four HYROX rates are placeholders (₱0) the owner must set.
+KIOSK_WALKIN_DEFAULTS = [
+    dict(kind=KIOSK_WALKIN, activity="open_gym", name="Open Gym",
+         subtitle="Full-day access", price=1000, sort=0),
+    dict(kind=KIOSK_WALKIN, activity="private", name="Private Coaching",
+         subtitle="1-on-1 session", price=2000, sort=1),
+    dict(kind=KIOSK_WALKIN, activity="hyrox", name="Self-paced · Solo",
+         coached=False, doubles=False, price=0, sort=10),
+    dict(kind=KIOSK_WALKIN, activity="hyrox", name="Self-paced · Doubles",
+         coached=False, doubles=True, price=0, sort=11),
+    dict(kind=KIOSK_WALKIN, activity="hyrox", name="With a coach · Solo",
+         coached=True, doubles=False, price=0, sort=12),
+    dict(kind=KIOSK_WALKIN, activity="hyrox", name="With a coach · Doubles",
+         coached=True, doubles=True, price=0, sort=13),
 ]
 
 

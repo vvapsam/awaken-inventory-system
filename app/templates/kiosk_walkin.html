@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AWAKEN — Walk-in today</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--line:#E4E7EA;--paper:#EEF1F2;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--owed:#E2683F;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center}
+h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
+.wrap{width:100%;max-width:560px;padding:0 0 48px}
+.hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 130%);color:#fff;
+  padding:calc(env(safe-area-inset-top,0px) + 30px) 24px 40px;border-radius:0 0 26px 26px;text-align:center}
+.logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:9px 15px;box-shadow:0 8px 22px rgba(11,26,23,.20);min-height:52px}
+.logoTile img{height:36px;width:auto;max-width:210px;display:block}
+.logoTile b{font-family:Poppins;letter-spacing:.16em;color:#0b2a26;font-size:1.05rem}
+.hero h1{font-size:1.5rem;margin-top:14px}
+.hero p{color:rgba(255,255,255,.85);margin:6px 0 0;font-size:.9rem}
+.steps{display:flex;justify-content:center;gap:7px;margin:16px 0 0}
+.steps i{width:24px;height:5px;border-radius:3px;background:rgba(255,255,255,.32)}
+.steps i.on{background:#fff}
+.card{background:var(--white);margin:16px;border-radius:18px;box-shadow:0 12px 30px rgba(11,26,23,.08);padding:20px}
+.seclbl{font-family:Poppins;font-weight:700;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;color:var(--green-d);margin:0 0 12px}
+.legal{max-height:170px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:#fbfcfc;font-size:.85rem;line-height:1.55;color:#33383f}
+.legal h3{font-size:.9rem;margin:12px 0 5px}.legal h3:first-child{margin-top:0}.legal p{margin:0 0 9px}
+.lbl{display:block;font-weight:600;font-size:.85rem;margin:15px 2px 6px}
+.req{color:var(--owed)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input[type=text],input[type=email],input[type=tel],select{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
+input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
+.two .fld .lbl{margin-top:0}
+.sigbox{position:relative;border:1.5px dashed #cfd5da;border-radius:12px;background:#fcfdfd;height:170px;touch-action:none;overflow:hidden}
+.sigbox canvas{width:100%;height:100%;display:block}
+.sigbox .hint{position:absolute;left:0;right:0;bottom:16px;text-align:center;color:#c0c6cc;font-size:.9rem;pointer-events:none}
+.sigbox .line{position:absolute;left:22px;right:22px;bottom:44px;border-top:1px solid #dfe4e8;pointer-events:none}
+.sigbox.signed .hint,.sigbox.signed .line{display:none}
+.sigtools{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.sigtools .x{font-size:.78rem;color:var(--muted)}
+.clearbtn{background:none;border:0;color:var(--green-d);font-weight:700;font-size:.85rem;cursor:pointer;padding:4px}
+.agree{display:flex;gap:10px;align-items:flex-start;margin-top:18px;font-size:.86rem;line-height:1.5}
+.agree input{width:20px;height:20px;margin-top:1px;accent-color:var(--green)}
+.btn{margin-top:20px;width:100%;padding:16px;border:0;border-radius:14px;background:var(--green);color:#fff;
+  font-family:Poppins;font-weight:700;font-size:1.05rem;cursor:pointer}
+.btn:disabled{background:#dbe0e3;color:#a3a9af;cursor:not-allowed}
+.btn:not(:disabled):active{transform:scale(.99)}
+.btn.dark{background:var(--ink)}
+.back{background:none;border:0;color:var(--muted);font-weight:600;font-size:.9rem;cursor:pointer;padding:8px 2px;margin-bottom:2px;display:inline-flex;align-items:center;gap:5px}
+.err{color:var(--owed);font-size:.82rem;margin-top:8px;text-align:center;min-height:1em}
+.foot{text-align:center;color:var(--muted);font-size:.76rem;margin-top:14px}
+.spin{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.gate{text-align:center;padding:26px 10px}
+.gate .qi{width:64px;height:64px;border-radius:16px;background:#eef3f2;color:var(--green-d);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.gate .qi svg{width:34px;height:34px;stroke-width:1.8}
+.gate h2{font-size:1.25rem}.gate p{color:var(--muted);margin:8px 0 0;font-size:.95rem;line-height:1.5}
+.hintp{color:var(--muted);font-size:.82rem;margin-top:8px;line-height:1.45}
+/* activity + option cards */
+.opt{display:flex;align-items:center;gap:12px;border:1.6px solid var(--line);border-radius:14px;padding:15px;margin-top:11px;cursor:pointer;background:#fff;transition:border-color .12s,box-shadow .12s}
+.opt.sel{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.15)}
+.opt .ic{width:44px;height:44px;border-radius:12px;background:#e8f8f1;color:var(--green-d);display:flex;align-items:center;justify-content:center;flex:none}
+.opt .ic svg{width:23px;height:23px;stroke-width:1.9}
+.opt .tx{flex:1;min-width:0}.opt .tx .t{font-weight:700;font-size:1rem}.opt .tx .s{color:var(--muted);font-size:.78rem;margin-top:2px}
+.opt .pr{font-family:Poppins;font-weight:800;font-size:1.05rem}
+.opt .rad{width:22px;height:22px;border-radius:999px;border:2px solid #cfd5da;flex:none;position:relative}
+.opt.sel .rad{border-color:var(--green)}
+.opt.sel .rad:after{content:"";position:absolute;inset:4px;border-radius:999px;background:var(--green)}
+.opt .arw{color:#c3c8ce;flex:none;font-weight:700}
+.pair{display:flex;gap:11px;margin-top:8px}
+.pair .p{flex:1;border:1.6px solid var(--line);border-radius:14px;background:#fff;text-align:center;padding:18px 8px;cursor:pointer}
+.pair .p.sel{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.15)}
+.pair .p .em{font-size:1.5rem}
+.pair .p .t{font-family:Poppins;font-weight:700;font-size:.9rem;margin-top:6px}
+.pair .p .s{color:var(--muted);font-size:.7rem;margin-top:3px}
+.welc{text-align:center;padding:12px 4px}
+.welc .av{width:66px;height:66px;border-radius:999px;background:linear-gradient(135deg,#18BE7C,#0b6b62);color:#fff;display:flex;align-items:center;justify-content:center;margin:8px auto 14px;font-family:Poppins;font-weight:800;font-size:1.6rem}
+.welc h2{font-size:1.35rem}.welc p{color:var(--muted);font-size:.86rem;margin-top:7px}
+.amt{background:linear-gradient(135deg,#0b6b62,#0f9e91 70%,#18BE7C 130%);color:#fff;border-radius:14px;padding:15px 17px;display:flex;justify-content:space-between;align-items:center}
+.amt .k{font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.82);font-weight:600}
+.amt .v{font-family:Poppins;font-weight:800;font-size:1.5rem;margin-top:2px}
+.amt .pl{text-align:right;font-size:.8rem;color:rgba(255,255,255,.9);max-width:44%}
+.seg{display:flex;gap:10px;margin-top:6px}
+.seg .s{flex:1;border:1.6px solid var(--line);border-radius:12px;text-align:center;padding:14px 0;font-weight:700;font-size:.92rem;background:#fff;cursor:pointer}
+.seg .s.on{background:var(--green);color:#fff;border-color:var(--green)}
+.bankbox{border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center;margin-top:14px;background:#fbfcfc}
+.bankbox img{width:160px;height:160px;background:#fff;border-radius:10px;padding:6px;border:1px solid var(--line)}
+.bankbox .bn{font-weight:700;margin-top:8px}.bankbox .an{color:var(--muted);font-size:.85rem}
+.drop{border:1.6px dashed #cfd5da;border-radius:12px;text-align:center;padding:18px 10px;color:var(--muted);font-size:.9rem;background:#fcfdfd;cursor:pointer;margin-top:14px}
+.drop.has{border-color:var(--green);color:var(--green-d);background:#f2fbf7}
+.drop img{max-height:150px;max-width:100%;border-radius:8px;margin-top:8px;display:block;margin-left:auto;margin-right:auto}
+.done{display:none;text-align:center;padding:22px 8px}
+.done .chk{width:74px;height:74px;border-radius:999px;background:#e2f6ec;color:var(--green-d);display:flex;align-items:center;justify-content:center;margin:8px auto 14px}
+.done .chk svg{width:38px;height:38px;stroke-width:2.6}
+.done h2{font-size:1.4rem}.done p{color:var(--muted);margin:8px 0 0;font-size:.92rem;line-height:1.5}
+.screen{display:none}.screen.active{display:block}
+.noplan{color:var(--muted);text-align:center;padding:16px;font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="logoTile"><img src="/order-logo" alt="AWAKEN"
+      onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<b>AWAKEN</b>')"></div>
+    <h1>Walk-in today</h1>
+    <p>{% if valid %}Let's get you started{% else %}Welcome to AWAKEN!{% endif %}</p>
+    {% if valid %}<div class="steps"><i id="d1" class="on"></i><i id="d2"></i><i id="d3"></i><i id="d4"></i></div>{% endif %}
+  </div>
+
+  {% if not valid %}
+  <div class="card gate">
+    <div class="qi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01"/></svg></div>
+    <h2>Please scan the QR at the front desk</h2>
+    <p>To get started, scan the QR code posted at the AWAKEN front desk with your phone camera. See our staff if you need help.</p>
+  </div>
+  {% else %}
+  <input type="hidden" id="key" value="{{ k }}">
+  <input type="hidden" id="token" value="{{ token }}">
+
+  <!-- EMAIL -->
+  <div class="screen active" id="s-email">
+    <div class="card">
+      <div class="seclbl">Your email</div>
+      <label class="lbl">Enter your email to get started</label>
+      <input type="email" id="email" autocomplete="email" placeholder="you@email.com">
+      <div class="hintp">We'll check if you're already with us.</div>
+      <button type="button" class="btn" id="emailNext">Continue</button>
+      <div class="err" id="errEmail"></div>
+    </div>
+  </div>
+
+  <!-- WAIVER (new visitor) -->
+  <div class="screen" id="s-waiver">
+    <div class="card">
+      <button type="button" class="back" data-back="s-email">‹ Back</button>
+      <div class="seclbl">The waiver</div>
+      <div class="legal">
+        <h3>Assumption of Risk</h3>
+        <p>I understand that participation in physical exercise, fitness training, and use of the facilities and equipment at AWAKEN Fitness Center involves inherent risks, including but not limited to muscle strains, sprains, injury, or in rare cases more serious harm. I voluntarily choose to participate with full knowledge of these risks.</p>
+        <h3>Release of Liability</h3>
+        <p>In consideration of being permitted to use the facilities, I release and hold harmless AWAKEN Fitness Center, its owners, staff, and trainers from any and all claims, demands, or causes of action arising from my participation, except in cases of gross negligence.</p>
+        <h3>Health Declaration</h3>
+        <p>I confirm that I am in good physical condition and have no medical condition that would prevent safe participation.</p>
+        <h3>Rules &amp; Consent</h3>
+        <p>I agree to follow all gym rules and staff instructions, and I consent to AWAKEN keeping this signed waiver on record.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="seclbl">Your details</div>
+      <div class="two">
+        <div class="fld"><label class="lbl">First name <span class="req">*</span></label><input type="text" id="fname" autocomplete="given-name"></div>
+        <div class="fld"><label class="lbl">Last name <span class="req">*</span></label><input type="text" id="lname" autocomplete="family-name"></div>
+      </div>
+      <label class="lbl">Phone <span class="req">*</span></label>
+      <input type="tel" id="phone" autocomplete="tel" placeholder="09xx xxx xxxx">
+      <label class="lbl">How did you find us? <span class="req">*</span></label>
+      <select id="referral">
+        <option value="" selected disabled>Choose one…</option>
+        {% for r in referrals %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="card">
+      <div class="seclbl">Signature</div>
+      <div class="sigbox" id="sigbox"><canvas id="sig"></canvas><div class="line"></div><div class="hint">✍️ Sign with your finger</div></div>
+      <div class="sigtools"><span class="x" id="sig-date"></span><button type="button" class="clearbtn" id="clear">Clear</button></div>
+      <label class="agree"><input type="checkbox" id="agree"> <span>I have read and understood this waiver, and I agree to its terms. I confirm the information above is accurate.</span></label>
+      <button type="button" class="btn" id="waiverNext" disabled>Continue</button>
+      <div class="err" id="errWaiver"></div>
+    </div>
+  </div>
+
+  <!-- WELCOME BACK (returning) -->
+  <div class="screen" id="s-welcome">
+    <div class="card">
+      <div class="welc">
+        <div class="av" id="wAv">·</div>
+        <h2 id="wHi">Welcome back!</h2>
+        <p>Good to see you again.</p>
+      </div>
+      <button type="button" class="btn" id="welcomeNext">What are you doing today? ›</button>
+    </div>
+  </div>
+
+  <!-- ACTIVITY -->
+  <div class="screen" id="s-activity">
+    <div class="card">
+      <div class="seclbl">Today</div>
+      <label class="lbl" style="margin-top:0">What are you doing today?</label>
+      <div id="actList"></div>
+      <div class="err" id="errAct"></div>
+    </div>
+  </div>
+
+  <!-- HYROX 1 -->
+  <div class="screen" id="s-hyrox1">
+    <div class="card">
+      <button type="button" class="back" data-back="s-activity">‹ Back</button>
+      <div class="seclbl">HYROX Simulation</div>
+      <label class="lbl" style="margin-top:0">How would you like to train?</label>
+      <div class="opt" data-coach="0"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4a1 1 0 1 0 0 .01M7 21l3-6 3 2 2 4M6 12l3-2 4 1 3 3"/></svg></span><div class="tx"><div class="t">Self-paced</div><div class="s">On your own</div></div><span class="arw">›</span></div>
+      <div class="opt" data-coach="1"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M6 21a6 6 0 0 1 12 0M17 8l3-2"/></svg></span><div class="tx"><div class="t">With a coach</div><div class="s">Guided by an AWAKEN coach</div></div><span class="arw">›</span></div>
+    </div>
+  </div>
+
+  <!-- HYROX 2 -->
+  <div class="screen" id="s-hyrox2">
+    <div class="card">
+      <button type="button" class="back" data-back="s-hyrox1">‹ Back</button>
+      <div class="seclbl">HYROX Simulation</div>
+      <label class="lbl" style="margin-top:0">Solo or doubles?</label>
+      <div class="pair">
+        <div class="p" data-dbl="0"><div class="em">🧍</div><div class="t">Solo</div><div class="s">Just you</div></div>
+        <div class="p" data-dbl="1"><div class="em">🧍🧍</div><div class="t">Doubles</div><div class="s">With a partner</div></div>
+      </div>
+      <div class="err" id="errHyrox"></div>
+    </div>
+  </div>
+
+  <!-- PAY -->
+  <div class="screen" id="s-pay">
+    <div class="card">
+      <button type="button" class="back" id="payBack">‹ Back</button>
+      <div class="seclbl">Payment</div>
+      <div class="amt"><div><div class="k">Amount due</div><div class="v" id="amtv">₱0</div></div><div class="pl" id="amtplan"></div></div>
+      <label class="lbl">Pay with</label>
+      <div class="seg"><div class="s on" id="mCash">Cash</div><div class="s" id="mBank">Bank transfer</div></div>
+      <div id="cashInfo" class="hintp">Pay at the counter — staff will confirm your payment.</div>
+      <div id="bankInfo" style="display:none">
+        <div class="bankbox">
+          {% if bank.has_qr %}<img src="/order-qr" alt="Payment QR">{% endif %}
+          <div class="bn">{{ bank.bank_name or 'AWAKEN' }}</div>
+          {% if bank.account_name %}<div class="an">{{ bank.account_name }}</div>{% endif %}
+        </div>
+        <div class="drop" id="drop"><span id="dropTxt">📷 Tap to upload your payment screenshot</span><img id="preview" style="display:none"></div>
+        <input type="file" id="file" accept="image/*" capture="environment" style="display:none">
+      </div>
+      <button type="button" class="btn" id="submit">Submit</button>
+      <div class="err" id="errPay"></div>
+      <div class="foot">Your payment goes to AWAKEN staff for approval.</div>
+    </div>
+  </div>
+
+  <!-- DONE -->
+  <div class="card done" id="done">
+    <div class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <h2 id="doneTitle">You're all set!</h2>
+    <p id="doneMsg"></p>
+  </div>
+  {% endif %}
+</div>
+
+{% if valid %}
+<script>
+const $=id=>document.getElementById(id);
+const OPEN_GYM={{ open_gym|tojson }}, PRIVATE={{ private|tojson }}, HYROX={{ hyrox|tojson }};
+const state={returning:false, coached:0, plan:null, from:'s-activity'};
+const stack=[];
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el=$(id); if(el) el.classList.add('active');
+  // progress dots: identify(1) · activity(2) · pay(3) · done(4)
+  const stage={'s-email':1,'s-waiver':1,'s-welcome':1,'s-activity':2,'s-hyrox1':2,'s-hyrox2':2,'s-pay':3}[id]||1;
+  ['d1','d2','d3','d4'].forEach((d,i)=>$(d)&&$(d).classList.toggle('on',i<=stage-1));
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function go(id){stack.push(document.querySelector('.screen.active')?.id); show(id);}
+document.querySelectorAll('.back').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.back) show(b.dataset.back); }));
+
+/* ---------- email + lookup ---------- */
+$('emailNext').onclick=async()=>{
+  const email=$('email').value.trim();
+  if(!email||email.indexOf('@')<0){ $('errEmail').textContent='Please enter a valid email.'; return; }
+  const btn=$('emailNext'), old=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  try{
+    const r=await fetch('/api/kiosk/lookup',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:$('key').value,email:email})});
+    const j=await r.json();
+    btn.textContent=old; btn.disabled=false;
+    if(!j.ok){ $('errEmail').textContent=j.error||'Could not check that email.'; return; }
+    if(j.found){
+      state.returning=true; state.name=j.first_name||'';
+      $('wAv').textContent=(j.first_name||'·').slice(0,1).toUpperCase();
+      $('wHi').textContent='Welcome back, '+(j.first_name||'')+'!';
+      go('s-welcome');
+    }else{
+      state.returning=false;
+      go('s-waiver');
+    }
+  }catch(e){ btn.textContent=old; btn.disabled=false; $('errEmail').textContent='Network error — please try again.'; }
+};
+
+/* ---------- signature ---------- */
+const box=$('sigbox'), canvas=$('sig'), ctx=canvas.getContext('2d');
+let drawing=false, hasSig=false, last=null;
+function fit(){ const r=canvas.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  canvas.width=r.width*dpr; canvas.height=r.height*dpr; ctx.scale(dpr,dpr);
+  ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#12303a'; }
+setTimeout(fit,80); window.addEventListener('resize',()=>{ if(!hasSig) fit(); });
+function pos(e){ const r=canvas.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-r.left,y:t.clientY-r.top}; }
+function sstart(e){ e.preventDefault(); drawing=true; last=pos(e); if(!hasSig){hasSig=true; box.classList.add('signed'); upW();} }
+function smove(e){ if(!drawing) return; e.preventDefault(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; }
+function send(){ drawing=false; }
+canvas.addEventListener('mousedown',sstart); canvas.addEventListener('mousemove',smove); window.addEventListener('mouseup',send);
+canvas.addEventListener('touchstart',sstart,{passive:false}); canvas.addEventListener('touchmove',smove,{passive:false}); canvas.addEventListener('touchend',send);
+$('clear').onclick=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); hasSig=false; box.classList.remove('signed'); upW(); };
+$('sig-date').textContent='Date: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});
+const wreq=['fname','lname','phone','referral'];
+function readyW(){ return wreq.every(id=>$(id).value.trim()) && $('agree').checked && hasSig; }
+function upW(){ $('waiverNext').disabled=!readyW(); }
+wreq.forEach(id=>{ $(id).addEventListener('input',upW); $(id).addEventListener('change',upW); });
+$('agree').addEventListener('change',upW);
+$('waiverNext').onclick=()=>{ if(readyW()) go('s-activity'); };
+$('welcomeNext').onclick=()=>go('s-activity');
+
+/* ---------- activity ---------- */
+function actCard(icon,title,sub,price,extra){
+  return '<div class="opt" '+extra+'><span class="ic">'+icon+'</span><div class="tx"><div class="t">'+title+'</div><div class="s">'+sub+'</div></div>'+
+    (price!=null?'<span class="pr">₱'+price.toLocaleString('en-PH')+'</span>':'<span class="arw">›</span>')+'</div>';
+}
+(function buildActivities(){
+  let html='';
+  const hyIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7v10M18 7v10M4 9v6M20 9v6M6 12h12"/></svg>';
+  const pvIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+  const ogIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M14 12h.01"/></svg>';
+  if(HYROX && HYROX.length) html+=actCard(hyIcon,'HYROX Simulation','Self-paced or coached · solo or doubles',null,'data-act="hyrox"');
+  if(PRIVATE) html+=actCard(pvIcon,PRIVATE.name,PRIVATE.subtitle||'1-on-1 session',PRIVATE.price,'data-act="private"');
+  if(OPEN_GYM) html+=actCard(ogIcon,OPEN_GYM.name,OPEN_GYM.subtitle||'Full-day access',OPEN_GYM.price,'data-act="open"');
+  if(!html) html='<div class="noplan">No activities are set up yet. Please see the front desk.</div>';
+  $('actList').innerHTML=html;
+  document.querySelectorAll('#actList .opt').forEach(el=>el.onclick=()=>{
+    const a=el.dataset.act;
+    if(a==='open'){ setPlan(OPEN_GYM); go('s-pay'); }
+    else if(a==='private'){ setPlan(PRIVATE); go('s-pay'); }
+    else { go('s-hyrox1'); }
+  });
+})();
+
+function setPlan(p){ state.plan=p; }
+
+/* ---------- HYROX ---------- */
+document.querySelectorAll('#s-hyrox1 .opt').forEach(el=>el.onclick=()=>{ state.coached=el.dataset.coach==='1'; go('s-hyrox2'); });
+document.querySelectorAll('#s-hyrox2 .p').forEach(el=>el.onclick=()=>{
+  const dbl=el.dataset.dbl==='1';
+  const match=HYROX.find(h=>!!h.coached===!!state.coached && !!h.doubles===dbl);
+  if(!match){ $('errHyrox').textContent='That option isn’t available. Please see the front desk.'; return; }
+  if(!(match.price>0)){ $('errHyrox').textContent='That option isn’t priced yet — please see the front desk.'; return; }
+  setPlan({id:match.id,name:'HYROX · '+match.name,price:match.price});
+  go('s-pay');
+});
+
+/* ---------- pay ---------- */
+$('payBack').onclick=()=>{ show(state.plan && String(state.plan.name).indexOf('HYROX')===0 ? 's-hyrox2':'s-activity'); };
+let method='cash', proof=null;
+function enterPay(){
+  const p=state.plan; if(!p){ show('s-activity'); return; }
+  $('amtv').textContent='₱'+Number(p.price).toLocaleString('en-PH');
+  $('amtplan').textContent=p.name;
+}
+function setM(m){ method=m;
+  $('mCash').classList.toggle('on',m==='cash'); $('mBank').classList.toggle('on',m==='bank');
+  $('cashInfo').style.display=m==='cash'?'block':'none'; $('bankInfo').style.display=m==='bank'?'block':'none';
+}
+$('mCash').onclick=()=>setM('cash'); $('mBank').onclick=()=>setM('bank');
+$('drop').onclick=()=>$('file').click();
+$('file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
+  rd.onload=()=>{ proof=rd.result; $('preview').src=proof; $('preview').style.display='block';
+    $('dropTxt').textContent='✓ Screenshot attached — tap to change'; $('drop').classList.add('has'); };
+  rd.readAsDataURL(f); };
+
+// re-run enterPay whenever the pay screen becomes active
+const _show=show;
+show=function(id){ _show(id); if(id==='s-pay') enterPay(); };
+
+$('submit').onclick=async()=>{
+  if(!state.plan){ show('s-activity'); return; }
+  if(method==='bank' && !proof){ $('errPay').textContent='Please attach your payment screenshot.'; return; }
+  const btn=$('submit'), old=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  const payload={ flow:'walkin', key:$('key').value, token:$('token').value,
+    returning:state.returning, email:$('email').value.trim(),
+    plan_id:state.plan.id, method:method, proof: method==='bank'?proof:null };
+  if(!state.returning){
+    payload.first_name=$('fname').value.trim(); payload.last_name=$('lname').value.trim();
+    payload.phone=$('phone').value.trim(); payload.referral=$('referral').value;
+    payload.signature=canvas.toDataURL('image/png');
+  }
+  try{
+    const r=await fetch('/api/kiosk/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(j.expired){ document.body.innerHTML='<div style="max-width:420px;margin:80px auto;text-align:center;font-family:Inter,sans-serif;padding:0 24px"><div style="font-size:44px">🔄</div><h2 style="font-family:Poppins,sans-serif">This link has expired</h2><p style="color:#8A9099;line-height:1.5">Please scan the QR code at the front desk again.</p></div>'; return; }
+    if(j.need_waiver){ btn.textContent=old; btn.disabled=false; state.returning=false; $('errPay').textContent=''; go('s-waiver'); return; }
+    if(!j.ok){ $('errPay').textContent=j.error||'Could not submit'; btn.textContent=old; btn.disabled=false; return; }
+    const paidLine = j.method==='bank' ? 'We received your screenshot.' : 'Please pay ₱'+Number(j.price).toLocaleString('en-PH')+' at the counter.';
+    $('doneTitle').textContent='You’re all set'+(j.first_name?(', '+j.first_name):'')+'!';
+    $('doneMsg').textContent='Your '+j.plan+' is booked. '+paidLine+' Staff will confirm your payment. Enjoy your session!';
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    $('done').style.display='block'; window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){ $('errPay').textContent='Network error — please try again.'; btn.textContent=old; btn.disabled=false; }
+};
+</script>
+{% endif %}
+</body>
+</html>
