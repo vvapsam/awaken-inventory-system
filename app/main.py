@@ -30,6 +30,7 @@ from .models import (
     TRANSACTION_TYPES, TX_CASH_SALE, TX_ORDER, TX_INVOICE, TX_PAYMENT, TX_INVENTORY,
     KioskPlan, KIOSK_PLAN_DEFAULTS, KIOSK_WALKIN_DEFAULTS, KIOSK_WALKIN,
     KIOSK_HYROX_RATES,
+    HyroxGroup, HYROX_GROUP_DEFAULTS,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -71,6 +72,10 @@ app.include_router(waiver_router)
 # Public kiosk flows (Walk-in day pass / Sign-up membership) + admin plans
 from .kiosk import router as kiosk_router  # noqa: E402
 app.include_router(kiosk_router)
+
+# HYROX relay: coach timer app + live scoreboard API
+from .hyrox import router as hyrox_router  # noqa: E402
+app.include_router(hyrox_router)
 
 
 def _slugify(s):
@@ -224,6 +229,11 @@ def startup():
         if hy and all(float(p.price or 0) == 0 for p in hy):
             for p in hy:
                 p.price = KIOSK_HYROX_RATES[(bool(p.coached), bool(p.doubles))]
+            db.commit()
+        # Seed the HYROX relay groups once.
+        if not db.query(HyroxGroup.id).first():
+            for d in HYROX_GROUP_DEFAULTS:
+                db.add(HyroxGroup(**d))
             db.commit()
         # One-time migration: fold legacy discount_codes into the people table.
         # Each code becomes a non-access person (Employee/Affiliate) carrying the code.

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.hx-grid{display:grid;grid-template-columns:260px 1fr;gap:18px;align-items:start;margin:14px 0 22px}
+@media (max-width:760px){.hx-grid{grid-template-columns:1fr}}
+.qcard{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
+.qcard img{width:180px;height:180px;background:#fff;border-radius:10px;padding:6px}
+.qcard .cap{font-weight:600;font-size:.9rem;margin-top:8px}
+.qcard .sub{color:var(--muted);font-size:.8rem;margin-top:3px}
+.linkbox{margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:.72rem;color:var(--muted);word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.linkrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.linkrow .btn{padding:9px 13px;font-size:.86rem}
+.gt{width:100%;border-collapse:collapse;margin-top:8px}
+.gt th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:7px 10px}
+.gt td{padding:9px 10px;border-top:1px solid var(--line);font-size:.9rem}
+.gt .em{font-size:1.15rem}
+.gt .pill{font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;background:#eef1f2;color:#8a9099}
+.gt .run{background:#fff4e0;color:#b5771b}
+.gt .fin{background:#e2f6ec;color:#0b8a4f}
+.dz{background:#fdeee8;border:1px solid #f0c3b2;border-radius:12px;padding:14px 16px;margin-top:18px}
+.dz b{color:#9c2c1e}
+</style>
+
+<h1 style="margin:0">HYROX event</h1>
+<p class="muted small" style="margin:2px 0 14px">The live scoreboard and coach timers for the relay. Coaches open the link below on their phones and pick their group.</p>
+
+<div class="hx-grid">
+  <div class="qcard">
+    <img src="{{ coach_qr }}" alt="Coach app QR">
+    <div class="cap">Coaches scan to open</div>
+    <div class="sub">Opens the group picker → timer.</div>
+    <div class="linkbox">{{ coach_url }}</div>
+  </div>
+  <div>
+    <div class="linkrow">
+      <a class="btn primary" href="{{ board_url }}" target="_blank">📺 Open scoreboard</a>
+      <a class="btn" href="{{ coach_url }}" target="_blank">⏱ Open coach app</a>
+    </div>
+    <table class="gt">
+      <tr><th></th><th>Group</th><th>Current station</th><th>Done</th><th>Status</th></tr>
+      {% for g in groups %}
+      <tr>
+        <td class="em">{{ g.emblem }}</td>
+        <td><b>{{ g.name }}</b> <span class="pill">{{ g.tag }}</span></td>
+        <td>{% if g.finished %}Finished{% else %}Station {{ g.done + 1 }}/9{% endif %}</td>
+        <td>{{ g.done }}/9</td>
+        <td>{% if g.finished %}<span class="pill fin">Done</span>{% elif g.running %}<span class="pill run">Timing…</span>{% else %}<span class="pill">Idle</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <div class="dz">
+      <b>Reset event</b> — clears every group's splits and timers back to Station 1. Do this before a new event.
+      <form method="post" action="/admin/hyrox/reset" style="margin-top:10px" onsubmit="return confirm('Reset ALL groups to the start? This clears all recorded times.')">
+        <button class="btn" type="submit" style="border-color:#e6a49b;color:#9c2c1e">↻ Reset all groups</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

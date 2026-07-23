@@ -413,6 +413,39 @@ class Waiver(Base):
     # emergency_name / emergency_phone columns retained (unused) — see WaiverToken
 
 
+HYROX_STATIONS = ["Run", "Ski", "Sled Push", "Sled Pull", "Burpee Broad Jump",
+                  "Row", "Lunges", "Farmer Carry", "Wallballs"]
+
+
+class HyroxGroup(Base):
+    """A team in the HYROX relay. Progress is stored as `splits` (CSV of completed
+    station times in seconds, in order) plus `running_since` (set while the current
+    station is being timed). Completed count = len(splits); current station index =
+    that count; total time = sum(splits) + current elapsed."""
+    __tablename__ = "hyrox_groups"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    tag = Column(String, nullable=False)                    # 'A' | 'B'
+    emblem = Column(String)                                 # emoji
+    color = Column(String)
+    sort = Column(Integer, nullable=False, default=0)
+    splits = Column(Text, nullable=False, default="")       # CSV secs, one per done station
+    running_since = Column(DateTime(timezone=True))         # set while current station times
+    updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+HYROX_GROUP_DEFAULTS = [
+    dict(name="Eagles", tag="A", emblem="🦅", color="#c99a3f", sort=0),
+    dict(name="Eagles", tag="B", emblem="🦅", color="#c99a3f", sort=1),
+    dict(name="Foxes", tag="A", emblem="🦊", color="#e8703a", sort=2),
+    dict(name="Foxes", tag="B", emblem="🦊", color="#e8703a", sort=3),
+    dict(name="Pulag Pythons", tag="A", emblem="🐍", color="#18BE7C", sort=4),
+    dict(name="Pulag Pythons", tag="B", emblem="🐍", color="#18BE7C", sort=5),
+    dict(name="Logan Leopards", tag="A", emblem="🐆", color="#e0a021", sort=6),
+    dict(name="Logan Leopards", tag="B", emblem="🐆", color="#e0a021", sort=7),
+]
+
+
 class WaiverToken(Base):
     """A one-time token issued when someone opens /waiver via the QR. Consumed on
     submit (or expires after a while), so an opened waiver link can't be reused."""

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AWAKEN — Coach Timer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F1115;--muted:#8A9099;--faint:#aab2b8;--line:#E7EAEC;--paper:#EEF1F2;--white:#fff;
+  --green:#18BE7C;--green-d:#0FA268;--red:#e2463a;--gold:#e0a021;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);min-height:100vh}
+.mono{font-family:'Space Grotesk',Inter,sans-serif;font-variant-numeric:tabular-nums}
+h2{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
+.wrap{width:100%;max-width:460px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.hero{background:linear-gradient(150deg,#0b6b62,#0f9e91 60%,#18BE7C 130%);color:#fff;
+  padding:calc(env(safe-area-inset-top,0px) + 20px) 20px 20px;border-radius:0 0 24px 24px}
+.r1{display:flex;align-items:center;gap:10px}
+.lg{font-family:'Space Grotesk';font-weight:800;letter-spacing:.18em;font-size:.78rem;opacity:.92}
+.role{margin-left:auto;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);padding:5px 11px;border-radius:999px}
+.team{display:flex;align-items:center;gap:12px;margin-top:16px}
+.emb{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:1.5rem}
+.team .nm{font-family:'Space Grotesk';font-weight:800;font-size:1.3rem}
+.team .nm .tag{font-size:.66rem;background:rgba(255,255,255,.2);padding:2px 7px;border-radius:6px;margin-left:6px;vertical-align:middle;font-weight:700}
+.sw{margin-left:auto;font-size:.78rem;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);padding:8px 12px;border-radius:10px;font-weight:600;text-decoration:none}
+.body{padding:16px;display:flex;flex-direction:column;gap:14px;flex:1}
+.now{background:var(--white);border-radius:20px;box-shadow:0 12px 30px rgba(11,26,23,.09);padding:22px 20px;text-align:center}
+.now .lbl{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--green-d)}
+.now h2{font-size:1.9rem;margin:6px 0 0}
+.now .timer{font-family:'Space Grotesk';font-weight:800;font-size:4rem;line-height:1;margin:16px 0 4px;font-variant-numeric:tabular-nums}
+.now.run .timer{color:var(--green-d)}
+.now .hint{color:var(--muted);font-size:.82rem;min-height:1.1em}
+.btn{width:100%;margin-top:16px;padding:20px;border:0;border-radius:16px;color:#fff;font-family:'Space Grotesk';font-weight:800;font-size:1.2rem;display:flex;align-items:center;justify-content:center;gap:10px}
+.btn.start{background:var(--green)}.btn.stop{background:var(--red)}
+.btn:disabled{opacity:.6}
+.btn:active{transform:scale(.99)}.btn svg{width:22px;height:22px}
+.undo{margin-top:12px;background:none;border:0;color:var(--muted);font-weight:600;font-size:.86rem;padding:6px}
+.sec{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:6px 2px 2px}
+.stations{display:flex;flex-direction:column;gap:8px}
+.st{display:flex;align-items:center;gap:13px;background:var(--white);border-radius:14px;padding:13px 15px;box-shadow:0 6px 16px rgba(11,26,23,.05)}
+.st .n{width:26px;height:26px;border-radius:999px;background:#eef1f2;color:#98a0a8;font-family:'Space Grotesk';font-weight:700;font-size:.82rem;display:flex;align-items:center;justify-content:center;flex:none}
+.st.done .n{background:var(--green);color:#062018}.st.done .n svg{width:14px;height:14px;stroke-width:3}
+.st.cur .n{background:var(--gold);color:#3a2a05}
+.st .nm{flex:1;font-weight:600;font-size:.98rem}
+.st .nm small{display:block;color:var(--muted);font-weight:500;font-size:.74rem;margin-top:1px}
+.st .split{font-family:'Space Grotesk';font-weight:700;font-size:.98rem;color:#5c636c}
+.st.cur{box-shadow:0 0 0 2px rgba(224,160,33,.35),0 6px 16px rgba(11,26,23,.05)}.st.cur .split{color:var(--gold)}
+.st.todo .nm{color:#aab2b8}.st.todo .split{color:#cfd5da}
+.total{display:flex;justify-content:space-between;align-items:center;background:#0f1613;color:#fff;border-radius:14px;padding:14px 16px;margin-top:4px}
+.total .k{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:#9fb1aa;font-weight:700}
+.total .v{font-family:'Space Grotesk';font-weight:800;font-size:1.4rem;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="r1"><span class="lg">AWAKEN</span><span class="role">Coach · Timer</span></div>
+    <div class="team">
+      <span class="emb" id="tEmb">{{ g.emblem }}</span>
+      <span class="nm">{{ g.name }}<span class="tag">{{ g.tag }}</span></span>
+      <a class="sw" href="/coach">Switch group ▾</a>
+    </div>
+  </div>
+  <div class="body">
+    <div class="now" id="now">
+      <div class="lbl" id="nowLbl">Station 1 of 9</div>
+      <h2 id="nowName">Run</h2>
+      <div class="timer mono" id="timer">00:00</div>
+      <div class="hint" id="hint">Tap start when the team begins this station.</div>
+      <button class="btn start" id="btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span id="btnLbl">Start station</span></button>
+      <button class="undo" id="undo">↶ Undo last split</button>
+    </div>
+    <div class="sec">Stations</div>
+    <div class="stations" id="stations"></div>
+    <div class="total"><span class="k">Total time</span><span class="v mono" id="total">0:00</span></div>
+  </div>
+</div>
+
+<script>
+const GID={{ g.id }};
+const STATIONS={{ stations|tojson }};
+let G={{ g|tojson }};              // server state: done, splits, running, station_elapsed, total
+let syncAt=Date.now(), tick=null;
+const $=id=>document.getElementById(id);
+const CHK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+function fmt(s){s=Math.max(0,Math.floor(s));const m=Math.floor(s/60),ss=s%60;return m+':'+String(ss).padStart(2,'0');}
+function stationSecs(){ return (G.running? G.station_elapsed+(Date.now()-syncAt)/1000 : 0); }
+function totalSecs(){ const base=(G.splits||[]).reduce((a,b)=>a+b,0); return base + stationSecs(); }
+
+function apply(state){ G=state; syncAt=Date.now(); render(); startStopTick(); }
+function startStopTick(){ if(tick)clearInterval(tick); if(G.running){ tick=setInterval(loop,200); } }
+function loop(){ $('timer').textContent=fmt(stationSecs()); $('total').textContent=fmt(totalSecs()); }
+
+function render(){
+  const fin=G.done>=STATIONS.length;
+  $('nowLbl').textContent=fin?'All stations done':'Station '+(G.done+1)+' of 9';
+  $('nowName').textContent=fin?'Finished 🏁':STATIONS[G.done];
+  $('now').classList.toggle('run',G.running);
+  $('timer').textContent=fmt(stationSecs());
+  $('total').textContent=fmt(totalSecs());
+  const b=$('btn');
+  if(fin){ b.style.display='none'; $('hint').textContent='Great work — all 9 stations recorded.'; }
+  else{
+    b.style.display='flex';
+    if(G.running){ b.className='btn stop'; $('btnLbl').textContent='Finish station';
+      b.querySelector('svg').innerHTML='<rect x="6" y="6" width="12" height="12" rx="2"/>'; $('hint').textContent='Timing… tap finish when they complete it.'; }
+    else{ b.className='btn start'; $('btnLbl').textContent='Start station';
+      b.querySelector('svg').innerHTML='<path d="M8 5v14l11-7z"/>'; $('hint').textContent='Tap start when the team begins this station.'; }
+  }
+  const el=$('stations'); el.innerHTML='';
+  STATIONS.forEach((nm,i)=>{
+    let cls='st', n=(i+1), split='—';
+    if(i<G.splits.length){ cls+=' done'; n=CHK; split=fmt(G.splits[i]); }
+    else if(i===G.done){ cls+=' cur'; split=G.running?'timing…':'ready'; }
+    else { cls+=' todo'; }
+    el.insertAdjacentHTML('beforeend','<div class="'+cls+'"><span class="n">'+n+'</span><span class="nm">'+nm+
+      (i===G.done&&!fin?'<small>current station</small>':'')+'</span><span class="split">'+split+'</span></div>');
+  });
+}
+
+async function post(path){
+  const b=$('btn'); b.disabled=true;
+  try{ const r=await fetch('/api/hyrox/'+GID+'/'+path,{method:'POST'}); const j=await r.json();
+    if(j.ok) apply(j.group); }
+  catch(e){ $('hint').textContent='Network hiccup — try again.'; }
+  b.disabled=false;
+}
+$('btn').onclick=()=>{ if(G.done>=STATIONS.length) return; post(G.running?'finish':'start'); };
+$('undo').onclick=()=>post('undo');
+
+// resync from server every 6s (in case another device also viewed this group)
+setInterval(async()=>{
+  try{ const r=await fetch('/api/hyrox/state'); const j=await r.json();
+    const s=(j.groups||[]).find(x=>x.id===GID); if(s){ G=s; syncAt=Date.now(); render(); startStopTick(); } }catch(e){}
+},6000);
+
+apply(G);
+</script>
+</body>
+</html>
