@@ -17,7 +17,7 @@ from datetime import datetime, timezone, timedelta
 
 import qrcode
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -40,6 +40,14 @@ templates.env.globals["can_any"] = can_any
 
 NSTN = len(HYROX_STATIONS)
 SLOT_MIN = 15                                              # default gap between group starts
+
+
+def _mmss(s):
+    s = int(s or 0)
+    return "%d:%02d" % (s // 60, s % 60)
+
+
+templates.env.globals["mmss"] = _mmss
 
 
 def _now():
@@ -244,10 +252,30 @@ def hyrox_admin(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("hyrox_admin.html", {
         "request": request, "staff": staff, "groups": gs,
         "board_url": base + "/board", "coach_url": coach_url,
-        "coach_qr": _qr_data_uri(coach_url),
+        "coach_qr": _qr_data_uri(coach_url), "stations": HYROX_STATIONS,
         "sched_date": first_l.strftime("%Y-%m-%d"),
         "sched_time": first_l.strftime("%H:%M"),
         "sched_interval": SLOT_MIN})
+
+
+@router.get("/admin/hyrox/results.csv")
+def hyrox_results_csv(request: Request, db: Session = Depends(get_db)):
+    staff, redir = _require_admin(request, db)
+    if redir:
+        return redir
+    import csv
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Group", "Coach", "Start"] + HYROX_STATIONS + ["Total", "Finished at"])
+    for g in db.query(HyroxGroup).order_by(HyroxGroup.start_at.asc(), HyroxGroup.sort).all():
+        st = _state(g)
+        sl = st["splits"]
+        cells = [_mmss(sl[i]) if i < len(sl) else "" for i in range(NSTN)]
+        total = _mmss(st["total"]) if (st["finished"] or st["started"]) else ""
+        w.writerow(["%s %s" % (g.name, g.tag), g.coach or "", st["start_clock"] or ""]
+                   + cells + [total, st["finish_clock"] or ""])
+    return Response(content=buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=hyrox-results.csv"})
 
 
 @router.post("/admin/hyrox/schedule")

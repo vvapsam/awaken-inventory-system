@@ -27,6 +27,16 @@
 .sched input[type=number]{width:88px}
 .gt td .clk{font-variant-numeric:tabular-nums;font-weight:600}
 .gt .fintime{font-family:ui-monospace,Menlo,monospace;font-weight:700;color:#0b8a4f}
+.reswrap{overflow-x:auto;margin-top:10px;border:1px solid var(--line);border-radius:12px}
+.res{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.res th{position:sticky;top:0;background:#f7f9f8;text-align:right;font-size:.68rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:9px 10px;white-space:nowrap}
+.res th.l,.res td.l{text-align:left}
+.res td{padding:8px 10px;border-top:1px solid var(--line);font-size:.84rem;text-align:right;white-space:nowrap}
+.res td.tot{font-weight:800;color:#0b6b62}
+.res tr:hover td{background:#f6faf8}
+.res .pill{font-size:.66rem;font-weight:700;padding:1px 6px;border-radius:999px;background:#eef1f2;color:#8a9099}
+.reshdr{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:24px}
+.reshdr h3{margin:0;font-size:1rem}
 </style>
 
 <h1 style="margin:0">HYROX event</h1>
@@ -69,6 +79,35 @@
       </tr>
       {% endfor %}
     </table>
+
+    <div class="reshdr">
+      <div>
+        <h3>Results — station splits</h3>
+        <p class="muted small" style="margin:2px 0 0">Every team's time per station, their total, and finish time. Download the CSV to keep the record before resetting.</p>
+      </div>
+      <a class="btn" href="/admin/hyrox/results.csv">⬇ Download CSV</a>
+    </div>
+    <div class="reswrap">
+      <table class="res">
+        <tr>
+          <th class="l">Group</th><th class="l">Coach</th><th>Start</th>
+          {% for s in stations %}<th>{{ s }}</th>{% endfor %}
+          <th>Total</th><th>Finish</th>
+        </tr>
+        {% for g in groups %}
+        <tr>
+          <td class="l"><b>{{ g.name }}</b> <span class="pill">{{ g.tag }}</span></td>
+          <td class="l">{{ g.coach or '—' }}</td>
+          <td>{{ g.start_clock or '—' }}</td>
+          {% for i in range(stations|length) %}
+          <td>{% if i < g.splits|length %}{{ mmss(g.splits[i]) }}{% else %}—{% endif %}</td>
+          {% endfor %}
+          <td class="tot">{% if g.finished or g.started %}{{ mmss(g.total) }}{% else %}—{% endif %}</td>
+          <td>{{ g.finish_clock or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
 
     <div class="dz">
       <b>Reset event</b> — clears every group's splits and timers back to Station 1. Do this before a new event.
