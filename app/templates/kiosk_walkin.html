@@ -77,6 +77,9 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
 .pair .p .em{font-size:1.5rem}
 .pair .p .t{font-family:Poppins;font-weight:700;font-size:.9rem;margin-top:6px}
 .pair .p .s{color:var(--muted);font-size:.7rem;margin-top:3px}
+.pair .p .pp{font-family:Poppins;font-weight:800;font-size:.92rem;color:var(--green-d);margin-top:6px}
+.partnote{background:#fff7ec;border:1px solid #f4e2c2;color:#8a6410;border-radius:12px;padding:11px 13px;font-size:.82rem;line-height:1.45;margin-top:12px}
+.pendpill{display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:#fff4e0;color:#b5771b;border:1px solid #f2ddb4;font-family:Poppins;font-weight:700;font-size:.8rem;padding:7px 14px;border-radius:999px}
 .welc{text-align:center;padding:12px 4px}
 .welc .av{width:66px;height:66px;border-radius:999px;background:linear-gradient(135deg,#18BE7C,#0b6b62);color:#fff;display:flex;align-items:center;justify-content:center;margin:8px auto 14px;font-family:Poppins;font-weight:800;font-size:1.6rem}
 .welc h2{font-size:1.35rem}.welc p{color:var(--muted);font-size:.86rem;margin-top:7px}
@@ -213,9 +216,10 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
       <div class="seclbl">HYROX Simulation</div>
       <label class="lbl" style="margin-top:0">Solo or doubles?</label>
       <div class="pair">
-        <div class="p" data-dbl="0"><div class="em">🧍</div><div class="t">Solo</div><div class="s">Just you</div></div>
-        <div class="p" data-dbl="1"><div class="em">🧍🧍</div><div class="t">Doubles</div><div class="s">With a partner</div></div>
+        <div class="p" id="hySolo" data-dbl="0"><div class="em">🧍</div><div class="t">Solo</div><div class="pp" id="ppSolo">—</div></div>
+        <div class="p" id="hyDbl" data-dbl="1"><div class="em">🧍🧍</div><div class="t">Doubles</div><div class="pp" id="ppDbl">—</div></div>
       </div>
+      <div class="hintp" id="dblHint">Doubles is priced <b>per person</b> — your partner also needs to sign up / register separately.</div>
       <div class="err" id="errHyrox"></div>
     </div>
   </div>
@@ -226,17 +230,17 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
       <button type="button" class="back" id="payBack">‹ Back</button>
       <div class="seclbl">Payment</div>
       <div class="amt"><div><div class="k">Amount due</div><div class="v" id="amtv">₱0</div></div><div class="pl" id="amtplan"></div></div>
+      <div id="dblPartner" class="partnote" style="display:none">👥 Doubles is <b>per person</b>. Your partner also needs to sign up / register separately.</div>
       <label class="lbl">Pay with</label>
       <div class="seg"><div class="s on" id="mCash">Cash</div><div class="s" id="mBank">Bank transfer</div></div>
-      <div id="cashInfo" class="hintp">Pay at the counter — staff will confirm your payment.</div>
+      <div id="cashInfo" class="hintp">Pay at the front desk to confirm your appointment.</div>
       <div id="bankInfo" style="display:none">
         <div class="bankbox">
           {% if bank.has_qr %}<img src="/order-qr" alt="Payment QR">{% endif %}
           <div class="bn">{{ bank.bank_name or 'AWAKEN' }}</div>
           {% if bank.account_name %}<div class="an">{{ bank.account_name }}</div>{% endif %}
         </div>
-        <div class="drop" id="drop"><span id="dropTxt">📷 Tap to upload your payment screenshot</span><img id="preview" style="display:none"></div>
-        <input type="file" id="file" accept="image/*" capture="environment" style="display:none">
+        <div class="hintp">Send your payment, then approach the front desk to confirm.</div>
       </div>
       <button type="button" class="btn" id="submit">Submit</button>
       <div class="err" id="errPay"></div>
@@ -249,6 +253,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
     <div class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
     <h2 id="doneTitle">You're all set!</h2>
     <p id="doneMsg"></p>
+    <div class="pendpill">⏳ Pending approval</div>
   </div>
   {% endif %}
 </div>
@@ -343,34 +348,38 @@ function actCard(icon,title,sub,price,extra){
 function setPlan(p){ state.plan=p; }
 
 /* ---------- HYROX ---------- */
-document.querySelectorAll('#s-hyrox1 .opt').forEach(el=>el.onclick=()=>{ state.coached=el.dataset.coach==='1'; go('s-hyrox2'); });
+function money(n){ return '₱'+Number(n).toLocaleString('en-PH'); }
+function enterHyrox2(){
+  const solo=HYROX.find(h=>!!h.coached===!!state.coached && !h.doubles);
+  const dbl =HYROX.find(h=>!!h.coached===!!state.coached && h.doubles);
+  $('ppSolo').textContent = (solo && solo.price>0) ? money(solo.price) : '—';
+  $('ppDbl').textContent  = (dbl && dbl.price>0) ? money(dbl.price)+' /pax' : '—';
+  $('errHyrox').textContent='';
+}
+document.querySelectorAll('#s-hyrox1 .opt').forEach(el=>el.onclick=()=>{ state.coached=el.dataset.coach==='1'; go('s-hyrox2'); enterHyrox2(); });
 document.querySelectorAll('#s-hyrox2 .p').forEach(el=>el.onclick=()=>{
   const dbl=el.dataset.dbl==='1';
   const match=HYROX.find(h=>!!h.coached===!!state.coached && !!h.doubles===dbl);
   if(!match){ $('errHyrox').textContent='That option isn’t available. Please see the front desk.'; return; }
   if(!(match.price>0)){ $('errHyrox').textContent='That option isn’t priced yet — please see the front desk.'; return; }
-  setPlan({id:match.id,name:'HYROX · '+match.name,price:match.price});
+  setPlan({id:match.id,name:'HYROX · '+match.name,price:match.price,doubles:!!match.doubles});
   go('s-pay');
 });
 
-/* ---------- pay ---------- */
+/* ---------- pay (reservation — settled at the front desk) ---------- */
 $('payBack').onclick=()=>{ show(state.plan && String(state.plan.name).indexOf('HYROX')===0 ? 's-hyrox2':'s-activity'); };
-let method='cash', proof=null;
+let method='cash';
 function enterPay(){
   const p=state.plan; if(!p){ show('s-activity'); return; }
-  $('amtv').textContent='₱'+Number(p.price).toLocaleString('en-PH');
+  $('amtv').textContent=money(p.price)+(p.doubles?' /pax':'');
   $('amtplan').textContent=p.name;
+  $('dblPartner').style.display = p.doubles ? 'block' : 'none';
 }
 function setM(m){ method=m;
   $('mCash').classList.toggle('on',m==='cash'); $('mBank').classList.toggle('on',m==='bank');
   $('cashInfo').style.display=m==='cash'?'block':'none'; $('bankInfo').style.display=m==='bank'?'block':'none';
 }
 $('mCash').onclick=()=>setM('cash'); $('mBank').onclick=()=>setM('bank');
-$('drop').onclick=()=>$('file').click();
-$('file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
-  rd.onload=()=>{ proof=rd.result; $('preview').src=proof; $('preview').style.display='block';
-    $('dropTxt').textContent='✓ Screenshot attached — tap to change'; $('drop').classList.add('has'); };
-  rd.readAsDataURL(f); };
 
 // re-run enterPay whenever the pay screen becomes active
 const _show=show;
@@ -378,11 +387,10 @@ show=function(id){ _show(id); if(id==='s-pay') enterPay(); };
 
 $('submit').onclick=async()=>{
   if(!state.plan){ show('s-activity'); return; }
-  if(method==='bank' && !proof){ $('errPay').textContent='Please attach your payment screenshot.'; return; }
   const btn=$('submit'), old=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
-  const payload={ flow:'walkin', key:$('key').value, token:$('token').value,
+  const payload={ flow:'walkin', token:$('token').value,
     returning:state.returning, email:$('email').value.trim(),
-    plan_id:state.plan.id, method:method, proof: method==='bank'?proof:null };
+    plan_id:state.plan.id, method:method };
   if(!state.returning){
     payload.first_name=$('fname').value.trim(); payload.last_name=$('lname').value.trim();
     payload.phone=$('phone').value.trim(); payload.referral=$('referral').value;
@@ -394,9 +402,13 @@ $('submit').onclick=async()=>{
     if(j.expired){ document.body.innerHTML='<div style="max-width:420px;margin:80px auto;text-align:center;font-family:Inter,sans-serif;padding:0 24px"><div style="font-size:44px">🔄</div><h2 style="font-family:Poppins,sans-serif">This link has expired</h2><p style="color:#8A9099;line-height:1.5">Please scan the QR code at the front desk again.</p></div>'; return; }
     if(j.need_waiver){ btn.textContent=old; btn.disabled=false; state.returning=false; $('errPay').textContent=''; go('s-waiver'); return; }
     if(!j.ok){ $('errPay').textContent=j.error||'Could not submit'; btn.textContent=old; btn.disabled=false; return; }
-    const paidLine = j.method==='bank' ? 'We received your screenshot.' : 'Please pay ₱'+Number(j.price).toLocaleString('en-PH')+' at the counter.';
-    $('doneTitle').textContent='You’re all set'+(j.first_name?(', '+j.first_name):'')+'!';
-    $('doneMsg').textContent='Your '+j.plan+' is booked. '+paidLine+' Staff will confirm your payment. Enjoy your session!';
+    if(j.method==='bank'){
+      $('doneTitle').textContent='Booking sent'+(j.first_name?(', '+j.first_name):'')+'!';
+      $('doneMsg').textContent='Successful — please approach the front desk to confirm your appointment.';
+    }else{
+      $('doneTitle').textContent='Almost done'+(j.first_name?(', '+j.first_name):'')+'!';
+      $('doneMsg').textContent='Please pay '+money(j.price)+' at the front desk to confirm your appointment.';
+    }
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
     $('done').style.display='block'; window.scrollTo({top:0,behavior:'smooth'});
   }catch(e){ $('errPay').textContent='Network error — please try again.'; btn.textContent=old; btn.disabled=false; }
