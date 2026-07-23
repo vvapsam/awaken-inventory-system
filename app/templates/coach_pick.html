@@ -28,11 +28,11 @@ h1{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
 .gcard .st{margin-top:9px;font-size:.72rem;font-weight:700;letter-spacing:.02em}
 .gcard .st.run{color:#b5771b}
 .gcard .st.wait{color:var(--muted);font-weight:600}
-/* finished: disabled, shows the frozen total time */
-.gcard.done{background:#eef7f2;box-shadow:none;cursor:default;pointer-events:none;opacity:.96}
-.gcard.done .emb{filter:grayscale(.15)}
+/* finished: tappable to review, shows the frozen total time */
+.gcard.done{background:#eef7f2;box-shadow:0 6px 16px rgba(11,26,23,.05)}
+.gcard.done .emb{filter:grayscale(.12)}
 .gcard.done .fin{margin-top:9px;font-family:'Space Grotesk';font-weight:800;font-size:1.15rem;color:#0b8a4f;font-variant-numeric:tabular-nums}
-.gcard.done .finlbl{font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#7bbf9f;margin-top:2px}
+.gcard.done .finlbl{font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#4fa47f;margin-top:2px}
 .foot{text-align:center;color:var(--muted);font-size:.82rem;padding:4px 20px 26px}
 </style>
 </head>
@@ -46,13 +46,14 @@ h1{font-family:'Space Grotesk';margin:0;letter-spacing:-.01em}
   <div class="pick">
     {% for g in groups %}
     {% if g.finished %}
-    <div class="gcard done">
+    <a class="gcard done" href="/coach/{{ g.id }}">
       <div class="emb" style="background:{{ g.color }}22;color:{{ g.color }}">{{ g.emblem }}</div>
       <div class="nm">{{ g.name }}</div>
       <div class="tag">Group {{ g.tag }}</div>
+      {% if g.coach %}<div class="coach">👤 {{ g.coach }}</div>{% endif %}
       <div class="fin" data-fin="{{ g.total }}">{{ '%d:%02d'|format(g.total // 60, g.total % 60) }}</div>
-      <div class="finlbl">✓ Finished</div>
-    </div>
+      <div class="finlbl">✓ Finished · tap to review</div>
+    </a>
     {% else %}
     <a class="gcard" href="/coach/{{ g.id }}" onclick="try{localStorage.setItem('awaken_coach_gid',String({{ g.id }}))}catch(e){}">
       <div class="emb" style="background:{{ g.color }}22;color:{{ g.color }}">{{ g.emblem }}</div>

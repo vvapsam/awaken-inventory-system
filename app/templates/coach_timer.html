@@ -102,14 +102,15 @@ function loop(){ $('timer').textContent=fmt(stationSecs()); $('total').textConte
 
 function render(){
   const fin=G.done>=STATIONS.length;
-  $('nowLbl').textContent=fin?'All stations done':'Station '+(G.done+1)+' of 9';
+  $('nowLbl').textContent=fin?'Final time — all stations done':'Station '+(G.done+1)+' of 9';
   $('nowName').textContent=fin?'Finished 🏁':STATIONS[G.done];
   $('nowDetail').textContent=fin?'':(DETAILS[G.done]||'');
   $('now').classList.toggle('run',G.station_running);
-  $('timer').textContent=fmt(stationSecs());
+  // When finished, show the team's TOTAL time as the hero number (not 0:00).
+  $('timer').textContent=fin?fmt(totalSecs()):fmt(stationSecs());
   $('total').textContent=totalText();
   const b=$('btn');
-  if(fin){ b.style.display='none'; $('hint').textContent='Great work — all 9 stations recorded.'; }
+  if(fin){ b.style.display='none'; $('hint').textContent='All 9 stations recorded — tap Undo to correct the last split.'; }
   else{
     b.style.display='flex';
     if(G.station_running){ b.className='btn stop'; $('btnLbl').textContent='Finish station';
