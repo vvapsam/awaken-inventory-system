@@ -17,8 +17,9 @@ h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em
 .wrap{width:100%;max-width:560px;padding:0 0 48px}
 .hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 130%);color:#fff;
   padding:calc(env(safe-area-inset-top,0px) + 34px) 24px 42px;border-radius:0 0 26px 26px;text-align:center}
-.logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:10px 16px;box-shadow:0 8px 22px rgba(11,26,23,.20)}
-.logoTile img{height:40px;width:auto;max-width:220px;display:block}
+.logoTile{display:inline-flex;align-items:center;justify-content:center;filter:drop-shadow(0 6px 16px rgba(0,0,0,.28))}
+.logoTile img{height:58px;width:auto;max-width:250px;display:block}
+.logoTile b{font-family:Poppins;letter-spacing:.16em;color:#fff;font-size:1.5rem}
 .hero h1{font-size:1.6rem;margin-top:18px}
 .hero p{color:rgba(255,255,255,.85);margin:7px 0 0;font-size:.9rem}
 .card{background:var(--white);margin:16px;border-radius:18px;box-shadow:0 12px 30px rgba(11,26,23,.08);padding:20px}
@@ -64,7 +65,8 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
 <body>
 <div class="wrap">
   <div class="hero">
-    <div class="logoTile"><img src="/order-logo" alt="AWAKEN"></div>
+    <div class="logoTile"><img src="/order-logo" alt="AWAKEN"
+      onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<b>AWAKEN</b>')"></div>
     <h1>Member Waiver</h1>
     <p>{% if valid %}Fill in your details and sign below.{% else %}Welcome to AWAKEN!{% endif %}</p>
   </div>
