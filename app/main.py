@@ -582,12 +582,10 @@ def home(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/welcome", response_class=HTMLResponse)
-def welcome_hub(request: Request, k: str = ""):
-    # Public QR-landing hub: member scans one QR at the desk and picks an
-    # action. The QR carries the secret key (?k=), which the hub forwards to the
-    # Walk-in / Sign-up kiosk flows. "Buy drinks" links to the live /order
-    # self-checkout (same app on both hosts).
-    return templates.TemplateResponse("welcome.html", {"request": request, "k": k})
+def welcome_hub(request: Request):
+    # Public QR-landing hub: member scans one QR at the desk and picks an action.
+    # Walk-in / Sign-up open directly (no key needed); "Buy drinks" → /order.
+    return templates.TemplateResponse("welcome.html", {"request": request, "k": ""})
 
 
 @app.get("/login", response_class=HTMLResponse)
