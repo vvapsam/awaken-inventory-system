@@ -86,6 +86,7 @@ input{font-family:inherit;font-size:16px}
 .ohero .logoTile b{font-family:Poppins;letter-spacing:.16em;color:#fff;font-size:1.5rem}
 .ohero h1{font-size:1.5rem;margin-top:14px}
 .ohero p{color:rgba(255,255,255,.86);font-size:.9rem;margin-top:5px}
+.ohero .oback{position:absolute;top:calc(16px + env(safe-area-inset-top,0px));left:16px;width:36px;height:36px;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-size:1.3rem;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;z-index:4}
 .storebody{position:relative;z-index:2}
 .ptile{box-shadow:0 8px 20px rgba(11,26,23,.06)}
 .ptile .thumb{height:72px;border-radius:12px}
@@ -95,6 +96,7 @@ input{font-family:inherit;font-size:16px}
 
 <section id="s-store" class="screen active">
   <div class="ohero">
+    <button type="button" class="oback" onclick="location.href='/welcome'" aria-label="Back to menu">‹</button>
     <div class="logoTile"><img src="/order-logo" alt="AWAKEN"
       onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<b>AWAKEN</b>')"></div>
     <h1>Order &amp; Pay</h1>
