@@ -1056,6 +1056,8 @@ async function openDetail(cid,name){
   });
   if(j.payments.length){ h+=`<div class="section-label" style="margin-top:6px">Payments received</div>`;
     j.payments.forEach(p=>{h+=`<div class="paidrow"><span>${p.date} · ${p.method||'—'}</span><span class="green">${peso(p.amount)}</span></div>`;}); }
+  if(j.waivers && j.waivers.length){ h+=`<div class="section-label" style="margin-top:14px">Signed waivers</div>`;
+    j.waivers.forEach(w=>{h+=`<div class="paidrow"><span>✍️ ${w.date}${w.referral?' · '+w.referral:''}</span><a class="green" href="/waiver-sig/${w.id}" target="_blank" style="text-decoration:none">View ›</a></div>`;}); }
   if(j.history && j.history.length){
     h+=`<div class="section-label" style="margin-top:14px">Purchase history <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:500">· ${j.purchases}</span></div>`;
     h+=`<div class="rlist">`+j.history.map(custHistRow).join('')+`</div>`;

@@ -31,6 +31,7 @@ from .models import (
     KioskPlan, KIOSK_PLAN_DEFAULTS, KIOSK_WALKIN_DEFAULTS, KIOSK_WALKIN,
     KIOSK_HYROX_RATES,
     HyroxGroup, HYROX_GROUP_DEFAULTS, HYROX_COACH_DEFAULTS,
+    Waiver,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -122,6 +123,9 @@ def startup():
                           "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS emergency_name VARCHAR; "
                           "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR; "
                           "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS ip VARCHAR; END IF; END $$;"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.waivers') IS NOT NULL THEN "
+                          "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS customer_id INTEGER "
+                          "REFERENCES entity(id) ON DELETE SET NULL; END IF; END $$;"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL; END IF; END $$;"))
         # Kiosk walk-in activities (Open Gym / Private Coaching / HYROX matrix) —
         # kiosk_plans already exists (seeded 23 Jul), so these need explicit ALTERs.
@@ -1932,9 +1936,11 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
     )
     charges = sum(s.total for s in sales)
     paid = sum(p.total for p in payments)
+    waivers = (db.query(Waiver).filter(Waiver.customer_id == cid)
+               .order_by(Waiver.signed_at.desc()).all())
     return render(request, "customer_detail.html", db, staff, customer=customer,
                   sales=sales, payments=payments, charges=charges, paid=paid,
-                  balance=charges - paid)
+                  balance=charges - paid, waivers=waivers)
 
 
 @app.get("/customer/{cid}/pay", response_class=HTMLResponse)

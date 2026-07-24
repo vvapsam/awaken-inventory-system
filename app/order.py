@@ -363,6 +363,10 @@ def _ensure_member(db, o):
                     has_access=False, role="staff", is_active=True)
         db.add(ent)
         db.flush()
+    elif ent.person_type in (None, "", "customer"):
+        # A plain customer (e.g. auto-created when they signed their waiver) becomes
+        # a member on membership approval.
+        ent.person_type = "member"
     return ent
 
 

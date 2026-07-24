@@ -46,4 +46,17 @@
   </tr>
   {% else %}<tr><td colspan="7" class="muted">No payments yet.</td></tr>{% endfor %}
 </table>
+
+<h2>Signed waivers</h2>
+<table>
+  <tr><th>Signed</th><th>Name on waiver</th><th>How they found us</th><th>Signature</th></tr>
+  {% for w in waivers %}
+  <tr>
+    <td>{{ w.signed_at.strftime('%Y-%m-%d %H:%M') if w.signed_at else '' }}</td>
+    <td>{{ w.full_name }}</td>
+    <td>{{ w.referral or '—' }}</td>
+    <td>{% if w.signature %}<a href="/waiver-sig/{{ w.id }}" target="_blank">View</a>{% else %}—{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="4" class="muted">No waiver on file.</td></tr>{% endfor %}
+</table>
 {% endblock %}

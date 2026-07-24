@@ -416,9 +416,14 @@ class Waiver(Base):
     signature = Column(LargeBinary)                 # signature PNG bytes
     signature_mime = Column(String, default="image/png")
     ip = Column(String)                             # submitter IP (rate limiting)
+    customer_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))  # linked customer
     signed_at = Column(DateTime(timezone=True), default=now_utc)
     created_at = Column(DateTime(timezone=True), default=now_utc)
     # emergency_name / emergency_phone columns retained (unused) — see WaiverToken
+
+    @property
+    def full_name(self):
+        return ("%s %s" % (self.first_name or "", self.last_name or "")).strip()
 
 
 HYROX_STATIONS = ["Run", "Ski", "Sled Push", "Sled Pull", "Burpee Broad Jump",

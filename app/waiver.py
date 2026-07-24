@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .auth import current_staff
 from .db import get_db
-from .models import Waiver, WaiverToken, PaymentSetting, can, can_any
+from .models import Waiver, WaiverToken, PaymentSetting, Staff, can, can_any
 
 router = APIRouter()
 BASE_DIR = os.path.dirname(__file__)
@@ -89,6 +89,24 @@ def waiver_page(request: Request, k: str = "", db: Session = Depends(get_db)):
         "referrals": REFERRAL_OPTIONS})
 
 
+def ensure_customer(db, fn, ln, phone):
+    """Signing a waiver enrolls the person as a customer. Dedupe by exact phone so a
+    returning signer (or an existing member/customer) is reused, not duplicated."""
+    phone = (phone or "").strip()
+    cust = None
+    if phone:
+        cust = (db.query(Staff)
+                .filter(Staff.phone == phone, Staff.is_active == True)  # noqa: E712
+                .order_by(Staff.id).first())
+    if not cust:
+        cust = Staff(name=("%s %s" % (fn or "", ln or "")).strip() or "Customer",
+                     person_type="customer", phone=phone or None,
+                     has_access=False, role="staff", is_active=True, permissions="")
+        db.add(cust)
+        db.flush()
+    return cust
+
+
 @router.post("/api/waiver")
 async def submit_waiver(request: Request, db: Session = Depends(get_db)):
     data = await request.json()
@@ -146,10 +164,11 @@ async def submit_waiver(request: Request, db: Session = Depends(get_db)):
                referral=referral or None,
                signature=raw, signature_mime=mime, ip=ip or None,
                signed_at=now)
+    w.customer_id = ensure_customer(db, fn, ln, phone).id  # enroll as a customer
     db.add(w)
     row.used = True                 # consume the one-time link
     db.commit()
-    return {"ok": True, "id": w.id}
+    return {"ok": True, "id": w.id, "customer_id": w.customer_id}
 
 
 # ------------------------------------------------------------------ staff review

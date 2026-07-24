@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    Product, Staff, PricingGroup, can, can_any,
+    Product, Staff, PricingGroup, Waiver, can, can_any,
     Transaction, TransactionItem, TX_CASH_SALE, TX_PAYMENT, TX_INVENTORY, TX_ORDER,
 )
 
@@ -590,12 +590,20 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
                  .order_by(Transaction.occurred_at.desc()).limit(60).all())
     history = [_sale_brief(s, tz, covered) for s in hist_rows]
 
+    wvs = (db.query(Waiver).filter(Waiver.customer_id == cid)
+           .order_by(Waiver.signed_at.desc()).all())
+    waivers = [{"id": w.id,
+                "date": (w.signed_at.astimezone(tz).strftime("%b %d, %Y")
+                         if w.signed_at else ""),
+                "referral": w.referral or ""} for w in wvs]
+
     return {
         "ok": True,
         "customer": {"id": c.id, "name": c.name, "phone": c.phone or ""},
         "orders": orders,
         "payments": payments,
         "history": history,
+        "waivers": waivers,
         "purchases": len(hist_rows),
         "charges": round(charges, 2),
         "paid": round(paid, 2),

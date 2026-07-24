@@ -33,7 +33,7 @@ from .models import (
     KIOSK_MEMBERSHIP, KIOSK_WALKIN, can, can_any,
 )
 from .waiver import (
-    _settings, _client_ip, _prune_tokens,
+    _settings, _client_ip, _prune_tokens, ensure_customer,
     REFERRAL_OPTIONS, TOKEN_TTL, RATE_WINDOW, RATE_MAX, MAX_SIG,
 )
 from .order import next_order_number
@@ -245,9 +245,11 @@ async def kiosk_submit(request: Request, db: Session = Depends(get_db)):
         if sig_raw is None:
             return _err("Please sign the waiver before submitting" if sig_mime == "missing"
                         else "Signature is missing or too large")
-        db.add(Waiver(first_name=fn, last_name=ln, email=email or None, phone=phone or None,
-                      referral=referral or None, signature=sig_raw, signature_mime=sig_mime,
-                      ip=ip or None, signed_at=now))
+        _kw = Waiver(first_name=fn, last_name=ln, email=email or None, phone=phone or None,
+                     referral=referral or None, signature=sig_raw, signature_mime=sig_mime,
+                     ip=ip or None, signed_at=now)
+        _kw.customer_id = ensure_customer(db, fn, ln, phone).id  # enroll as a customer
+        db.add(_kw)
 
     # ---- pending order (lands in the staff approval queue) ----
     subtype = "kiosk_membership" if flow == "signup" else "kiosk_walkin"
