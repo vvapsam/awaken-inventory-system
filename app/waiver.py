@@ -154,10 +154,11 @@ async def submit_waiver(request: Request, db: Session = Depends(get_db)):
 
 # ------------------------------------------------------------------ staff review
 def _require_admin(request, db):
+    # Gated by the "view_waivers" permission (admins have it automatically).
     staff = current_staff(request, db)
     if not staff:
         return None, RedirectResponse("/login", status_code=303)
-    if staff.role != "admin":
+    if not can(staff, "view_waivers"):
         return None, RedirectResponse("/dashboard", status_code=303)
     return staff, None
 

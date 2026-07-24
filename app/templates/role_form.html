@@ -55,6 +55,17 @@
       </label>
       {% endfor %}
     </div>
+
+    <div class="perm-group">
+      <div class="perm-group-title">Admin areas</div>
+      <p class="muted small" style="margin:-2px 0 8px">Each grants full access to that management page (view &amp; edit).</p>
+      {% for akey, alabel in ADMIN_AREA_DEFS %}
+      <label class="check perm-check">
+        <input type="checkbox" name="permissions" value="{{ akey }}" {% if akey in current %}checked{% endif %}>
+        <span>{{ alabel }}</span>
+      </label>
+      {% endfor %}
+    </div>
   </div>
 
   <div style="margin-top:14px">

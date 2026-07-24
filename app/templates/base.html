@@ -173,7 +173,8 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       </a>
       {% endif %}
-      {% if staff.role == 'admin' %}
+      {% set is_admin = staff.role == 'admin' %}
+      {% if is_admin or can(staff,'manage_kiosk') or can(staff,'view_waivers') or can(staff,'manage_hyrox') %}
       {% set settings_active = p.startswith('/admin/roles') or p.startswith('/admin/order-settings') or p.startswith('/admin/product-images') or p.startswith('/admin/kiosk') or p.startswith('/admin/waivers') or p.startswith('/admin/hyrox') %}
       <div class="settings-menu" id="settings-menu">
         <button type="button" class="gear-btn {% if settings_active %}active{% endif %}" id="gear-btn" aria-label="Settings" title="Settings">
@@ -181,6 +182,7 @@
         </button>
         <div class="settings-dd">
           <div class="dd-title">Settings</div>
+          {% if is_admin %}
           <a href="/admin/roles" class="{% if p.startswith('/admin/roles') %}active{% endif %}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8 8 10 4.6-2 8-5 8-10V6z"/><path d="m9 12 2 2 4-4"/></svg>
             <span>Roles<small>Access levels &amp; default permissions</small></span>
@@ -189,22 +191,31 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
             <span>Payment settings<small>Bank details &amp; storefront logo for /order</small></span>
           </a>
+          {% endif %}
+          {% if is_admin or can(staff,'manage_kiosk') %}
           <a href="/admin/kiosk" class="{% if p.startswith('/admin/kiosk') %}active{% endif %}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01"/></svg>
             <span>Kiosk &amp; plans<small>Welcome hub QR, day-pass &amp; membership prices</small></span>
           </a>
+          {% endif %}
+          {% if is_admin or can(staff,'view_waivers') %}
           <a href="/admin/waivers" class="{% if p.startswith('/admin/waivers') %}active{% endif %}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg>
             <span>Signed waivers<small>Waiver QR poster &amp; signed-waiver list</small></span>
           </a>
+          {% endif %}
+          {% if is_admin or can(staff,'manage_hyrox') %}
           <a href="/admin/hyrox" class="{% if p.startswith('/admin/hyrox') %}active{% endif %}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
             <span>HYROX event<small>Live scoreboard, coach app &amp; reset</small></span>
           </a>
+          {% endif %}
+          {% if is_admin %}
           <a href="/admin/product-images" class="{% if p.startswith('/admin/product-images') %}active{% endif %}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L3 21"/></svg>
             <span>Product photos<small>Item images for the Sell tiles</small></span>
           </a>
+          {% endif %}
         </div>
       </div>
       {% endif %}

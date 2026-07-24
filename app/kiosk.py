@@ -275,10 +275,11 @@ async def kiosk_submit(request: Request, db: Session = Depends(get_db)):
 
 # ------------------------------------------------------------------ staff admin
 def _require_admin(request, db):
+    # Gated by the "manage_kiosk" permission (admins have it automatically).
     staff = current_staff(request, db)
     if not staff:
         return None, RedirectResponse("/login", status_code=303)
-    if staff.role != "admin":
+    if not can(staff, "manage_kiosk"):
         return None, RedirectResponse("/dashboard", status_code=303)
     return staff, None
 

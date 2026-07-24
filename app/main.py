@@ -21,7 +21,7 @@ from .auth import current_staff, hash_pin, verify_pin
 from .db import Base, engine, get_db
 from .models import (
     CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
-    MODULES, ACTIONS, ACCESS_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
+    MODULES, ACTIONS, ACCESS_DEFS, ADMIN_AREA_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Product, Staff,
     PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
@@ -531,6 +531,7 @@ def render(request, template, db, staff, **ctx):
             "UNITS": UNITS, "MOVEMENT_TYPES": MOVEMENT_TYPES,
             "PAYMENT_METHODS": PAYMENT_METHODS, "ROLES": ROLES,
             "MODULES": MODULES, "ACTIONS": ACTIONS, "ACCESS_DEFS": ACCESS_DEFS,
+            "ADMIN_AREA_DEFS": ADMIN_AREA_DEFS,
             "RECEIVE_TYPES": RECEIVE_TYPES, "ADJUST_TYPES": ADJUST_TYPES}
     base.update(ctx)
     return templates.TemplateResponse(template, base)

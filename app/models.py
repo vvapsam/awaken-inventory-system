@@ -36,8 +36,16 @@ ACCESS_DEFS = [
     ("view_costs", "See costs & profit margins"),
 ]
 
+# Access to the newer admin management areas. One toggle grants full access to
+# that area (view + manage). Admin roles get all of these automatically.
+ADMIN_AREA_DEFS = [
+    ("manage_kiosk", "Kiosk & plans"),
+    ("view_waivers", "Signed waivers"),
+    ("manage_hyrox", "HYROX event"),
+]
+
 MODULE_KEYS = [f"{m}.{a}" for m, _ in MODULES for a, _ in ACTIONS]
-ACCESS_KEYS = [k for k, _ in ACCESS_DEFS]
+ACCESS_KEYS = [k for k, _ in ACCESS_DEFS] + [k for k, _ in ADMIN_AREA_DEFS]
 PERMISSION_KEYS = MODULE_KEYS + ACCESS_KEYS
 
 DEFAULT_STAFF_PERMS = ["sales.create", "receive.create", "adjust.create", "view_stock"]

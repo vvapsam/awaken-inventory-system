@@ -223,6 +223,9 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "settle": can_settle(staff),
         "view_costs": can(staff, "view_costs"),
         "orders": can(staff, "sales.create") or staff.role == "admin",
+        "manage_kiosk": can(staff, "manage_kiosk"),
+        "view_waivers": can(staff, "view_waivers"),
+        "manage_hyrox": can(staff, "manage_hyrox"),
     }
 
     maps = _on_hand_map(db)

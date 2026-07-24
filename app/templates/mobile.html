@@ -724,8 +724,8 @@ async function boot(){
   const isAdmin = DATA.staff && DATA.staff.role === 'admin';
   $('#home-menu-role').textContent = isAdmin ? 'Administrator' : 'Staff';
   $('#home-menu-dash').classList.toggle('hide', !isAdmin);
-  $('#home-menu-kiosk').classList.toggle('hide', !isAdmin);
-  $('#home-menu-waivers').classList.toggle('hide', !isAdmin);
+  $('#home-menu-kiosk').classList.toggle('hide', !(isAdmin || (DATA.perms && DATA.perms.manage_kiosk)));
+  $('#home-menu-waivers').classList.toggle('hide', !(isAdmin || (DATA.perms && DATA.perms.view_waivers)));
   const d=new Date();
   $('#home-date').textContent=d.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'});
 }
