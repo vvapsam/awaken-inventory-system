@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .auth import current_staff
@@ -296,7 +296,9 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "sales_scope": "all" if _sees_all_sales(staff) else "mine",
         "orders_pending": (db.query(func.count(Transaction.id))
                            .filter(Transaction.type == TX_ORDER,
-                                   Transaction.status == "pending").scalar() or 0
+                                   Transaction.status == "pending",
+                                   or_(Transaction.subtype.is_(None),
+                                       ~Transaction.subtype.like("kiosk_%"))).scalar() or 0
                            if perms["orders"] else 0),
     }
 

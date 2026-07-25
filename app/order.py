@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .auth import current_staff
@@ -435,8 +435,12 @@ def m_orders(request: Request, db: Session = Depends(get_db)):
     if not can_orders(staff):
         return _err("Not allowed", 403)
     tz = _tz()
+    # Only real store purchases (self-checkout drinks/snacks) — not the kiosk
+    # walk-in / sign-up "waiver" reservations, which are settled at the front desk.
     pending = (db.query(Transaction)
-               .filter(Transaction.type == TX_ORDER, Transaction.status == "pending")
+               .filter(Transaction.type == TX_ORDER, Transaction.status == "pending",
+                       or_(Transaction.subtype.is_(None),
+                           ~Transaction.subtype.like("kiosk_%")))
                .order_by(Transaction.created_at.desc()).all())
     return {"ok": True, "count": len(pending),
             "orders": [_order_brief(o, tz) for o in pending]}
