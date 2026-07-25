@@ -6,6 +6,16 @@
 {% set current = (person.permissions or '').split(',') if person else [] %}
 {% set cur_type = person.person_type if person else preset_type %}
 {% set cur_role = person.role_id if person and person.role_id else None %}
+
+<div class="etabs" id="etabs">
+  <button type="button" class="etab active" data-tab="details">Details</button>
+  {% if person %}
+  <button type="button" class="etab" data-tab="txn">Transactions{% if activity and (activity.sales or activity.payments) %} <span class="etab-c">{{ activity.sales|length + activity.payments|length }}</span>{% endif %}</button>
+  <button type="button" class="etab" data-tab="waivers">Waivers{% if activity and activity.waivers %} <span class="etab-c">{{ activity.waivers|length }}</span>{% endif %}</button>
+  {% endif %}
+</div>
+
+<div class="etabpanel" data-panel="details">
 <form method="post" action="{{ '/admin/staff/%s/edit' % person.id if person else '/admin/staff/new' }}" class="card">
   <div class="two-col">
     <div>
@@ -130,12 +140,10 @@
     <a class="btn" href="/admin/staff">Cancel</a>
   </div>
 </form>
+</div>
 
-{% if activity %}
-<div style="margin-top:26px">
-  <h2 style="margin-bottom:4px">Activity</h2>
-  <p class="muted small" style="margin:0 0 12px">This person's purchases, payments and waivers — wherever they appear as a customer.</p>
-
+{% if person %}
+<div class="etabpanel hide" data-panel="txn">
   {% if activity.charges or activity.paid %}
   <div class="grid" style="margin-bottom:14px">
     <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(activity.charges) }}</div></div>
@@ -173,8 +181,13 @@
   </table>
   {% endif %}
 
+  {% if not (activity.sales or activity.payments) %}
+  <p class="muted">No purchases or payments recorded for this person yet.</p>
+  {% endif %}
+</div>
+
+<div class="etabpanel hide" data-panel="waivers">
   {% if activity.waivers %}
-  <h3>Signed waivers</h3>
   <table class="dt">
     <tr><th>Signed</th><th>Name on waiver</th><th>How they found us</th><th>Signature</th></tr>
     {% for w in activity.waivers %}
@@ -186,13 +199,36 @@
     </tr>
     {% endfor %}
   </table>
-  {% endif %}
-
-  {% if not activity.has_any %}
-  <p class="muted">No purchases, payments, or waivers recorded for this person yet.</p>
+  {% else %}
+  <p class="muted">No waivers signed by this person yet.</p>
   {% endif %}
 </div>
 {% endif %}
+
+<style>
+.etabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:10px 0 18px;flex-wrap:wrap}
+.etab{border:0;background:none;padding:10px 16px;font:inherit;font-weight:600;font-size:.92rem;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.etab:hover{color:var(--ink)}
+.etab.active{color:#0b6b62;border-bottom-color:#0b6b62}
+.etab-c{display:inline-block;font-size:.68rem;font-weight:800;background:#eef1f2;color:#6b7280;border-radius:999px;padding:1px 7px;margin-left:3px;vertical-align:middle}
+.etabpanel.hide{display:none}
+</style>
+<script>
+(function(){
+  var tabs=document.querySelectorAll('#etabs .etab');
+  var panels=document.querySelectorAll('.etabpanel');
+  Array.prototype.forEach.call(tabs, function(t){
+    t.addEventListener('click', function(){
+      Array.prototype.forEach.call(tabs, function(x){ x.classList.remove('active'); });
+      t.classList.add('active');
+      var name=t.getAttribute('data-tab');
+      Array.prototype.forEach.call(panels, function(p){
+        p.classList.toggle('hide', p.getAttribute('data-panel')!==name);
+      });
+    });
+  });
+})();
+</script>
 
 <script>
 var IS_EDIT = {{ 'true' if person else 'false' }};
