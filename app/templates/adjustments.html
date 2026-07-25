@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <h1>Adjustments</h1>
+  {% if can(staff, 'adjust.create') %}
+  <a class="btn primary" href="/movement/new?type=adjustment">+ New adjustment</a>
+  {% endif %}
+</div>
+<p class="muted small" style="margin:2px 0 12px">Stock waste, missing, and manual adjustments. Restocks live under Stocks.</p>
+
+<form method="get" action="/adjustments" style="display:flex;align-items:center;gap:8px;margin:6px 0 12px">
+  <label class="muted small" style="margin:0">Type</label>
+  <select name="type" onchange="this.form.submit()"
+          style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit">
+    <option value="all" {% if ftype == 'all' %}selected{% endif %}>All types</option>
+    {% for t in ADJUST_TYPES %}
+    <option value="{{ t }}" {% if ftype == t %}selected{% endif %}>{{ t|capitalize }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<table class="dt">
+  <tr><th>When</th><th>Type</th><th>Product</th><th>Qty</th><th>By</th><th>Note</th><th></th></tr>
+  {% for m in movements %}
+  <tr>
+    <td>{{ m.occurred_at.strftime('%Y-%m-%d %H:%M') if m.occurred_at else '' }}</td>
+    <td>{{ m.movement_type|capitalize }}</td>
+    <td>{{ m.product.name if m.product else '—' }}</td>
+    <td><strong>{{ m.quantity }}</strong></td>
+    <td>{{ m.staff.name if m.staff else '' }}</td>
+    <td>{{ m.note or '' }}</td>
+    <td class="actions-cell">
+      {% if can(staff, 'adjust.edit') %}<a href="/movement/{{ m.id }}/edit">Edit</a>{% endif %}
+      {% if can(staff, 'adjust.delete') %}
+      <form method="post" action="/movement/{{ m.id }}/delete" style="display:inline"
+            onsubmit="return confirm('Delete this adjustment? Stock will be recalculated.');">
+        <button type="submit" class="link-danger">Delete</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">No adjustments yet.</td></tr>{% endfor %}
+</table>
+{% endblock %}

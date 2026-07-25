@@ -63,7 +63,7 @@
 {% if staff %}
 {% set p = request.url.path %}
 {% set ns = namespace(title='AWAKEN Inventory') %}
-{% for pre,label in [('/dashboard','Dashboard'),('/sales','Transactions'),('/invoices','Transactions'),('/payments','Transactions'),('/stock','Stock'),('/orders','Orders'),('/movement','Stock in/out'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/coaches/members','Members'),('/coaches/billing','Corkage billing'),('/customer','Customers'),('/records','Records'),('/admin/pricing','Pricing'),('/admin/order-settings','Payment settings'),('/admin/product-images','Product photos'),('/admin/roles','Roles'),('/admin/staff','Relationships')] %}
+{% for pre,label in [('/dashboard','Dashboard'),('/sales','Transactions'),('/invoices','Transactions'),('/payments','Transactions'),('/stock','Stock'),('/orders','Orders'),('/adjustments','Adjustments'),('/movement','Adjustments'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/coaches/members','Members'),('/coaches/billing','Corkage billing'),('/customer','Customers'),('/records','Records'),('/admin/pricing','Pricing'),('/admin/order-settings','Payment settings'),('/admin/product-images','Product photos'),('/admin/roles','Roles'),('/admin/staff','Relationships')] %}
   {% if p.startswith(pre) %}{% set ns.title = label %}{% endif %}
 {% endfor %}
 {% set parts = staff.name.split() %}
@@ -114,8 +114,9 @@
       {% endif %}
 
       {# ---- Transactions ---- #}
-      {% if can_any(staff, ['sales.create','sales.edit','view_reports']) %}
-      {% set tx_active = p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments') or p.startswith('/orders') %}
+      {% set can_adjust_view = can_any(staff, ['view_reports','adjust.create','adjust.edit','adjust.delete']) %}
+      {% if can_any(staff, ['sales.create','sales.edit','view_reports']) or can_adjust_view %}
+      {% set tx_active = p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments') or p.startswith('/orders') or p.startswith('/adjustments') or p.startswith('/movement') %}
       <div class="nav-group" data-title="Transactions">
         <button type="button" class="nav-item nav-parent {% if tx_active %}active{% endif %}" title="Transactions">
           <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg></span>
@@ -126,15 +127,15 @@
           <div class="fly-title">Transactions</div>
           {% call flyitem('/sales', 'Sales', p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg>{% endcall %}
           {% if can(staff, 'sales.create') or staff.role == 'admin' %}{% call flyitem('/orders', 'Orders', p.startswith('/orders')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M9 12h6"/></svg>{% endcall %}{% endif %}
+          {% if can_adjust_view %}{% call flyitem('/adjustments', 'Adjustments', p.startswith('/adjustments') or p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
         </div>
       </div>
       {% endif %}
 
       {# ---- List (catalog & stock) ---- #}
       {% set can_items = can_any(staff, ['items.create','items.edit','items.delete']) %}
-      {% set can_adjust = can_any(staff, ['receive.create','adjust.create']) %}
-      {% if staff.role == 'admin' or can_items or can(staff, 'view_stock') or can_adjust %}
-      {% set list_active = p.startswith('/admin/products') or p.startswith('/admin/pricing') or p.startswith('/admin/discount-codes') or p.startswith('/stock') or p.startswith('/movement') %}
+      {% if staff.role == 'admin' or can_items or can(staff, 'view_stock') %}
+      {% set list_active = p.startswith('/admin/products') or p.startswith('/admin/pricing') or p.startswith('/admin/discount-codes') or p.startswith('/stock') %}
       <div class="nav-group" data-title="List">
         <button type="button" class="nav-item nav-parent {% if list_active %}active{% endif %}" title="List">
           <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
@@ -146,7 +147,6 @@
           {% if can_items %}{% call flyitem('/admin/products', 'Items', p.startswith('/admin/products')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>{% endcall %}{% endif %}
           {% if staff.role == 'admin' %}{% call flyitem('/admin/pricing', 'Pricing', p.startswith('/admin/pricing') or p.startswith('/admin/discount-codes')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.82A2 2 0 0 0 9.59 3H4v5.59A2 2 0 0 0 4.59 10l9.59 9.59a2 2 0 0 0 2.83 0l3.58-3.58a2 2 0 0 0 0-2.83z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor"/></svg>{% endcall %}{% endif %}
           {% if can(staff, 'view_stock') %}{% call flyitem('/stock', 'Stocks', p.startswith('/stock')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>{% endcall %}{% endif %}
-          {% if can_adjust %}{% call flyitem('/movement/new', 'Adjustments', p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
         </div>
       </div>
       {% endif %}

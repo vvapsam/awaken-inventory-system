@@ -1879,6 +1879,26 @@ def records(request: Request, db: Session = Depends(get_db)):
     return render(request, "records.html", db, staff, movements=movements, sales=sales)
 
 
+ADJUST_VIEW_PERMS = ["view_reports", "adjust.create", "adjust.edit", "adjust.delete"]
+
+
+@app.get("/adjustments", response_class=HTMLResponse)
+def adjustments_list(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, ADJUST_VIEW_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    ftype = request.query_params.get("type") or "all"
+    q = db.query(Transaction).filter(Transaction.type == TX_INVENTORY,
+                                     Transaction.subtype.in_(ADJUST_TYPES))
+    if ftype in ADJUST_TYPES:
+        q = q.filter(Transaction.subtype == ftype)
+    movements = q.order_by(Transaction.occurred_at.desc()).limit(500).all()
+    return render(request, "adjustments.html", db, staff, movements=movements,
+                  ftype=ftype, ADJUST_TYPES=ADJUST_TYPES)
+
+
 # keep the old path working
 @app.get("/admin/history")
 def history_redirect():
