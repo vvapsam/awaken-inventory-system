@@ -89,21 +89,32 @@ def waiver_page(request: Request, k: str = "", db: Session = Depends(get_db)):
         "referrals": REFERRAL_OPTIONS})
 
 
-def ensure_customer(db, fn, ln, phone):
+def ensure_customer(db, fn, ln, phone, email=None):
     """Signing a waiver enrolls the person as a customer. Dedupe by exact phone so a
     returning signer (or an existing member/customer) is reused, not duplicated."""
     phone = (phone or "").strip()
+    email = (email or "").strip() or None
+    fn = (fn or "").strip()
+    ln = (ln or "").strip()
     cust = None
     if phone:
         cust = (db.query(Staff)
                 .filter(Staff.phone == phone, Staff.is_active == True)  # noqa: E712
                 .order_by(Staff.id).first())
     if not cust:
-        cust = Staff(name=("%s %s" % (fn or "", ln or "")).strip() or "Customer",
+        cust = Staff(name=("%s %s" % (fn, ln)).strip() or "Customer",
+                     first_name=fn or None, last_name=ln or None, email=email,
                      person_type="customer", phone=phone or None,
                      has_access=False, role="staff", is_active=True, permissions="")
         db.add(cust)
         db.flush()
+    else:                                   # fill any blanks on an existing record
+        if not cust.first_name:
+            cust.first_name = fn or None
+        if not cust.last_name:
+            cust.last_name = ln or None
+        if email and not cust.email:
+            cust.email = email
     return cust
 
 
@@ -164,7 +175,7 @@ async def submit_waiver(request: Request, db: Session = Depends(get_db)):
                referral=referral or None,
                signature=raw, signature_mime=mime, ip=ip or None,
                signed_at=now)
-    w.customer_id = ensure_customer(db, fn, ln, phone).id  # enroll as a customer
+    w.customer_id = ensure_customer(db, fn, ln, phone, email).id  # enroll as a customer
     db.add(w)
     row.used = True                 # consume the one-time link
     db.commit()

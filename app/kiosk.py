@@ -248,7 +248,7 @@ async def kiosk_submit(request: Request, db: Session = Depends(get_db)):
         _kw = Waiver(first_name=fn, last_name=ln, email=email or None, phone=phone or None,
                      referral=referral or None, signature=sig_raw, signature_mime=sig_mime,
                      ip=ip or None, signed_at=now)
-        _kw.customer_id = ensure_customer(db, fn, ln, phone).id  # enroll as a customer
+        _kw.customer_id = ensure_customer(db, fn, ln, phone, email).id  # enroll as a customer
         db.add(_kw)
 
     # ---- pending order (lands in the staff approval queue) ----

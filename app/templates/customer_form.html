@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block body %}
+{% set c = customer %}
+<h1>{{ 'Edit customer' if c else 'New customer' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="post" action="{{ '/customer/%s/edit' % c.id if c else '/customers/new' }}" class="card cust-form">
+
+  <div class="fgroup">
+    <div class="fgroup-title">Contact details</div>
+    <div class="two-col">
+      <div><label>First name</label>
+        <input name="first_name" value="{{ (c.first_name or '') if c else '' }}" placeholder="Juan"></div>
+      <div><label>Last name</label>
+        <input name="last_name" value="{{ (c.last_name or '') if c else '' }}" placeholder="Dela Cruz"></div>
+    </div>
+    <div class="two-col">
+      <div><label>Email</label>
+        <input type="email" name="email" value="{{ (c.email or '') if c else '' }}" placeholder="name@email.com"></div>
+      <div><label>Phone</label>
+        <input name="phone" value="{{ (c.phone or '') if c else '' }}" placeholder="0917…"></div>
+    </div>
+  </div>
+
+  <div class="fgroup">
+    <div class="fgroup-title">Emergency contact</div>
+    <div class="two-col">
+      <div><label>Name</label>
+        <input name="emergency_name" value="{{ (c.emergency_name or '') if c else '' }}"></div>
+      <div><label>Phone</label>
+        <input name="emergency_phone" value="{{ (c.emergency_phone or '') if c else '' }}"></div>
+    </div>
+  </div>
+
+  <div class="fgroup">
+    <div class="fgroup-title">Notes</div>
+    <textarea name="notes" rows="3" placeholder="Anything worth remembering about this customer…">{{ (c.notes or '') if c else '' }}</textarea>
+  </div>
+
+  <div style="margin-top:16px">
+    <button type="submit" class="btn primary big">Save customer</button>
+    <a class="btn" href="{{ '/customer/%s' % c.id if c else '/customers' }}">Cancel</a>
+  </div>
+</form>
+
+<style>
+.cust-form .fgroup{border:1px solid var(--line);border-radius:12px;padding:14px 16px 10px;margin-top:14px}
+.cust-form .fgroup-title{font-family:'Space Grotesk',inherit;font-weight:700;font-size:.78rem;letter-spacing:.05em;
+  text-transform:uppercase;color:#0b6b62;margin-bottom:12px}
+.cust-form label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:5px}
+.cust-form input,.cust-form textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+  font-family:inherit;font-size:.95rem}
+.cust-form .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px}
+@media (max-width:620px){.cust-form .two-col{grid-template-columns:1fr}}
+</style>
+{% endblock %}

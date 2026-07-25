@@ -137,8 +137,16 @@ class Staff(Base):
     affiliate_id = Column(Integer, ForeignKey("entity.id")) # member -> their affiliate
     # --- pricing ---
     pricing_group_id = Column(Integer, ForeignKey("pricing_groups.id", ondelete="SET NULL"))
+    # --- customer profile (editable on the customer form; seeded from waivers) ---
+    first_name = Column(String)
+    last_name = Column(String)
+    email = Column(String)
+    emergency_name = Column(String)
+    emergency_phone = Column(String)
+    notes = Column(Text)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=now_utc)
+    updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
     role_obj = relationship("Role")
     affiliate = relationship("Staff", foreign_keys=[affiliate_id], remote_side=[id])

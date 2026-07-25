@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block body %}
-<h1>Customers</h1>
+<div class="row-between">
+  <h1>Customers</h1>
+  <a class="btn primary" href="/customers/new">+ New customer</a>
+</div>
 
 <div class="grid">
   <div class="card stat">
@@ -12,6 +15,16 @@
     <div class="stat-value">{{ outstanding|length }}</div>
   </div>
 </div>
+
+<form method="get" action="/customers" style="display:flex;align-items:center;gap:8px;margin:6px 0 12px">
+  <label for="sort" class="muted small" style="margin:0">Sort by</label>
+  <select name="sort" id="sort" onchange="this.form.submit()"
+          style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit">
+    {% for key, label in CUSTOMER_SORTS %}
+    <option value="{{ key }}" {% if sort == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</form>
 
 <table class="dt">
   <tr><th>First name</th><th>Last name</th><th>Email</th><th>Phone</th><th>Balance</th></tr>

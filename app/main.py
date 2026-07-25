@@ -126,6 +126,14 @@ def startup():
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.waivers') IS NOT NULL THEN "
                           "ALTER TABLE waivers ADD COLUMN IF NOT EXISTS customer_id INTEGER "
                           "REFERENCES entity(id) ON DELETE SET NULL; END IF; END $$;"))
+        # Customer profile fields (editable customer form + list columns).
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS first_name VARCHAR"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS last_name VARCHAR"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS email VARCHAR"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS emergency_name VARCHAR"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS notes TEXT"))
+        conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL; END IF; END $$;"))
         # Kiosk walk-in activities (Open Gym / Private Coaching / HYROX matrix) —
         # kiosk_plans already exists (seeded 23 Jul), so these need explicit ALTERs.
@@ -258,6 +266,26 @@ def startup():
         # so the board shows start times out of the box; admin can re-set the date/time.
         from .hyrox import ensure_default_schedule
         ensure_default_schedule(db)
+        # Backfill customer first/last/email: from a linked waiver if present, else
+        # split the stored name. Runs only for customers missing a first_name.
+        _need = (db.query(Staff)
+                 .filter(Staff.person_type == "customer", Staff.first_name.is_(None)).all())
+        if _need:
+            _wmap = {}
+            for _w in (db.query(Waiver).filter(Waiver.customer_id.isnot(None))
+                       .order_by(Waiver.signed_at.asc()).all()):
+                _wmap[_w.customer_id] = _w
+            for _c in _need:
+                _w = _wmap.get(_c.id)
+                if _w:
+                    _c.first_name = _w.first_name or ""
+                    _c.last_name = _w.last_name or ""
+                    _c.email = _c.email or _w.email
+                else:
+                    _p = (_c.name or "").split(" ")
+                    _c.first_name = _p[0] if _p else ""
+                    _c.last_name = " ".join(_p[1:])
+            db.commit()
         # One-time migration: fold legacy discount_codes into the people table.
         # Each code becomes a non-access person (Employee/Affiliate) carrying the code.
         # Read via raw SQL so the ORM model can be removed and the table dropped.
@@ -1880,27 +1908,14 @@ def customer_balances(db):
                 Transaction.customer_id != None)
         .group_by(Transaction.customer_id).all()
     )
-    # Latest linked waiver per customer → proper first/last name + email for display.
-    wmap = {}
-    for w in (db.query(Waiver).filter(Waiver.customer_id != None)  # noqa: E711
-              .order_by(Waiver.signed_at.asc()).all()):
-        wmap[w.customer_id] = w                     # asc order → last wins = most recent
-
-    def _disp(c):
-        w = wmap.get(c.id)
-        if w:
-            return {"first": w.first_name or "", "last": w.last_name or "",
-                    "email": w.email or "", "phone": c.phone or ""}
-        parts = (c.name or "").split(" ")
-        return {"first": parts[0] if parts else "", "last": " ".join(parts[1:]),
-                "email": "", "phone": c.phone or ""}
-
     def _row(c):
         ch = charges.get(c.id, 0.0)
         pd = float(paid.get(c.id, 0) or 0)
-        r = {"customer": c, "charges": ch, "paid": pd, "balance": ch - pd}
-        r.update(_disp(c))
-        return r
+        nm = (c.name or "").split(" ")
+        return {"customer": c, "charges": ch, "paid": pd, "balance": ch - pd,
+                "first": c.first_name or (nm[0] if nm else ""),
+                "last": c.last_name or " ".join(nm[1:]),
+                "email": c.email or "", "phone": c.phone or ""}
 
     rows = []
     seen = set()
@@ -1916,6 +1931,26 @@ def customer_balances(db):
     return rows
 
 
+CUSTOMER_SORTS = [("name", "Name (A–Z)"), ("recent", "Recently added"),
+                  ("updated", "Recently updated"), ("balance", "Highest balance")]
+
+
+def _sort_customers(rows, sort):
+    def created(r): return r["customer"].created_at or datetime.min.replace(tzinfo=timezone.utc)
+    def updated(r): return (r["customer"].updated_at or r["customer"].created_at
+                            or datetime.min.replace(tzinfo=timezone.utc))
+    if sort == "recent":
+        rows.sort(key=created, reverse=True)
+    elif sort == "updated":
+        rows.sort(key=updated, reverse=True)
+    elif sort == "balance":
+        rows.sort(key=lambda r: r["balance"], reverse=True)
+    else:  # name
+        rows.sort(key=lambda r: ((r["last"] or r["first"] or r["customer"].name or "").lower(),
+                                 (r["first"] or "").lower()))
+    return rows
+
+
 @app.get("/customers", response_class=HTMLResponse)
 def customers_list(request: Request, db: Session = Depends(get_db)):
     staff, redir = require(request, db)
@@ -1926,8 +1961,13 @@ def customers_list(request: Request, db: Session = Depends(get_db)):
     rows = customer_balances(db)
     outstanding = [r for r in rows if r["balance"] > 0.005]
     total_out = sum(r["balance"] for r in rows)
+    sort = request.query_params.get("sort") or "name"
+    if sort not in dict(CUSTOMER_SORTS):
+        sort = "name"
+    _sort_customers(rows, sort)
     return render(request, "customers.html", db, staff, rows=rows,
-                  outstanding=outstanding, total_out=total_out)
+                  outstanding=outstanding, total_out=total_out,
+                  sort=sort, CUSTOMER_SORTS=CUSTOMER_SORTS)
 
 
 @app.get("/customer/{cid}", response_class=HTMLResponse)
@@ -1959,6 +1999,79 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
     return render(request, "customer_detail.html", db, staff, customer=customer,
                   sales=sales, payments=payments, charges=charges, paid=paid,
                   balance=charges - paid, waivers=waivers)
+
+
+def _save_customer_fields(c, form):
+    fn = (form.get("first_name") or "").strip()
+    ln = (form.get("last_name") or "").strip()
+    c.first_name = fn or None
+    c.last_name = ln or None
+    c.email = (form.get("email") or "").strip() or None
+    c.phone = (form.get("phone") or "").strip() or None
+    c.emergency_name = (form.get("emergency_name") or "").strip() or None
+    c.emergency_phone = (form.get("emergency_phone") or "").strip() or None
+    c.notes = (form.get("notes") or "").strip() or None
+    nm = ("%s %s" % (fn, ln)).strip()
+    if nm:
+        c.name = nm
+
+
+@app.get("/customers/new", response_class=HTMLResponse)
+def customer_new(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, CUSTOMER_VIEW_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    return render(request, "customer_form.html", db, staff, customer=None, error=None)
+
+
+@app.post("/customers/new")
+async def customer_new_save(request: Request, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, CUSTOMER_VIEW_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    form = await request.form()
+    if not (form.get("first_name") or "").strip() and not (form.get("last_name") or "").strip():
+        return render(request, "customer_form.html", db, staff, customer=None,
+                      error="Please enter at least a first or last name.")
+    c = Staff(name="Customer", person_type="customer", has_access=False,
+              role="staff", is_active=True, permissions="")
+    _save_customer_fields(c, form)
+    db.add(c)
+    db.commit()
+    return RedirectResponse("/customer/%d" % c.id, status_code=303)
+
+
+@app.get("/customer/{cid}/edit", response_class=HTMLResponse)
+def customer_edit(request: Request, cid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, CUSTOMER_VIEW_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    c = db.get(Staff, cid)
+    if not c:
+        return RedirectResponse("/customers", status_code=303)
+    return render(request, "customer_form.html", db, staff, customer=c, error=None)
+
+
+@app.post("/customer/{cid}/edit")
+async def customer_edit_save(request: Request, cid: int, db: Session = Depends(get_db)):
+    staff, redir = require(request, db)
+    if redir:
+        return redir
+    if not can_any(staff, CUSTOMER_VIEW_PERMS):
+        return RedirectResponse("/dashboard", status_code=303)
+    c = db.get(Staff, cid)
+    if not c:
+        return RedirectResponse("/customers", status_code=303)
+    form = await request.form()
+    _save_customer_fields(c, form)
+    db.commit()
+    return RedirectResponse("/customer/%d" % cid, status_code=303)
 
 
 @app.get("/customer/{cid}/pay", response_class=HTMLResponse)

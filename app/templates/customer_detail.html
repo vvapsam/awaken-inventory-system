@@ -2,10 +2,21 @@
 {% block body %}
 <div class="row-between">
   <h1>{{ customer.name }}</h1>
-  {% if can(staff, 'payments.create') %}
-  <a class="btn primary" href="/customer/{{ customer.id }}/pay">Pay</a>
-  {% endif %}
+  <div style="display:flex;gap:8px">
+    <a class="btn" href="/customer/{{ customer.id }}/edit">Edit</a>
+    {% if can(staff, 'payments.create') %}
+    <a class="btn primary" href="/customer/{{ customer.id }}/pay">Pay</a>
+    {% endif %}
+  </div>
 </div>
+{% if customer.email or customer.phone or customer.emergency_name or customer.notes %}
+<div class="card" style="margin:0 0 14px">
+  {% if customer.email %}<div>✉️ {{ customer.email }}</div>{% endif %}
+  {% if customer.phone %}<div>📞 {{ customer.phone }}</div>{% endif %}
+  {% if customer.emergency_name or customer.emergency_phone %}<div class="muted small" style="margin-top:6px">Emergency: {{ customer.emergency_name or '' }} {{ customer.emergency_phone or '' }}</div>{% endif %}
+  {% if customer.notes %}<div class="muted small" style="margin-top:6px">📝 {{ customer.notes }}</div>{% endif %}
+</div>
+{% endif %}
 
 <div class="grid">
   <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(charges) }}</div></div>
