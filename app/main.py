@@ -1352,11 +1352,33 @@ def _roles(db):
     return db.query(Role).order_by(Role.is_admin.desc(), Role.name).all()
 
 
+def _person_activity(db, pid):
+    """A person's cross-role history — purchases, payments, balance and waivers —
+    keyed by their entity id. Same data as the customer page, so it shows on any
+    entity (an employee who also buys, a member who signed a waiver, etc.)."""
+    sales = (db.query(Transaction)
+             .filter(Transaction.type == TX_CASH_SALE, Transaction.customer_id == pid)
+             .order_by(Transaction.occurred_at.desc()).limit(200).all())
+    payments = (db.query(Transaction)
+                .filter(Transaction.type == TX_PAYMENT, Transaction.parent_id == None,  # noqa: E711
+                        Transaction.customer_id == pid)
+                .order_by(Transaction.occurred_at.desc()).all())
+    charges = sum(s.total for s in sales if s.is_credit)
+    paid = sum(p.total for p in payments)
+    waivers = (db.query(Waiver).filter(Waiver.customer_id == pid)
+               .order_by(Waiver.signed_at.desc()).all())
+    return {"sales": sales, "payments": payments, "charges": charges, "paid": paid,
+            "balance": charges - paid, "waivers": waivers,
+            "has_any": bool(sales or payments or waivers)}
+
+
 def _form(request, db, staff, person=None, error=None, preset_type=""):
     levels = db.query(PricingGroup).order_by(PricingGroup.name).all()
+    activity = _person_activity(db, person.id) if person else None
     return render(request, "staff_form.html", db, staff, person=person, error=error,
                   ENTITY_TYPES=ENTITY_TYPES, DISCOUNT_TYPES=list(DISCOUNT_TYPES),
-                  roles=_roles(db), preset_type=preset_type, price_levels=levels)
+                  roles=_roles(db), preset_type=preset_type, price_levels=levels,
+                  activity=activity)
 
 
 @app.get("/admin/staff/new", response_class=HTMLResponse)

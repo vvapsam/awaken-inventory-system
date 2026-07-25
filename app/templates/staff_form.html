@@ -131,6 +131,69 @@
   </div>
 </form>
 
+{% if activity %}
+<div style="margin-top:26px">
+  <h2 style="margin-bottom:4px">Activity</h2>
+  <p class="muted small" style="margin:0 0 12px">This person's purchases, payments and waivers — wherever they appear as a customer.</p>
+
+  {% if activity.charges or activity.paid %}
+  <div class="grid" style="margin-bottom:14px">
+    <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(activity.charges) }}</div></div>
+    <div class="card stat"><div class="stat-label">Paid</div><div class="stat-value">{{ peso(activity.paid) }}</div></div>
+    <div class="card stat"><div class="stat-label">Balance</div><div class="stat-value">{{ peso(activity.balance) }}</div></div>
+  </div>
+  {% endif %}
+
+  {% if activity.sales %}
+  <h3>Purchases</h3>
+  <table class="dt">
+    <tr><th>When</th><th>Items</th><th>Payment</th><th>Total</th></tr>
+    {% for s in activity.sales %}
+    <tr>
+      <td>{{ s.occurred_at.strftime('%Y-%m-%d %H:%M') if s.occurred_at else '' }}</td>
+      <td>{% for it in s.items %}{{ it.qty|int }}× {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td>{% if s.is_credit %}<span class="tag">UNPAID</span>{% else %}{{ s.payment_method or 'cash' }}{% endif %}</td>
+      <td>{{ peso(s.total) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if activity.payments %}
+  <h3>Payments</h3>
+  <table class="dt">
+    <tr><th>When</th><th>Method</th><th>Amount</th></tr>
+    {% for p in activity.payments %}
+    <tr>
+      <td>{{ p.occurred_at.strftime('%Y-%m-%d %H:%M') if p.occurred_at else '' }}</td>
+      <td>{{ p.payment_method or '' }}</td>
+      <td>{{ peso(p.total) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if activity.waivers %}
+  <h3>Signed waivers</h3>
+  <table class="dt">
+    <tr><th>Signed</th><th>Name on waiver</th><th>How they found us</th><th>Signature</th></tr>
+    {% for w in activity.waivers %}
+    <tr>
+      <td>{{ w.signed_at.strftime('%Y-%m-%d %H:%M') if w.signed_at else '' }}</td>
+      <td>{{ w.full_name }}</td>
+      <td>{{ w.referral or '—' }}</td>
+      <td>{% if w.signature %}<a href="/waiver-sig/{{ w.id }}" target="_blank">View</a>{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if not activity.has_any %}
+  <p class="muted">No purchases, payments, or waivers recorded for this person yet.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 <script>
 var IS_EDIT = {{ 'true' if person else 'false' }};
 function toggleType(){
