@@ -8,10 +8,9 @@
 </div>
 <p class="muted small" style="margin:2px 0 12px">Stock waste, missing, and manual adjustments. Restocks live under Stocks.</p>
 
-<form method="get" action="/adjustments" style="display:flex;align-items:center;gap:8px;margin:6px 0 12px">
+<form method="get" action="/adjustments" class="sortbar">
   <label class="muted small" style="margin:0">Type</label>
-  <select name="type" onchange="this.form.submit()"
-          style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit">
+  <select name="type" onchange="this.form.submit()">
     <option value="all" {% if ftype == 'all' %}selected{% endif %}>All types</option>
     {% for t in ADJUST_TYPES %}
     <option value="{{ t }}" {% if ftype == t %}selected{% endif %}>{{ t|capitalize }}</option>

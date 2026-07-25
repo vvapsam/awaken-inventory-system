@@ -16,10 +16,9 @@
   </div>
 </div>
 
-<form method="get" action="/customers" style="display:flex;align-items:center;gap:8px;margin:6px 0 12px">
+<form method="get" action="/customers" class="sortbar">
   <label for="sort" class="muted small" style="margin:0">Sort by</label>
-  <select name="sort" id="sort" onchange="this.form.submit()"
-          style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit">
+  <select name="sort" id="sort" onchange="this.form.submit()">
     {% for key, label in CUSTOMER_SORTS %}
     <option value="{{ key }}" {% if sort == key %}selected{% endif %}>{{ label }}</option>
     {% endfor %}

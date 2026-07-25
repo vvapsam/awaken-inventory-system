@@ -50,6 +50,13 @@
     table.dt th .arr{opacity:.3;margin-left:6px;font-size:.82em}
     table.dt th.asc .arr,table.dt th.desc .arr{opacity:.85;color:var(--teal-dark)}
     tr.dt-none td{padding:16px;color:var(--muted);text-align:center}
+    .dt-pager{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin:12px 2px 4px;font-size:.85rem;color:var(--muted)}
+    .dt-pbtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 13px;font:inherit;font-size:.85rem;cursor:pointer;color:var(--ink)}
+    .dt-pbtn:disabled{opacity:.4;cursor:default}
+    .dt-pbtn:not(:disabled):hover{background:#f2f5f4}
+    .dt-pinfo{font-variant-numeric:tabular-nums}
+    .sortbar{display:flex;align-items:center;gap:8px;margin:6px 0 12px}
+    .sortbar select{width:auto;min-width:170px;padding:8px 11px;font-size:.9rem}
     td.ed{cursor:text}
     td.ed:hover{background:var(--teal-tint)}
     td.ed .edp{opacity:0;margin-left:6px;font-size:.85em;color:var(--muted)}
@@ -294,21 +301,44 @@
         && r.cells.length && r.querySelector('td');
     });
   }
+  var PAGE=50;
   Array.prototype.forEach.call(document.querySelectorAll('table.dt'), function(tbl){
     var head = tbl.querySelector('tr'); if(!head) return;
     var ths = Array.prototype.slice.call(head.cells);
+    var state={q:'', page:0};
     // search box
     var tools=document.createElement('div'); tools.className='dt-tools';
     tools.innerHTML='<label class="dt-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input type="search" placeholder="Search this table…" aria-label="Search table"></label>';
     tbl.parentNode.insertBefore(tools, tbl);
     var inp=tools.querySelector('input');
-    inp.addEventListener('input', function(){
-      var q=inp.value.trim().toLowerCase(), any=false;
-      rowsOf(tbl, head).forEach(function(r){
-        var show = !q || r.textContent.toLowerCase().indexOf(q)>=0;
-        r.style.display = show ? '' : 'none'; if(show) any=true;
+    // pagination bar (50 rows / page)
+    var pager=document.createElement('div'); pager.className='dt-pager';
+    tbl.parentNode.insertBefore(pager, tbl.nextSibling);
+    function matched(){
+      var q=state.q;
+      return rowsOf(tbl, head).filter(function(r){
+        return !q || r.textContent.toLowerCase().indexOf(q)>=0;
       });
-    });
+    }
+    function render(){
+      var all=rowsOf(tbl, head), m=matched();
+      var pages=Math.max(1, Math.ceil(m.length/PAGE));
+      if(state.page>pages-1) state.page=pages-1;
+      if(state.page<0) state.page=0;
+      var start=state.page*PAGE, end=start+PAGE;
+      all.forEach(function(r){ r.style.display='none'; });
+      m.slice(start, end).forEach(function(r){ r.style.display=''; });
+      if(m.length<=PAGE){ pager.style.display='none'; return; }
+      pager.style.display=''; pager.innerHTML='';
+      var prev=document.createElement('button'); prev.type='button'; prev.className='dt-pbtn'; prev.textContent='‹ Prev'; prev.disabled=state.page===0;
+      prev.onclick=function(){ state.page--; render(); };
+      var info=document.createElement('span'); info.className='dt-pinfo';
+      info.textContent=(start+1)+'–'+Math.min(end,m.length)+' of '+m.length;
+      var next=document.createElement('button'); next.type='button'; next.className='dt-pbtn'; next.textContent='Next ›'; next.disabled=state.page>=pages-1;
+      next.onclick=function(){ state.page++; render(); };
+      pager.appendChild(prev); pager.appendChild(info); pager.appendChild(next);
+    }
+    inp.addEventListener('input', function(){ state.q=inp.value.trim().toLowerCase(); state.page=0; render(); });
     // sortable headers
     ths.forEach(function(th, idx){
       if(!th.textContent.trim() || th.classList.contains('nosort')) return;
@@ -328,8 +358,10 @@
         if(!asc) rows.reverse();
         var parent=rows.length?rows[0].parentNode:tbl;
         rows.forEach(function(r){ parent.appendChild(r); });
+        state.page=0; render();
       });
     });
+    render();
   });
 })();
 
