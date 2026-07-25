@@ -1880,21 +1880,39 @@ def customer_balances(db):
                 Transaction.customer_id != None)
         .group_by(Transaction.customer_id).all()
     )
+    # Latest linked waiver per customer → proper first/last name + email for display.
+    wmap = {}
+    for w in (db.query(Waiver).filter(Waiver.customer_id != None)  # noqa: E711
+              .order_by(Waiver.signed_at.asc()).all()):
+        wmap[w.customer_id] = w                     # asc order → last wins = most recent
+
+    def _disp(c):
+        w = wmap.get(c.id)
+        if w:
+            return {"first": w.first_name or "", "last": w.last_name or "",
+                    "email": w.email or "", "phone": c.phone or ""}
+        parts = (c.name or "").split(" ")
+        return {"first": parts[0] if parts else "", "last": " ".join(parts[1:]),
+                "email": "", "phone": c.phone or ""}
+
+    def _row(c):
+        ch = charges.get(c.id, 0.0)
+        pd = float(paid.get(c.id, 0) or 0)
+        r = {"customer": c, "charges": ch, "paid": pd, "balance": ch - pd}
+        r.update(_disp(c))
+        return r
+
     rows = []
     seen = set()
     for c in db.query(Staff).filter(Staff.person_type == "customer").order_by(Staff.name).all():
-        ch = charges.get(c.id, 0.0)
-        pd = float(paid.get(c.id, 0) or 0)
-        rows.append({"customer": c, "charges": ch, "paid": pd, "balance": ch - pd})
+        rows.append(_row(c))
         seen.add(c.id)
     # Non-customer entities (employees/affiliates/etc.) who bought on credit still
     # need their balance tracked so it can be settled.
     extra = [i for i in (set(charges) | set(paid)) if i is not None and i not in seen]
     if extra:
         for c in db.query(Staff).filter(Staff.id.in_(extra)).order_by(Staff.name).all():
-            ch = charges.get(c.id, 0.0)
-            pd = float(paid.get(c.id, 0) or 0)
-            rows.append({"customer": c, "charges": ch, "paid": pd, "balance": ch - pd})
+            rows.append(_row(c))
     return rows
 
 

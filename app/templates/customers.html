@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block body %}
-<h1>Customer balances</h1>
+<h1>Customers</h1>
 
 <div class="grid">
   <div class="card stat">
@@ -14,19 +14,15 @@
 </div>
 
 <table class="dt">
-  <tr><th>Customer</th><th>Charged</th><th>Paid</th><th>Balance</th><th></th></tr>
+  <tr><th>First name</th><th>Last name</th><th>Email</th><th>Phone</th><th>Balance</th></tr>
   {% for r in rows %}
-  <tr class="{% if r.balance > 0.005 %}low{% endif %}">
-    <td><a href="/customer/{{ r.customer.id }}">{{ r.customer.name }}</a></td>
-    <td>{{ peso(r.charges) }}</td>
-    <td>{{ peso(r.paid) }}</td>
+  <tr class="{% if r.balance > 0.005 %}low{% endif %}" style="cursor:pointer"
+      onclick="location.href='/customer/{{ r.customer.id }}'">
+    <td><a href="/customer/{{ r.customer.id }}">{{ r.first or r.customer.name }}</a></td>
+    <td>{{ r.last or '—' }}</td>
+    <td>{{ r.email or '—' }}</td>
+    <td>{{ r.phone or '—' }}</td>
     <td><strong>{{ peso(r.balance) }}</strong></td>
-    <td class="actions-cell">
-      <a href="/customer/{{ r.customer.id }}">View</a>
-      {% if can(staff, 'payments.create') and r.balance > 0.005 %}
-      <a class="btn primary" style="padding:5px 12px" href="/customer/{{ r.customer.id }}/pay">Pay</a>
-      {% endif %}
-    </td>
   </tr>
   {% else %}<tr><td colspan="5" class="muted">No customers yet.</td></tr>{% endfor %}
 </table>
