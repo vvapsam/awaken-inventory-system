@@ -20,9 +20,7 @@
     <td class="actions-cell">
       {% if can(staff, 'sales.edit') %}<a href="/sale/{{ s.id }}/edit">Edit</a>{% endif %}
       {% if can(staff, 'sales.delete') %}
-      <form method="post" action="/sale/{{ s.id }}/delete" style="display:inline"
-            onsubmit="return confirm('Delete this sale? This cannot be undone.');">
-        <button type="submit" class="link-danger">Delete</button></form>
+      <button type="button" class="link-danger rec-del" data-id="{{ s.id }}">Delete</button>
       {% endif %}
     </td>
   </tr>
@@ -44,12 +42,75 @@
     <td class="actions-cell">
       {% if can(staff, mod ~ '.edit') %}<a href="/movement/{{ m.id }}/edit">Edit</a>{% endif %}
       {% if can(staff, mod ~ '.delete') %}
-      <form method="post" action="/movement/{{ m.id }}/delete" style="display:inline"
-            onsubmit="return confirm('Delete this movement? Stock will be recalculated.');">
-        <button type="submit" class="link-danger">Delete</button></form>
+      <button type="button" class="link-danger rec-del" data-id="{{ m.id }}">Delete</button>
       {% endif %}
     </td>
   </tr>
   {% else %}<tr><td colspan="7" class="muted">Nothing yet.</td></tr>{% endfor %}
 </table>
+
+<div id="dep-modal" class="dep-overlay">
+  <div class="dep-card">
+    <div class="dep-hd"><b id="dep-title">Can't delete yet</b><button type="button" id="dep-close" class="dep-x" aria-label="Close">✕</button></div>
+    <div id="dep-body"></div>
+  </div>
+</div>
+
+<style>
+.dep-overlay{position:fixed;inset:0;background:rgba(10,22,19,.5);display:none;align-items:center;justify-content:center;z-index:60;padding:20px;backdrop-filter:blur(2px)}
+.dep-overlay.on{display:flex}
+.dep-card{background:#fff;border-radius:16px;max-width:500px;width:100%;box-shadow:0 26px 70px rgba(6,20,16,.35);max-height:82vh;overflow:auto}
+.dep-hd{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
+.dep-x{border:0;background:#f0f2f1;width:32px;height:32px;border-radius:999px;cursor:pointer;font-size:.9rem}
+.dep-x:hover{background:#e4e8e6}
+#dep-body{padding:16px 18px}
+#dep-body p{margin:0 0 6px}
+.deptree{list-style:none;padding:0;margin:12px 0 0}
+.deptree li{position:relative;padding:11px 13px 11px 26px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;font-size:.92rem}
+.deptree li:before{content:"└";position:absolute;left:10px;top:10px;color:var(--muted)}
+.depkind{display:inline-block;font-size:.64rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;background:#eef1f2;color:#6b7280;padding:2px 7px;border-radius:5px;margin-right:7px}
+.deptree a{margin-left:8px;font-weight:700;white-space:nowrap}
+</style>
+
+<script>
+(function(){
+  var modal=document.getElementById('dep-modal');
+  var body=document.getElementById('dep-body');
+  var title=document.getElementById('dep-title');
+  function close(){ modal.classList.remove('on'); }
+  modal.addEventListener('click', function(e){ if(e.target===modal) close(); });
+  document.getElementById('dep-close').onclick=close;
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') close(); });
+  function showDeps(deps){
+    title.textContent='Can’t delete yet';
+    var n=deps.length;
+    var h='<p>This record is linked to <b>'+n+'</b> other record'+(n>1?'s':'')+'. '+
+          'Remove or unlink '+(n>1?'them':'it')+' first — here’s what depends on it:</p><ul class="deptree">';
+    deps.forEach(function(d){
+      h+='<li><span class="depkind">'+d.kind+'</span>'+d.label+
+         (d.link?' <a href="'+d.link+'" target="_blank">Open ›</a>':'')+'</li>';
+    });
+    h+='</ul>';
+    body.innerHTML=h; modal.classList.add('on');
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.rec-del'), function(btn){
+    btn.addEventListener('click', async function(){
+      var id=btn.getAttribute('data-id');
+      btn.disabled=true;
+      try{
+        var r=await fetch('/record/'+id+'/deps').then(function(x){return x.json();});
+        if(!r.ok){ alert(r.error||'Could not check this record'); return; }
+        if(r.deletable){
+          if(!confirm('Delete this record? This cannot be undone.')){ return; }
+          var d=await fetch('/record/'+id+'/delete',{method:'POST'}).then(function(x){return x.json();});
+          if(d.ok){ var tr=btn.closest('tr'); if(tr) tr.parentNode.removeChild(tr); }
+          else if(d.deps){ showDeps(d.deps); }
+          else { alert(d.error||'Could not delete'); }
+        } else { showDeps(r.deps); }
+      } catch(e){ alert('Network error — please try again.'); }
+      finally { btn.disabled=false; }
+    });
+  });
+})();
+</script>
 {% endblock %}

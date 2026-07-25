@@ -13,7 +13,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, text
+from sqlalchemy import func, text, or_
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -928,6 +928,76 @@ def movement_delete(request: Request, mid: int, db: Session = Depends(get_db)):
     db.delete(m)
     db.commit()
     return RedirectResponse("/records", status_code=303)
+
+
+# ---------- record delete with dependency check ----------
+
+def _tx_ref(d):
+    """A human label + link for a transaction that references another record."""
+    peso = lambda v: "₱{:,.2f}".format(float(v or 0))
+    when = (" · " + d.occurred_at.astimezone(_tz()).strftime("%b %d, %Y")) if d.occurred_at else ""
+    if d.type == TX_PAYMENT:
+        return {"kind": "Payment", "label": "Payment %s%s" % (peso(d.total or 0), when),
+                "link": ("/customer/%d" % d.customer_id) if d.customer_id else ""}
+    if d.type == TX_ORDER:
+        return {"kind": "Order", "label": "Order %s%s" % (d.number or ("#%d" % d.id), when),
+                "link": "/orders"}
+    if d.type == TX_INVOICE:
+        return {"kind": "Invoice", "label": "Invoice %s%s" % (d.number or ("#%d" % d.id), when),
+                "link": "/invoices/%d" % d.id}
+    if d.type == TX_CASH_SALE:
+        return {"kind": "Sale", "label": "Sale #%d%s" % (d.id, when), "link": "/sale/%d/edit" % d.id}
+    return {"kind": (d.type or "Record").title(), "label": "%s #%d" % ((d.type or "record"), d.id), "link": ""}
+
+
+def _tx_dependents(db, tx):
+    """Records whose FK points at this one (would be orphaned if it were deleted):
+    payments applied to it (parent_id) and any order/invoice converted into it."""
+    deps = (db.query(Transaction)
+            .filter(Transaction.id != tx.id,
+                    or_(Transaction.parent_id == tx.id, Transaction.converted_id == tx.id))
+            .order_by(Transaction.occurred_at.desc()).all())
+    return [_tx_ref(d) for d in deps]
+
+
+def _can_delete_record(staff, tx):
+    if tx.type == TX_CASH_SALE:
+        return can(staff, "sales.delete")
+    if tx.type == TX_INVENTORY:
+        return can(staff, "%s.delete" % module_for_type(tx.movement_type))
+    return False
+
+
+@app.get("/record/{tid}/deps")
+def record_deps(request: Request, tid: int, db: Session = Depends(get_db)):
+    staff = current_staff(request, db)
+    if not staff:
+        return JSONResponse({"ok": False, "error": "Not signed in"}, status_code=401)
+    tx = db.get(Transaction, tid)
+    if not tx:
+        return JSONResponse({"ok": False, "error": "Record not found"}, status_code=404)
+    if not _can_delete_record(staff, tx):
+        return JSONResponse({"ok": False, "error": "You can't delete this record"}, status_code=403)
+    deps = _tx_dependents(db, tx)
+    return {"ok": True, "deletable": len(deps) == 0, "deps": deps}
+
+
+@app.post("/record/{tid}/delete")
+def record_delete(request: Request, tid: int, db: Session = Depends(get_db)):
+    staff = current_staff(request, db)
+    if not staff:
+        return JSONResponse({"ok": False, "error": "Not signed in"}, status_code=401)
+    tx = db.get(Transaction, tid)
+    if not tx:
+        return JSONResponse({"ok": False, "error": "Record not found"}, status_code=404)
+    if not _can_delete_record(staff, tx):
+        return JSONResponse({"ok": False, "error": "You can't delete this record"}, status_code=403)
+    deps = _tx_dependents(db, tx)
+    if deps:
+        return JSONResponse({"ok": False, "deps": deps}, status_code=409)
+    db.delete(tx)          # items cascade; stock is recomputed from remaining movements
+    db.commit()
+    return {"ok": True}
 
 
 # ---------- sales: edit / delete ----------
