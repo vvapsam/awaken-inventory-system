@@ -2359,9 +2359,9 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
         end_d = _parse_date(to_s, tz) or today0
     elif selected_customer:  # customer view defaults to all their history
         range_key, start, end_d = "all", None, today0
-    else:  # default: today
-        range_key = range_key or "today"
-        start, end_d = today0, today0
+    else:  # default: show everything (all sales, every entry point incl. mobile)
+        range_key = range_key or "all"
+        start, end_d = None, today0
 
     q = db.query(Transaction).filter(Transaction.type == TX_CASH_SALE)
     if selected_customer:
@@ -2369,7 +2369,7 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
     if start is not None:
         q = q.filter(Transaction.occurred_at >= start.astimezone(timezone.utc))
     q = q.filter(Transaction.occurred_at < (end_d + timedelta(days=1)).astimezone(timezone.utc))
-    sales = q.order_by(Transaction.occurred_at.desc(), Transaction.id.desc()).limit(1000).all()
+    sales = q.order_by(Transaction.occurred_at.desc(), Transaction.id.desc()).limit(5000).all()
     rows = [_sale_row(s) for s in sales]
 
     total = sum(r["total"] for r in rows)
