@@ -218,8 +218,9 @@ def ocr_health():
 def order_bootstrap(db: Session = Depends(get_db)):
     products = [
         {"id": p.id, "name": p.name, "price": float(p.selling_price or 0),
-         "has_image": bool(p.image)}
-        for p in db.query(Product).filter(Product.is_active).order_by(Product.name).all()
+         "has_image": bool(p.image), "category": (p.category or "").strip()}
+        for p in db.query(Product).filter(Product.is_active)
+        .order_by(Product.category, Product.name).all()
     ]
     ps = get_settings(db)
     return {

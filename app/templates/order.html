@@ -26,14 +26,21 @@ input{font-family:inherit;font-size:16px}
 .back{margin-right:2px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 13px 8px 10px;font-weight:600;font-size:.86rem;display:inline-flex;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(15,15,15,.06)}
 .hero{margin:2px 2px 14px}.hero h1{font-size:1.4rem}.hero p{color:var(--muted);font-size:.9rem;margin-top:3px}
 .section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--muted);margin:4px 2px 10px}
-.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.ptile{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;text-align:left;display:flex;flex-direction:column;gap:5px}
-.ptile:active{transform:scale(.97)}
-.ptile.picked{border-color:var(--green);box-shadow:0 0 0 2px rgba(0,128,128,.3);background:var(--tint)}
-.ptile .thumb{height:66px;border-radius:10px;background:#EEF0F2;display:flex;align-items:center;justify-content:center;overflow:hidden;font-family:Poppins;font-weight:600;color:#9aa0a8;font-size:1.05rem}
-.ptile .thumb img{width:100%;height:100%;object-fit:cover}
-.ptile .pn{font-weight:600;font-size:.86rem;line-height:1.2}.ptile .pp{font-family:Poppins;font-weight:600;font-size:.88rem}
-.qbadge{position:absolute;top:6px;right:6px;background:var(--green);color:#fff;font-weight:700;min-width:23px;height:23px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:.78rem;padding:0 6px;box-shadow:0 2px 6px rgba(0,128,128,.35)}
+.catlbl{font-family:Poppins;font-weight:700;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:16px 2px 9px;display:flex;align-items:center;gap:7px}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.ptile{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .12s,box-shadow .12s}
+.ptile.picked{border-color:var(--green);box-shadow:0 0 0 2px rgba(0,128,128,.22)}
+.ptile .thumb{aspect-ratio:1/1;background:linear-gradient(135deg,#eef2f2,#e4ecec);display:flex;align-items:center;justify-content:center;overflow:hidden;font-family:Poppins;font-weight:700;color:#9aa0a8;font-size:1.5rem}
+.ptile .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.ptile .meta{padding:9px 10px 11px}
+.ptile .pn{font-weight:600;font-size:.84rem;line-height:1.25}
+.ptile .prow{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.ptile .pp{font-family:Poppins;font-weight:700;font-size:.88rem}
+.addb{width:31px;height:31px;border-radius:999px;background:var(--green);color:#fff;font-size:1.25rem;line-height:1;display:flex;align-items:center;justify-content:center;border:0;box-shadow:0 4px 10px rgba(0,128,128,.3);flex:none}
+.addb:active{transform:scale(.92)}
+.pstep{display:inline-flex;align-items:center;gap:3px;background:var(--paper);border-radius:999px;padding:3px}
+.pstep button{width:27px;height:27px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:1.05rem;font-weight:700;line-height:1;color:var(--green-d);display:flex;align-items:center;justify-content:center}
+.pstep .q{min-width:20px;text-align:center;font-weight:700;font-size:.86rem}
 .cartbar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(245,246,246,0),var(--paper) 30%)}
 .cta{width:100%;padding:15px 20px;border-radius:14px;font-family:Poppins;font-weight:600;font-size:1rem;background:var(--green);color:#fff;display:flex;justify-content:space-between;align-items:center}
 .cta:disabled{background:#E1E2E5;color:#9a9ba1}.cta .amt{font-weight:700}.cta.block{justify-content:center}
@@ -102,10 +109,7 @@ input{font-family:inherit;font-size:16px}
     <h1>Order &amp; Pay</h1>
     <p>Tap what you'd like — pay by cash or e-transfer.</p>
   </div>
-  <div class="storebody">
-    <div class="section-label" style="margin-top:16px">Menu</div>
-    <div class="pgrid" id="store-grid"><div class="loader">Loading…</div></div>
-  </div>
+  <div class="storebody" id="store-body"><div class="loader" style="padding:30px;text-align:center;color:var(--muted)">Loading…</div></div>
   <div class="cartbar"><button class="cta" id="to-review" disabled><span id="cta1-l">Add items</span><span class="amt" id="cta1-amt"></span></button></div>
 </section>
 
@@ -176,24 +180,45 @@ async function boot(){
     // store hero uses /order-logo directly; update the small icons on other screens
     $$('.mini-logo').forEach(i=>{i.src=src;i.classList.remove('hide');});
     $$('.mini-mark').forEach(m=>m.classList.add('hide'));}
-  const g=$('#store-grid');g.innerHTML='';
-  if(!PRODUCTS.length){g.innerHTML='<div class="loader">No items available right now.</div>';return;}
-  PRODUCTS.forEach(p=>{const t=document.createElement('button');t.className='ptile';t.dataset.pid=p.id;
-    const thumb=p.has_image?`<span class="thumb"><img src="/product-image/${p.id}"></span>`
-      :`<span class="thumb">${p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()}</span>`;
-    t.innerHTML=`${thumb}<span class="pn">${p.name}</span><span class="pp">${peso(p.price)}</span><span class="qbadge hide"></span>`;
-    t.onclick=()=>{cart[p.id]=(cart[p.id]||0)+1;paintStore();};g.appendChild(t);});
-  paintStore();
+  buildStore();
   // bank card details
   let bc='';if(PAY.bank_name)bc+=`<div class="paydetail"><span class="muted">Bank</span><b>${PAY.bank_name}</b></div>`;
   if(PAY.account_name)bc+=`<div class="paydetail"><span class="muted">Account name</span><b>${PAY.account_name}</b></div>`;
   $('#bank-card').innerHTML=bc; if(!bc)$('#bank-card').classList.add('hide');
   if(!PAY.has_qr)$('#qr-wrap').classList.add('hide');
 }
-function paintStore(){$$('#store-grid .ptile').forEach(t=>{const q=cart[t.dataset.pid],b=$('.qbadge',t);
-  if(q){t.classList.add('picked');b.textContent=q;b.classList.remove('hide');}else{t.classList.remove('picked');b.classList.add('hide');}});
-  const n=Object.keys(cart).length;$('#to-review').disabled=!n;
-  $('#cta1-l').textContent=n?'Review order':'Add items';$('#cta1-amt').textContent=n?peso(total()):'';}
+function initials(n){return n.split(' ').map(w=>w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();}
+function buildStore(){
+  const host=$('#store-body');host.innerHTML='';
+  if(!PRODUCTS.length){host.innerHTML='<div class="loader" style="padding:30px;text-align:center;color:var(--muted)">No items available right now.</div>';return;}
+  const groups=[],idx={};
+  PRODUCTS.forEach(p=>{const c=(p.category||'').trim()||'Other';
+    if(!(c in idx)){idx[c]=groups.length;groups.push({name:c,items:[]});}
+    groups[idx[c]].items.push(p);});
+  const single=groups.length<=1;
+  groups.forEach(gr=>{
+    if(!single){const l=document.createElement('div');l.className='catlbl';l.textContent=gr.name;host.appendChild(l);}
+    const grid=document.createElement('div');grid.className='pgrid';
+    gr.items.forEach(p=>{const t=document.createElement('div');t.className='ptile';t.dataset.pid=p.id;
+      const thumb=p.has_image?`<span class="thumb"><img src="/product-image/${p.id}" alt=""></span>`
+        :`<span class="thumb">${initials(p.name)}</span>`;
+      t.innerHTML=`${thumb}<div class="meta"><div class="pn">${p.name}</div>
+        <div class="prow"><span class="pp">${peso(p.price)}</span><span data-ctl></span></div></div>`;
+      grid.appendChild(t);});
+    host.appendChild(grid);});
+  paintStore();
+}
+function setQty(id,q){if(q<=0)delete cart[id];else cart[id]=q;paintStore();}
+function paintStore(){
+  $$('#store-body .ptile').forEach(t=>{const id=t.dataset.pid,q=cart[id]||0,ctl=$('[data-ctl]',t);
+    t.classList.toggle('picked',q>0);
+    if(q>0){ctl.innerHTML=`<span class="pstep"><button type="button" data-dec>−</button><span class="q">${q}</span><button type="button" data-inc>＋</button></span>`;
+      $('[data-dec]',ctl).onclick=()=>setQty(id,q-1);$('[data-inc]',ctl).onclick=()=>setQty(id,q+1);}
+    else{ctl.innerHTML=`<button type="button" class="addb" data-add>＋</button>`;$('[data-add]',ctl).onclick=()=>setQty(id,1);}});
+  const n=Object.values(cart).reduce((a,b)=>a+b,0);
+  $('#to-review').disabled=!n;
+  $('#cta1-l').innerHTML=n?`View order <span style="background:rgba(255,255,255,.25);border-radius:999px;padding:1px 8px;font-size:.82rem;margin-left:5px">${n} item${n>1?'s':''}</span>`:'Add items';
+  $('#cta1-amt').textContent=n?peso(total())+' ›':'';}
 $('#to-review').onclick=()=>{initReview();show('review');};
 function initReview(){const c=$('#review-lines');c.innerHTML='';Object.entries(cart).forEach(([id,q])=>{
   const p=PRODUCTS.find(x=>x.id==id);const row=document.createElement('div');row.className='cartline';
