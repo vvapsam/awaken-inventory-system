@@ -24,7 +24,7 @@
 </div>
 
 <h2>Pending{% if pending %} · {{ pending|length }}{% endif %}</h2>
-<div class="oq">
+<div class="oq" data-paginate>
   {% for o in pending %}
   <a class="ocard" href="/orders/{{ o.id }}">
     <span class="num">{{ o.number }}</span>
@@ -47,7 +47,7 @@
 
 {% if recent %}
 <h2>Recently decided</h2>
-<div class="oq">
+<div class="oq" data-paginate>
   {% for o in recent %}
   <a class="ocard" href="/orders/{{ o.id }}">
     <span class="num">{{ o.number }}</span>

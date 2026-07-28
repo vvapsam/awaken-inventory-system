@@ -365,6 +365,32 @@
   });
 })();
 
+/* Pagination for card lists (non-table): a [data-paginate] container whose direct
+   children are the items — same 50/page + Prev/Next as the tables. */
+(function(){
+  var PAGE=50;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-paginate]'), function(box){
+    var items=Array.prototype.filter.call(box.children, function(c){
+      return !c.classList.contains('empty') && !c.classList.contains('dt-pager'); });
+    if(items.length<=PAGE) return;
+    var page=0;
+    var pager=document.createElement('div'); pager.className='dt-pager';
+    box.parentNode.insertBefore(pager, box.nextSibling);
+    function render(){
+      var pages=Math.ceil(items.length/PAGE);
+      if(page>pages-1) page=pages-1; if(page<0) page=0;
+      var start=page*PAGE, end=start+PAGE;
+      items.forEach(function(it,i){ it.style.display=(i>=start && i<end)?'':'none'; });
+      pager.innerHTML='';
+      var prev=document.createElement('button'); prev.type='button'; prev.className='dt-pbtn'; prev.textContent='‹ Prev'; prev.disabled=page===0; prev.onclick=function(){ page--; render(); };
+      var info=document.createElement('span'); info.className='dt-pinfo'; info.textContent=(start+1)+'–'+Math.min(end,items.length)+' of '+items.length;
+      var next=document.createElement('button'); next.type='button'; next.className='dt-pbtn'; next.textContent='Next ›'; next.disabled=page>=pages-1; next.onclick=function(){ page++; render(); };
+      pager.appendChild(prev); pager.appendChild(info); pager.appendChild(next);
+    }
+    render();
+  });
+})();
+
 /* Inline edit: click a <td class="ed" data-url data-field [data-kind]> to edit,
    Enter/blur saves via POST JSON, Escape cancels. */
 (function(){
