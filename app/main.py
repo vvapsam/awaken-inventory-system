@@ -2185,7 +2185,8 @@ def customer_edit(request: Request, cid: int, db: Session = Depends(get_db)):
     c = db.get(Staff, cid)
     if not c:
         return RedirectResponse("/customers", status_code=303)
-    return render(request, "customer_form.html", db, staff, customer=c, error=None)
+    return render(request, "customer_form.html", db, staff, customer=c, error=None,
+                  activity=_person_activity(db, c.id))
 
 
 @app.post("/customer/{cid}/edit")

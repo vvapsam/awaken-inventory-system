@@ -43,6 +43,100 @@
   </div>
 </form>
 
+{% if c and activity %}
+<div class="subtabs" id="subtabs">
+  <button type="button" class="subtab active" data-tab="txn">Transactions{% if activity.sales or activity.payments %} <span class="subtab-c">{{ activity.sales|length + activity.payments|length }}</span>{% endif %}</button>
+  <button type="button" class="subtab" data-tab="waivers">Waivers{% if activity.waivers %} <span class="subtab-c">{{ activity.waivers|length }}</span>{% endif %}</button>
+</div>
+<div class="subpanel" data-panel="txn">
+  {% if activity.charges or activity.paid %}
+  <div class="grid" style="margin-bottom:14px">
+    <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(activity.charges) }}</div></div>
+    <div class="card stat"><div class="stat-label">Paid</div><div class="stat-value">{{ peso(activity.paid) }}</div></div>
+    <div class="card stat"><div class="stat-label">Balance</div><div class="stat-value">{{ peso(activity.balance) }}</div></div>
+  </div>
+  {% endif %}
+
+  {% if activity.sales %}
+  <h3>Purchases</h3>
+  <table class="dt">
+    <tr><th>When</th><th>Items</th><th>Payment</th><th>Total</th><th></th></tr>
+    {% for s in activity.sales %}
+    <tr style="cursor:pointer" onclick="location.href='/sale/{{ s.id }}/edit'">
+      <td>{{ s.occurred_at.strftime('%Y-%m-%d %H:%M') if s.occurred_at else '' }}</td>
+      <td>{% for it in s.items %}{{ it.qty|int }}× {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td>{% if s.is_credit %}<span class="tag">UNPAID</span>{% else %}{{ s.payment_method or 'cash' }}{% endif %}</td>
+      <td>{{ peso(s.total) }}</td>
+      <td class="actions-cell"><a href="/sale/{{ s.id }}/edit" onclick="event.stopPropagation()">View ›</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if activity.payments %}
+  <h3>Payments</h3>
+  <table class="dt">
+    <tr><th>When</th><th>Method</th><th>Amount</th></tr>
+    {% for p in activity.payments %}
+    <tr>
+      <td>{{ p.occurred_at.strftime('%Y-%m-%d %H:%M') if p.occurred_at else '' }}</td>
+      <td>{{ p.payment_method or '' }}</td>
+      <td>{{ peso(p.total) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if not (activity.sales or activity.payments) %}
+  <p class="muted">No purchases or payments recorded for this customer yet.</p>
+  {% endif %}
+</div>
+
+<div class="subpanel hide" data-panel="waivers">
+  {% if activity.waivers %}
+  <table class="dt">
+    <tr><th>Signed</th><th>Name on waiver</th><th>How they found us</th><th>Signature</th></tr>
+    {% for w in activity.waivers %}
+    <tr>
+      <td>{{ w.signed_at.strftime('%Y-%m-%d %H:%M') if w.signed_at else '' }}</td>
+      <td>{{ w.full_name }}</td>
+      <td>{{ w.referral or '—' }}</td>
+      <td>{% if w.signature %}<a href="/waiver-sig/{{ w.id }}" target="_blank">View</a>{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No waivers signed by this customer yet.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<style>
+.subtabs{display:inline-flex;gap:3px;background:#eef1f2;border-radius:10px;padding:3px;margin:24px 0 14px}
+.subtab{border:0;background:none;padding:7px 15px;border-radius:8px;font:inherit;font-weight:600;font-size:.86rem;color:var(--muted);cursor:pointer}
+.subtab:hover{color:var(--ink)}
+.subtab.active{background:#fff;color:#0b6b62;box-shadow:0 1px 3px rgba(11,26,23,.12)}
+.subtab-c{display:inline-block;font-size:.66rem;font-weight:800;background:#dfe6e4;color:#5c6b66;border-radius:999px;padding:1px 6px;margin-left:3px;vertical-align:middle}
+.subtab.active .subtab-c{background:#e2f2ec;color:#0b6b62}
+.subpanel.hide{display:none}
+</style>
+<script>
+(function(){
+  var tabs=document.querySelectorAll('#subtabs .subtab');
+  var panels=document.querySelectorAll('.subpanel');
+  Array.prototype.forEach.call(tabs, function(t){
+    t.addEventListener('click', function(){
+      Array.prototype.forEach.call(tabs, function(x){ x.classList.remove('active'); });
+      t.classList.add('active');
+      var name=t.getAttribute('data-tab');
+      Array.prototype.forEach.call(panels, function(p){
+        p.classList.toggle('hide', p.getAttribute('data-panel')!==name);
+      });
+    });
+  });
+})();
+</script>
+
 <style>
 .cust-form .fgroup{border:1px solid var(--line);border-radius:12px;padding:14px 16px 10px;margin-top:14px}
 .cust-form .fgroup-title{font-family:'Space Grotesk',inherit;font-weight:700;font-size:.78rem;letter-spacing:.05em;
