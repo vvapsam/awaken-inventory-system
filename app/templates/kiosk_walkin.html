@@ -96,6 +96,9 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
 .bankbox img{width:160px;height:160px;background:#fff;border-radius:10px;padding:6px;border:1px solid var(--line)}
 .bankbox .bn{font-weight:700;margin-top:8px}.bankbox .an{color:var(--muted);font-size:.85rem}
 .drop{border:1.6px dashed #cfd5da;border-radius:12px;text-align:center;padding:18px 10px;color:var(--muted);font-size:.9rem;background:#fcfdfd;cursor:pointer;margin-top:14px}
+.drop.has{border-color:var(--green,#22a06b);color:var(--green-d,#137a4c);background:#f2fbf7}
+.drop img{max-height:150px;max-width:100%;border-radius:8px;margin-top:8px;display:block;margin-left:auto;margin-right:auto}
+.drop{border:1.6px dashed #cfd5da;border-radius:12px;text-align:center;padding:18px 10px;color:var(--muted);font-size:.9rem;background:#fcfdfd;cursor:pointer;margin-top:14px}
 .drop.has{border-color:var(--green);color:var(--green-d);background:#f2fbf7}
 .drop img{max-height:150px;max-width:100%;border-radius:8px;margin-top:8px;display:block;margin-left:auto;margin-right:auto}
 .done{display:none;text-align:center;padding:22px 8px}
@@ -225,7 +228,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
       <div class="amt"><div><div class="k">Amount due</div><div class="v" id="amtv">₱0</div></div><div class="pl" id="amtplan"></div></div>
       <div id="dblPartner" class="partnote" style="display:none">👥 Doubles is <b>per person</b>. Your partner also needs to sign up / register separately.</div>
       <label class="lbl">Pay with</label>
-      <div class="seg"><div class="s on" id="mCash">Cash</div><div class="s" id="mBank">Bank transfer</div></div>
+      <div class="seg"><div class="s on" id="mCash">Cash</div><div class="s" id="mBank">E-transfer</div></div>
       <div id="cashInfo" class="hintp">Pay at the front desk to confirm your appointment.</div>
       <div id="bankInfo" style="display:none">
         <div class="bankbox">
@@ -233,7 +236,10 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
           <div class="bn">{{ bank.bank_name or 'AWAKEN' }}</div>
           {% if bank.account_name %}<div class="an">{{ bank.account_name }}</div>{% endif %}
         </div>
-        <div class="hintp">Send your payment, then approach the front desk to confirm.</div>
+        <div class="hintp">Send your payment, then upload your proof of payment below.</div>
+        <div class="drop" id="drop"><span id="dropTxt">📷 Tap to upload your payment screenshot</span>
+          <img id="preview" style="display:none"></div>
+        <input type="file" id="file" accept="image/*" capture="environment" style="display:none">
       </div>
       <button type="button" class="btn" id="submit">Submit</button>
       <div class="err" id="errPay"></div>
@@ -366,7 +372,15 @@ document.querySelectorAll('#s-hyrox2 .p').forEach(el=>el.onclick=()=>{
 
 /* ---------- pay (reservation — settled at the front desk) ---------- */
 $('payBack').onclick=()=>{ show(state.plan && String(state.plan.name).indexOf('HYROX')===0 ? 's-hyrox2':'s-activity'); };
-let method='cash';
+let method='cash', proof=null;
+$('drop').onclick=()=>$('file').click();
+$('file').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ proof=rd.result; $('preview').src=proof; $('preview').style.display='block';
+    $('dropTxt').textContent='✓ Screenshot attached — tap to change'; $('drop').classList.add('has'); };
+  rd.readAsDataURL(f);
+};
 function enterPay(){
   const p=state.plan; if(!p){ show('s-activity'); return; }
   $('amtv').textContent=money(p.price)+(p.doubles?' /pax':'');
@@ -410,8 +424,9 @@ function showDone(j){
 
 $('submit').onclick=async()=>{
   if(!state.plan){ show('s-activity'); return; }
+  if(method==='bank' && !proof){ $('errPay').textContent='Please attach your payment screenshot.'; return; }
   const btn=$('submit'), old=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
-  const payload=addIdentity({ flow:'walkin', token:$('token').value, plan_id:state.plan.id, method:method });
+  const payload=addIdentity({ flow:'walkin', token:$('token').value, plan_id:state.plan.id, method:method, proof: method==='bank'?proof:null });
   try{
     const r=await fetch('/api/kiosk/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await r.json();

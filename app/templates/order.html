@@ -100,7 +100,7 @@ input{font-family:inherit;font-size:16px}
     <div class="logoTile"><img src="/order-logo" alt="AWAKEN"
       onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<b>AWAKEN</b>')"></div>
     <h1>Order &amp; Pay</h1>
-    <p>Tap what you'd like — pay by cash or bank transfer.</p>
+    <p>Tap what you'd like — pay by cash or e-transfer.</p>
   </div>
   <div class="storebody">
     <div class="section-label" style="margin-top:16px">Menu</div>
@@ -124,7 +124,7 @@ input{font-family:inherit;font-size:16px}
 <section id="s-pay" class="screen">
   <div class="top"><button class="back" data-go="review">‹ Back</button><span class="brand" style="margin-left:auto"><img class="mini-logo hide" alt=""><svg class="mini-mark" viewBox="0 0 200 200" fill="currentColor"><path d="M100 12 L168 184 L140 184 L100 40 L60 184 L32 184 Z"/><path d="M100 88 L117 112 L100 136 L83 112 Z"/></svg></span></div>
   <div class="hero"><h1>How would you like to pay?</h1><p id="pay-total-line">Total due ₱0.00</p></div>
-  <div class="seg" id="pay-seg"><button data-m="cash">💵 Cash</button><button data-m="bank">🏦 Bank transfer</button></div>
+  <div class="seg" id="pay-seg"><button data-m="cash">💵 Cash</button><button data-m="bank">🏦 E-transfer</button></div>
 
   <div id="pay-cash" class="hide">
     <div class="note info">Pay <b id="cash-amt">₱0.00</b> in cash at the counter. Staff will confirm your order when you pay.</div>
@@ -232,7 +232,7 @@ $('#place').onclick=async()=>{
   let h='';Object.entries(cart).forEach(([id,q])=>{const p=PRODUCTS.find(x=>x.id==id);
     h+=`<div class="rl"><span>${p.name} ×${q}</span><span>${peso(p.price*q)}</span></div>`;});
   h+=`<div class="rl"><span class="muted">Name</span><span>${$('#cust-name').value.trim()||'—'}</span></div>`;
-  h+=`<div class="rl"><span class="muted">Payment</span><span>${payMode==='cash'?'Cash at counter':'Bank transfer'}</span></div>`;
+  h+=`<div class="rl"><span class="muted">Payment</span><span>${payMode==='cash'?'Cash at counter':'E-transfer'}</span></div>`;
   h+=`<div class="rl t"><span>Total</span><span>${peso(j.total)}</span></div>`;
   $('#done-recap').innerHTML=h;$('#done-ord').textContent=j.number;
   $('#done-tag').textContent=payMode==='cash'?'● Pay at the counter — staff will confirm':'● Waiting for staff to confirm your payment';

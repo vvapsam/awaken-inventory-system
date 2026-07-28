@@ -458,7 +458,7 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
     <div class="seg" id="pay-seg">
       <button data-pay="unpaid">Unpaid</button>
       <button data-pay="cash">Cash</button>
-      <button data-pay="bank">Bank</button>
+      <button data-pay="bank">E-transfer</button>
     </div>
 
     <!-- proof (cash/bank) -->
@@ -545,7 +545,7 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
   <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Back</button><h2 class="hd">Settle balance</h2></div>
   <div class="summary"><div class="lbl" id="set-name">Customer</div><div class="amt" id="set-amt">₱0.00</div><div class="sub">balance to settle</div></div>
   <div class="section-label" style="margin-top:8px">Payment method</div>
-  <div class="seg two" id="set-seg"><button data-set="cash">Cash</button><button data-set="bank">Bank</button></div>
+  <div class="seg two" id="set-seg"><button data-set="cash">Cash</button><button data-set="bank">E-transfer</button></div>
   <div class="photo">
     <label class="drop" id="set-drop">📷 Tap to attach payment screenshot
       <input type="file" accept="image/*" class="hide" id="set-input">
@@ -614,7 +614,7 @@ const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function payTag(p){
   let k,lbl;
-  if(p==='bank'){k='bank';lbl='Bank';}
+  if(p==='bank'){k='bank';lbl='E-transfer';}
   else if(p==='unpaid'){k='unpaid';lbl='Unpaid';}
   else if(p==='paid'){k='paid';lbl='Paid';}
   else {k='cash';lbl='Cash';}

@@ -21,7 +21,7 @@
 
 <a href="/orders" class="muted" style="font-size:.85rem">‹ Back to orders</a>
 <div class="row-between" style="margin-top:6px">
-  <h1 style="margin:0">{{ o.number }} <span class="mtag {{ o.payment_method }}">{{ 'Bank transfer' if o.payment_method=='bank' else 'Cash at counter' }}</span></h1>
+  <h1 style="margin:0">{{ o.number }} <span class="mtag {{ o.payment_method }}">{{ 'E-transfer' if o.payment_method=='bank' else 'Cash at counter' }}</span></h1>
   <span class="stat {{ o.status }}">{{ o.status }}</span>
 </div>
 <p class="muted small" style="margin-top:2px">Placed {{ o.created_at.astimezone(tz).strftime('%b %d, %Y · %I:%M %p') if o.created_at }}</p>
@@ -39,7 +39,7 @@
     <div class="card" style="margin-top:14px">
       <div class="paydetail" style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">Customer</span><b>{{ o.customer_name }}</b></div>
       {% if o.customer_phone %}<div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">Phone</span><b>{{ o.customer_phone }}</b></div>{% endif %}
-      <div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">Payment</span><b>{{ 'Bank transfer' if o.payment_method=='bank' else 'Cash at counter' }}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">Payment</span><b>{{ 'E-transfer' if o.payment_method=='bank' else 'Cash at counter' }}</b></div>
     </div>
 
     {% if o.payment_method=='bank' %}

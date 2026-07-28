@@ -206,16 +206,15 @@ async def kiosk_submit(request: Request, db: Session = Depends(get_db)):
         if price <= 0:
             return _err("This option isn't priced yet — please see the front desk.")
         plan_name = plan.name
-        # Bank proof: required for Sign-up; optional for Walk-in (reservation
-        # confirmed at the front desk, so a screenshot isn't mandatory).
+        # E-transfer proof of payment is required for BOTH flows (walk-in and
+        # sign-up) — no screenshot, no submission.
         if method == "bank":
             raw_proof = data.get("proof") or ""
-            if raw_proof:
-                proof_bytes, proof_mime = _decode_data_uri(raw_proof, MAX_PROOF, "image/jpeg")
-                if proof_bytes is None:
-                    return _err("Screenshot is too large or unreadable.")
-            elif flow == "signup":
+            if not raw_proof:
                 return _err("Please attach your payment screenshot")
+            proof_bytes, proof_mime = _decode_data_uri(raw_proof, MAX_PROOF, "image/jpeg")
+            if proof_bytes is None:
+                return _err("Screenshot is too large or unreadable.")
 
     # ---- identity: returning walk-in matched by email; everyone else signs ----
     fn = (data.get("first_name") or "").strip()

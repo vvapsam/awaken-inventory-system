@@ -29,7 +29,7 @@
   <a class="ocard" href="/orders/{{ o.id }}">
     <span class="num">{{ o.number }}</span>
     <span class="mid">
-      <div class="nm">{{ o.customer_name }} <span class="mtag {{ o.payment_method }}">{{ 'Bank' if o.payment_method=='bank' else 'Cash' }}</span></div>
+      <div class="nm">{{ o.customer_name }} <span class="mtag {{ o.payment_method }}">{{ 'E-transfer' if o.payment_method=='bank' else 'Cash' }}</span></div>
       <div class="sub">
         {% if o.payment_method=='bank' %}
           {% if o.check_amount_ok %}<span class="chk ok">✓ amount</span>{% elif o.check_amount_ok==False %}<span class="chk bad">✗ amount</span>{% else %}<span class="chk unk">? amount</span>{% endif %}
