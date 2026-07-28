@@ -148,13 +148,14 @@
   {% if activity.sales %}
   <h3>Purchases</h3>
   <table class="dt">
-    <tr><th>When</th><th>Items</th><th>Payment</th><th>Total</th></tr>
+    <tr><th>When</th><th>Items</th><th>Payment</th><th>Total</th><th></th></tr>
     {% for s in activity.sales %}
-    <tr>
+    <tr style="cursor:pointer" onclick="location.href='/sale/{{ s.id }}/edit'">
       <td>{{ s.occurred_at.strftime('%Y-%m-%d %H:%M') if s.occurred_at else '' }}</td>
       <td>{% for it in s.items %}{{ it.qty|int }}× {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
       <td>{% if s.is_credit %}<span class="tag">UNPAID</span>{% else %}{{ s.payment_method or 'cash' }}{% endif %}</td>
       <td>{{ peso(s.total) }}</td>
+      <td class="actions-cell"><a href="/sale/{{ s.id }}/edit" onclick="event.stopPropagation()">View ›</a></td>
     </tr>
     {% endfor %}
   </table>
