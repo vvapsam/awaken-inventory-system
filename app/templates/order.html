@@ -13,7 +13,7 @@ h1,h2,h3,.hd{font-family:Poppins;font-weight:700;letter-spacing:-.01em;margin:0}
 button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
 input{font-family:inherit;font-size:16px}
 .muted{color:var(--muted)}.hide{display:none!important}
-.screen{display:none;min-height:100vh;flex-direction:column;padding:14px 18px 110px}
+.screen{display:none;min-height:100vh;flex-direction:column;padding:14px 18px 110px;max-width:480px;margin:0 auto;width:100%}
 .screen.active{display:flex}
 .top{display:flex;align-items:center;gap:10px;padding:6px 2px 14px}
 .brand{display:flex;align-items:center;gap:8px;font-family:Poppins;font-weight:700;letter-spacing:.14em;font-size:.95rem}
@@ -41,7 +41,7 @@ input{font-family:inherit;font-size:16px}
 .pstep{display:inline-flex;align-items:center;gap:3px;background:var(--paper);border-radius:999px;padding:3px}
 .pstep button{width:27px;height:27px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:1.05rem;font-weight:700;line-height:1;color:var(--green-d);display:flex;align-items:center;justify-content:center}
 .pstep .q{min-width:20px;text-align:center;font-weight:700;font-size:.86rem}
-.cartbar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(245,246,246,0),var(--paper) 30%)}
+.cartbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(245,246,246,0),var(--paper) 30%)}
 .cta{width:100%;padding:15px 20px;border-radius:14px;font-family:Poppins;font-weight:600;font-size:1rem;background:var(--green);color:#fff;display:flex;justify-content:space-between;align-items:center}
 .cta:disabled{background:#E1E2E5;color:#9a9ba1}.cta .amt{font-weight:700}.cta.block{justify-content:center}
 .cartline{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
@@ -186,22 +186,32 @@ async function boot(){
   if(!PAY.has_qr)$('#qr-wrap').classList.add('hide');
 }
 function initials(n){return n.split(' ').map(w=>w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();}
+// group products into Food / Drinks / Vitargo (by category, with a name fallback)
+const DRINK_W=['drink','water','juice','soda','beverage','coffee','tea','shake','sports','pocari','gatorade','sip'];
+const FOOD_W =['food','snack','fruit','meal','egg','banana','sandwich','rice','bread','pastry','bar'];
+function groupOf(p){const c=(p.category||'').trim().toLowerCase(),n=(p.name||'').toLowerCase();
+  if(c.includes('vitargo')||n.includes('vitargo'))return 'Vitargo';
+  if(DRINK_W.some(w=>c.includes(w)))return 'Drinks';
+  if(FOOD_W.some(w=>c.includes(w)))return 'Food';
+  if(DRINK_W.some(w=>n.includes(w)))return 'Drinks';
+  if(FOOD_W.some(w=>n.includes(w)))return 'Food';
+  return 'Food';}
+function catRank(name){const n=name.toLowerCase();if(n==='food')return 0;if(n==='drinks')return 1;if(n==='vitargo')return 999;return 50;}
 function buildStore(){
   const host=$('#store-body');host.innerHTML='';
   if(!PRODUCTS.length){host.innerHTML='<div class="loader" style="padding:30px;text-align:center;color:var(--muted)">No items available right now.</div>';return;}
-  const groups=[],idx={};
-  PRODUCTS.forEach(p=>{const c=(p.category||'').trim()||'Other';
-    if(!(c in idx)){idx[c]=groups.length;groups.push({name:c,items:[]});}
-    groups[idx[c]].items.push(p);});
-  const single=groups.length<=1;
-  groups.forEach(gr=>{
-    if(!single){const l=document.createElement('div');l.className='catlbl';l.textContent=gr.name;host.appendChild(l);}
+  const map={};PRODUCTS.forEach(p=>{const g=groupOf(p);(map[g]=map[g]||[]).push(p);});
+  const names=Object.keys(map).sort((a,b)=>catRank(a)-catRank(b)||a.localeCompare(b));
+  const single=names.length<=1;
+  names.forEach(gname=>{
+    if(!single){const l=document.createElement('div');l.className='catlbl';l.textContent=gname;host.appendChild(l);}
     const grid=document.createElement('div');grid.className='pgrid';
-    gr.items.forEach(p=>{const t=document.createElement('div');t.className='ptile';t.dataset.pid=p.id;
+    map[gname].forEach(p=>{const t=document.createElement('div');t.className='ptile';t.dataset.pid=p.id;t.style.cursor='pointer';
       const thumb=p.has_image?`<span class="thumb"><img src="/product-image/${p.id}" alt=""></span>`
         :`<span class="thumb">${initials(p.name)}</span>`;
       t.innerHTML=`${thumb}<div class="meta"><div class="pn">${p.name}</div>
         <div class="prow"><span class="pp">${peso(p.price)}</span><span data-ctl></span></div></div>`;
+      t.onclick=()=>setQty(p.id,(cart[p.id]||0)+1);   // tap anywhere on the tile to add
       grid.appendChild(t);});
     host.appendChild(grid);});
   paintStore();
@@ -211,8 +221,10 @@ function paintStore(){
   $$('#store-body .ptile').forEach(t=>{const id=t.dataset.pid,q=cart[id]||0,ctl=$('[data-ctl]',t);
     t.classList.toggle('picked',q>0);
     if(q>0){ctl.innerHTML=`<span class="pstep"><button type="button" data-dec>−</button><span class="q">${q}</span><button type="button" data-inc>＋</button></span>`;
-      $('[data-dec]',ctl).onclick=()=>setQty(id,q-1);$('[data-inc]',ctl).onclick=()=>setQty(id,q+1);}
-    else{ctl.innerHTML=`<button type="button" class="addb" data-add>＋</button>`;$('[data-add]',ctl).onclick=()=>setQty(id,1);}});
+      $('[data-dec]',ctl).onclick=e=>{e.stopPropagation();setQty(id,q-1);};
+      $('[data-inc]',ctl).onclick=e=>{e.stopPropagation();setQty(id,q+1);};}
+    else{ctl.innerHTML=`<button type="button" class="addb" data-add>＋</button>`;
+      $('[data-add]',ctl).onclick=e=>{e.stopPropagation();setQty(id,1);};}});
   const n=Object.values(cart).reduce((a,b)=>a+b,0);
   $('#to-review').disabled=!n;
   $('#cta1-l').innerHTML=n?`View order <span style="background:rgba(255,255,255,.25);border-radius:999px;padding:1px 8px;font-size:.82rem;margin-left:5px">${n} item${n>1?'s':''}</span>`:'Add items';
