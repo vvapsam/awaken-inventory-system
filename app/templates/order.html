@@ -41,8 +41,8 @@ input{font-family:inherit;font-size:16px}
 .pstep{display:inline-flex;align-items:center;gap:3px;background:var(--paper);border-radius:999px;padding:3px}
 .pstep button{width:27px;height:27px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:1.05rem;font-weight:700;line-height:1;color:var(--green-d);display:flex;align-items:center;justify-content:center}
 .pstep .q{min-width:20px;text-align:center;font-weight:700;font-size:.86rem}
-.cartbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(245,246,246,0),var(--paper) 30%)}
-.cta{width:100%;padding:15px 20px;border-radius:14px;font-family:Poppins;font-weight:600;font-size:1rem;background:var(--green);color:#fff;display:flex;justify-content:space-between;align-items:center}
+.cartbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(238,241,242,0),var(--paper) 34%);z-index:60}
+.cta{width:100%;padding:15px 18px;border-radius:14px;font-family:Poppins;font-weight:600;font-size:.98rem;background:var(--green);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px;white-space:nowrap;box-shadow:0 10px 24px rgba(0,128,128,.3)}
 .cta:disabled{background:#E1E2E5;color:#9a9ba1}.cta .amt{font-weight:700}.cta.block{justify-content:center}
 .cartline{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
 .cartline:last-of-type{border-bottom:0}.cartline .cn{flex:1;font-weight:600;font-size:.92rem}.cartline .cn small{display:block;color:var(--muted);font-weight:500}
@@ -187,16 +187,16 @@ async function boot(){
 }
 function initials(n){return n.split(' ').map(w=>w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();}
 // group products into Food / Drinks / Vitargo (by category, with a name fallback)
-const DRINK_W=['drink','water','juice','soda','beverage','coffee','tea','shake','sports','pocari','gatorade','sip'];
-const FOOD_W =['food','snack','fruit','meal','egg','banana','sandwich','rice','bread','pastry','bar'];
+const DRINK_W=['drink','water','juice','soda','beverage','coffee','tea','shake','sports','pocari','gatorade','sip','coco','coconut','cola','sprite','vita'];
+const FOOD_W =['food','snack','fruit','meal','egg','banana','sandwich','rice','bread','pastry'];
 function groupOf(p){const c=(p.category||'').trim().toLowerCase(),n=(p.name||'').toLowerCase();
   if(c.includes('vitargo')||n.includes('vitargo'))return 'Vitargo';
-  if(DRINK_W.some(w=>c.includes(w)))return 'Drinks';
+  if(DRINK_W.some(w=>c.includes(w)))return 'Drinks';   // explicit category wins
   if(FOOD_W.some(w=>c.includes(w)))return 'Food';
-  if(DRINK_W.some(w=>n.includes(w)))return 'Drinks';
+  if(DRINK_W.some(w=>n.includes(w)))return 'Drinks';   // else guess from the name
   if(FOOD_W.some(w=>n.includes(w)))return 'Food';
-  return 'Food';}
-function catRank(name){const n=name.toLowerCase();if(n==='food')return 0;if(n==='drinks')return 1;if(n==='vitargo')return 999;return 50;}
+  return (p.category||'').trim()||'Other';}             // unknown → its own category, never a wrong guess
+function catRank(name){const n=name.toLowerCase();if(n==='food')return 0;if(n==='drinks')return 1;if(n==='vitargo')return 999;if(n==='other')return 900;return 50;}
 function buildStore(){
   const host=$('#store-body');host.innerHTML='';
   if(!PRODUCTS.length){host.innerHTML='<div class="loader" style="padding:30px;text-align:center;color:var(--muted)">No items available right now.</div>';return;}
