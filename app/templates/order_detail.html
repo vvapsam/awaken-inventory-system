@@ -19,7 +19,8 @@
 .btn.reject{border-color:#e6a49b;color:#9c2c1e}.btn.reject:hover{background:#fdecea}
 </style>
 
-<a href="/orders" class="muted" style="font-size:.85rem">‹ Back to orders</a>
+{% set is_kiosk = (o.subtype or '').startswith('kiosk_') %}
+<a href="{{ '/walkins' if is_kiosk else '/orders' }}" class="muted" style="font-size:.85rem">‹ Back to {{ 'walk-ins & sign-ups' if is_kiosk else 'retail orders' }}</a>
 <div class="row-between" style="margin-top:6px">
   <h1 style="margin:0">{{ o.number }} <span class="mtag {{ o.payment_method }}">{{ 'E-transfer' if o.payment_method=='bank' else 'Cash at counter' }}</span></h1>
   <span class="stat {{ o.status }}">{{ o.status }}</span>

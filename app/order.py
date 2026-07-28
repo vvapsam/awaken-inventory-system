@@ -480,21 +480,51 @@ def m_order_reject(request: Request, oid: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+# Retail store purchases (self-checkout) vs front-desk kiosk (walk-in / sign-up).
+_RETAIL = or_(Transaction.subtype.is_(None), ~Transaction.subtype.like("kiosk_%"))
+_KIOSK = Transaction.subtype.like("kiosk_%")
+
+
 @router.get("/orders", response_class=HTMLResponse)
 def orders_queue(request: Request, db: Session = Depends(get_db)):
+    """Retail Orders — product self-checkout only (not the front-desk kiosk)."""
     staff, redir = _require_orders(request, db)
     if redir:
         return redir
     pending = (db.query(Transaction)
-               .filter(Transaction.type == TX_ORDER, Transaction.status == "pending")
+               .filter(Transaction.type == TX_ORDER, Transaction.status == "pending", _RETAIL)
                .order_by(Transaction.created_at.desc()).all())
     recent = (db.query(Transaction)
-              .filter(Transaction.type == TX_ORDER, Transaction.status != "pending")
+              .filter(Transaction.type == TX_ORDER, Transaction.status != "pending", _RETAIL)
               .order_by(Transaction.decided_at.desc()).limit(20).all())
     return templates.TemplateResponse(
         "orders_queue.html",
         {"request": request, "staff": staff, "pending": pending, "recent": recent,
          "tz": _tz()},
+    )
+
+
+@router.get("/walkins", response_class=HTMLResponse)
+def frontdesk_queue(request: Request, db: Session = Depends(get_db)):
+    """Walk-ins & Sign-ups — everything that comes in from the front-desk QR."""
+    staff, redir = _require_orders(request, db)
+    if redir:
+        return redir
+    walkins = (db.query(Transaction)
+               .filter(Transaction.type == TX_ORDER, Transaction.status == "pending",
+                       Transaction.subtype == "kiosk_walkin")
+               .order_by(Transaction.created_at.desc()).all())
+    signups = (db.query(Transaction)
+               .filter(Transaction.type == TX_ORDER, Transaction.status == "pending",
+                       Transaction.subtype == "kiosk_membership")
+               .order_by(Transaction.created_at.desc()).all())
+    recent = (db.query(Transaction)
+              .filter(Transaction.type == TX_ORDER, Transaction.status != "pending", _KIOSK)
+              .order_by(Transaction.decided_at.desc()).limit(20).all())
+    return templates.TemplateResponse(
+        "frontdesk_queue.html",
+        {"request": request, "staff": staff, "walkins": walkins, "signups": signups,
+         "recent": recent, "tz": _tz()},
     )
 
 
@@ -529,10 +559,11 @@ def order_confirm(request: Request, oid: int, db: Session = Depends(get_db)):
     if redir:
         return redir
     o = db.get(Transaction, oid)
+    dest = "/walkins" if (o and (o.subtype or "").startswith("kiosk_")) else "/orders"
     if o and o.type == TX_ORDER and o.status == "pending":
         _confirm_order(db, o, staff)
         db.commit()
-    return RedirectResponse("/orders", status_code=303)
+    return RedirectResponse(dest, status_code=303)
 
 
 @router.post("/orders/{oid}/reject")
@@ -541,10 +572,11 @@ def order_reject(request: Request, oid: int, db: Session = Depends(get_db)):
     if redir:
         return redir
     o = db.get(Transaction, oid)
+    dest = "/walkins" if (o and (o.subtype or "").startswith("kiosk_")) else "/orders"
     if o and o.type == TX_ORDER and o.status == "pending":
         _reject_order(db, o, staff)
         db.commit()
-    return RedirectResponse("/orders", status_code=303)
+    return RedirectResponse(dest, status_code=303)
 
 
 # ================================================================= ADMIN SETTINGS
