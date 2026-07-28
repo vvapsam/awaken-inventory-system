@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#0F1115;--muted:#8A9099;--line:#E9EBEE;--paper:#F4F6F7;--white:#fff;
-  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--teal:#0F9E91;}
+  --green:#008080;--green-d:#006a6a;--green-dk:#005a5a;--teal:#008080;}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{font-family:Inter,system-ui,sans-serif;color:var(--ink);
@@ -17,12 +17,12 @@ body{font-family:Inter,system-ui,sans-serif;color:var(--ink);
   min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 h1,h2,h3{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
 .wrap{width:100%;max-width:440px;margin:0 auto;flex:1;display:flex;flex-direction:column}
-.hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 130%);color:#fff;
+.hero{background:linear-gradient(160deg,#006a6a 0%,#008080 60%,#009e9e 130%);color:#fff;
   padding:calc(46px + env(safe-area-inset-top)) 24px 54px;text-align:center;position:relative;flex:none}
 .hero:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:34px;background:var(--paper);border-radius:26px 26px 0 0}
-.logoTile{display:inline-flex;align-items:center;justify-content:center;filter:drop-shadow(0 6px 16px rgba(0,0,0,.28))}
-.logoTile img{height:64px;width:auto;max-width:260px;display:block}
-.logoTile b{font-family:Poppins;letter-spacing:.16em;color:#fff;font-size:1.6rem}
+.logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;padding:16px 26px;border-radius:20px;box-shadow:0 12px 30px rgba(0,0,0,.24)}
+.logoTile img{height:82px;width:auto;max-width:250px;display:block}
+.logoTile b{font-family:Poppins;letter-spacing:.16em;color:#005a5a;font-size:1.9rem}
 .hero h1{font-size:1.7rem;margin-top:16px}
 .hero p{color:rgba(255,255,255,.86);margin:7px 0 0;font-size:.95rem}
 .body{margin-top:-24px;position:relative;z-index:3;padding:0 18px 26px;display:flex;flex-direction:column;gap:13px;flex:1;background:var(--paper)}
@@ -38,13 +38,13 @@ h1,h2,h3{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
 .opt .arw{color:#c3c8ce;flex:none}.opt .arw svg{width:16px;height:16px;stroke-width:2.6}
 /* featured cards — Walk-in (green) + Buy drinks (dark), the two live actions */
 .opt.feature{padding:20px 18px;box-shadow:0 18px 40px rgba(11,26,23,.16)}
-.opt.walkin{background:linear-gradient(150deg,#0b6b62 0%,#0f9e91 60%,#18BE7C 130%);color:#fff}
+.opt.walkin{background:linear-gradient(150deg,#006a6a 0%,#008080 60%,#009e9e 130%);color:#fff}
 .opt.walkin h3{color:#fff;font-size:1.24rem}.opt.walkin p{color:rgba(255,255,255,.85)}
 .opt.walkin .ic{background:rgba(255,255,255,.18);color:#fff}
 .opt.walkin .arw{color:rgba(255,255,255,.8)}
 .opt.buy{background:linear-gradient(135deg,#14171c,#242c34)}
 .opt.buy h3{color:#fff;font-size:1.24rem}.opt.buy p{color:rgba(255,255,255,.72)}
-.opt.buy .ic{background:linear-gradient(135deg,#18BE7C,#0F9E91);color:#fff}
+.opt.buy .ic{background:linear-gradient(135deg,#00a3a3,#008080);color:#fff}
 .opt.buy .arw{color:rgba(255,255,255,.6)}
 /* review card — warm gold accent */
 .opt.review .ic{background:#fef2d6;color:#e5a11e}

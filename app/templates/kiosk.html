@@ -9,17 +9,17 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#0F1115;--muted:#8A9099;--line:#E4E7EA;--paper:#EEF1F2;--white:#fff;
-  --green:#18BE7C;--green-d:#0FA268;--green-dk:#0B6B62;--owed:#E2683F;}
+  --green:#008080;--green-d:#006a6a;--green-dk:#005a5a;--owed:#E2683F;}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);
   min-height:100vh;display:flex;flex-direction:column;align-items:center}
 h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em}
 .wrap{width:100%;max-width:560px;padding:0 0 48px}
-.hero{background:linear-gradient(160deg,#0b6b62 0%,#0f9e91 55%,#18BE7C 130%);color:#fff;
+.hero{background:linear-gradient(160deg,#006a6a 0%,#008080 60%,#009e9e 130%);color:#fff;
   padding:calc(env(safe-area-inset-top,0px) + 30px) 24px 40px;border-radius:0 0 26px 26px;text-align:center}
-.logoTile{display:inline-flex;align-items:center;justify-content:center;filter:drop-shadow(0 6px 16px rgba(0,0,0,.28))}
-.logoTile img{height:58px;width:auto;max-width:250px;display:block}
-.logoTile b{font-family:Poppins;letter-spacing:.16em;color:#fff;font-size:1.5rem}
+.logoTile{display:inline-flex;align-items:center;justify-content:center;background:#fff;padding:13px 20px;border-radius:16px;box-shadow:0 10px 26px rgba(0,0,0,.22)}
+.logoTile img{height:66px;width:auto;max-width:230px;display:block}
+.logoTile b{font-family:Poppins;letter-spacing:.16em;color:#005a5a;font-size:1.6rem}
 .hero h1{font-size:1.5rem;margin-top:14px}
 .hero p{color:rgba(255,255,255,.85);margin:6px 0 0;font-size:.9rem}
 .steps{display:flex;justify-content:center;gap:7px;margin:16px 0 0}
@@ -34,7 +34,7 @@ h1,h2,h3,.hd{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.02em
 .req{color:var(--owed)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 input[type=text],input[type=email],input[type=tel],select{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
-input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.16)}
+input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(0,128,128,.16)}
 .two .fld .lbl{margin-top:0}
 .sigbox{position:relative;border:1.5px dashed #cfd5da;border-radius:12px;background:#fcfdfd;height:180px;touch-action:none;overflow:hidden}
 .sigbox canvas{width:100%;height:100%;display:block}
@@ -62,7 +62,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
 .gate h2{font-size:1.25rem}.gate p{color:var(--muted);margin:8px 0 0;font-size:.95rem;line-height:1.5}
 /* plan cards */
 .plan{display:flex;align-items:center;gap:12px;border:1.6px solid var(--line);border-radius:14px;padding:14px 15px;margin-top:11px;cursor:pointer;background:#fff;transition:border-color .12s,box-shadow .12s}
-.plan.sel{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,190,124,.15)}
+.plan.sel{border-color:var(--green);box-shadow:0 0 0 3px rgba(0,128,128,.15)}
 .plan .rad{width:22px;height:22px;border-radius:999px;border:2px solid #cfd5da;flex:none;position:relative}
 .plan.sel .rad{border-color:var(--green)}
 .plan.sel .rad:after{content:"";position:absolute;inset:4px;border-radius:999px;background:var(--green)}
@@ -73,7 +73,7 @@ input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(24,
 .seg{display:flex;gap:10px;margin-top:6px}
 .seg .s{flex:1;border:1.6px solid var(--line);border-radius:12px;text-align:center;padding:14px 0;font-weight:700;font-size:.92rem;background:#fff;cursor:pointer}
 .seg .s.on{background:var(--green);color:#fff;border-color:var(--green)}
-.amt{background:linear-gradient(135deg,#0b6b62,#0f9e91 70%,#18BE7C 130%);color:#fff;border-radius:14px;padding:15px 17px;display:flex;justify-content:space-between;align-items:center}
+.amt{background:linear-gradient(135deg,#006a6a,#008080 70%,#009e9e 130%);color:#fff;border-radius:14px;padding:15px 17px;display:flex;justify-content:space-between;align-items:center}
 .amt .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.82);font-weight:600}
 .amt .v{font-family:Poppins;font-weight:800;font-size:1.5rem;margin-top:2px}
 .amt .pl{text-align:right;font-size:.82rem;color:rgba(255,255,255,.9)}
