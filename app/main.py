@@ -2110,25 +2110,10 @@ def customer_detail(request: Request, cid: int, db: Session = Depends(get_db)):
     customer = db.get(Staff, cid)
     if not customer:
         return RedirectResponse("/customers", status_code=303)
-    sales = (
-        db.query(Transaction).filter(
-            Transaction.type == TX_CASH_SALE, Transaction.customer_id == cid,
-            Transaction.is_credit == True)  # noqa: E712
-        .order_by(Transaction.occurred_at.desc()).all()
-    )
-    payments = (
-        db.query(Transaction).filter(
-            Transaction.type == TX_PAYMENT, Transaction.parent_id == None,  # noqa: E711
-            Transaction.customer_id == cid)
-        .order_by(Transaction.occurred_at.desc()).all()
-    )
-    charges = sum(s.total for s in sales)
-    paid = sum(p.total for p in payments)
-    waivers = (db.query(Waiver).filter(Waiver.customer_id == cid)
-               .order_by(Waiver.signed_at.desc()).all())
+    act = _person_activity(db, cid)  # ALL purchases + payments + waivers + balance
     return render(request, "customer_detail.html", db, staff, customer=customer,
-                  sales=sales, payments=payments, charges=charges, paid=paid,
-                  balance=charges - paid, waivers=waivers)
+                  sales=act["sales"], payments=act["payments"], charges=act["charges"],
+                  paid=act["paid"], balance=act["balance"], waivers=act["waivers"])
 
 
 def _save_customer_fields(c, form):
