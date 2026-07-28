@@ -1002,6 +1002,16 @@ def record_delete(request: Request, tid: int, db: Session = Depends(get_db)):
 
 # ---------- sales: edit / delete ----------
 
+def _sale_paid(db, sale):
+    """A sale counts as 'paid' — and so must NOT be deleted — if it was paid at
+    the counter, or if any payment has been recorded against it."""
+    if not sale.is_credit:
+        return True  # paid at the counter
+    return db.query(Transaction.id).filter(
+        Transaction.type == TX_PAYMENT,
+        Transaction.parent_id == sale.id).first() is not None
+
+
 @app.get("/sale/{sid}/edit", response_class=HTMLResponse)
 def sale_edit(request: Request, sid: int, db: Session = Depends(get_db)):
     staff, redir = require(request, db, perm="sales.edit")
@@ -1015,8 +1025,12 @@ def sale_edit(request: Request, sid: int, db: Session = Depends(get_db)):
     dt_value = local.strftime("%Y-%m-%dT%H:%M")
     products = db.query(Product).order_by(Product.name).all()
     customers = db.query(Staff).filter(Staff.is_active).order_by(Staff.name).all()
-    return render(request, "sale_edit.html", db, staff, sale=sale, error=None,
-                  dt_value=dt_value, products=products, customers=customers)
+    err = None
+    if request.query_params.get("err") == "paid":
+        err = "This sale has already been paid, so it can't be deleted. Refund or void it instead."
+    return render(request, "sale_edit.html", db, staff, sale=sale, error=err,
+                  dt_value=dt_value, products=products, customers=customers,
+                  can_delete=can(staff, "sales.delete"), is_paid=_sale_paid(db, sale))
 
 
 @app.post("/sale/{sid}/edit")
@@ -1105,9 +1119,13 @@ def sale_delete(request: Request, sid: int, db: Session = Depends(get_db)):
     if redir:
         return redir
     sale = db.get(Transaction, sid)
-    if sale and sale.type == TX_CASH_SALE:
-        db.delete(sale)  # cascades to items
-        db.commit()
+    if not sale or sale.type != TX_CASH_SALE:
+        return RedirectResponse("/records", status_code=303)
+    if _sale_paid(db, sale):
+        # safety net: a paid sale must not be deleted
+        return RedirectResponse("/sale/%d/edit?err=paid" % sid, status_code=303)
+    db.delete(sale)  # cascades to items
+    db.commit()
     return RedirectResponse("/records", status_code=303)
 
 

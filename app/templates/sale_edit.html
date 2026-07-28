@@ -81,11 +81,26 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
     <div><label>Unit price</label><input name="new_price" type="number" min="0" step="0.01" placeholder="base"></div>
   </div>
 
-  <div style="margin-top:16px">
+  <div style="margin-top:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <button type="submit" class="btn primary big">Save</button>
     <a class="btn" href="/records">Cancel</a>
+    {% if can_delete %}
+      <span style="flex:1"></span>
+      {% if is_paid %}
+        <button type="button" class="btn" disabled style="opacity:.5;cursor:not-allowed"
+                title="Paid sales can't be deleted">Delete</button>
+        <span class="muted small">Paid — can't delete</span>
+      {% else %}
+        <button type="button" class="btn" onclick="delSale()"
+                style="background:#c0392b;border-color:#c0392b;color:#fff">Delete sale</button>
+      {% endif %}
+    {% endif %}
   </div>
 </form>
+
+{% if can_delete and not is_paid %}
+<form id="delform" method="post" action="/sale/{{ sale.id }}/delete" style="display:none"></form>
+{% endif %}
 
 <script>
 function toggleMethod(){
@@ -104,5 +119,10 @@ function recalc(){
   document.getElementById('saletot').textContent='₱'+t.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 toggleMethod(); recalc();
+function delSale(){
+  if(confirm('Delete this sale? This can’t be undone.')){
+    document.getElementById('delform').submit();
+  }
+}
 </script>
 {% endblock %}
