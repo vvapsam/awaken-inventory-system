@@ -814,6 +814,10 @@ class CommissionBooking(Base):
     rule = Column(String)
     rate_type = Column(String)
     rate_value = Column(Numeric(10, 4))
+    # A rate typed by hand on this row. Survives Recalculate — otherwise the
+    # correction you just made would be silently undone by the next config edit.
+    rate_manual = Column(Boolean, nullable=False, default=False)
+    rate_manual_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     commission = Column(Numeric(10, 2))
     delegation_charge = Column(Numeric(10, 2))
     # --- excluded rows are kept, flagged, and shown ---
@@ -835,6 +839,30 @@ class CommissionBooking(Base):
     def is_commissionable(self):
         """Completed by default, or another status a reviewer has approved."""
         return self.is_completed or bool(self.approved)
+
+
+class CommissionSignoff(Base):
+    """One coach's figures on one run, confirmed correct and cleared to pay.
+
+    Separate from the per-booking `approved` flag: that decides whether a row
+    counts, this says the whole sheet has been checked. Finalizing pays only
+    coaches that carry one, so nobody is paid on figures no one has read.
+    """
+    __tablename__ = "commission_signoffs"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    coach = Column(String, nullable=False)
+    sessions = Column(Integer)                     # what was signed off, for audit
+    commission = Column(Numeric(10, 2))
+    approved_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    approved_at = Column(DateTime(timezone=True))
+
+    run = relationship("CommissionRun")
+    approved_by = relationship("Staff", foreign_keys=[approved_by_id])
+
+    __table_args__ = (UniqueConstraint("run_id", "coach",
+                                       name="uq_commission_signoff_coach"),)
 
 
 class CommissionPayout(Base):

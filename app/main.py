@@ -392,6 +392,14 @@ def startup():
                 "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
                 "CREATE INDEX IF NOT EXISTS commission_bookings_ref_idx "
                 "ON commission_bookings (booking_ref); END IF; END $$;"))
+            # A rate typed by hand on one booking row.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  rate_manual BOOLEAN NOT NULL DEFAULT FALSE; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  rate_manual_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
+                "END IF; END $$;"))
             # Coach overrides moved from a comma-separated column with one
             # shared rate to a row per plan, each with its own basis and rate.
             # Copy first, then drop the old columns — leaving them would let a

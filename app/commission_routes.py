@@ -30,7 +30,7 @@ from .models import (
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
     CommissionBooking, CommissionCharge, CommissionChargeLine,
     CommissionCoachOverride, CommissionCoachRate, CommissionDelegator, CommissionPayout,
-    CommissionPayoutLine, CommissionRun, CommissionSetting, Staff,
+    CommissionPayoutLine, CommissionRun, CommissionSetting, CommissionSignoff, Staff,
 )
 
 MONTHS = ("January February March April May June July August September "
@@ -259,17 +259,48 @@ def run_totals(run: CommissionRun) -> dict:
     }
 
 
-def blockers(run: CommissionRun) -> dict:
-    """Unmapped staff and unrecognised delegator codes. Both block finalizing —
-    a coach silently missing from a payout is the failure this prevents."""
+def signoffs(run: CommissionRun, db: Session) -> dict:
+    """coach -> the sign-off row, for the coaches whose figures are confirmed."""
+    rows = db.query(CommissionSignoff).filter_by(run_id=run.id).all()
+    return {s.coach: s for s in rows}
+
+
+def void_signoff(db: Session, rid: int, coach: str | None = None) -> None:
+    """Drop a sign-off because the figures behind it changed.
+
+    A confirmation is only worth anything if it can't outlive the numbers it
+    confirmed, so anything that moves the money clears it and asks again.
+    """
+    q = db.query(CommissionSignoff).filter_by(run_id=rid)
+    if coach is not None:
+        q = q.filter_by(coach=coach)
+    for row in q.all():
+        db.delete(row)
+
+
+def unsigned(run: CommissionRun, db: Session) -> list:
+    """Coaches carrying commission that nobody has confirmed yet."""
+    signed = signoffs(run, db)
+    return sorted({(b.coach or b.staff_raw) for b in _live(run)
+                   if b.is_commissionable and (b.coach or b.staff_raw) not in signed})
+
+
+def blockers(run: CommissionRun, db: Session | None = None) -> dict:
+    """What stands between this run and a payout.
+
+    Unmapped staff and unrecognised delegator codes would silently drop money;
+    an unsigned coach means figures nobody has confirmed. All three stop a
+    finalize rather than producing a payout somebody has to unpick later.
+    """
     unmapped, unknown = {}, {}
     for b in _live(run):
         if not b.coach:
             unmapped[b.staff_raw or "(blank)"] = unmapped.get(b.staff_raw or "(blank)", 0) + 1
         if re.search(r"\bdelegation\b", b.variant or "", re.I) and not b.delegator_id:
             unknown[b.variant] = unknown.get(b.variant, 0) + 1
-    return {"unmapped": unmapped, "unknown": unknown,
-            "blocking": bool(unmapped or unknown)}
+    waiting = unsigned(run, db) if db is not None else []
+    return {"unmapped": unmapped, "unknown": unknown, "unsigned": waiting,
+            "blocking": bool(unmapped or unknown or waiting)}
 
 
 #: Statuses that carry no commission unless a reviewer approves them.
@@ -279,6 +310,39 @@ REVIEWABLE = ("cancelled", "late cancelled", "no show", "booked")
 def pending(run: CommissionRun):
     """Non-Completed bookings still awaiting a decision."""
     return [b for b in _live(run) if not b.is_completed and not b.approved]
+
+
+def status_groups(run: CommissionRun, pick: str | None = None) -> dict:
+    """Every booking in the run, bucketed by export status.
+
+    The Rezerv export can be filtered to Completed only; when it isn't, this is
+    where the rest of the data becomes visible instead of being buried inside
+    each coach's page.
+    """
+    order = list(BOOKING_STATUSES)
+    rows = _live(run)
+    buckets, seen = [], set()
+    for status in order + sorted({(b.booking_status or "—") for b in rows}):
+        key = (status or "—").strip()
+        if key.lower() in seen:
+            continue
+        seen.add(key.lower())
+        items = [b for b in rows
+                 if (b.booking_status or "—").strip().lower() == key.lower()]
+        buckets.append({
+            "status": key,
+            "rows": sorted(items, key=lambda r: (r.appointment_date or date.min,
+                                                 r.coach or r.staff_raw or "")),
+            "count": len(items),
+            "counting": len([b for b in items if b.is_commissionable]),
+            "revenue": sum((Decimal(str(b.revenue or 0)) for b in items), Decimal(0)),
+            "commission": sum((Decimal(str(b.commission or 0))
+                               for b in items if b.is_commissionable), Decimal(0)),
+        })
+    chosen = next((b for b in buckets
+                   if pick and b["status"].lower() == pick.strip().lower()), None)
+    return {"buckets": buckets, "chosen": chosen,
+            "total": len(rows)}
 
 
 def coach_summary(run: CommissionRun):
@@ -328,6 +392,11 @@ def recompute(b: CommissionBooking, config: engine.Config, db: Session,
     if dmap is None:
         dmap = delegator_map(db)
     delegator = dmap.get(b.delegator_id) if b.delegator_id else None
+    # A hand-typed rate is held back from the engine and re-applied after, so
+    # editing a coach's default can't quietly overwrite a deliberate correction.
+    manual = None
+    if b.rate_manual and b.rate_type:
+        manual = (b.rate_type, Decimal(str(b.rate_value or 0)))
     row = engine.recompute_row(_to_engine_row(b, delegator), config)
     b.revenue = row.revenue
     b.adjustment = row.adjustment
@@ -337,6 +406,17 @@ def recompute(b: CommissionBooking, config: engine.Config, db: Session,
     b.rate_value = row.rate_value
     b.commission = row.commission
     b.delegation_charge = row.delegation_charge
+    if manual and row.commission is not None and row.rule != "delegation":
+        b.rate_type, b.rate_value = manual
+        b.rule = "manual"
+        b.commission = engine.money(
+            manual[1] if manual[0] == COMMISSION_FLAT
+            else Decimal(str(row.revenue or 0)) * manual[1])
+    elif manual and (row.commission is None or row.rule == "delegation"):
+        # The row stopped being payable, or became a delegation settled with
+        # the delegator; either way the manual rate no longer has anything to
+        # apply to, so drop the flag rather than leave a stale marker.
+        b.rate_manual = False
 
 
 def coach_groups(run: CommissionRun, coach: str):
@@ -829,11 +909,17 @@ def register(app, deps):
         for d in by_delegator.values():
             d["margin"] = d["charged"] - d["cost"]
         waiting = pending(run)
+        signed = signoffs(run, db)
+        summary = coach_summary(run)
+        for row in summary:
+            row["signoff"] = signed.get(row["coach"])
         return render(request, "commission_run.html", db, staff, run=run, tab=tab,
                       plans=plans, prows=prows, ptotals=ptotals,
-                      totals=run_totals(run), block=blockers(run),
+                      totals=run_totals(run), block=blockers(run, db),
                       adjusted=adjusted, dropped=dropped, delegated=delegated,
-                      by_delegator=by_delegator, coaches=coach_summary(run),
+                      by_delegator=by_delegator, coaches=summary,
+                      statuses=status_groups(run, request.query_params.get("status")),
+                      status_pick=request.query_params.get("status") or "",
                       pending=waiting, pending_count=len(waiting),
                       RUN_DRAFT=RUN_DRAFT, RUN_FINALIZED=RUN_FINALIZED)
 
@@ -863,7 +949,105 @@ def register(app, deps):
             delegation_sessions=len(dele),
             approved_count=len([b for b in rows if b.approved]),
             pending_count=len([b for b in rows if not b.is_completed and not b.approved]),
+            manual_count=len([b for b in rows if b.rate_manual]),
+            signoff=signoffs(run, db).get(coach),
+            rate_types=COMMISSION_RATE_TYPES,
             is_draft=(run.status == RUN_DRAFT))
+
+    @app.get("/commissions/{rid}/coach/{coach}/statement.pdf")
+    def commission_statement_pdf(request: Request, rid: int, coach: str,
+                                 download: str = "", db: Session = Depends(get_db)):
+        """The coach's statement as a PDF.
+
+        Served inline by default so the browser's own viewer is the preview —
+        no second rendering path to drift out of step with the real document.
+        """
+        from fastapi.responses import Response
+        from . import commission_pdf
+
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        if not run:
+            return RedirectResponse("/commissions", status_code=303)
+        rows = sorted(
+            (b for b in _live(run)
+             if (b.coach or b.staff_raw) == coach and b.is_commissionable),
+            key=lambda r: (r.appointment_date or date.min, r.booking_ref or ""))
+        pdf = commission_pdf.statement(
+            run, coach, rows,
+            signoff=signoffs(run, db).get(coach),
+            generated_by=getattr(staff, "name", "") or "")
+        name = "commission-%s-%s.pdf" % (
+            re.sub(r"[^A-Za-z0-9]+", "-", coach).strip("-").lower(),
+            re.sub(r"[^A-Za-z0-9]+", "-", run.period or "").strip("-").lower())
+        disp = "attachment" if download else "inline"
+        return Response(pdf, media_type="application/pdf", headers={
+            "Content-Disposition": '%s; filename="%s"' % (disp, name)})
+
+    @app.post("/commissions/{rid}/coach/{coach}/signoff")
+    def commission_signoff(request: Request, rid: int, coach: str,
+                           confirm: str = Form("on"),
+                           db: Session = Depends(get_db)):
+        """Confirm one coach's figures are correct and clear them for payout."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        back = f"/commissions/{rid}/coach/{coach}"
+        if not run or run.status != RUN_DRAFT:
+            return RedirectResponse(back, status_code=303)
+        existing = (db.query(CommissionSignoff)
+                    .filter_by(run_id=rid, coach=coach).first())
+        if confirm != "on":
+            if existing:
+                db.delete(existing)
+                db.commit()
+            return RedirectResponse(back, status_code=303)
+        rows = [b for b in _live(run)
+                if (b.coach or b.staff_raw) == coach and b.is_commissionable]
+        row = existing or CommissionSignoff(run_id=rid, coach=coach)
+        row.sessions = len(rows)
+        row.commission = sum((Decimal(str(b.commission or 0)) for b in rows), Decimal(0))
+        row.approved_by_id = staff.id
+        row.approved_at = datetime.now(timezone.utc)
+        db.add(row)
+        db.commit()
+        return RedirectResponse(back, status_code=303)
+
+    @app.post("/commissions/{rid}/booking/{bid}/rate")
+    def commission_booking_rate(request: Request, rid: int, bid: int,
+                                rate_type: str = Form(COMMISSION_PERCENT),
+                                rate_value: str = Form("0"),
+                                reset: str = Form(""),
+                                db: Session = Depends(get_db)):
+        """Set (or clear) a hand-typed rate on a single booking."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        b = db.get(CommissionBooking, bid)
+        if not run or not b or b.run_id != rid:
+            return RedirectResponse(f"/commissions/{rid}", status_code=303)
+        coach = b.coach or b.staff_raw
+        back = f"/commissions/{rid}/coach/{coach}#{b.booking_ref or ''}"
+        if run.status != RUN_DRAFT:
+            return RedirectResponse(back, status_code=303)
+        if reset == "on":
+            b.rate_manual = False
+            b.rate_manual_by_id = None
+        else:
+            b.rate_manual = True
+            b.rate_manual_by_id = staff.id
+            b.rate_type = rate_type
+            b.rate_value = _num(rate_value, rate_type)
+        recompute(b, build_config(db), db)
+        # Changing the money invalidates a sign-off — it confirmed figures
+        # that no longer exist.
+        void_signoff(db, rid, coach)
+        db.commit()
+        return RedirectResponse(back, status_code=303)
 
     @app.post("/commissions/{rid}/recalculate")
     def commission_recalculate(request: Request, rid: int,
@@ -884,6 +1068,7 @@ def register(app, deps):
         dmap = delegator_map(db)
         for b in _live(run):
             recompute(b, config, db, dmap)
+        void_signoff(db, rid)
         db.commit()
         return RedirectResponse(f"/commissions/{rid}", status_code=303)
 
@@ -907,6 +1092,7 @@ def register(app, deps):
         b.approved_by_id = staff.id if b.approved else None
         b.approved_at = datetime.now(timezone.utc) if b.approved else None
         recompute(b, build_config(db), db)
+        void_signoff(db, rid, coach)
         db.commit()
         return RedirectResponse(f"{back}/coach/{coach}#{b.booking_ref or ''}",
                                 status_code=303)
@@ -933,6 +1119,7 @@ def register(app, deps):
             b.approved_by_id = staff.id if want else None
             b.approved_at = datetime.now(timezone.utc) if want else None
             recompute(b, config, db)
+        void_signoff(db, rid, coach)
         db.commit()
         return RedirectResponse(f"/commissions/{rid}/coach/{coach}", status_code=303)
 
@@ -958,7 +1145,7 @@ def register(app, deps):
         run = db.get(CommissionRun, rid)
         if not run or run.status != RUN_DRAFT:
             return RedirectResponse("/commissions", status_code=303)
-        if blockers(run)["blocking"]:
+        if blockers(run, db)["blocking"]:
             return RedirectResponse(f"/commissions/{rid}", status_code=303)
 
         done = [b for b in _live(run) if b.is_commissionable]
