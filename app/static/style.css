@@ -193,3 +193,10 @@ tr.inactive{opacity:.5}
   .app.collapsed .nav-label{display:block}
   .content{padding:16px 14px 72px}
 }
+
+/* Filter / tab pills — was inline in staff.html; shared so other pages can use it. */
+.tfilter{display:flex;gap:8px;margin:10px 0 4px;flex-wrap:wrap}
+.tfilter a{font-size:.82rem;padding:5px 12px;border:1px solid var(--line);border-radius:999px;
+  color:var(--muted);text-decoration:none;background:var(--bg)}
+.tfilter a:hover{border-color:var(--teal);color:var(--teal-dark)}
+.tfilter a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
