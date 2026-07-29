@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% macro money(rate) %}{% if rate.rate_type == 'percent' %}{{ '%g'|format(rate.rate_value * 100) }}%{% else %}₱{{ '%.2f'|format(rate.rate_value) }}{% endif %}{% endmacro %}
 {% block body %}
 <div class="row-between">
   <div>
@@ -9,48 +10,29 @@
 {% include "_commission_tabs.html" %}
 
 <table>
-  <tr><th>Coach</th><th>Rezerv name</th><th>Basis</th><th style="text-align:right">Rate</th>
-      <th>Override plans</th><th style="text-align:right">Override</th><th>Active</th><th></th></tr>
+  <tr><th>Coach</th><th>Rezerv name</th><th>Default basis</th><th style="text-align:right">Default rate</th>
+      <th>Overrides</th><th>Status</th></tr>
   {% for r in rates %}
-  <tr>
-    <form method="post" action="/admin/commission-rates/{{ r.id }}">
+  <tr data-modal="coach-{{ r.id }}"{% if not r.coach_id %} class="needs"{% endif %}>
+    <td><b>{{ r.coach }}</b></td>
+    <td class="mono">{{ r.staff_raw }}</td>
+    <td>{{ 'Percent of revenue' if r.rate_type == 'percent' else 'Fixed amount' }}</td>
+    <td style="text-align:right;color:var(--teal-dark);font-weight:650">{{ money(r) }}</td>
     <td>
-      <select name="coach_id" style="width:150px">
-        <option value="">— unlinked —</option>
-        {% for person in people %}
-        <option value="{{ person.id }}" {{ 'selected' if r.coach_id == person.id }}>{{ person.name }}</option>
-        {% endfor %}
-      </select>
-      <input type="hidden" name="coach" value="{{ r.coach }}">
-      {% if r.coach_id %}<div class="small"><a href="/admin/staff/{{ r.coach_id }}/edit">{{ r.coach }} ↗</a></div>
-      {% else %}<div class="small" style="color:#9c2c1e">{{ r.coach }} · not linked</div>{% endif %}
+      {% if r.live_overrides %}
+        <span class="ov" title="{% for o in r.live_overrides %}{{ o.plan }} · {{ money(o) }}{{ ', ' if not loop.last }}{% endfor %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>{{ r.live_overrides|length }}</span>
+      {% else %}<span class="ov none">—</span>{% endif %}
     </td>
-    <td><input name="staff_raw" value="{{ r.staff_raw }}" style="width:130px" class="mono"></td>
     <td>
-      <select name="rate_type" style="width:130px">
-        {% for k, label in rate_types %}<option value="{{ k }}" {{ 'selected' if r.rate_type == k }}>{{ label }}</option>{% endfor %}
-      </select>
+      {% if not r.coach_id %}<span class="tag amber">Not linked</span>
+      {% elif r.is_active %}<span class="tag">Active</span>
+      {% else %}<span class="tag" style="background:#8a94a1">Inactive</span>{% endif %}
     </td>
-    <td style="text-align:right">
-      <input name="rate_value" style="width:90px;text-align:right"
-             value="{{ '%g'|format(r.rate_value * 100) if r.rate_type == 'percent' else '%g'|format(r.rate_value) }}">
-      <span class="muted small">{{ '%' if r.rate_type == 'percent' else '₱' }}</span>
-    </td>
-    <td><input name="override_plans" value="{{ r.override_plans or '' }}" style="width:190px" placeholder="drop-in, awaken force"></td>
-    <td style="text-align:right">
-      <select name="override_rate_type" style="width:96px">
-        <option value="">—</option>
-        {% for k, label in rate_types %}<option value="{{ k }}" {{ 'selected' if r.override_rate_type == k }}>{{ label }}</option>{% endfor %}
-      </select>
-      <input name="override_rate_value" style="width:70px;text-align:right"
-             value="{% if r.override_rate_value is not none %}{{ '%g'|format(r.override_rate_value * 100) if r.override_rate_type == 'percent' else '%g'|format(r.override_rate_value) }}{% endif %}">
-    </td>
-    <td><input type="checkbox" name="is_active" {{ 'checked' if r.is_active }}></td>
-    <td><button class="btn primary" style="padding:6px 12px">Save</button></td>
-    </form>
   </tr>
   {% endfor %}
 </table>
+<p class="muted small" style="margin:8px 0 0">Click a coach to edit their rate and their overrides together.</p>
 
 <div class="card" style="margin-top:18px">
   <h3 style="margin:0 0 4px;font-size:.95rem">Add a coach</h3>
@@ -69,4 +51,101 @@
     <button class="btn primary">Add</button>
   </form>
 </div>
+
+{# ---------------- one panel per coach ---------------- #}
+{% for r in rates %}
+<div class="scrim" id="coach-{{ r.id }}">
+  <div class="modal">
+    <form method="post" action="/admin/commission-rates/{{ r.id }}">
+    <div class="mhead">
+      <h3>{{ r.coach }}</h3><span class="mono">{{ r.staff_raw }}</span>
+      {% if not r.coach_id %}<span class="tag amber">Not linked</span>{% endif %}
+      <button type="button" class="x" data-close>✕</button>
+    </div>
+    <div class="mbody">
+      {% if not r.coach_id %}
+      <div class="warnbox"><b>Not linked to a person.</b> Pick someone from Relationships, or this coach's payout
+        won't point at a real record.</div>
+      {% endif %}
+
+      <h4>Default — applies to every plan</h4>
+      <div class="fieldset">
+        <div class="fld"><label>Person</label>
+          <select name="coach_id" style="width:160px">
+            <option value="">— unlinked —</option>
+            {% for person in people %}
+            <option value="{{ person.id }}" {{ 'selected' if r.coach_id == person.id }}>{{ person.name }}</option>
+            {% endfor %}
+          </select>
+          <input type="hidden" name="coach" value="{{ r.coach }}">
+        </div>
+        <div class="fld"><label>Rezerv name</label>
+          <input name="staff_raw" value="{{ r.staff_raw }}" style="width:120px" class="mono"></div>
+        <div class="fld"><label>Basis</label>
+          <select name="rate_type" style="width:160px">
+            {% for k, label in rate_types %}<option value="{{ k }}" {{ 'selected' if r.rate_type == k }}>{{ label }}</option>{% endfor %}
+          </select></div>
+        <div class="fld"><label>Rate</label>
+          <input name="rate_value" style="width:92px;text-align:right"
+                 value="{{ '%g'|format(r.rate_value * 100) if r.rate_type == 'percent' else '%g'|format(r.rate_value) }}"></div>
+        <div class="fld"><label>Active</label>
+          <input type="checkbox" name="is_active" {{ 'checked' if r.is_active }}></div>
+      </div>
+
+      <h4>Overrides{% if r.overrides %} · {{ r.overrides|length }} plan{{ 's' if r.overrides|length != 1 }} pay{{ '' if r.overrides|length != 1 else 's' }} differently{% else %} · none{% endif %}</h4>
+      {% if not r.overrides %}
+      <p class="muted small" style="margin:0 0 6px">Every plan pays {{ r.coach }}'s default {{ money(r) }}.</p>
+      {% endif %}
+      <table class="plain">
+        {% if r.overrides %}
+        <tr><th style="width:28%">Plan</th><th style="width:30%">Basis</th>
+            <th style="width:17%;text-align:right">Rate</th><th style="width:13%">Active</th><th></th></tr>
+        {% endif %}
+        {% for o in r.overrides %}
+        <tr>
+          <td>
+            <input type="hidden" name="ov_id" value="{{ o.id }}">
+            <select name="ov_plan" style="width:100%">
+              {% for p in plans %}<option value="{{ p }}" {{ 'selected' if p|lower == o.plan|lower }}>{{ p }}</option>{% endfor %}
+              {% if o.plan and o.plan|lower not in plans|map('lower')|list %}
+              <option value="{{ o.plan }}" selected>{{ o.plan }}</option>{% endif %}
+            </select>
+          </td>
+          <td><select name="ov_type" style="width:100%">
+            {% for k, label in rate_types %}<option value="{{ k }}" {{ 'selected' if o.rate_type == k }}>{{ label }}</option>{% endfor %}
+          </select></td>
+          <td style="text-align:right"><input name="ov_value" style="width:66px;text-align:right"
+                value="{{ '%g'|format(o.rate_value * 100) if o.rate_type == 'percent' else '%g'|format(o.rate_value) }}">
+            <span class="muted small">{{ '%' if o.rate_type == 'percent' else '₱' }}</span></td>
+          <td><select name="ov_active" style="width:100%">
+            <option value="on" {{ 'selected' if o.is_active }}>Yes</option>
+            <option value="" {{ 'selected' if not o.is_active }}>No</option>
+          </select></td>
+          <td style="text-align:right">
+            <button class="btn del" style="padding:4px 9px" title="Remove this override"
+                    formaction="/admin/commission-rates/{{ r.id }}/override-delete"
+                    name="ov_delete" value="{{ o.id }}">✕</button></td>
+        </tr>
+        {% endfor %}
+        <tr class="addrow">
+          <td><select name="new_plan" style="width:100%">
+            <option value="">＋ Add a plan…</option>
+            {% for p in plans %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select></td>
+          <td><select name="new_type" style="width:100%">
+            {% for k, label in rate_types %}<option value="{{ k }}" {{ 'selected' if k == 'percent' }}>{{ label }}</option>{% endfor %}
+          </select></td>
+          <td style="text-align:right"><input name="new_value" style="width:66px;text-align:right" placeholder="50"></td>
+          <td colspan="2" class="muted small">added on save</td>
+        </tr>
+      </table>
+    </div>
+    <div class="mfoot">
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button class="btn primary">Save coach</button>
+    </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
 {% endblock %}

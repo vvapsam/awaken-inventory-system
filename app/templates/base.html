@@ -325,6 +325,29 @@
   });
 })();
 
+/* Popup panels. A row with data-modal="x" opens .scrim#x. Closed by the ✕,
+   any [data-close], Escape, or clicking the backdrop — never by clicking
+   inside the panel, so a stray click can't discard what you typed. */
+(function(){
+  function close(){
+    Array.prototype.forEach.call(document.querySelectorAll('.scrim.on'), function(s){
+      s.classList.remove('on');
+    });
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('click', function(e){
+    var row = e.target.closest && e.target.closest('tr[data-modal]');
+    if(row && !e.target.closest('a,button,input,select,textarea,label,form')){
+      var panel = document.getElementById(row.getAttribute('data-modal'));
+      if(panel){ close(); panel.classList.add('on'); document.body.style.overflow='hidden'; }
+      return;
+    }
+    if(e.target.closest && e.target.closest('[data-close]')){ close(); return; }
+    if(e.target.classList && e.target.classList.contains('scrim')) close();
+  });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+
 /* Settings dropdown (top-right gear) */
 (function(){
   var sm=document.getElementById('settings-menu');
