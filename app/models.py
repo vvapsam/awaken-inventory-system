@@ -607,10 +607,6 @@ COMMISSION_DELEGATOR_DEFAULTS = [
 
 # key -> (default value, label, help)
 COMMISSION_SETTING_DEFAULTS = {
-    "session_rates": ("1 session=1900,8 sessions=1800,12 sessions=1700,"
-                      "24 sessions=1600,36 sessions=1500",
-                      "Zero-revenue backfill rates",
-                      "Applied when a session plan exports at ₱0."),
     "hyrox_walkin_deduction": ("1000", "Hyrox walk-in deduction",
                                "Deducted from 'Hyrox Simulation (With Coach)' walk-ins."),
     "awaken_force_revenue": ("1200", "Awaken Force revenue",
@@ -669,6 +665,43 @@ class CommissionDelegator(Base):
     @property
     def margin(self):
         return float(self.rate or 0) - float(self.cost or 0)
+
+
+class CommissionSessionRate(Base):
+    """Per-session rate for a pricing plan, used to backfill a ₱0 export row.
+
+    Dated rather than a flat lookup: rates change, and a booking must be valued
+    with the rate that applied on the day it happened, not today's. Leaving
+    effective_from empty means "as far back as there is data".
+    """
+    __tablename__ = "commission_session_rates"
+    id = Column(Integer, primary_key=True)
+    plan = Column(String, nullable=False)          # matches "Pricing plan used"
+    sessions = Column(Integer)                     # 1, 8, 12, 24, 36
+    rate = Column(Numeric(10, 2), nullable=False, default=0)
+    effective_from = Column(Date)                  # null = no lower bound
+    effective_to = Column(Date)                    # null = still current
+    is_active = Column(Boolean, nullable=False, default=True)
+    note = Column(String)
+
+    def covers(self, on):
+        if on is None:
+            return True
+        if self.effective_from and on < self.effective_from:
+            return False
+        if self.effective_to and on > self.effective_to:
+            return False
+        return True
+
+
+#: Seeded once, from the rates the commission spec has always used.
+COMMISSION_SESSION_RATE_DEFAULTS = [
+    dict(plan="1 Session", sessions=1, rate=1900),
+    dict(plan="8 Sessions", sessions=8, rate=1800),
+    dict(plan="12 Sessions", sessions=12, rate=1700),
+    dict(plan="24 Sessions", sessions=24, rate=1600),
+    dict(plan="36 Sessions", sessions=36, rate=1500),
+]
 
 
 class CommissionSetting(Base):

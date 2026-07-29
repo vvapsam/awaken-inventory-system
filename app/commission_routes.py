@@ -26,6 +26,7 @@ from .models import (
     BOOKING_STATUSES, IMPORT_MERGE, IMPORT_REPLACE,
     COMMISSION_DELEGATOR_DEFAULTS, COMMISSION_FLAT, COMMISSION_PERCENT,
     COMMISSION_RATE_DEFAULTS, COMMISSION_RATE_TYPES, COMMISSION_SETTING_DEFAULTS,
+    COMMISSION_SESSION_RATE_DEFAULTS, CommissionSessionRate,
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
     CommissionBooking, CommissionCharge, CommissionChargeLine,
     CommissionCoachRate, CommissionDelegator, CommissionPayout,
@@ -53,6 +54,11 @@ def seed(db: Session) -> None:
     if not db.query(CommissionDelegator).first():
         for d in COMMISSION_DELEGATOR_DEFAULTS:
             db.add(CommissionDelegator(**d))
+    if not db.query(CommissionSessionRate).first():
+        legacy = db.query(CommissionSetting).filter_by(key="session_rates").first()
+        seeded = _legacy_session_rates(legacy.value) if legacy else []
+        for d in (seeded or COMMISSION_SESSION_RATE_DEFAULTS):
+            db.add(CommissionSessionRate(**d))
     existing = {s.key for s in db.query(CommissionSetting).all()}
     for key, (value, _label, _help) in COMMISSION_SETTING_DEFAULTS.items():
         if key not in existing:
@@ -80,17 +86,22 @@ def settings_map(db: Session) -> dict:
     return out
 
 
-def _parse_session_rates(text: str) -> dict:
-    rates = {}
+def _legacy_session_rates(text: str) -> list:
+    """One-time migration of the old \"12 sessions=1700,...\" setting string
+    into rows, so an existing install keeps its numbers."""
+    out = []
     for part in (text or "").split(","):
         if "=" not in part:
             continue
         name, _, value = part.partition("=")
         try:
-            rates[name.strip().lower()] = Decimal(value.strip())
+            rate = Decimal(value.strip())
         except Exception:
             continue
-    return rates
+        digits = re.match(r"\s*(\d+)", name.strip())
+        out.append(dict(plan=name.strip().title(), rate=rate,
+                        sessions=int(digits.group(1)) if digits else None))
+    return out
 
 
 def build_config(db: Session) -> engine.Config:
@@ -114,7 +125,12 @@ def build_config(db: Session) -> engine.Config:
             rate=Decimal(str(d.rate or 0)), cost=Decimal(str(d.cost or 0))))
 
     st = engine.Settings(
-        session_rates=_parse_session_rates(s["session_rates"]),
+        session_rates=tuple(
+            engine.SessionRate(
+                plan=r.plan, rate=Decimal(str(r.rate or 0)), sessions=r.sessions,
+                effective_from=r.effective_from, effective_to=r.effective_to)
+            for r in db.query(CommissionSessionRate)
+            .filter(CommissionSessionRate.is_active == True)),  # noqa: E712
         hyrox_walkin_deduction=Decimal(s["hyrox_walkin_deduction"] or 0),
         awaken_force_revenue=Decimal(s["awaken_force_revenue"] or 0),
         backfill_scope=s["backfill_scope"],
@@ -411,6 +427,70 @@ def register(app, deps):
             rate=_num(rate, COMMISSION_FLAT), cost=_num(cost, COMMISSION_FLAT)))
         db.commit()
         return RedirectResponse("/admin/commission-delegators", status_code=303)
+
+    @app.get("/admin/commission-session-rates", response_class=HTMLResponse)
+    def commission_session_rates(request: Request, db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        rows = (db.query(CommissionSessionRate)
+                .order_by(CommissionSessionRate.sessions,
+                          CommissionSessionRate.effective_from).all())
+        return render(request, "commission_session_rates.html", db, staff,
+                      rates=rows, active="session_rates")
+
+    @app.post("/admin/commission-session-rates/{sid}")
+    def commission_session_rate_update(
+            request: Request, sid: int, plan: str = Form(...),
+            sessions: str = Form(""), rate: str = Form("0"),
+            effective_from: str = Form(""), effective_to: str = Form(""),
+            note: str = Form(""), is_active: str = Form(""),
+            db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        r = db.get(CommissionSessionRate, sid)
+        if not r:
+            return RedirectResponse("/admin/commission-session-rates", status_code=303)
+        r.plan = plan.strip()
+        r.sessions = int(sessions) if sessions.strip().isdigit() else None
+        r.rate = _num(rate, COMMISSION_FLAT)
+        r.effective_from = _day(effective_from)
+        r.effective_to = _day(effective_to)
+        r.note = note.strip() or None
+        r.is_active = (is_active == "on")
+        db.commit()
+        return RedirectResponse("/admin/commission-session-rates", status_code=303)
+
+    @app.post("/admin/commission-session-rates/new")
+    def commission_session_rate_new(
+            request: Request, plan: str = Form(...), sessions: str = Form(""),
+            rate: str = Form("0"), effective_from: str = Form(""),
+            effective_to: str = Form(""), note: str = Form(""),
+            db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        db.add(CommissionSessionRate(
+            plan=plan.strip(),
+            sessions=int(sessions) if sessions.strip().isdigit() else None,
+            rate=_num(rate, COMMISSION_FLAT),
+            effective_from=_day(effective_from), effective_to=_day(effective_to),
+            note=note.strip() or None))
+        db.commit()
+        return RedirectResponse("/admin/commission-session-rates", status_code=303)
+
+    @app.post("/admin/commission-session-rates/{sid}/delete")
+    def commission_session_rate_delete(request: Request, sid: int,
+                                       db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        r = db.get(CommissionSessionRate, sid)
+        if r:
+            db.delete(r)
+            db.commit()
+        return RedirectResponse("/admin/commission-session-rates", status_code=303)
 
     @app.get("/admin/commission-settings", response_class=HTMLResponse)
     def commission_settings(request: Request, db: Session = Depends(get_db)):
@@ -875,6 +955,19 @@ def _num(text: str, rate_type: str) -> Decimal:
     if rate_type == COMMISSION_PERCENT and value > 1:
         value = value / 100
     return value
+
+
+def _day(text: str):
+    """Parse a date input; blank means open-ended."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d %b %Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _basis(b: CommissionBooking) -> str:

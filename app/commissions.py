@@ -42,6 +42,11 @@ from typing import Iterable
 ZERO = Decimal("0.00")
 
 
+def _floor(d):
+    """An open-ended effective_from sorts earliest."""
+    return d or date.min
+
+
 def money(value) -> Decimal:
     """Round half-up to 2dp. Used once, at the end of a calculation."""
     return Decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -100,15 +105,42 @@ class Delegator:
         return self.rate - self.cost
 
 
+@dataclass(frozen=True)
+class SessionRate:
+    """One plan's per-session rate, valid over a date range.
+
+    Dated because rates change: a booking has to be valued with the rate that
+    applied on the day it happened, otherwise re-running an old month quietly
+    reprices it.
+    """
+    plan: str
+    rate: Decimal
+    sessions: int | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
+
+    def covers(self, on: date | None) -> bool:
+        if on is None:
+            return True
+        if self.effective_from and on < self.effective_from:
+            return False
+        if self.effective_to and on > self.effective_to:
+            return False
+        return True
+
+
+DEFAULT_SESSION_RATES = (
+    SessionRate("1 Session", Decimal("1900"), 1),
+    SessionRate("8 Sessions", Decimal("1800"), 8),
+    SessionRate("12 Sessions", Decimal("1700"), 12),
+    SessionRate("24 Sessions", Decimal("1600"), 24),
+    SessionRate("36 Sessions", Decimal("1500"), 36),
+)
+
+
 @dataclass
 class Settings:
-    session_rates: dict = field(default_factory=lambda: {
-        "1 session": Decimal("1900"),
-        "8 sessions": Decimal("1800"),
-        "12 sessions": Decimal("1700"),
-        "24 sessions": Decimal("1600"),
-        "36 sessions": Decimal("1500"),
-    })
+    session_rates: tuple = DEFAULT_SESSION_RATES
     hyrox_walkin_deduction: Decimal = Decimal("1000")
     awaken_force_revenue: Decimal = Decimal("1200")
     #: Prepaid AND comped ₱0 session rows get the old per-session rate, so the
@@ -124,6 +156,21 @@ class Settings:
     #: Literal reading of the original rule. Matches nothing in practice; see
     #: the module docstring for why it is deliberately not widened.
     excluded_plan_words: tuple = ("free",)
+
+    def rate_for(self, plan: str, on: date | None) -> SessionRate | None:
+        """The session rate for a plan on a given date.
+
+        When ranges overlap the most recently effective one wins, so adding a
+        new rate without closing the old one still does the sensible thing.
+        """
+        key = (plan or "").strip().lower()
+        best = None
+        for r in self.session_rates:
+            if r.plan.strip().lower() != key or not r.covers(on):
+                continue
+            if best is None or _floor(r.effective_from) > _floor(best.effective_from):
+                best = r
+        return best
 
 
 @dataclass
@@ -402,7 +449,7 @@ def _backfill_applies(row: Row, settings: Settings) -> bool:
     plan = row.pricing_plan.lower()
     if plan in NO_BACKFILL_PLANS or _is_membership(plan):
         return False
-    if plan not in settings.session_rates:
+    if settings.rate_for(row.pricing_plan, row.appointment_date) is None:
         return False
     method = row.payment_method.lower()
     if settings.backfill_scope == BACKFILL_CREDIT_AND_FREE:
@@ -423,12 +470,12 @@ def normalize_row(row: Row, config: Config) -> Row:
     if not row.is_commissionable:
         return row
 
-    # (a) zero-revenue backfill from the old per-session rates
+    # (a) zero-revenue backfill from the per-session rate in force that day
     if _backfill_applies(row, s):
-        rate = s.session_rates[row.pricing_plan.lower()]
-        row.revenue = money(rate)
+        found = s.rate_for(row.pricing_plan, row.appointment_date)
+        row.revenue = money(found.rate)
         row.adjustment = "zero_backfill"
-        row.adjustment_note = f"₱0 → ₱{rate:,.0f} ({row.pricing_plan} rate)"
+        row.adjustment_note = f"₱0 → ₱{found.rate:,.0f} ({row.pricing_plan} rate)"
         return row
 
     # (b) Hyrox walk-in deduction
