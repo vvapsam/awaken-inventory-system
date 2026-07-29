@@ -365,6 +365,16 @@ def startup():
         _migrate_transactions(db)
         # Fold customers and members into the unified entity table.
         _migrate_entities(db)
+        # Reviewer approval for non-Completed bookings. create_all() only makes
+        # new tables, so an existing commission_bookings needs explicit ALTERs.
+        with engine.begin() as conn:
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS approved_by_id INTEGER "
+                "REFERENCES entity(id) ON DELETE SET NULL; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
         # Seed commission rules (coach rates, delegators, settings). Idempotent.
         from . import commission_routes
         commission_routes.seed(db)

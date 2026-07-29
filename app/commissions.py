@@ -164,6 +164,11 @@ class Row:
     delegator: Delegator | None = None
     delegator_assumed: bool = False
 
+    #: Set by a reviewer to pay a non-Completed booking (a late cancel that was
+    #: still charged, a no-show the coach turned up for). Completed rows never
+    #: need it.
+    approved: bool = False
+
     # normalized
     revenue: Decimal = ZERO
     adjustment: str | None = None
@@ -183,6 +188,11 @@ class Row:
     @property
     def is_completed(self) -> bool:
         return self.booking_status.strip().lower() == "completed"
+
+    @property
+    def is_commissionable(self) -> bool:
+        """Completed by default, or any other status a reviewer has approved."""
+        return self.is_completed or self.approved
 
 
 @dataclass
@@ -205,7 +215,7 @@ class Result:
         return bool(self.unmapped_staff) or bool(self.unknown_codes)
 
     def totals(self) -> dict:
-        done = [r for r in self.rows if r.is_completed]
+        done = [r for r in self.rows if r.is_commissionable]
         return {
             "sessions": len(done),
             "revenue": money(sum((r.revenue for r in done), ZERO)),
@@ -391,37 +401,49 @@ def _backfill_applies(row: Row, settings: Settings) -> bool:
     return method == "credit"
 
 
-def normalize(rows: Iterable, config: Config) -> list:
+def normalize_row(row: Row, config: Config) -> Row:
+    """Apply the three revenue adjustments to one commissionable row.
+
+    Resets to the exported revenue first, so this is safe to re-run when a
+    reviewer approves or un-approves a booking.
+    """
     s = config.settings
+    row.revenue = row.revenue_raw
+    row.adjustment = None
+    row.adjustment_note = ""
+    if not row.is_commissionable:
+        return row
+
+    # (a) zero-revenue backfill from the old per-session rates
+    if _backfill_applies(row, s):
+        rate = s.session_rates[row.pricing_plan.lower()]
+        row.revenue = money(rate)
+        row.adjustment = "zero_backfill"
+        row.adjustment_note = f"₱0 → ₱{rate:,.0f} ({row.pricing_plan} rate)"
+        return row
+
+    # (b) Hyrox walk-in deduction
+    if (row.appointment_name.lower() == HYROX_WITH_COACH
+            and "walk-in" in row.variant.lower()):
+        before = row.revenue
+        row.revenue = money(before - s.hyrox_walkin_deduction)
+        row.adjustment = "hyrox_walkin"
+        row.adjustment_note = (
+            f"₱{before:,.0f} → ₱{row.revenue:,.0f} (walk-in −₱{s.hyrox_walkin_deduction:,.0f})")
+        return row
+
+    # (c) Awaken Force fixed per-session revenue
+    if row.pricing_plan.lower() == "awaken force":
+        before = row.revenue
+        row.revenue = money(s.awaken_force_revenue)
+        row.adjustment = "awaken_force"
+        row.adjustment_note = f"₱{before:,.0f} → ₱{row.revenue:,.0f} (Awaken Force rate)"
+    return row
+
+
+def normalize(rows: Iterable, config: Config) -> list:
     for row in rows:
-        if not row.is_completed:
-            continue
-
-        # (a) zero-revenue backfill from the old per-session rates
-        if _backfill_applies(row, s):
-            rate = s.session_rates[row.pricing_plan.lower()]
-            row.revenue = money(rate)
-            row.adjustment = "zero_backfill"
-            row.adjustment_note = (
-                f"₱0 → ₱{rate:,.0f} ({row.pricing_plan} rate)")
-            continue
-
-        # (b) Hyrox walk-in deduction
-        if (row.appointment_name.lower() == HYROX_WITH_COACH
-                and "walk-in" in row.variant.lower()):
-            before = row.revenue
-            row.revenue = money(before - s.hyrox_walkin_deduction)
-            row.adjustment = "hyrox_walkin"
-            row.adjustment_note = (
-                f"₱{before:,.0f} → ₱{row.revenue:,.0f} (walk-in −₱{s.hyrox_walkin_deduction:,.0f})")
-            continue
-
-        # (c) Awaken Force fixed per-session revenue
-        if row.pricing_plan.lower() == "awaken force":
-            before = row.revenue
-            row.revenue = money(s.awaken_force_revenue)
-            row.adjustment = "awaken_force"
-            row.adjustment_note = f"₱{before:,.0f} → ₱{row.revenue:,.0f} (Awaken Force rate)"
+        normalize_row(row, config)
     return list(rows)
 
 
@@ -429,37 +451,52 @@ def normalize(rows: Iterable, config: Config) -> list:
 # 6. compute — commission and delegation charge
 # --------------------------------------------------------------------------
 
+def compute_row(row: Row, config: Config) -> Row:
+    """Commission + delegation charge for one row. Safe to re-run."""
+    row.rule = row.rate_type = None
+    row.rate_value = row.commission = row.delegation_charge = None
+    if not row.is_commissionable:
+        return row
+
+    # Delegation short-circuits every coach rule.
+    if row.is_delegation:
+        d = row.delegator
+        row.rule = "delegation"
+        row.rate_type = FLAT
+        row.rate_value = d.cost
+        row.commission = money(d.cost)
+        row.delegation_charge = money(d.rate)
+        return row
+
+    rate = config.coach_rates.get(row.staff_raw)
+    if rate is None:
+        return row
+
+    rate_type, rate_value = rate.for_plan(row.pricing_plan)
+    row.rate_type, row.rate_value = rate_type, rate_value
+    if rate_type == FLAT:
+        row.rule = "coach_flat"
+        row.commission = money(rate_value)
+    else:
+        row.rule = ("plan_override"
+                    if rate.override_rate_type
+                    and row.pricing_plan.lower() in rate.override_plans
+                    else "coach_percent")
+        row.commission = money(row.revenue * rate_value)
+    return row
+
+
 def compute(rows: Iterable, config: Config) -> list:
     for row in rows:
-        if not row.is_completed:
-            continue
-
-        # Delegation short-circuits every coach rule.
-        if row.is_delegation:
-            d = row.delegator
-            row.rule = "delegation"
-            row.rate_type = FLAT
-            row.rate_value = d.cost
-            row.commission = money(d.cost)
-            row.delegation_charge = money(d.rate)
-            continue
-
-        rate = config.coach_rates.get(row.staff_raw)
-        if rate is None:
-            continue
-
-        rate_type, rate_value = rate.for_plan(row.pricing_plan)
-        row.rate_type, row.rate_value = rate_type, rate_value
-        if rate_type == FLAT:
-            row.rule = "coach_flat"
-            row.commission = money(rate_value)
-        else:
-            row.rule = ("plan_override"
-                        if rate.override_rate_type
-                        and row.pricing_plan.lower() in rate.override_plans
-                        else "coach_percent")
-            row.commission = money(row.revenue * rate_value)
+        compute_row(row, config)
     return list(rows)
+
+
+def recompute_row(row: Row, config: Config) -> Row:
+    """Re-run normalisation and commission for a single row — used when a
+    reviewer approves or un-approves a non-Completed booking."""
+    normalize_row(row, config)
+    return compute_row(row, config)
 
 
 # --------------------------------------------------------------------------

@@ -731,13 +731,23 @@ class CommissionBooking(Base):
     delegation_charge = Column(Numeric(10, 2))
     # --- excluded rows are kept, flagged, and shown ---
     dropped_reason = Column(String)
+    # --- reviewer approval for non-Completed bookings ---
+    approved = Column(Boolean, nullable=False, default=False)
+    approved_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    approved_at = Column(DateTime(timezone=True))
 
     run = relationship("CommissionRun", back_populates="bookings")
     delegator = relationship("CommissionDelegator")
+    approved_by = relationship("Staff", foreign_keys=[approved_by_id])
 
     @property
     def is_completed(self):
         return (self.booking_status or "").strip().lower() == "completed"
+
+    @property
+    def is_commissionable(self):
+        """Completed by default, or another status a reviewer has approved."""
+        return self.is_completed or bool(self.approved)
 
 
 class CommissionPayout(Base):

@@ -152,7 +152,7 @@ def pivot(run: CommissionRun):
     """Coaches as rows, pricing plans as columns, session counts. Delegation is
     its own column — every delegation row carries plan='Drop-In' and would
     otherwise be miscounted there."""
-    done = [b for b in _live(run) if b.is_completed]
+    done = [b for b in _live(run) if b.is_commissionable]
     plans, rows = [], {}
     for b in done:
         key = "Delegation" if b.delegator_id else (b.pricing_plan or "—")
@@ -173,7 +173,7 @@ def pivot(run: CommissionRun):
 
 
 def run_totals(run: CommissionRun) -> dict:
-    done = [b for b in _live(run) if b.is_completed]
+    done = [b for b in _live(run) if b.is_commissionable]
     dele = [b for b in done if b.delegator_id]
     charged = sum((Decimal(str(b.delegation_charge or 0)) for b in dele), Decimal(0))
     cost = sum((Decimal(str(b.commission or 0)) for b in dele), Decimal(0))
@@ -201,6 +201,66 @@ def blockers(run: CommissionRun) -> dict:
             "blocking": bool(unmapped or unknown)}
 
 
+#: Statuses that carry no commission unless a reviewer approves them.
+REVIEWABLE = ("cancelled", "late cancelled", "no show", "booked")
+
+
+def pending(run: CommissionRun):
+    """Non-Completed bookings still awaiting a decision."""
+    return [b for b in _live(run) if not b.is_completed and not b.approved]
+
+
+def coach_summary(run: CommissionRun):
+    """Per-coach counts for the review screen — what's paying, what's waiting."""
+    out = {}
+    for b in _live(run):
+        row = out.setdefault(b.coach or b.staff_raw, {
+            "coach": b.coach or b.staff_raw, "counted": 0, "pending": 0,
+            "approved": 0, "commission": Decimal(0)})
+        if b.is_commissionable:
+            row["counted"] += 1
+            row["commission"] += Decimal(str(b.commission or 0))
+            if b.approved:
+                row["approved"] += 1
+        elif not b.is_completed:
+            row["pending"] += 1
+    return sorted(out.values(), key=lambda r: r["coach"])
+
+
+def _to_engine_row(b: CommissionBooking, delegator) -> engine.Row:
+    """Bridge a stored booking back into an engine Row so a single booking can
+    be recalculated with exactly the same rules as the batch."""
+    return engine.Row(
+        booking_ref=b.booking_ref or "", customer=b.customer or "",
+        appointment_date=b.appointment_date,
+        appointment_name=b.appointment_name or "", variant=b.variant or "",
+        staff_raw=b.staff_raw or "", booking_status=b.booking_status or "",
+        pricing_plan=b.pricing_plan or "", payment_method=b.payment_method or "",
+        revenue_raw=Decimal(str(b.revenue_raw or 0)),
+        coach=b.coach, delegator=delegator, approved=bool(b.approved),
+    )
+
+
+def recompute(b: CommissionBooking, config: engine.Config, db: Session) -> None:
+    """Recalculate one booking in place after its approval flag changes."""
+    delegator = None
+    if b.delegator_id:
+        d = db.get(CommissionDelegator, b.delegator_id)
+        if d:
+            delegator = engine.Delegator(
+                name=d.name, codes=frozenset(d.code_list()),
+                rate=Decimal(str(d.rate or 0)), cost=Decimal(str(d.cost or 0)))
+    row = engine.recompute_row(_to_engine_row(b, delegator), config)
+    b.revenue = row.revenue
+    b.adjustment = row.adjustment
+    b.adjustment_note = row.adjustment_note
+    b.rule = row.rule
+    b.rate_type = row.rate_type
+    b.rate_value = row.rate_value
+    b.commission = row.commission
+    b.delegation_charge = row.delegation_charge
+
+
 def coach_groups(run: CommissionRun, coach: str):
     """One coach's bookings grouped by status, in the spec's order."""
     order = ["Completed", "Cancelled", "Late cancelled", "No show", "Booked"]
@@ -218,6 +278,9 @@ def coach_groups(run: CommissionRun, coach: str):
         groups.append({
             "status": status,
             "rows": items,
+            # How many of this group actually count — all of them when Completed,
+            # otherwise however many the reviewer approved.
+            "approved": len([b for b in items if b.is_commissionable]),
             "revenue": sum((Decimal(str(b.revenue or 0)) for b in items), Decimal(0)),
             "commission": sum((Decimal(str(b.commission or 0)) for b in items), Decimal(0)),
         })
@@ -466,12 +529,13 @@ def register(app, deps):
             d["cost"] += Decimal(str(b.commission or 0))
         for d in by_delegator.values():
             d["margin"] = d["charged"] - d["cost"]
-        coaches = sorted({(b.coach or b.staff_raw) for b in live if b.is_completed})
+        waiting = pending(run)
         return render(request, "commission_run.html", db, staff, run=run, tab=tab,
                       plans=plans, prows=prows, ptotals=ptotals,
                       totals=run_totals(run), block=blockers(run),
                       adjusted=adjusted, dropped=dropped, delegated=delegated,
-                      by_delegator=by_delegator, coaches=coaches,
+                      by_delegator=by_delegator, coaches=coach_summary(run),
+                      pending=waiting, pending_count=len(waiting),
                       RUN_DRAFT=RUN_DRAFT, RUN_FINALIZED=RUN_FINALIZED)
 
     @app.get("/commissions/{rid}/coach/{coach}", response_class=HTMLResponse)
@@ -484,14 +548,72 @@ def register(app, deps):
         if not run:
             return RedirectResponse("/commissions", status_code=303)
         groups = coach_groups(run, coach)
-        done = next((g for g in groups if g["status"].lower() == "completed"), None)
-        dele = [b for b in _live(run)
-                if (b.coach or b.staff_raw) == coach and b.delegator_id and b.is_completed]
-        return render(request, "commission_coach.html", db, staff, run=run, coach=coach,
-                      groups=groups, completed=done,
-                      delegation_total=sum((Decimal(str(b.commission or 0)) for b in dele),
-                                           Decimal(0)),
-                      delegation_sessions=len(dele))
+        rows = [b for b in _live(run) if (b.coach or b.staff_raw) == coach]
+        counted = [b for b in rows if b.is_commissionable]
+        dele = [b for b in counted if b.delegator_id]
+        return render(
+            request, "commission_coach.html", db, staff, run=run, coach=coach,
+            groups=groups,
+            # `completed` is only still passed so the previous template keeps
+            # rendering during a rolling deploy; harmless once both have landed.
+            completed=next((g for g in groups if g["status"].lower() == "completed"), None),
+            sessions=len(counted),
+            revenue=sum((Decimal(str(b.revenue or 0)) for b in counted), Decimal(0)),
+            commission=sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0)),
+            delegation_total=sum((Decimal(str(b.commission or 0)) for b in dele), Decimal(0)),
+            delegation_sessions=len(dele),
+            approved_count=len([b for b in rows if b.approved]),
+            pending_count=len([b for b in rows if not b.is_completed and not b.approved]),
+            is_draft=(run.status == RUN_DRAFT))
+
+    @app.post("/commissions/{rid}/booking/{bid}/approve")
+    def commission_approve(request: Request, rid: int, bid: int,
+                           db: Session = Depends(get_db)):
+        """Toggle whether one non-Completed booking earns commission."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        b = db.get(CommissionBooking, bid)
+        back = f"/commissions/{rid}"
+        if not run or not b or b.run_id != rid:
+            return RedirectResponse(back, status_code=303)
+        coach = b.coach or b.staff_raw
+        if run.status != RUN_DRAFT or b.is_completed:
+            # Completed rows always count; finalized runs are immutable.
+            return RedirectResponse(f"{back}/coach/{coach}", status_code=303)
+        b.approved = not b.approved
+        b.approved_by_id = staff.id if b.approved else None
+        b.approved_at = datetime.now(timezone.utc) if b.approved else None
+        recompute(b, build_config(db), db)
+        db.commit()
+        return RedirectResponse(f"{back}/coach/{coach}#{b.booking_ref or ''}",
+                                status_code=303)
+
+    @app.post("/commissions/{rid}/coach/{coach}/approve-status")
+    def commission_approve_status(request: Request, rid: int, coach: str,
+                                  status: str = Form(...), include: str = Form("on"),
+                                  db: Session = Depends(get_db)):
+        """Approve (or un-approve) every booking of one status for one coach."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        if not run or run.status != RUN_DRAFT:
+            return RedirectResponse(f"/commissions/{rid}/coach/{coach}", status_code=303)
+        want = (include == "on")
+        config = build_config(db)
+        for b in _live(run):
+            if (b.coach or b.staff_raw) != coach or b.is_completed:
+                continue
+            if (b.booking_status or "").strip().lower() != status.strip().lower():
+                continue
+            b.approved = want
+            b.approved_by_id = staff.id if want else None
+            b.approved_at = datetime.now(timezone.utc) if want else None
+            recompute(b, config, db)
+        db.commit()
+        return RedirectResponse(f"/commissions/{rid}/coach/{coach}", status_code=303)
 
     @app.post("/commissions/{rid}/delete")
     def commission_run_delete(request: Request, rid: int,
@@ -518,7 +640,7 @@ def register(app, deps):
         if blockers(run)["blocking"]:
             return RedirectResponse(f"/commissions/{rid}", status_code=303)
 
-        done = [b for b in _live(run) if b.is_completed]
+        done = [b for b in _live(run) if b.is_commissionable]
 
         by_coach = {}
         for b in done:
