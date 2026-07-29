@@ -10,7 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.commissions import (                                   # noqa: E402
-    BACKFILL_CREDIT_AND_FREE, Config, Delegator, delegation_code, run,
+    BACKFILL_CREDIT_AND_FREE, BACKFILL_CREDIT_ONLY, Config, Delegator,
+    delegation_code, run,
     recompute_row as engine_recompute,
 )
 from tests.conf_sample import config, DELEGATORS                # noqa: E402
@@ -148,17 +149,37 @@ def test_credit_row_is_backfilled():
     assert row.adjustment == "zero_backfill"
 
 
-def test_free_row_not_backfilled_by_default():
-    """Conservative default — comped sessions earn nothing until asked."""
-    row = one(plan="36 Sessions", pay="Free", revenue="₱0.00", staff="Anjo R")
+def test_free_row_not_backfilled_when_scope_is_credit_only():
+    cfg = config(backfill_scope=BACKFILL_CREDIT_ONLY)
+    row = one(plan="36 Sessions", pay="Free", revenue="₱0.00", staff="Anjo R", cfg=cfg)
     assert row.revenue == D("0.00")
     assert row.adjustment is None
 
 
-def test_free_row_backfilled_when_scope_widened():
+def test_comped_row_is_backfilled_by_default():
+    """Default is credit_and_free: a comped session shows the session rate
+    rather than ₱0, so the revenue column always carries a real amount."""
     cfg = config(backfill_scope=BACKFILL_CREDIT_AND_FREE)
     row = one(plan="36 Sessions", pay="Free", revenue="₱0.00", cfg=cfg)
     assert row.revenue == D("1500.00")
+    assert row.adjustment == "zero_backfill"
+
+
+def test_delegated_rows_keep_zero_revenue_even_when_backfilling():
+    """The client pays the delegator, not AWAKEN — so a delegated booking has
+    no gym revenue no matter how wide the backfill scope is."""
+    cfg = config(backfill_scope=BACKFILL_CREDIT_AND_FREE)
+    row = one(variant="Delegation – KP", plan="Drop-In", pay="Free",
+              revenue="₱0.00", staff="Laurent J", cfg=cfg)
+    assert row.revenue == D("0.00")
+    assert row.commission == D("640.00")
+
+
+def test_memberships_keep_zero_revenue_even_when_backfilling():
+    cfg = config(backfill_scope=BACKFILL_CREDIT_AND_FREE)
+    for plan in ("12 Months", "3 Months"):
+        row = one(plan=plan, pay="Free", revenue="₱0.00", cfg=cfg)
+        assert row.revenue == D("0.00"), plan
 
 
 def test_membership_plans_never_backfilled():
