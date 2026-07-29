@@ -193,7 +193,7 @@
   <tr><th>Coach</th><th style="text-align:right">Counting</th><th style="text-align:right">Approved</th>
       <th style="text-align:right">Awaiting review</th><th style="text-align:right">Commission</th><th></th></tr>
   {% for c in coaches %}
-  <tr>
+  <tr data-href="/commissions/{{ run.id }}/coach/{{ c.coach }}">
     <td><b>{{ c.coach }}</b></td>
     <td style="text-align:right">{{ c.counted }}</td>
     <td style="text-align:right">{% if c.approved %}<span class="tag">{{ c.approved }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
@@ -214,7 +214,7 @@
       <th style="text-align:right">Commission</th><th style="text-align:right">Delegation</th>
       <th style="text-align:right">Total</th><th>Status</th><th></th></tr>
   {% for p in run.payouts|sort(attribute='coach') %}
-  <tr>
+  <tr data-href="/commissions/payouts/{{ p.id }}">
     <td class="mono">{{ p.number }}</td><td><b>{{ p.coach }}</b></td>
     <td style="text-align:right">{{ p.sessions }}</td>
     <td style="text-align:right">{{ peso(p.commission_total) }}</td>
@@ -232,7 +232,7 @@
       <th style="text-align:right">Charged</th><th style="text-align:right">Coach cost</th>
       <th style="text-align:right">Margin</th><th>Status</th><th></th></tr>
   {% for c in run.charges %}
-  <tr>
+  <tr data-href="/commissions/charges/{{ c.id }}">
     <td class="mono">{{ c.number }}</td><td><b>{{ c.delegator_name }}</b></td>
     <td style="text-align:right">{{ c.sessions }}</td>
     <td style="text-align:right">{{ peso(c.total) }}</td>

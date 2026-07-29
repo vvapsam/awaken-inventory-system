@@ -21,7 +21,17 @@
   {% for d in delegators %}
   <tr>
     <form method="post" action="/admin/commission-delegators/{{ d.id }}">
-    <td><input name="name" value="{{ d.name }}" style="width:170px"></td>
+    <td>
+      <select name="entity_id" style="width:170px">
+        <option value="">— unlinked —</option>
+        {% for person in people %}
+        <option value="{{ person.id }}" {{ 'selected' if d.entity_id == person.id }}>{{ person.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="name" value="{{ d.name }}">
+      {% if d.entity_id %}<div class="small"><a href="/admin/staff/{{ d.entity_id }}/edit">{{ d.name }} ↗</a></div>
+      {% else %}<div class="small" style="color:#9c2c1e">{{ d.name }} · not linked</div>{% endif %}
+    </td>
     <td><input name="codes" value="{{ d.codes }}" style="width:120px" class="mono" placeholder="KP,CP"></td>
     <td style="text-align:right"><input name="rate" value="{{ '%g'|format(d.rate) }}" style="width:100px;text-align:right"></td>
     <td style="text-align:right"><input name="cost" value="{{ '%g'|format(d.cost) }}" style="width:100px;text-align:right"></td>

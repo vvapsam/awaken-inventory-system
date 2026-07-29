@@ -14,7 +14,17 @@
   {% for r in rates %}
   <tr>
     <form method="post" action="/admin/commission-rates/{{ r.id }}">
-    <td><input name="coach" value="{{ r.coach }}" style="width:120px"></td>
+    <td>
+      <select name="coach_id" style="width:150px">
+        <option value="">— unlinked —</option>
+        {% for person in people %}
+        <option value="{{ person.id }}" {{ 'selected' if r.coach_id == person.id }}>{{ person.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="coach" value="{{ r.coach }}">
+      {% if r.coach_id %}<div class="small"><a href="/admin/staff/{{ r.coach_id }}/edit">{{ r.coach }} ↗</a></div>
+      {% else %}<div class="small" style="color:#9c2c1e">{{ r.coach }} · not linked</div>{% endif %}
+    </td>
     <td><input name="staff_raw" value="{{ r.staff_raw }}" style="width:130px" class="mono"></td>
     <td>
       <select name="rate_type" style="width:130px">
@@ -44,9 +54,15 @@
 
 <div class="card" style="margin-top:18px">
   <h3 style="margin:0 0 4px;font-size:.95rem">Add a coach</h3>
-  <p class="muted small" style="margin:0 0 10px">The Rezerv name is how the export spells them — it writes <span class="mono">Rick F</span> for Ric.</p>
+  <p class="muted small" style="margin:0 0 10px">Pick the person from Relationships so a payout points at the
+  same record as the rest of the app. The Rezerv name is how the export spells them — it writes
+  <span class="mono">Rick F</span> for Ric.</p>
   <form method="post" action="/admin/commission-rates/new" class="row-between" style="gap:10px;align-items:flex-end">
-    <div style="flex:1"><label>Coach<input name="coach" required></label></div>
+    <div style="flex:1.3"><label>Coach
+      <select name="coach_id" required>
+        <option value="">— choose a person —</option>
+        {% for person in people %}<option value="{{ person.id }}">{{ person.name }}</option>{% endfor %}
+      </select></label></div>
     <div style="flex:1"><label>Rezerv name<input name="staff_raw" required class="mono"></label></div>
     <div style="flex:1"><label>Basis<select name="rate_type">{% for k, label in rate_types %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label></div>
     <div style="flex:1"><label>Rate<input name="rate_value" value="40"></label></div>

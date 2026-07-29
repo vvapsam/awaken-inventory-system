@@ -308,6 +308,23 @@
   window.addEventListener('scroll', function(){ groups.forEach(function(g){ g.classList.remove('flyopen'); }); }, true);
 })();
 
+/* Whole-row links: <tr data-href="..."> navigates on click. Anything
+   interactive inside the row keeps its own behaviour, so buttons, links and
+   form fields still work normally. */
+(function(){
+  document.addEventListener('click', function(e){
+    var row = e.target.closest && e.target.closest('tr[data-href]');
+    if(!row) return;
+    if(e.target.closest('a,button,input,select,textarea,label,form')) return;
+    if(window.getSelection && String(window.getSelection())) return;  // let people select text
+    var href = row.getAttribute('data-href');
+    if(href) window.location = href;
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('tr[data-href]'), function(r){
+    r.classList.add('rowlink');
+  });
+})();
+
 /* Settings dropdown (top-right gear) */
 (function(){
   var sm=document.getElementById('settings-menu');

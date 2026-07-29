@@ -15,7 +15,7 @@
       <th style="text-align:right">Commission</th><th style="text-align:right">Delegation cost</th>
       <th style="text-align:right">Charged</th><th style="text-align:right">Margin</th><th></th></tr>
   {% for r in rows %}
-  <tr>
+  <tr data-href="/commissions/{{ r.run.id }}">
     <td><b>{{ r.run.period_label or r.run.period }}</b>
       <div class="muted small">{{ r.run.source_filename }}</div></td>
     <td>
