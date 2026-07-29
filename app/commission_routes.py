@@ -241,15 +241,22 @@ def _to_engine_row(b: CommissionBooking, delegator) -> engine.Row:
     )
 
 
-def recompute(b: CommissionBooking, config: engine.Config, db: Session) -> None:
-    """Recalculate one booking in place after its approval flag changes."""
-    delegator = None
-    if b.delegator_id:
-        d = db.get(CommissionDelegator, b.delegator_id)
-        if d:
-            delegator = engine.Delegator(
-                name=d.name, codes=frozenset(d.code_list()),
-                rate=Decimal(str(d.rate or 0)), cost=Decimal(str(d.cost or 0)))
+def delegator_map(db: Session) -> dict:
+    """id -> engine Delegator, so a whole run can be recalculated without
+    re-querying per booking."""
+    return {d.id: engine.Delegator(
+        name=d.name, codes=frozenset(d.code_list()),
+        rate=Decimal(str(d.rate or 0)), cost=Decimal(str(d.cost or 0)))
+        for d in db.query(CommissionDelegator).all()}
+
+
+def recompute(b: CommissionBooking, config: engine.Config, db: Session,
+              dmap: dict | None = None) -> None:
+    """Recalculate one booking in place — after its approval flag changes, or
+    when the rules behind it have been edited."""
+    if dmap is None:
+        dmap = delegator_map(db)
+    delegator = dmap.get(b.delegator_id) if b.delegator_id else None
     row = engine.recompute_row(_to_engine_row(b, delegator), config)
     b.revenue = row.revenue
     b.adjustment = row.adjustment
@@ -565,6 +572,28 @@ def register(app, deps):
             approved_count=len([b for b in rows if b.approved]),
             pending_count=len([b for b in rows if not b.is_completed and not b.approved]),
             is_draft=(run.status == RUN_DRAFT))
+
+    @app.post("/commissions/{rid}/recalculate")
+    def commission_recalculate(request: Request, rid: int,
+                               db: Session = Depends(get_db)):
+        """Re-apply the current rates and rules to every booking in a draft.
+
+        Needed because coach rates, delegator amounts and the revenue rules are
+        editable: without this, changing one only affects the next upload.
+        Approvals are preserved; finalized runs are never touched.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        if not run or run.status != RUN_DRAFT:
+            return RedirectResponse(f"/commissions/{rid}", status_code=303)
+        config = build_config(db)
+        dmap = delegator_map(db)
+        for b in _live(run):
+            recompute(b, config, db, dmap)
+        db.commit()
+        return RedirectResponse(f"/commissions/{rid}", status_code=303)
 
     @app.post("/commissions/{rid}/booking/{bid}/approve")
     def commission_approve(request: Request, rid: int, bid: int,

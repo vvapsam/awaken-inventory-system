@@ -609,9 +609,11 @@ COMMISSION_SETTING_DEFAULTS = {
                                "Deducted from 'Hyrox Simulation (With Coach)' walk-ins."),
     "awaken_force_revenue": ("1200", "Awaken Force revenue",
                              "Per-session revenue; the export shows the package total."),
-    "backfill_scope": ("credit_only", "Backfill scope",
+    "backfill_scope": ("credit_and_free", "Backfill scope",
+                       "Which ₱0 session rows get the old per-session rate. "
+                       "credit_and_free = prepaid AND comped sessions are backfilled. "
                        "credit_only = comped (Free) sessions keep ₱0 revenue. "
-                       "credit_and_free = comped sessions are backfilled too."),
+                       "Delegated sessions and memberships are never backfilled."),
     "default_delegator": ("KP", "Default delegator",
                           "Applied to a bare 'Delegation' variant that names no code."),
 }
