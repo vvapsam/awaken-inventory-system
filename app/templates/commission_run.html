@@ -53,6 +53,19 @@
     <div class="stat-value">{{ peso(totals.delegation_margin) }}</div><div class="muted small">charged − cost</div></div>
 </div>
 
+{% if pending_count %}
+<div class="card" style="background:var(--low);border-color:var(--low-line)">
+  <div class="row-between">
+    <div>
+      <b>{{ pending_count }} non-Completed booking{{ 's' if pending_count != 1 }} awaiting review.</b>
+      <div class="muted small" style="margin-top:2px">Cancelled, late cancelled, no-show and booked sessions earn
+        nothing unless you approve them. Open a coach to decide.</div>
+    </div>
+    <a class="btn" href="?tab=coaches">Review by coach →</a>
+  </div>
+</div>
+{% endif %}
+
 <div class="tfilter">
   <a href="?tab=summary" class="{{ 'on' if tab == 'summary' }}">Summary</a>
   <a href="?tab=adjustments" class="{{ 'on' if tab == 'adjustments' }}">Adjustments ({{ adjusted|length }})</a>
@@ -165,11 +178,24 @@
 
 {% elif tab == 'coaches' %}
 <h2>By coach</h2>
-<div class="actions">
+<p class="muted small">Open a coach to see every booking and approve any non-Completed ones that should still be paid.</p>
+<table>
+  <tr><th>Coach</th><th style="text-align:right">Counting</th><th style="text-align:right">Approved</th>
+      <th style="text-align:right">Awaiting review</th><th style="text-align:right">Commission</th><th></th></tr>
   {% for c in coaches %}
-  <a class="btn big" href="/commissions/{{ run.id }}/coach/{{ c }}">{{ c }}</a>
+  <tr>
+    <td><b>{{ c.coach }}</b></td>
+    <td style="text-align:right">{{ c.counted }}</td>
+    <td style="text-align:right">{% if c.approved %}<span class="tag">{{ c.approved }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td style="text-align:right">
+      {% if c.pending %}<span class="tag" style="background:var(--low-line);color:#4a3a12">{{ c.pending }}</span>
+      {% else %}<span class="muted">—</span>{% endif %}
+    </td>
+    <td style="text-align:right">{{ peso(c.commission) }}</td>
+    <td><a class="btn" style="padding:5px 12px" href="/commissions/{{ run.id }}/coach/{{ c.coach }}">Review</a></td>
+  </tr>
   {% endfor %}
-</div>
+</table>
 
 {% elif tab == 'documents' %}
 <h2>Coach payouts</h2>
