@@ -76,6 +76,59 @@ with TestClient(app) as c:
         shown = "₱{:,.2f}".format(float(value))
         check(f"  screen shows {label} {shown}", shown in page)
 
+    print("\nimport modes — duplicates and status selection")
+    src = open(CSV, encoding="utf-8-sig").read().splitlines()
+    head, body = src[0], src[1:]
+
+    def upload(text, mode="merge", statuses=("completed", "cancelled",
+                                             "late_cancelled", "no_show", "booked")):
+        data = {"mode": mode}
+        for s in statuses:
+            data["status_" + s] = "on"
+        return c.post("/commissions/new",
+                      files={"file": ("x.csv", text.encode(), "text/csv")},
+                      data=data, follow_redirects=False)
+
+    # start clean for this period
+    for r0 in re.findall(r"/commissions/(\d+)\"", c.get("/commissions").text):
+        c.post(f"/commissions/{r0}/delete", follow_redirects=False)
+
+    half, rest = body[:150], body[150:]
+    r = upload("\n".join([head] + half))
+    dup_rid = r.headers.get("location", "").rstrip("/").split("/")[-1]
+    page = c.get(f"/commissions/{dup_rid}").text
+    check("  first import lands", r.status_code == 303)
+    check("  import receipt shown", "Last import" in page)
+
+    # same file again in merge mode → everything is a duplicate
+    r = upload("\n".join([head] + half))
+    page = c.get(f"/commissions/{dup_rid}").text
+    check("  re-import merges into the same run",
+          r.headers.get("location", "").endswith("/" + dup_rid))
+    check("  duplicates skipped, none added",
+          "0 imported" in page and "already in this run" in page)
+
+    # add the remaining rows — new refs only
+    r = upload("\n".join([head] + half + rest))
+    page = c.get(f"/commissions/{dup_rid}").text
+    m = re.search(r"(\d+) imported", page)
+    # "imported" counts rows that survive scoping, so rows with no staff
+    # assigned are stored as dropped and don't appear in that figure.
+    expected = sum(1 for line in rest if line.split(",")[6].strip() != "--")
+    check("  merge adds only the unseen refs", m and int(m.group(1)) == expected,
+          "%s, expected %d" % (m.group(0) if m else "no count", expected))
+
+    # status selection
+    mixed = "\n".join([head] + body + [
+        ",".join(["ONLYCANC"] + body[0].split(",")[1:7] + ["Cancelled"] + body[0].split(",")[8:])])
+    r = upload(mixed, mode="replace", statuses=("completed",))
+    rid2 = r.headers.get("location", "").rstrip("/").split("/")[-1]
+    page = c.get(f"/commissions/{rid2}?tab=dropped").text
+    check("  unticked status is dropped with a reason", "not selected" in page)
+    check("  status filter reported on the receipt",
+          "filtered out by status" in c.get(f"/commissions/{rid2}").text)
+    c.post(f"/commissions/{rid2}/delete", follow_redirects=False)
+
     print("\nreview — non-Completed statuses")
     # The Paid Bookings export is Completed-only, so synthesise the other
     # statuses to prove the review flow end to end.

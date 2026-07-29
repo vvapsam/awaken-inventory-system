@@ -253,8 +253,13 @@ def test_flat_coach_override_on_dropin():
 
 def test_flat_coach_is_paid_on_a_comped_session():
     """Confirmed rule: a flat rate ignores revenue, so a ₱0 comped session
-    still pays ₱750. The coach ran the session either way."""
-    row = one(staff="Anjo R", plan="36 Sessions", pay="Free", revenue="₱0.00")
+    still pays ₱750. The coach ran the session either way.
+
+    Pinned to credit_only so the revenue really is ₱0 — under the default
+    scope it would be backfilled and the test would prove nothing.
+    """
+    cfg = config(backfill_scope=BACKFILL_CREDIT_ONLY)
+    row = one(staff="Anjo R", plan="36 Sessions", pay="Free", revenue="₱0.00", cfg=cfg)
     assert row.revenue == D("0.00")
     assert row.commission == D("750.00")
 
@@ -366,3 +371,34 @@ def test_rate_snapshot_is_recorded_on_every_row():
     """The stored rate is what makes a past run immutable."""
     row = one(staff="Julio D")
     assert (row.rate_type, row.rate_value) == ("percent", D("0.70"))
+
+
+# -------------------------------------------------------- status filtering
+
+def test_only_selected_statuses_are_imported():
+    cfg = config()
+    cfg.settings.statuses = frozenset({"completed"})
+    result = run(csv(status="Cancelled"), cfg)
+    assert result.rows == []
+    assert "not selected" in result.dropped[0].reason
+
+
+def test_selected_statuses_pass_through():
+    cfg = config()
+    cfg.settings.statuses = frozenset({"completed", "late cancelled"})
+    for status in ("Completed", "Late cancelled"):
+        result = run(csv(status=status), cfg)
+        assert len(result.rows) == 1, status
+
+
+def test_no_status_filter_means_everything():
+    cfg = config()
+    assert cfg.settings.statuses is None
+    for status in ("Completed", "Cancelled", "No show", "Booked"):
+        assert len(run(csv(status=status), cfg).rows) == 1, status
+
+
+def test_status_filter_is_case_insensitive():
+    cfg = config()
+    cfg.settings.statuses = frozenset({"no show"})
+    assert len(run(csv(status="No Show"), cfg).rows) == 1
