@@ -375,6 +375,15 @@ def startup():
                 "REFERENCES entity(id) ON DELETE SET NULL; "
                 "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_runs') IS NOT NULL THEN "
+                "ALTER TABLE commission_runs ADD COLUMN IF NOT EXISTS last_import_note TEXT; "
+                "END IF; END $$;"))
+            # Booking ref is the natural key for de-duplicating imports.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
+                "CREATE INDEX IF NOT EXISTS commission_bookings_ref_idx "
+                "ON commission_bookings (booking_ref); END IF; END $$;"))
         # Seed commission rules (coach rates, delegators, settings). Idempotent.
         from . import commission_routes
         commission_routes.seed(db)

@@ -111,11 +111,16 @@ class Settings:
     })
     hyrox_walkin_deduction: Decimal = Decimal("1000")
     awaken_force_revenue: Decimal = Decimal("1200")
-    #: Conservative default: only prepaid-package rows are backfilled. Comped
-    #: ("Free") sessions earn nothing until this is explicitly widened.
-    backfill_scope: str = BACKFILL_CREDIT_ONLY
+    #: Prepaid AND comped ₱0 session rows get the old per-session rate, so the
+    #: revenue column always carries a real amount. Must stay in step with
+    #: COMMISSION_SETTING_DEFAULTS in models.py — two defaults for one setting
+    #: is how the app and the engine end up disagreeing.
+    backfill_scope: str = BACKFILL_CREDIT_AND_FREE
     #: Applied to a bare "Delegation" variant that names no code.
     default_delegator: str | None = None
+    #: Booking statuses to import, lowercased. None means take everything —
+    #: filtering happens at import so a run only ever holds rows you chose.
+    statuses: frozenset | None = None
     #: Literal reading of the original rule. Matches nothing in practice; see
     #: the module docstring for why it is deliberately not widened.
     excluded_plan_words: tuple = ("free",)
@@ -317,9 +322,13 @@ def scope(rows: Iterable, config: Config) -> tuple[list, list]:
     """Drop out-of-scope rows, recording why. Never silent."""
     kept, dropped = [], []
     words = tuple(w.lower() for w in config.settings.excluded_plan_words)
+    wanted = config.settings.statuses
     for row in rows:
         if not row.staff_raw or row.staff_raw == "--":
             dropped.append(Dropped(row, "no staff assigned"))
+            continue
+        if wanted is not None and row.booking_status.strip().lower() not in wanted:
+            dropped.append(Dropped(row, f'status "{row.booking_status}" not selected'))
             continue
         plan = row.pricing_plan.lower()
         hit = next((w for w in words if w in plan), None)

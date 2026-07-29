@@ -574,6 +574,12 @@ COMMISSION_PERCENT = "percent"
 COMMISSION_RATE_TYPES = [(COMMISSION_FLAT, "Fixed amount"),
                          (COMMISSION_PERCENT, "Percent of revenue")]
 
+#: The statuses a Rezerv export can carry, in the order the report shows them.
+BOOKING_STATUSES = ["Completed", "Cancelled", "Late cancelled", "No show", "Booked"]
+
+IMPORT_REPLACE = "replace"
+IMPORT_MERGE = "merge"
+
 RUN_DRAFT = "draft"
 RUN_FINALIZED = "finalized"
 RUN_SUPERSEDED = "superseded"
@@ -689,6 +695,9 @@ class CommissionRun(Base):
     uploaded_at = Column(DateTime(timezone=True), default=now_utc)
     finalized_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     finalized_at = Column(DateTime(timezone=True))
+    # Receipt from the last import into this run: what was added, what was
+    # skipped as a duplicate, what was filtered out by status.
+    last_import_note = Column(Text)
 
     uploaded_by = relationship("Staff", foreign_keys=[uploaded_by_id])
     finalized_by = relationship("Staff", foreign_keys=[finalized_by_id])

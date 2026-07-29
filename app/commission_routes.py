@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from . import commissions as engine
 from .db import get_db
 from .models import (
+    BOOKING_STATUSES, IMPORT_MERGE, IMPORT_REPLACE,
     COMMISSION_DELEGATOR_DEFAULTS, COMMISSION_FLAT, COMMISSION_PERCENT,
     COMMISSION_RATE_DEFAULTS, COMMISSION_RATE_TYPES, COMMISSION_SETTING_DEFAULTS,
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
@@ -33,6 +34,11 @@ from .models import (
 
 MONTHS = ("January February March April May June July August September "
           "October November December").split()
+
+
+def _skey(status: str) -> str:
+    """Form-field-safe key for a status name: 'Late cancelled' -> 'late_cancelled'."""
+    return re.sub(r"[^a-z0-9]+", "_", (status or "").strip().lower()).strip("_")
 
 
 # --------------------------------------------------------------------------
@@ -451,7 +457,9 @@ def register(app, deps):
         staff, redir = guard(request, db)
         if redir:
             return redir
-        return render(request, "commission_new.html", db, staff, error=None)
+        return render(request, "commission_new.html", db, staff, error=None,
+                      statuses=BOOKING_STATUSES, chosen=list(BOOKING_STATUSES),
+                      mode=IMPORT_MERGE, skey=_skey)
 
     @app.post("/commissions/new")
     async def commissions_upload(request: Request, file: UploadFile = None,
@@ -459,54 +467,124 @@ def register(app, deps):
         staff, redir = guard(request, db)
         if redir:
             return redir
+        form = await request.form()
+        mode = form.get("mode") or IMPORT_MERGE
+        chosen = [s for s in BOOKING_STATUSES if form.get("status_" + _skey(s))]
+        if not chosen:
+            chosen = list(BOOKING_STATUSES)
+
+        def again(error):
+            return render(request, "commission_new.html", db, staff, error=error,
+                          statuses=BOOKING_STATUSES, chosen=chosen, mode=mode,
+                          skey=_skey)
+
         if file is None:
-            return render(request, "commission_new.html", db, staff,
-                          error="Choose a CSV export first.")
+            return again("Choose a CSV export first.")
         raw = await file.read()
         if not raw:
-            return render(request, "commission_new.html", db, staff,
-                          error="That file is empty.")
+            return again("That file is empty.")
 
         config = build_config(db)
+        config.settings.statuses = frozenset(s.lower() for s in chosen)
         try:
             result = engine.run(raw, config)
         except Exception as exc:                              # noqa: BLE001
-            return render(request, "commission_new.html", db, staff,
-                          error=f"Could not read that file: {exc}")
+            return again(f"Could not read that file: {exc}")
         if not result.rows and not result.dropped:
-            return render(request, "commission_new.html", db, staff,
-                          error="No rows found — is this the Paid Bookings export?")
+            return again("No rows found — is this the Paid Bookings export?")
 
         dates = [r.appointment_date for r in result.rows if r.appointment_date]
         start, end = (min(dates), max(dates)) if dates else (None, None)
         period = start.strftime("%Y-%m") if start else "unknown"
         label = f"{MONTHS[start.month - 1]} {start.year}" if start else "Unknown period"
 
-        # Re-uploading a period supersedes the previous draft rather than
-        # silently creating a duplicate.
-        for old in db.query(CommissionRun).filter(CommissionRun.period == period,
-                                                  CommissionRun.status == RUN_DRAFT):
-            db.delete(old)
+        # A booking already paid out in a finalized run must never be imported
+        # again — that is the double-payment case, and it is worth guarding
+        # regardless of which mode was chosen.
+        paid_refs = {
+            ref for (ref,) in db.query(CommissionBooking.booking_ref)
+            .join(CommissionRun, CommissionBooking.run_id == CommissionRun.id)
+            .filter(CommissionRun.status == RUN_FINALIZED,
+                    CommissionBooking.dropped_reason.is_(None)).all() if ref}
 
-        run = CommissionRun(
-            period=period, period_label=label, period_start=start, period_end=end,
-            source_filename=file.filename or "upload.csv",
-            source_sha256=hashlib.sha256(raw).hexdigest(),
-            status=RUN_DRAFT, parsed_count=result.parsed_count,
-            kept_count=len(result.rows), dropped_count=len(result.dropped),
-            uploaded_by_id=staff.id, uploaded_at=datetime.now(timezone.utc))
-        db.add(run)
-        db.flush()
+        existing = (db.query(CommissionRun)
+                    .filter(CommissionRun.period == period,
+                            CommissionRun.status == RUN_DRAFT).first())
 
+        if mode == IMPORT_REPLACE and existing is not None:
+            db.delete(existing)
+            db.flush()
+            existing = None
+
+        run = existing
+        merged_into = run is not None
+        if run is None:
+            run = CommissionRun(
+                period=period, period_label=label,
+                period_start=start, period_end=end,
+                status=RUN_DRAFT, uploaded_by_id=staff.id,
+                uploaded_at=datetime.now(timezone.utc))
+            db.add(run)
+            db.flush()
+
+        run.source_filename = file.filename or "upload.csv"
+        run.source_sha256 = hashlib.sha256(raw).hexdigest()
+        if start and (run.period_start is None or start < run.period_start):
+            run.period_start = start
+        if end and (run.period_end is None or end > run.period_end):
+            run.period_end = end
+
+        have = {b.booking_ref for b in run.bookings if b.booking_ref}
         ids = _delegator_ids(db)
         coach_ids = {r.coach: r.coach_id
                      for r in db.query(CommissionCoachRate).all() if r.coach_id}
+
+        added = dup = paid = 0
         for row in result.rows:
+            ref = row.booking_ref
+            if ref and ref in paid_refs:
+                paid += 1
+                continue
+            if ref and ref in have:
+                dup += 1
+                continue
             db.add(_booking(run.id, row, ids, coach_ids))
+            have.add(ref)
+            added += 1
         for drop in result.dropped:
+            ref = drop.row.booking_ref
+            if ref and (ref in have or ref in paid_refs):
+                continue
             b = _booking(run.id, drop.row, ids, coach_ids)
             b.dropped_reason = drop.reason
             db.add(b)
+            have.add(ref)
+
+        by_status = {}
+        for d in result.dropped:
+            if d.reason.startswith("status "):
+                s = d.row.booking_status or "(blank)"
+                by_status[s] = by_status.get(s, 0) + 1
+
+        note = ["%s · %d row%s read" % (
+            "Merged into this run" if merged_into and mode == IMPORT_MERGE
+            else "Replaced the previous draft" if mode == IMPORT_REPLACE and merged_into
+            else "New run", result.parsed_count,
+            "" if result.parsed_count == 1 else "s")]
+        note.append("%d imported" % added)
+        if dup:
+            note.append("%d skipped as already in this run" % dup)
+        if paid:
+            note.append("%d skipped — already paid in a finalized run" % paid)
+        if by_status:
+            note.append("filtered out by status: " + ", ".join(
+                "%s %d" % (k, v) for k, v in sorted(by_status.items())))
+        run.last_import_note = " · ".join(note)
+
+        live = [b for b in run.bookings if not b.dropped_reason]
+        run.parsed_count = len(run.bookings)
+        run.kept_count = len(live)
+        run.dropped_count = len(run.bookings) - len(live)
         db.commit()
         return RedirectResponse(f"/commissions/{run.id}", status_code=303)
 
