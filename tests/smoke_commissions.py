@@ -28,7 +28,8 @@ with TestClient(app) as c:
     # design), and leaving one behind would make the double-payment guard skip
     # every booking on the next pass — correct behaviour, wrong for a test.
     from app.db import SessionLocal                 # noqa: E402
-    from app.models import CommissionRun            # noqa: E402
+    from app.models import (CommissionBooking, CommissionRun,   # noqa: E402
+                            CommissionSignoff)
     _db = SessionLocal()
     for _run in _db.query(CommissionRun).all():
         _db.delete(_run)
@@ -327,6 +328,58 @@ with TestClient(app) as c:
     r2 = c.get(f"/commissions/{rid}/coach/{coach0}/statement.pdf?download=1")
     check("  download variant attaches",
           "attachment" in r2.headers.get("content-disposition", ""))
+
+    print("\nadmin-only: approving and repricing")
+    # A reviewer with manage_commissions can read the run but must not be able
+    # to approve a coach or type a rate onto a booking. Hiding the buttons is
+    # not enough — the routes themselves have to refuse.
+    from app.auth import hash_pin                                # noqa: E402
+    from app.models import Staff as _Staff                       # noqa: E402
+    _d = _SL()
+    reviewer = _d.query(_Staff).filter_by(username="reviewer").first()
+    if not reviewer:
+        reviewer = _Staff(name="Reviewer", username="reviewer", role="staff",
+                          person_type="employee", is_active=True)
+        _d.add(reviewer)
+    reviewer.role = "staff"
+    reviewer.permissions = "manage_commissions"
+    reviewer.pin_hash, reviewer.pin_salt = hash_pin("4321")
+    _d.commit()
+    _d.close()
+
+    from fastapi.testclient import TestClient as _TC             # noqa: E402
+    with _TC(app) as rc:
+        r = rc.post("/login", data={"username": "reviewer", "pin": "4321"},
+                    follow_redirects=False)
+        check("  reviewer can log in", r.status_code == 303)
+        r = rc.get(f"/commissions/{rid}/coach/{coach0}")
+        check("  reviewer can read a coach page", r.status_code == 200)
+        check("    but sees no rate boxes", 'name="rate_value"' not in r.text)
+        check("    and no approve button", "/signoff" not in r.text)
+        check("    and is told why", "Admin only" in r.text or "An admin has to" in r.text)
+        r = rc.post(f"/commissions/{rid}/coach/{coach0}/signoff",
+                    data={"confirm": "on"}, follow_redirects=False)
+        check("    sign-off route refuses", r.headers.get("location") == "/dashboard",
+              r.headers.get("location", str(r.status_code)))
+        r = rc.post(f"/commissions/{rid}/booking/{bid}/rate",
+                    data={"rate_type": "flat", "rate_value": "99999"},
+                    follow_redirects=False)
+        check("    rate route refuses", r.headers.get("location") == "/dashboard",
+              r.headers.get("location", str(r.status_code)))
+        r = rc.post(f"/commissions/{rid}/booking/{bid}/approve", follow_redirects=False)
+        check("    booking approve refuses", r.headers.get("location") == "/dashboard",
+              r.headers.get("location", str(r.status_code)))
+        r = rc.post(f"/commissions/{rid}/coach/{coach0}/approve-status",
+                    data={"status": "Cancelled", "include": "on"},
+                    follow_redirects=False)
+        check("    bulk approve refuses", r.headers.get("location") == "/dashboard",
+              r.headers.get("location", str(r.status_code)))
+    _d = _SL()
+    n_signed = _d.query(CommissionSignoff).filter_by(run_id=int(rid)).count()
+    _b = _d.get(CommissionBooking, int(bid))
+    check("    nothing was signed off", n_signed == 0, str(n_signed))
+    check("    no rate was written", not _b.rate_manual)
+    _d.close()
 
     print("\nphase 4 — finalize")
     r = c.post(f"/commissions/{rid}/finalize", follow_redirects=False)
