@@ -676,9 +676,11 @@ class CommissionSessionRate(Base):
     """
     __tablename__ = "commission_session_rates"
     id = Column(Integer, primary_key=True)
+    program = Column(String)                       # "Private Coaching" | "Awaken Force"
     plan = Column(String, nullable=False)          # matches "Pricing plan used"
     sessions = Column(Integer)                     # 1, 8, 12, 24, 36
     rate = Column(Numeric(10, 2), nullable=False, default=0)
+    package_total = Column(Numeric(10, 2))         # what the export bills for the pack
     effective_from = Column(Date)                  # null = no lower bound
     effective_to = Column(Date)                    # null = still current
     is_active = Column(Boolean, nullable=False, default=True)
@@ -695,12 +697,22 @@ class CommissionSessionRate(Base):
 
 
 #: Seeded once, from the rates the commission spec has always used.
+PT = "Private Coaching"
+AWAKEN_FORCE = "Awaken Force"
+
 COMMISSION_SESSION_RATE_DEFAULTS = [
-    dict(plan="1 Session", sessions=1, rate=1900),
-    dict(plan="8 Sessions", sessions=8, rate=1800),
-    dict(plan="12 Sessions", sessions=12, rate=1700),
-    dict(plan="24 Sessions", sessions=24, rate=1600),
-    dict(plan="36 Sessions", sessions=36, rate=1500),
+    dict(program=PT, plan="1 Session", sessions=1, rate=1900),
+    dict(program=PT, plan="8 Sessions", sessions=8, rate=1800),
+    dict(program=PT, plan="12 Sessions", sessions=12, rate=1700),
+    dict(program=PT, plan="24 Sessions", sessions=24, rate=1600),
+    dict(program=PT, plan="36 Sessions", sessions=36, rate=1500),
+    # Awaken Force has its own card. Every AF row exports identically
+    # (credit 1, the package total as revenue), so the package_total is what
+    # tells one package from another.
+    dict(program=AWAKEN_FORCE, plan="Awaken Force", sessions=1, rate=1500,
+         package_total=1500),
+    dict(program=AWAKEN_FORCE, plan="Awaken Force", sessions=8, rate=1200,
+         package_total=9600),
 ]
 
 

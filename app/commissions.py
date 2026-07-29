@@ -116,6 +116,11 @@ class SessionRate:
     plan: str
     rate: Decimal
     sessions: int | None = None
+    program: str | None = None
+    #: What the export bills for the whole pack. Awaken Force reports credit 1
+    #: on every row regardless of pack size, so this is the only thing that
+    #: tells a 1-session pack from an 8-session one.
+    package_total: Decimal | None = None
     effective_from: date | None = None
     effective_to: date | None = None
 
@@ -129,12 +134,19 @@ class SessionRate:
         return True
 
 
+PT = "Private Coaching"
+AWAKEN_FORCE = "Awaken Force"
+
 DEFAULT_SESSION_RATES = (
-    SessionRate("1 Session", Decimal("1900"), 1),
-    SessionRate("8 Sessions", Decimal("1800"), 8),
-    SessionRate("12 Sessions", Decimal("1700"), 12),
-    SessionRate("24 Sessions", Decimal("1600"), 24),
-    SessionRate("36 Sessions", Decimal("1500"), 36),
+    SessionRate("1 Session", Decimal("1900"), 1, PT),
+    SessionRate("8 Sessions", Decimal("1800"), 8, PT),
+    SessionRate("12 Sessions", Decimal("1700"), 12, PT),
+    SessionRate("24 Sessions", Decimal("1600"), 24, PT),
+    SessionRate("36 Sessions", Decimal("1500"), 36, PT),
+    SessionRate("Awaken Force", Decimal("1500"), 1, AWAKEN_FORCE,
+                package_total=Decimal("1500")),
+    SessionRate("Awaken Force", Decimal("1200"), 8, AWAKEN_FORCE,
+                package_total=Decimal("9600")),
 )
 
 
@@ -157,20 +169,42 @@ class Settings:
     #: the module docstring for why it is deliberately not widened.
     excluded_plan_words: tuple = ("free",)
 
-    def rate_for(self, plan: str, on: date | None) -> SessionRate | None:
+    def rate_for(self, plan: str, on: date | None,
+                 package: Decimal | None = None,
+                 credits: int | None = None) -> SessionRate | None:
         """The session rate for a plan on a given date.
 
-        When ranges overlap the most recently effective one wins, so adding a
-        new rate without closing the old one still does the sensible thing.
+        A plan can have several rates — Awaken Force sells a 1-session and an
+        8-session pack under one plan name — so the pack is identified in
+        order of how trustworthy the signal is:
+
+        1. the exported package total, when a rate records one;
+        2. the export's session count (``Total pricing plan credit``), which is
+           right for the Private Coaching packs but always 1 for Awaken Force;
+        3. whatever single rate is left.
+
+        Where date ranges overlap the most recently effective wins, so a new
+        rate can be added without closing the old one first.
         """
         key = (plan or "").strip().lower()
-        best = None
-        for r in self.session_rates:
-            if r.plan.strip().lower() != key or not r.covers(on):
-                continue
-            if best is None or _floor(r.effective_from) > _floor(best.effective_from):
-                best = r
-        return best
+        live = [r for r in self.session_rates
+                if r.plan.strip().lower() == key and r.covers(on)]
+        if not live:
+            return None
+
+        def newest(rows):
+            return max(rows, key=lambda r: _floor(r.effective_from))
+
+        if len(live) > 1 and package is not None:
+            exact = [r for r in live
+                     if r.package_total is not None and r.package_total == package]
+            if exact:
+                return newest(exact)
+        if len(live) > 1 and credits:
+            same = [r for r in live if r.sessions == credits]
+            if same:
+                return newest(same)
+        return newest(live)
 
 
 @dataclass
@@ -210,6 +244,8 @@ class Row:
     pricing_plan: str = ""
     payment_method: str = ""
     revenue_raw: Decimal = ZERO
+    #: "Total pricing plan credit" — the pack size for session plans.
+    credits: int | None = None
 
     # resolved
     coach: str | None = None
@@ -296,12 +332,13 @@ COLUMNS = {
     "pricing plan used": "pricing_plan",
     "payment method": "payment_method",
     "revenue per booking": "revenue_raw",
+    "total pricing plan credit": "credits",
 }
 
 #: Columns the original spec drops. Listed so the intent stays visible even
 #: though we simply never read them.
 IGNORED = (
-    "paid on", "used credit", "total pricing plan credit", "sales channel",
+    "paid on", "used credit", "sales channel",
     "slot per booking", "total slots", "duration (hour)", "duration",
     "total transaction revenue",
 )
@@ -342,6 +379,8 @@ def parse(data: bytes | str) -> list:
             value = (value or "").strip()
             if field_name == "revenue_raw":
                 row.revenue_raw = _money(value)
+            elif field_name == "credits":
+                row.credits = int(value) if value.strip().isdigit() else None
             elif field_name == "appointment_date":
                 row.appointment_date = _parse_date(value)
             else:
@@ -449,7 +488,9 @@ def _backfill_applies(row: Row, settings: Settings) -> bool:
     plan = row.pricing_plan.lower()
     if plan in NO_BACKFILL_PLANS or _is_membership(plan):
         return False
-    if settings.rate_for(row.pricing_plan, row.appointment_date) is None:
+    if settings.rate_for(row.pricing_plan, row.appointment_date,
+                         package=row.revenue_raw or None,
+                         credits=row.credits) is None:
         return False
     method = row.payment_method.lower()
     if settings.backfill_scope == BACKFILL_CREDIT_AND_FREE:
@@ -472,7 +513,8 @@ def normalize_row(row: Row, config: Config) -> Row:
 
     # (a) zero-revenue backfill from the per-session rate in force that day
     if _backfill_applies(row, s):
-        found = s.rate_for(row.pricing_plan, row.appointment_date)
+        found = s.rate_for(row.pricing_plan, row.appointment_date,
+                           package=row.revenue_raw or None, credits=row.credits)
         row.revenue = money(found.rate)
         row.adjustment = "zero_backfill"
         row.adjustment_note = f"₱0 → ₱{found.rate:,.0f} ({row.pricing_plan} rate)"
@@ -488,12 +530,20 @@ def normalize_row(row: Row, config: Config) -> Row:
             f"₱{before:,.0f} → ₱{row.revenue:,.0f} (walk-in −₱{s.hyrox_walkin_deduction:,.0f})")
         return row
 
-    # (c) Awaken Force fixed per-session revenue
+    # (c) Awaken Force: the export bills the whole pack, so value the booking
+    # at the per-session rate from its own rate card. The pack is identified by
+    # the exported total, because every AF row reports credit 1.
     if row.pricing_plan.lower() == "awaken force":
+        found = s.rate_for(row.pricing_plan, row.appointment_date,
+                           package=row.revenue_raw or None, credits=row.credits)
+        rate = found.rate if found else s.awaken_force_revenue
         before = row.revenue
-        row.revenue = money(s.awaken_force_revenue)
+        row.revenue = money(rate)
         row.adjustment = "awaken_force"
-        row.adjustment_note = f"₱{before:,.0f} → ₱{row.revenue:,.0f} (Awaken Force rate)"
+        sessions = found.sessions if found else None
+        row.adjustment_note = "₱{:,.0f} → ₱{:,.0f} (Awaken Force{})".format(
+            before, row.revenue,
+            " · %s-session pack" % sessions if sessions else "")
     return row
 
 

@@ -26,7 +26,7 @@ from .models import (
     BOOKING_STATUSES, IMPORT_MERGE, IMPORT_REPLACE,
     COMMISSION_DELEGATOR_DEFAULTS, COMMISSION_FLAT, COMMISSION_PERCENT,
     COMMISSION_RATE_DEFAULTS, COMMISSION_RATE_TYPES, COMMISSION_SETTING_DEFAULTS,
-    COMMISSION_SESSION_RATE_DEFAULTS, CommissionSessionRate,
+    COMMISSION_SESSION_RATE_DEFAULTS, CommissionSessionRate, AWAKEN_FORCE,
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
     CommissionBooking, CommissionCharge, CommissionChargeLine,
     CommissionCoachRate, CommissionDelegator, CommissionPayout,
@@ -59,6 +59,14 @@ def seed(db: Session) -> None:
         seeded = _legacy_session_rates(legacy.value) if legacy else []
         for d in (seeded or COMMISSION_SESSION_RATE_DEFAULTS):
             db.add(CommissionSessionRate(**d))
+        db.commit()
+    # Awaken Force used to live in a standalone setting. Give it rows in the
+    # rate card so it sits beside the Private Coaching packs, once.
+    if not db.query(CommissionSessionRate).filter(
+            CommissionSessionRate.plan.ilike("awaken force")).first():
+        for d in COMMISSION_SESSION_RATE_DEFAULTS:
+            if d.get("program") == AWAKEN_FORCE:
+                db.add(CommissionSessionRate(**d))
     existing = {s.key for s in db.query(CommissionSetting).all()}
     for key, (value, _label, _help) in COMMISSION_SETTING_DEFAULTS.items():
         if key not in existing:
@@ -128,6 +136,9 @@ def build_config(db: Session) -> engine.Config:
         session_rates=tuple(
             engine.SessionRate(
                 plan=r.plan, rate=Decimal(str(r.rate or 0)), sessions=r.sessions,
+                program=r.program,
+                package_total=(Decimal(str(r.package_total))
+                               if r.package_total is not None else None),
                 effective_from=r.effective_from, effective_to=r.effective_to)
             for r in db.query(CommissionSessionRate)
             .filter(CommissionSessionRate.is_active == True)),  # noqa: E712
@@ -137,6 +148,14 @@ def build_config(db: Session) -> engine.Config:
         default_delegator=(s.get("default_delegator") or None),
     )
     return engine.Config(coach_rates=rates, delegators=delegators, settings=st)
+
+
+def people(db: Session):
+    """Coaches and affiliates, for linking a rate row to a real person rather
+    than repeating their name as free text."""
+    return (db.query(Staff)
+            .filter(Staff.person_type.in_(("coach", "affiliate", "employee")))
+            .order_by(Staff.name).all())
 
 
 def _delegator_ids(db: Session) -> dict:
@@ -340,12 +359,14 @@ def register(app, deps):
             return redir
         rates = db.query(CommissionCoachRate).order_by(CommissionCoachRate.coach).all()
         return render(request, "commission_rates.html", db, staff, rates=rates,
-                      rate_types=COMMISSION_RATE_TYPES, active="rates")
+                      rate_types=COMMISSION_RATE_TYPES, people=people(db),
+                      active="rates")
 
     @app.post("/admin/commission-rates/{rid}")
     def commission_rate_update(
             request: Request, rid: int,
             coach: str = Form(...), staff_raw: str = Form(...),
+            coach_id: str = Form(""),
             rate_type: str = Form(COMMISSION_PERCENT), rate_value: str = Form("0"),
             override_plans: str = Form(""), override_rate_type: str = Form(""),
             override_rate_value: str = Form(""), is_active: str = Form(""),
@@ -356,7 +377,11 @@ def register(app, deps):
         r = db.get(CommissionCoachRate, rid)
         if not r:
             return RedirectResponse("/admin/commission-rates", status_code=303)
-        r.coach = coach.strip()
+        r.coach_id = int(coach_id) if coach_id.strip().isdigit() else None
+        linked = db.get(Staff, r.coach_id) if r.coach_id else None
+        # The person record is the source of truth for the name; bookings are
+        # grouped on this text, so it has to follow the entity.
+        r.coach = (linked.name if linked else coach.strip())
         r.staff_raw = staff_raw.strip()
         r.rate_type = rate_type
         r.rate_value = _num(rate_value, rate_type)
@@ -371,17 +396,20 @@ def register(app, deps):
         return RedirectResponse("/admin/commission-rates", status_code=303)
 
     @app.post("/admin/commission-rates/new")
-    def commission_rate_new(request: Request, coach: str = Form(...),
-                            staff_raw: str = Form(...),
+    def commission_rate_new(request: Request, coach: str = Form(""),
+                            staff_raw: str = Form(...), coach_id: str = Form(""),
                             rate_type: str = Form(COMMISSION_PERCENT),
                             rate_value: str = Form("0"),
                             db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
             return redir
-        db.add(CommissionCoachRate(coach=coach.strip(), staff_raw=staff_raw.strip(),
-                                   rate_type=rate_type,
-                                   rate_value=_num(rate_value, rate_type)))
+        cid = int(coach_id) if coach_id.strip().isdigit() else None
+        linked = db.get(Staff, cid) if cid else None
+        db.add(CommissionCoachRate(
+            coach=(linked.name if linked else coach.strip()),
+            coach_id=cid, staff_raw=staff_raw.strip(), rate_type=rate_type,
+            rate_value=_num(rate_value, rate_type)))
         db.commit()
         return RedirectResponse("/admin/commission-rates", status_code=303)
 
@@ -392,20 +420,22 @@ def register(app, deps):
             return redir
         rows = db.query(CommissionDelegator).order_by(CommissionDelegator.name).all()
         return render(request, "commission_delegators.html", db, staff,
-                      delegators=rows, active="delegators")
+                      delegators=rows, people=people(db), active="delegators")
 
     @app.post("/admin/commission-delegators/{did}")
     def commission_delegator_update(
             request: Request, did: int, name: str = Form(...), codes: str = Form(""),
-            rate: str = Form("0"), cost: str = Form("0"), is_active: str = Form(""),
-            db: Session = Depends(get_db)):
+            entity_id: str = Form(""), rate: str = Form("0"), cost: str = Form("0"),
+            is_active: str = Form(""), db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
             return redir
         d = db.get(CommissionDelegator, did)
         if not d:
             return RedirectResponse("/admin/commission-delegators", status_code=303)
-        d.name = name.strip()
+        d.entity_id = int(entity_id) if entity_id.strip().isdigit() else None
+        linked = db.get(Staff, d.entity_id) if d.entity_id else None
+        d.name = (linked.name if linked else name.strip())
         d.codes = ",".join(c.strip().upper() for c in codes.split(",") if c.strip())
         d.rate = _num(rate, COMMISSION_FLAT)
         d.cost = _num(cost, COMMISSION_FLAT)
@@ -434,15 +464,21 @@ def register(app, deps):
         if redir:
             return redir
         rows = (db.query(CommissionSessionRate)
-                .order_by(CommissionSessionRate.sessions,
+                .order_by(CommissionSessionRate.program,
+                          CommissionSessionRate.sessions,
                           CommissionSessionRate.effective_from).all())
+        groups = {}
+        for r in rows:
+            groups.setdefault(r.program or "Other", []).append(r)
         return render(request, "commission_session_rates.html", db, staff,
-                      rates=rows, active="session_rates")
+                      rates=rows, groups=sorted(groups.items()),
+                      active="session_rates")
 
     @app.post("/admin/commission-session-rates/{sid}")
     def commission_session_rate_update(
             request: Request, sid: int, plan: str = Form(...),
-            sessions: str = Form(""), rate: str = Form("0"),
+            program: str = Form(""), sessions: str = Form(""),
+            rate: str = Form("0"), package_total: str = Form(""),
             effective_from: str = Form(""), effective_to: str = Form(""),
             note: str = Form(""), is_active: str = Form(""),
             db: Session = Depends(get_db)):
@@ -453,8 +489,11 @@ def register(app, deps):
         if not r:
             return RedirectResponse("/admin/commission-session-rates", status_code=303)
         r.plan = plan.strip()
+        r.program = program.strip() or None
         r.sessions = int(sessions) if sessions.strip().isdigit() else None
         r.rate = _num(rate, COMMISSION_FLAT)
+        r.package_total = (_num(package_total, COMMISSION_FLAT)
+                           if package_total.strip() else None)
         r.effective_from = _day(effective_from)
         r.effective_to = _day(effective_to)
         r.note = note.strip() or None
@@ -464,17 +503,20 @@ def register(app, deps):
 
     @app.post("/admin/commission-session-rates/new")
     def commission_session_rate_new(
-            request: Request, plan: str = Form(...), sessions: str = Form(""),
-            rate: str = Form("0"), effective_from: str = Form(""),
+            request: Request, plan: str = Form(...), program: str = Form(""),
+            sessions: str = Form(""), rate: str = Form("0"),
+            package_total: str = Form(""), effective_from: str = Form(""),
             effective_to: str = Form(""), note: str = Form(""),
             db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
             return redir
         db.add(CommissionSessionRate(
-            plan=plan.strip(),
+            plan=plan.strip(), program=program.strip() or None,
             sessions=int(sessions) if sessions.strip().isdigit() else None,
             rate=_num(rate, COMMISSION_FLAT),
+            package_total=(_num(package_total, COMMISSION_FLAT)
+                           if package_total.strip() else None),
             effective_from=_day(effective_from), effective_to=_day(effective_to),
             note=note.strip() or None))
         db.commit()

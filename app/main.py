@@ -379,6 +379,14 @@ def startup():
                 "DO $$ BEGIN IF to_regclass('public.commission_runs') IS NOT NULL THEN "
                 "ALTER TABLE commission_runs ADD COLUMN IF NOT EXISTS last_import_note TEXT; "
                 "END IF; END $$;"))
+            # Session rates gained a programme and a pack total, so Awaken
+            # Force can sit alongside the Private Coaching packs.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_session_rates') IS NOT NULL THEN "
+                "ALTER TABLE commission_session_rates ADD COLUMN IF NOT EXISTS program VARCHAR; "
+                "ALTER TABLE commission_session_rates ADD COLUMN IF NOT EXISTS package_total NUMERIC(10,2); "
+                "UPDATE commission_session_rates SET program = 'Private Coaching' "
+                "WHERE program IS NULL; END IF; END $$;"))
             # Booking ref is the natural key for de-duplicating imports.
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
