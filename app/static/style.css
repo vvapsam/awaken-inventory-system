@@ -200,3 +200,9 @@ tr.inactive{opacity:.5}
   color:var(--muted);text-decoration:none;background:var(--bg)}
 .tfilter a:hover{border-color:var(--teal);color:var(--teal-dark)}
 .tfilter a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+/* Whole-row navigation. A row only becomes clickable when it carries a
+   data-href, so editable rows (which hold forms) stay untouched. */
+tr.rowlink{cursor:pointer}
+tr.rowlink:hover td{background:var(--teal-tint)}
+tr.rowlink td:first-child{position:relative}
