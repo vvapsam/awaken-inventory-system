@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<h1 style="margin:0">Rules &amp; rates</h1>
+<p class="muted small" style="margin:2px 0 0">Revenue normalisation applied to Completed rows before commission is calculated.</p>
+{% include "_commission_tabs.html" %}
+
+<form method="post" action="/admin/commission-settings">
+  {% for key, value, label, help in defs %}
+  <div class="card">
+    <label style="margin:0">{{ label }}
+      <input name="{{ key }}" value="{{ value }}">
+    </label>
+    <p class="muted small" style="margin:6px 0 0">{{ help }}</p>
+  </div>
+  {% endfor %}
+  <button class="btn primary">Save settings</button>
+</form>
+{% endblock %}

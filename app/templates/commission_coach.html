@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ coach }} — {{ run.period_label }}</h1>
+    <p class="muted small" style="margin:2px 0 0">All bookings, grouped by status.</p>
+  </div>
+  <a class="btn" href="/commissions/{{ run.id }}?tab=summary">← Back to run</a>
+</div>
+
+<div class="grid" style="margin:14px 0">
+  <div class="card stat"><div class="stat-label">Completed</div><div class="stat-value">{{ completed.rows|length if completed else 0 }}</div></div>
+  <div class="card stat"><div class="stat-label">Revenue</div><div class="stat-value">{{ peso(completed.revenue if completed else 0) }}</div></div>
+  <div class="card stat warn"><div class="stat-label">Commission</div><div class="stat-value">{{ peso(completed.commission if completed else 0) }}</div></div>
+  <div class="card stat"><div class="stat-label">Of which delegation</div><div class="stat-value">{{ peso(delegation_total) }}</div><div class="muted small">{{ delegation_sessions }} sessions</div></div>
+</div>
+
+<table>
+  <tr><th>Booking</th><th>Customer</th><th>Date</th><th>Appointment</th><th>Plan</th>
+      <th style="text-align:right">Revenue</th><th>Rate applied</th><th style="text-align:right">Commission</th></tr>
+  {% for g in groups %}
+  <tr><td colspan="8" style="background:var(--panel);font-weight:650;text-transform:uppercase;font-size:.72rem;letter-spacing:.06em;color:var(--muted)">{{ g.status }} · {{ g.rows|length }}</td></tr>
+    {% for b in g.rows %}
+    <tr>
+      <td class="mono">{{ b.booking_ref }}</td>
+      <td>{{ b.customer }}</td>
+      <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+      <td>{{ b.appointment_name }}</td>
+      <td>{% if b.delegator_id %}<span class="tag" style="background:#8a94a1">Delegation · {{ b.delegator.name if b.delegator }}</span>{% else %}{{ b.pricing_plan }}{% endif %}</td>
+      <td style="text-align:right">{{ peso(b.revenue) }}{% if b.adjustment %}<div class="muted small">{{ b.adjustment_note }}</div>{% endif %}</td>
+      <td class="small">
+        {% if b.rule == 'delegation' %}Delegation cost
+        {% elif b.rate_type == 'percent' %}{{ '%g'|format(b.rate_value * 100) }}% of {{ peso(b.revenue) }}
+        {% elif b.rate_type == 'flat' %}Fixed {{ peso(b.rate_value) }}
+        {% else %}<span class="muted">no commission</span>{% endif %}
+      </td>
+      <td style="text-align:right">{% if b.commission is not none %}{{ peso(b.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    <tr style="background:#fafbfc;font-weight:650">
+      <td colspan="5">{{ g.status }} subtotal</td>
+      <td style="text-align:right">{{ peso(g.revenue) }}</td><td></td>
+      <td style="text-align:right">{% if g.status|lower == 'completed' %}{{ peso(g.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+</table>
+{% endblock %}

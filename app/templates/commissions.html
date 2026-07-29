@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Commission runs</h1>
+    <p class="muted small" style="margin:2px 0 0">Upload a Rezerv Paid Bookings export, review it, then finalize into coach payouts and delegator charges.</p>
+  </div>
+  <a class="btn primary" href="/commissions/new">＋ New run</a>
+</div>
+{% include "_commission_tabs.html" %}
+
+{% if rows %}
+<table>
+  <tr><th>Period</th><th>Status</th><th style="text-align:right">Sessions</th>
+      <th style="text-align:right">Commission</th><th style="text-align:right">Delegation cost</th>
+      <th style="text-align:right">Charged</th><th style="text-align:right">Margin</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td><b>{{ r.run.period_label or r.run.period }}</b>
+      <div class="muted small">{{ r.run.source_filename }}</div></td>
+    <td>
+      {% if r.run.status == 'finalized' %}<span class="tag">Finalized</span>
+      {% elif r.run.status == 'superseded' %}<span class="tag" style="background:#8a94a1">Superseded</span>
+      {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Draft</span>{% endif %}
+    </td>
+    <td style="text-align:right">{{ r.totals.sessions }}</td>
+    <td style="text-align:right">{{ peso(r.totals.commission) }}</td>
+    <td style="text-align:right">{{ peso(r.totals.delegation_cost) }}</td>
+    <td style="text-align:right">{{ peso(r.totals.delegation_charged) }}</td>
+    <td style="text-align:right;color:var(--teal-dark);font-weight:600">{{ peso(r.totals.delegation_margin) }}</td>
+    <td><a class="btn" style="padding:5px 12px" href="/commissions/{{ r.run.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="card"><p class="muted" style="margin:0">No runs yet. <a href="/commissions/new">Upload a Rezerv export</a> to get started.</p></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Commission rates</h1>
+    <p class="muted small" style="margin:2px 0 0">How each coach is paid. Changes apply to future runs only — every past booking keeps the rate that was used at the time.</p>
+  </div>
+</div>
+{% include "_commission_tabs.html" %}
+
+<table>
+  <tr><th>Coach</th><th>Rezerv name</th><th>Basis</th><th style="text-align:right">Rate</th>
+      <th>Override plans</th><th style="text-align:right">Override</th><th>Active</th><th></th></tr>
+  {% for r in rates %}
+  <tr>
+    <form method="post" action="/admin/commission-rates/{{ r.id }}">
+    <td><input name="coach" value="{{ r.coach }}" style="width:120px"></td>
+    <td><input name="staff_raw" value="{{ r.staff_raw }}" style="width:130px" class="mono"></td>
+    <td>
+      <select name="rate_type" style="width:130px">
+        {% for k, label in rate_types %}<option value="{{ k }}" {{ 'selected' if r.rate_type == k }}>{{ label }}</option>{% endfor %}
+      </select>
+    </td>
+    <td style="text-align:right">
+      <input name="rate_value" style="width:90px;text-align:right"
+             value="{{ '%g'|format(r.rate_value * 100) if r.rate_type == 'percent' else '%g'|format(r.rate_value) }}">
+      <span class="muted small">{{ '%' if r.rate_type == 'percent' else '₱' }}</span>
+    </td>
+    <td><input name="override_plans" value="{{ r.override_plans or '' }}" style="width:190px" placeholder="drop-in, awaken force"></td>
+    <td style="text-align:right">
+      <select name="override_rate_type" style="width:96px">
+        <option value="">—</option>
+        {% for k, label in rate_types %}<option value="{{ k }}" {{ 'selected' if r.override_rate_type == k }}>{{ label }}</option>{% endfor %}
+      </select>
+      <input name="override_rate_value" style="width:70px;text-align:right"
+             value="{% if r.override_rate_value is not none %}{{ '%g'|format(r.override_rate_value * 100) if r.override_rate_type == 'percent' else '%g'|format(r.override_rate_value) }}{% endif %}">
+    </td>
+    <td><input type="checkbox" name="is_active" {{ 'checked' if r.is_active }}></td>
+    <td><button class="btn primary" style="padding:6px 12px">Save</button></td>
+    </form>
+  </tr>
+  {% endfor %}
+</table>
+
+<div class="card" style="margin-top:18px">
+  <h3 style="margin:0 0 4px;font-size:.95rem">Add a coach</h3>
+  <p class="muted small" style="margin:0 0 10px">The Rezerv name is how the export spells them — it writes <span class="mono">Rick F</span> for Ric.</p>
+  <form method="post" action="/admin/commission-rates/new" class="row-between" style="gap:10px;align-items:flex-end">
+    <div style="flex:1"><label>Coach<input name="coach" required></label></div>
+    <div style="flex:1"><label>Rezerv name<input name="staff_raw" required class="mono"></label></div>
+    <div style="flex:1"><label>Basis<select name="rate_type">{% for k, label in rate_types %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label></div>
+    <div style="flex:1"><label>Rate<input name="rate_value" value="40"></label></div>
+    <button class="btn primary">Add</button>
+  </form>
+</div>
+{% endblock %}

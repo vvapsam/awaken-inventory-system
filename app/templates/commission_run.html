@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block body %}
+{% set is_draft = run.status == RUN_DRAFT %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ run.period_label or run.period }}
+      {% if run.status == 'finalized' %}<span class="tag">Finalized</span>
+      {% elif run.status == 'superseded' %}<span class="tag" style="background:#8a94a1">Superseded</span>
+      {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Draft</span>{% endif %}
+    </h1>
+    <p class="muted small mono" style="margin:2px 0 0">{{ run.source_filename }}
+      · uploaded {{ run.uploaded_at.strftime('%d %b %Y') if run.uploaded_at }}
+      {% if run.uploaded_by %}by {{ run.uploaded_by.name }}{% endif %}</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a class="btn" href="/commissions">All runs</a>
+    {% if is_draft %}
+    <form method="post" action="/commissions/{{ run.id }}/finalize">
+      <button class="btn primary" {{ 'disabled' if block.blocking }}>Finalize →</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if block.blocking %}
+<div class="error">
+  <b>Finalizing is blocked.</b>
+  {% if block.unmapped %}
+  <div style="margin-top:6px">These <b>Staff</b> names don't match any coach — their sessions would be left out of every payout:</div>
+  <ul style="margin:4px 0 0">
+    {% for name, n in block.unmapped.items() %}<li><span class="mono">{{ name }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}
+  </ul>
+  <div class="small" style="margin-top:6px"><a href="/admin/commission-rates">Add the Rezerv name to a coach →</a></div>
+  {% endif %}
+  {% if block.unknown %}
+  <div style="margin-top:8px">These delegation variants name a code that isn't configured:</div>
+  <ul style="margin:4px 0 0">
+    {% for v, n in block.unknown.items() %}<li><span class="mono">{{ v }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}
+  </ul>
+  <div class="small" style="margin-top:6px"><a href="/admin/commission-delegators">Add the code to a delegator →</a></div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid" style="margin:14px 0">
+  <div class="card stat"><div class="stat-label">Sessions</div><div class="stat-value">{{ totals.sessions }}</div>
+    <div class="muted small">of {{ run.parsed_count }} rows · {{ run.dropped_count }} dropped</div></div>
+  <div class="card stat"><div class="stat-label">Commission</div><div class="stat-value">{{ peso(totals.commission) }}</div></div>
+  <div class="card stat"><div class="stat-label">Delegation cost</div><div class="stat-value">{{ peso(totals.delegation_cost) }}</div>
+    <div class="muted small">{{ totals.delegation_sessions }} sessions</div></div>
+  <div class="card stat"><div class="stat-label">Delegation charged</div><div class="stat-value">{{ peso(totals.delegation_charged) }}</div></div>
+  <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Delegation margin</div>
+    <div class="stat-value">{{ peso(totals.delegation_margin) }}</div><div class="muted small">charged − cost</div></div>
+</div>
+
+<div class="tfilter">
+  <a href="?tab=summary" class="{{ 'on' if tab == 'summary' }}">Summary</a>
+  <a href="?tab=adjustments" class="{{ 'on' if tab == 'adjustments' }}">Adjustments ({{ adjusted|length }})</a>
+  <a href="?tab=dropped" class="{{ 'on' if tab == 'dropped' }}">Dropped ({{ dropped|length }})</a>
+  <a href="?tab=delegation" class="{{ 'on' if tab == 'delegation' }}">Delegation ({{ delegated|length }})</a>
+  <a href="?tab=coaches" class="{{ 'on' if tab == 'coaches' }}">By coach</a>
+  {% if run.status == 'finalized' %}<a href="?tab=documents" class="{{ 'on' if tab == 'documents' }}">Documents</a>{% endif %}
+</div>
+
+{% if tab == 'summary' %}
+<h2>Sessions by coach and plan</h2>
+<table>
+  <tr><th>Coach</th>
+    {% for p in plans %}<th style="text-align:right">{{ p }}</th>{% endfor %}
+    <th style="text-align:right">Sessions</th><th style="text-align:right">Revenue</th><th style="text-align:right">Commission</th></tr>
+  {% for coach, r in prows %}
+  <tr>
+    <td><a href="/commissions/{{ run.id }}/coach/{{ coach }}"><b>{{ coach }}</b></a></td>
+    {% for p in plans %}<td style="text-align:right">{{ r.get(p, 0) or '' }}</td>{% endfor %}
+    <td style="text-align:right">{{ r['_sessions'] }}</td>
+    <td style="text-align:right">{{ peso(r['_revenue']) }}</td>
+    <td style="text-align:right">{{ peso(r['_commission']) }}</td>
+  </tr>
+  {% endfor %}
+  <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
+    <td>Total</td>
+    {% for p in plans %}<td style="text-align:right">{{ ptotals.get(p, 0) }}</td>{% endfor %}
+    <td style="text-align:right">{{ ptotals['_sessions'] }}</td>
+    <td style="text-align:right">{{ peso(ptotals['_revenue']) }}</td>
+    <td style="text-align:right">{{ peso(ptotals['_commission']) }}</td>
+  </tr>
+</table>
+<p class="muted small">Delegation is counted in its own column. Every delegated booking carries a
+  <span class="mono">Drop-In</span> pricing plan in the export, so without the split those sessions
+  would be paid at the Drop-In rate.</p>
+
+{% elif tab == 'adjustments' %}
+<h2>Revenue adjustments</h2>
+{% if adjusted %}
+<table>
+  <tr><th>Booking</th><th>Date</th><th>Coach</th><th>Plan</th><th>Rule</th>
+      <th style="text-align:right">As exported</th><th style="text-align:right">Adjusted to</th></tr>
+  {% for b in adjusted %}
+  <tr>
+    <td class="mono">{{ b.booking_ref }}</td>
+    <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+    <td>{{ b.coach or b.staff_raw }}</td>
+    <td>{{ b.pricing_plan }}</td>
+    <td><span class="tag" style="background:#8a94a1">{{ b.adjustment.replace('_', ' ') }}</span></td>
+    <td style="text-align:right" class="muted">{{ peso(b.revenue_raw) }}</td>
+    <td style="text-align:right">{{ peso(b.revenue) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<div class="card"><p class="muted" style="margin:0">No revenue adjustments fired on this run.</p></div>{% endif %}
+
+{% elif tab == 'dropped' %}
+<h2>Dropped rows</h2>
+<p class="muted small">Kept and shown rather than silently discarded.</p>
+{% if dropped %}
+<table>
+  <tr><th>Booking</th><th>Date</th><th>Staff</th><th>Plan</th><th style="text-align:right">Revenue</th><th>Reason</th></tr>
+  {% for b in dropped %}
+  <tr>
+    <td class="mono">{{ b.booking_ref }}</td>
+    <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+    <td class="mono">{{ b.staff_raw }}</td>
+    <td>{{ b.pricing_plan }}</td>
+    <td style="text-align:right">{{ peso(b.revenue_raw) }}</td>
+    <td>{{ b.dropped_reason }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<div class="card"><p class="muted" style="margin:0">Nothing was dropped.</p></div>{% endif %}
+
+{% elif tab == 'delegation' %}
+<h2>Delegation — both sides</h2>
+<p class="muted small">What you charge the delegator sits beside what you pay the covering coach.</p>
+{% if delegated %}
+<table>
+  <tr><th>Booking</th><th>Date</th><th>Delegator</th><th>Coach covering</th>
+      <th style="text-align:right">Charged</th><th style="text-align:right">Paid to coach</th><th style="text-align:right">Margin</th></tr>
+  {% for b in delegated %}
+  <tr>
+    <td class="mono">{{ b.booking_ref }}</td>
+    <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+    <td>{{ b.delegator.name if b.delegator else '—' }}{% if b.delegator_assumed %}<span class="tag" style="background:#d9b45a;color:#4a3a12;margin-left:4px">assumed</span>{% endif %}</td>
+    <td>{{ b.coach or b.staff_raw }}</td>
+    <td style="text-align:right">{{ peso(b.delegation_charge) }}</td>
+    <td style="text-align:right">{{ peso(b.commission) }}</td>
+    <td style="text-align:right">{{ peso((b.delegation_charge or 0) - (b.commission or 0)) }}</td>
+  </tr>
+  {% endfor %}
+  {% for name, d in by_delegator.items() %}
+  <tr style="background:#fafbfc;font-weight:650">
+    <td colspan="4">{{ name }} · {{ d.sessions }} sessions</td>
+    <td style="text-align:right">{{ peso(d.charged) }}</td>
+    <td style="text-align:right">{{ peso(d.cost) }}</td>
+    <td style="text-align:right">{{ peso(d.margin) }}</td>
+  </tr>
+  {% endfor %}
+  <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
+    <td colspan="4">Total · {{ totals.delegation_sessions }} delegated sessions</td>
+    <td style="text-align:right">{{ peso(totals.delegation_charged) }}</td>
+    <td style="text-align:right">{{ peso(totals.delegation_cost) }}</td>
+    <td style="text-align:right">{{ peso(totals.delegation_margin) }}</td>
+  </tr>
+</table>
+{% else %}<div class="card"><p class="muted" style="margin:0">No delegated sessions in this run.</p></div>{% endif %}
+
+{% elif tab == 'coaches' %}
+<h2>By coach</h2>
+<div class="actions">
+  {% for c in coaches %}
+  <a class="btn big" href="/commissions/{{ run.id }}/coach/{{ c }}">{{ c }}</a>
+  {% endfor %}
+</div>
+
+{% elif tab == 'documents' %}
+<h2>Coach payouts</h2>
+<table>
+  <tr><th>Number</th><th>Coach</th><th style="text-align:right">Sessions</th>
+      <th style="text-align:right">Commission</th><th style="text-align:right">Delegation</th>
+      <th style="text-align:right">Total</th><th>Status</th><th></th></tr>
+  {% for p in run.payouts|sort(attribute='coach') %}
+  <tr>
+    <td class="mono">{{ p.number }}</td><td><b>{{ p.coach }}</b></td>
+    <td style="text-align:right">{{ p.sessions }}</td>
+    <td style="text-align:right">{{ peso(p.commission_total) }}</td>
+    <td style="text-align:right">{{ peso(p.delegation_total) }}</td>
+    <td style="text-align:right"><b>{{ peso(p.total) }}</b></td>
+    <td>{% if p.status == 'paid' %}<span class="tag">Paid</span>{% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}</td>
+    <td><a class="btn" style="padding:5px 12px" href="/commissions/payouts/{{ p.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Delegation charges</h2>
+<table>
+  <tr><th>Number</th><th>Delegator</th><th style="text-align:right">Sessions</th>
+      <th style="text-align:right">Charged</th><th style="text-align:right">Coach cost</th>
+      <th style="text-align:right">Margin</th><th>Status</th><th></th></tr>
+  {% for c in run.charges %}
+  <tr>
+    <td class="mono">{{ c.number }}</td><td><b>{{ c.delegator_name }}</b></td>
+    <td style="text-align:right">{{ c.sessions }}</td>
+    <td style="text-align:right">{{ peso(c.total) }}</td>
+    <td style="text-align:right">{{ peso(c.coach_cost) }}</td>
+    <td style="text-align:right;color:var(--teal-dark);font-weight:600">{{ peso(c.margin) }}</td>
+    <td>{% if c.status == 'paid' %}<span class="tag">Paid</span>{% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}</td>
+    <td><a class="btn" style="padding:5px 12px" href="/commissions/charges/{{ c.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if is_draft %}
+<form method="post" action="/commissions/{{ run.id }}/delete" style="margin-top:26px">
+  <button class="btn" style="color:#9c2c1e;border-color:#e6a49b">Delete this draft</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ payout.number }} — {{ payout.coach }}
+      {% if payout.status == 'paid' %}<span class="tag">Paid</span>
+      {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
+    </h1>
+    <p class="muted small" style="margin:2px 0 0">{{ payout.period_label }}
+      · generated {{ payout.created_at.strftime('%d %b %Y') if payout.created_at }}</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a class="btn" href="/commissions/{{ payout.run_id }}?tab=documents">← Run</a>
+    <form method="post" action="/commissions/payouts/{{ payout.id }}/paid">
+      <button class="btn primary">{{ 'Mark unpaid' if payout.status == 'paid' else 'Mark paid' }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid" style="margin:14px 0">
+  <div class="card stat"><div class="stat-label">Sessions</div><div class="stat-value">{{ payout.sessions }}</div></div>
+  <div class="card stat"><div class="stat-label">Commission</div><div class="stat-value">{{ peso(payout.commission_total) }}</div></div>
+  <div class="card stat"><div class="stat-label">Delegation cost</div><div class="stat-value">{{ peso(payout.delegation_total) }}</div></div>
+  <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Total payable</div><div class="stat-value">{{ peso(payout.total) }}</div></div>
+</div>
+
+<h2>Lines — one per booking</h2>
+<table>
+  <tr><th>#</th><th>Booking</th><th>Date</th><th>Description</th><th>Basis</th><th style="text-align:right">Amount</th></tr>
+  {% for l in payout.lines %}
+  <tr>
+    <td class="muted">{{ loop.index }}</td>
+    <td class="mono">{{ l.booking_ref }}</td>
+    <td>{{ l.occurred_on.strftime('%d %b') if l.occurred_on }}</td>
+    <td>{{ l.description }}</td>
+    <td class="small">{{ l.basis }}</td>
+    <td style="text-align:right">{{ peso(l.amount) }}</td>
+  </tr>
+  {% endfor %}
+  <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
+    <td colspan="5">Total payable</td><td style="text-align:right">{{ peso(payout.total) }}</td>
+  </tr>
+</table>
+<p class="muted small">Payouts are stored separately from sales transactions, so nothing here can
+  be counted as revenue by the sales reports.</p>
+{% endblock %}

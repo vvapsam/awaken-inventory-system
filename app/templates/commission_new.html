@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block body %}
+<h1 style="margin:0">New commission run</h1>
+<p class="muted small" style="margin:2px 0 14px">Rezerv → Reports → Appointment → Paid Bookings → Export CSV.</p>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="post" action="/commissions/new" enctype="multipart/form-data">
+  <div class="card">
+    <label style="margin:0">Rezerv export (.csv)
+      <input type="file" name="file" accept=".csv,text/csv" required>
+    </label>
+    <p class="muted small" style="margin:10px 0 0">
+      The period is detected from the booking dates. Re-uploading a period that is still a draft
+      replaces it; finalized runs are never overwritten.
+    </p>
+  </div>
+  <div class="row-between">
+    <a class="btn" href="/commissions">Cancel</a>
+    <button class="btn primary">Parse &amp; preview →</button>
+  </div>
+</form>
+{% endblock %}

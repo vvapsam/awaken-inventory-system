@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Delegators</h1>
+    <p class="muted small" style="margin:2px 0 0">People who bring their own clients and delegate sessions to AWAKEN coaches.</p>
+  </div>
+</div>
+{% include "_commission_tabs.html" %}
+
+<div class="card" style="background:var(--teal-tint);border-color:rgba(0,128,128,.25)">
+  <div class="small" style="font-weight:600">How one delegated session moves money</div>
+  <div class="small muted" style="margin-top:4px">
+    Delegator <b>—&nbsp;delegation rate&nbsp;→</b> AWAKEN <b>—&nbsp;delegation cost&nbsp;→</b> covering coach &nbsp;·&nbsp; the difference is your margin.
+  </div>
+</div>
+
+<table>
+  <tr><th>Delegator</th><th>Export codes</th><th style="text-align:right">Rate charged</th>
+      <th style="text-align:right">Cost paid</th><th style="text-align:right">Margin</th><th>Active</th><th></th></tr>
+  {% for d in delegators %}
+  <tr>
+    <form method="post" action="/admin/commission-delegators/{{ d.id }}">
+    <td><input name="name" value="{{ d.name }}" style="width:170px"></td>
+    <td><input name="codes" value="{{ d.codes }}" style="width:120px" class="mono" placeholder="KP,CP"></td>
+    <td style="text-align:right"><input name="rate" value="{{ '%g'|format(d.rate) }}" style="width:100px;text-align:right"></td>
+    <td style="text-align:right"><input name="cost" value="{{ '%g'|format(d.cost) }}" style="width:100px;text-align:right"></td>
+    <td style="text-align:right;font-weight:600;color:var(--teal-dark)">{{ peso(d.margin) }}</td>
+    <td><input type="checkbox" name="is_active" {{ 'checked' if d.is_active }}></td>
+    <td><button class="btn primary" style="padding:6px 12px">Save</button></td>
+    </form>
+  </tr>
+  {% endfor %}
+</table>
+<p class="muted small">Codes are a list — Culver appears in the export as both <span class="mono">KP</span> and <span class="mono">CP</span>, so both map to one person. A code that matches nothing is raised on the preview rather than silently dropped.</p>
+
+<div class="card" style="margin-top:18px">
+  <h3 style="margin:0 0 10px;font-size:.95rem">Add a delegator</h3>
+  <form method="post" action="/admin/commission-delegators/new" class="row-between" style="gap:10px;align-items:flex-end">
+    <div style="flex:1"><label>Name<input name="name" required></label></div>
+    <div style="flex:1"><label>Codes<input name="codes" class="mono" placeholder="GR"></label></div>
+    <div style="flex:1"><label>Rate charged<input name="rate" value="1000"></label></div>
+    <div style="flex:1"><label>Cost paid<input name="cost" value="640"></label></div>
+    <button class="btn primary">Add</button>
+  </form>
+</div>
+{% endblock %}
