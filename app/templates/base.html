@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AWAKEN Inventory</title>
+  <title>AWAKEN System</title>
   <link rel="icon" href="/static/logo.svg">
   <link rel="stylesheet" href="/static/style.css">
   <style>
@@ -69,8 +69,8 @@
 <body>
 {% if staff %}
 {% set p = request.url.path %}
-{% set ns = namespace(title='AWAKEN Inventory') %}
-{% for pre,label in [('/dashboard','Dashboard'),('/sales','Transactions'),('/invoices','Transactions'),('/payments','Transactions'),('/stock','Stock'),('/orders','Retail Orders'),('/walkins','Walk-ins & Sign-ups'),('/adjustments','Adjustments'),('/movement','Adjustments'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/coaches/members','Members'),('/coaches/billing','Corkage billing'),('/customer','Customers'),('/records','Records'),('/admin/pricing','Pricing'),('/admin/order-settings','Payment settings'),('/admin/product-images','Product photos'),('/admin/roles','Roles'),('/admin/staff','Relationships')] %}
+{% set ns = namespace(title='AWAKEN System') %}
+{% for pre,label in [('/dashboard','Dashboard'),('/sales','Transactions'),('/invoices','Transactions'),('/payments','Transactions'),('/stock','Stock'),('/orders','Retail Orders'),('/walkins','Walk-ins & Sign-ups'),('/adjustments','Adjustments'),('/movement','Adjustments'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/coaches/members','Members'),('/coaches/billing','Corkage billing'),('/customer','Customers'),('/records','Records'),('/admin/pricing','Pricing'),('/admin/order-settings','Payment settings'),('/admin/product-images','Product photos'),('/admin/roles','Roles'),('/admin/staff','Relationships'),('/commissions','Commissions'),('/admin/commission-rates','Coach rates'),('/admin/commission-delegators','Delegators'),('/admin/commission-settings','Rules & rates')] %}
   {% if p.startswith(pre) %}{% set ns.title = label %}{% endif %}
 {% endfor %}
 {% set parts = staff.name.split() %}
@@ -155,6 +155,26 @@
           {% if can_items %}{% call flyitem('/admin/products', 'Items', p.startswith('/admin/products')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4a1 1 0 0 1 1-1h8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>{% endcall %}{% endif %}
           {% if staff.role == 'admin' %}{% call flyitem('/admin/pricing', 'Pricing', p.startswith('/admin/pricing') or p.startswith('/admin/discount-codes')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.82A2 2 0 0 0 9.59 3H4v5.59A2 2 0 0 0 4.59 10l9.59 9.59a2 2 0 0 0 2.83 0l3.58-3.58a2 2 0 0 0 0-2.83z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor"/></svg>{% endcall %}{% endif %}
           {% if can(staff, 'view_stock') %}{% call flyitem('/stock', 'Stocks', p.startswith('/stock')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></svg>{% endcall %}{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# ---- Commissions ---- #}
+      {% if staff.role == 'admin' or can(staff, 'manage_commissions') %}
+      {% set com_active = p.startswith('/commissions') or p.startswith('/admin/commission') %}
+      <div class="nav-group" data-title="Commissions">
+        <button type="button" class="nav-item nav-parent {% if com_active %}active{% endif %}" title="Commissions">
+          <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+          <span class="nav-label">Commissions</span>
+          <svg class="nav-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-flyout">
+          <div class="fly-title">Commissions</div>
+          {% call flyitem('/commissions', 'Runs', p.startswith('/commissions')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15h6M9 11h3"/></svg>{% endcall %}
+          {% call flyitem('/commissions/new', 'New run', p.startswith('/commissions/new')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5M12 5v13"/></svg>{% endcall %}
+          {% call flyitem('/admin/commission-rates', 'Coach rates', p.startswith('/admin/commission-rates')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg>{% endcall %}
+          {% call flyitem('/admin/commission-delegators', 'Delegators', p.startswith('/admin/commission-delegators')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% endcall %}
+          {% call flyitem('/admin/commission-settings', 'Rules & rates', p.startswith('/admin/commission-settings')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>{% endcall %}
         </div>
       </div>
       {% endif %}
