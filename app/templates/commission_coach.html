@@ -68,11 +68,11 @@
     <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
     <td>{{ b.appointment_name }}</td>
     <td>{% if b.delegator_id %}<span class="tag" style="background:#8a94a1">Delegation · {{ b.delegator.name if b.delegator }}</span>{% else %}{{ b.pricing_plan }}{% endif %}</td>
-    <td style="text-align:right">{{ peso(b.revenue) }}{% if b.adjustment %}<div class="muted small">{{ b.adjustment_note }}</div>{% endif %}</td>
+    <td style="text-align:right">{{ peso(b.revenue) }}</td>
     <td class="small">
       {% if b.rule == 'delegation' %}Delegation cost
-      {% elif b.rate_type == 'percent' %}{{ '%g'|format(b.rate_value * 100) }}% of {{ peso(b.revenue) }}
-      {% elif b.rate_type == 'flat' %}Fixed {{ peso(b.rate_value) }}
+      {% elif b.rate_type == 'percent' %}Percentage
+      {% elif b.rate_type == 'flat' %}Fixed
       {% else %}<span class="muted">not counted</span>{% endif %}
     </td>
     <td style="text-align:right">{% if b.commission is not none %}{{ peso(b.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
