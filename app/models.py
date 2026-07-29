@@ -42,6 +42,7 @@ ADMIN_AREA_DEFS = [
     ("manage_kiosk", "Kiosk & plans"),
     ("view_waivers", "Signed waivers"),
     ("manage_hyrox", "HYROX event"),
+    ("manage_commissions", "Coach commissions"),
 ]
 
 MODULE_KEYS = [f"{m}.{a}" for m, _ in MODULES for a, _ in ACTIONS]
@@ -561,3 +562,255 @@ KIOSK_HYROX_RATES = {(False, False): 1000, (False, True): 1000,
 
 
 # Legacy `payments` (customer balance payments) folded into transactions; dropped at startup.
+
+
+# ===================== Coach commissions =====================
+# Deliberately NOT part of the `transactions` table: commission payouts move
+# money the other way (AWAKEN -> coach) and mixing them in would make every
+# query that sums transactions without filtering by type overstate revenue.
+
+COMMISSION_FLAT = "flat"
+COMMISSION_PERCENT = "percent"
+COMMISSION_RATE_TYPES = [(COMMISSION_FLAT, "Fixed amount"),
+                         (COMMISSION_PERCENT, "Percent of revenue")]
+
+RUN_DRAFT = "draft"
+RUN_FINALIZED = "finalized"
+RUN_SUPERSEDED = "superseded"
+
+# Default rules, seeded once on first startup. Rezerv writes "Rick F" for Ric,
+# so the export spelling is stored alongside the coach.
+COMMISSION_RATE_DEFAULTS = [
+    dict(coach="Anjo", staff_raw="Anjo R", rate_type=COMMISSION_FLAT, rate_value=750,
+         override_plans="drop-in,awaken force", override_rate_type=COMMISSION_PERCENT,
+         override_rate_value=0.50),
+    dict(coach="JC", staff_raw="JC S", rate_type=COMMISSION_FLAT, rate_value=750,
+         override_plans="drop-in,awaken force", override_rate_type=COMMISSION_PERCENT,
+         override_rate_value=0.50),
+    dict(coach="Ric", staff_raw="Rick F", rate_type=COMMISSION_PERCENT, rate_value=0.50),
+    dict(coach="Julio", staff_raw="Julio D", rate_type=COMMISSION_PERCENT, rate_value=0.70),
+    dict(coach="AR", staff_raw="AR M", rate_type=COMMISSION_PERCENT, rate_value=0.40),
+    dict(coach="Joseph", staff_raw="Joseph J", rate_type=COMMISSION_PERCENT, rate_value=0.40),
+    dict(coach="Laurent", staff_raw="Laurent J", rate_type=COMMISSION_PERCENT, rate_value=0.40),
+]
+
+COMMISSION_DELEGATOR_DEFAULTS = [
+    dict(name="Gab Rosario", codes="GR", rate=1000, cost=640),
+    dict(name="Culver Padilla", codes="KP,CP", rate=1000, cost=640),
+]
+
+# key -> (default value, label, help)
+COMMISSION_SETTING_DEFAULTS = {
+    "session_rates": ("1 session=1900,8 sessions=1800,12 sessions=1700,"
+                      "24 sessions=1600,36 sessions=1500",
+                      "Zero-revenue backfill rates",
+                      "Applied when a session plan exports at ₱0."),
+    "hyrox_walkin_deduction": ("1000", "Hyrox walk-in deduction",
+                               "Deducted from 'Hyrox Simulation (With Coach)' walk-ins."),
+    "awaken_force_revenue": ("1200", "Awaken Force revenue",
+                             "Per-session revenue; the export shows the package total."),
+    "backfill_scope": ("credit_only", "Backfill scope",
+                       "credit_only = comped (Free) sessions keep ₱0 revenue. "
+                       "credit_and_free = comped sessions are backfilled too."),
+    "default_delegator": ("KP", "Default delegator",
+                          "Applied to a bare 'Delegation' variant that names no code."),
+}
+
+
+class CommissionCoachRate(Base):
+    """How one coach is paid. Editable; past runs are unaffected because the
+    rate that fired is snapshotted onto every booking row."""
+    __tablename__ = "commission_coach_rates"
+    id = Column(Integer, primary_key=True)
+    coach = Column(String, nullable=False)                  # display name
+    staff_raw = Column(String, nullable=False)              # Rezerv spelling
+    coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    rate_type = Column(String, nullable=False, default=COMMISSION_PERCENT)
+    rate_value = Column(Numeric(10, 4), nullable=False, default=0)
+    override_plans = Column(String, default="")             # comma-separated, lowercase
+    override_rate_type = Column(String)
+    override_rate_value = Column(Numeric(10, 4))
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    entity = relationship("Staff", foreign_keys=[coach_id])
+
+    def plan_list(self):
+        return [p.strip().lower() for p in (self.override_plans or "").split(",") if p.strip()]
+
+
+class CommissionDelegator(Base):
+    """Someone who brings their own clients and delegates sessions to a coach.
+
+    `rate` is charged to them (AWAKEN income); `cost` is paid to the covering
+    coach (AWAKEN expense). The difference is the delegation margin.
+    """
+    __tablename__ = "commission_delegators"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    entity_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    codes = Column(String, nullable=False, default="")      # "KP,CP"
+    rate = Column(Numeric(10, 2), nullable=False, default=0)
+    cost = Column(Numeric(10, 2), nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    entity = relationship("Staff", foreign_keys=[entity_id])
+
+    def code_list(self):
+        return [c.strip().upper() for c in (self.codes or "").split(",") if c.strip()]
+
+    @property
+    def margin(self):
+        return float(self.rate or 0) - float(self.cost or 0)
+
+
+class CommissionSetting(Base):
+    __tablename__ = "commission_settings"
+    id = Column(Integer, primary_key=True)
+    key = Column(String, nullable=False, unique=True)
+    value = Column(Text, nullable=False, default="")
+
+
+class CommissionRun(Base):
+    __tablename__ = "commission_runs"
+    id = Column(Integer, primary_key=True)
+    period = Column(String, nullable=False)                 # "2026-06"
+    period_label = Column(String)                           # "June 2026"
+    period_start = Column(Date)
+    period_end = Column(Date)
+    source_filename = Column(String)
+    source_sha256 = Column(String)
+    status = Column(String, nullable=False, default=RUN_DRAFT)
+    parsed_count = Column(Integer, nullable=False, default=0)
+    kept_count = Column(Integer, nullable=False, default=0)
+    dropped_count = Column(Integer, nullable=False, default=0)
+    uploaded_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    uploaded_at = Column(DateTime(timezone=True), default=now_utc)
+    finalized_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    finalized_at = Column(DateTime(timezone=True))
+
+    uploaded_by = relationship("Staff", foreign_keys=[uploaded_by_id])
+    finalized_by = relationship("Staff", foreign_keys=[finalized_by_id])
+    bookings = relationship("CommissionBooking", back_populates="run",
+                            cascade="all, delete-orphan")
+    payouts = relationship("CommissionPayout", cascade="all, delete-orphan")
+    charges = relationship("CommissionCharge", cascade="all, delete-orphan")
+
+
+class CommissionBooking(Base):
+    """One row per booking in the export, with the rule and rate that fired."""
+    __tablename__ = "commission_bookings"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    # --- as exported ---
+    booking_ref = Column(String)
+    customer = Column(String)
+    appointment_date = Column(Date)
+    appointment_name = Column(String)
+    variant = Column(String)
+    staff_raw = Column(String)
+    booking_status = Column(String)
+    pricing_plan = Column(String)
+    payment_method = Column(String)
+    revenue_raw = Column(Numeric(10, 2), default=0)
+    # --- resolved ---
+    coach = Column(String)
+    coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    delegator_id = Column(Integer, ForeignKey("commission_delegators.id",
+                                              ondelete="SET NULL"))
+    delegator_assumed = Column(Boolean, nullable=False, default=False)
+    # --- normalized ---
+    revenue = Column(Numeric(10, 2), default=0)
+    adjustment = Column(String)
+    adjustment_note = Column(String)
+    # --- computed (snapshot: never recalculated) ---
+    rule = Column(String)
+    rate_type = Column(String)
+    rate_value = Column(Numeric(10, 4))
+    commission = Column(Numeric(10, 2))
+    delegation_charge = Column(Numeric(10, 2))
+    # --- excluded rows are kept, flagged, and shown ---
+    dropped_reason = Column(String)
+
+    run = relationship("CommissionRun", back_populates="bookings")
+    delegator = relationship("CommissionDelegator")
+
+    @property
+    def is_completed(self):
+        return (self.booking_status or "").strip().lower() == "completed"
+
+
+class CommissionPayout(Base):
+    """What AWAKEN owes one coach for one run."""
+    __tablename__ = "commission_payouts"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    number = Column(String, unique=True)                    # COM-0001
+    coach = Column(String)
+    coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    period_label = Column(String)
+    status = Column(String, nullable=False, default="unpaid")
+    sessions = Column(Integer, nullable=False, default=0)
+    commission_total = Column(Numeric(10, 2), default=0)    # non-delegated
+    delegation_total = Column(Numeric(10, 2), default=0)    # delegated
+    total = Column(Numeric(10, 2), default=0)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    paid_at = Column(DateTime(timezone=True))
+
+    entity = relationship("Staff", foreign_keys=[coach_id])
+    lines = relationship("CommissionPayoutLine", cascade="all, delete-orphan")
+
+
+class CommissionPayoutLine(Base):
+    __tablename__ = "commission_payout_lines"
+    id = Column(Integer, primary_key=True)
+    payout_id = Column(Integer, ForeignKey("commission_payouts.id", ondelete="CASCADE"),
+                       nullable=False)
+    booking_id = Column(Integer, ForeignKey("commission_bookings.id", ondelete="SET NULL"))
+    booking_ref = Column(String)
+    occurred_on = Column(Date)
+    description = Column(String)
+    basis = Column(String)                                  # "70% of ₱1,700.00"
+    amount = Column(Numeric(10, 2), default=0)
+
+    booking = relationship("CommissionBooking")
+
+
+class CommissionCharge(Base):
+    """What a delegator owes AWAKEN for one run."""
+    __tablename__ = "commission_charges"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    number = Column(String, unique=True)                    # DEL-0001
+    delegator_id = Column(Integer, ForeignKey("commission_delegators.id",
+                                              ondelete="SET NULL"))
+    delegator_name = Column(String)
+    period_label = Column(String)
+    status = Column(String, nullable=False, default="unpaid")
+    sessions = Column(Integer, nullable=False, default=0)
+    total = Column(Numeric(10, 2), default=0)               # charged to them
+    coach_cost = Column(Numeric(10, 2), default=0)          # paid out on their sessions
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    paid_at = Column(DateTime(timezone=True))
+
+    delegator = relationship("CommissionDelegator")
+    lines = relationship("CommissionChargeLine", cascade="all, delete-orphan")
+
+    @property
+    def margin(self):
+        return float(self.total or 0) - float(self.coach_cost or 0)
+
+
+class CommissionChargeLine(Base):
+    __tablename__ = "commission_charge_lines"
+    id = Column(Integer, primary_key=True)
+    charge_id = Column(Integer, ForeignKey("commission_charges.id", ondelete="CASCADE"),
+                       nullable=False)
+    booking_id = Column(Integer, ForeignKey("commission_bookings.id", ondelete="SET NULL"))
+    booking_ref = Column(String)
+    occurred_on = Column(Date)
+    description = Column(String)
+    coach = Column(String)
+    amount = Column(Numeric(10, 2), default=0)

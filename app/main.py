@@ -365,6 +365,9 @@ def startup():
         _migrate_transactions(db)
         # Fold customers and members into the unified entity table.
         _migrate_entities(db)
+        # Seed commission rules (coach rates, delegators, settings). Idempotent.
+        from . import commission_routes
+        commission_routes.seed(db)
     finally:
         db.close()
 
@@ -3071,3 +3074,16 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+# ================= Coach commissions =================
+# Registered from a separate module so main.py doesn't grow another 400 lines,
+# and so the commission screens can't import main (which would be circular).
+from . import commission_routes  # noqa: E402
+
+commission_routes.register(app, {
+    "render": render,
+    "require": require,
+    "require_admin": require_admin,
+    "tz": _tz,
+})
