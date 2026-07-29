@@ -11,8 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.commissions import (                                   # noqa: E402
-    BACKFILL_CREDIT_AND_FREE, BACKFILL_CREDIT_ONLY, Config, Delegator,
-    delegation_code, run, SessionRate,
+    BACKFILL_CREDIT_AND_FREE, BACKFILL_CREDIT_ONLY, CoachRate, Config, Delegator,
+    delegation_code, FLAT, PERCENT, run, SessionRate,
     recompute_row as engine_recompute,
 )
 from tests.conf_sample import config, DELEGATORS                # noqa: E402
@@ -502,3 +502,65 @@ def test_credits_break_a_tie_when_no_package_total_matches():
     )
     assert cfg.settings.rate_for("Pack", None, credits=8).rate == D("800")
     assert cfg.settings.rate_for("Pack", None, credits=4).rate == D("900")
+
+
+# --------------------------------------------------------------------------
+# per-plan overrides — one row per plan, each with its own basis and rate
+# --------------------------------------------------------------------------
+
+def test_two_plans_can_override_to_different_rates():
+    """The point of a row per plan: Drop-In and Awaken Force need not agree.
+    The old comma-separated column could only give both the same rate."""
+    rate = CoachRate("Anjo", FLAT, D("750"), {
+        "drop-in": (PERCENT, D("0.50")),
+        "24 sessions": (PERCENT, D("0.60")),
+    })
+    cfg = config()
+    cfg.coach_rates = dict(cfg.coach_rates, **{"Anjo R": rate})
+    assert one(staff="Anjo R", plan="Drop-In", revenue="₱3000.00",
+               cfg=cfg).commission == D("1500.00")
+    assert one(staff="Anjo R", plan="24 Sessions", revenue="₱1600.00",
+               cfg=cfg).commission == D("960.00")
+    # and a plan with no row of its own still takes the ₱750 default
+    assert one(staff="Anjo R", plan="12 Sessions", revenue="₱1700.00",
+               cfg=cfg).commission == D("750.00")
+
+
+def test_an_override_may_be_flat_while_the_default_is_percent():
+    """A percent coach can still be paid a fixed amount on one plan."""
+    rate = CoachRate("AR", PERCENT, D("0.40"), {"drop-in": (FLAT, D("900"))})
+    cfg = config()
+    cfg.coach_rates = dict(cfg.coach_rates, **{"AR M": rate})
+    row = one(staff="AR M", plan="Drop-In", revenue="₱3000.00", cfg=cfg)
+    assert row.rate_type == FLAT
+    assert row.rule == "plan_override"
+    assert row.commission == D("900.00")          # not 40% of 3000
+
+
+def test_plan_match_is_case_and_space_insensitive():
+    rate = CoachRate("AR", PERCENT, D("0.40"), {"drop-in": (PERCENT, D("0.50"))})
+    cfg = config()
+    cfg.coach_rates = dict(cfg.coach_rates, **{"AR M": rate})
+    assert one(staff="AR M", plan="  DROP-IN ", revenue="₱1000.00",
+               cfg=cfg).commission == D("500.00")
+
+
+def test_a_plan_with_no_override_still_pays_the_default():
+    rate = CoachRate("AR", PERCENT, D("0.40"), {"drop-in": (PERCENT, D("0.50"))})
+    cfg = config()
+    cfg.coach_rates = dict(cfg.coach_rates, **{"AR M": rate})
+    row = one(staff="AR M", plan="12 Sessions", revenue="₱1700.00", cfg=cfg)
+    assert row.rule == "coach_percent"
+    assert row.commission == D("680.00")
+
+
+def test_delegation_still_beats_a_plan_override():
+    """Delegation is settled with the delegator, so an override on that plan
+    must not reach it — otherwise a delegated Drop-In would pay twice."""
+    rate = CoachRate("Anjo", FLAT, D("750"), {"drop-in": (PERCENT, D("0.50"))})
+    cfg = config()
+    cfg.coach_rates = dict(cfg.coach_rates, **{"Anjo R": rate})
+    row = one(staff="Anjo R", variant="Delegation – KP", plan="Drop-In",
+              revenue="₱3000.00", cfg=cfg)
+    assert row.rule == "delegation"
+    assert row.commission == D("640.00")

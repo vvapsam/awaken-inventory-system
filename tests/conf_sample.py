@@ -2,11 +2,12 @@ from decimal import Decimal
 from app.commissions import CoachRate, Delegator, Config, Settings, FLAT, PERCENT
 
 D = Decimal
-OVERRIDE = frozenset({"drop-in", "awaken force"})
+#: plan -> (basis, rate). Half the revenue on Drop-Ins and Awaken Force.
+OVERRIDE = {"drop-in": (PERCENT, D("0.50")), "awaken force": (PERCENT, D("0.50"))}
 
 RATES = {
-    "Anjo R":    CoachRate("Anjo", FLAT, D("750"), OVERRIDE, PERCENT, D("0.50")),
-    "JC S":      CoachRate("JC",   FLAT, D("750"), OVERRIDE, PERCENT, D("0.50")),
+    "Anjo R":    CoachRate("Anjo", FLAT, D("750"), dict(OVERRIDE)),
+    "JC S":      CoachRate("JC",   FLAT, D("750"), dict(OVERRIDE)),
     "Rick F":    CoachRate("Ric",     PERCENT, D("0.50")),
     "Julio D":   CoachRate("Julio",   PERCENT, D("0.70")),
     "AR M":      CoachRate("AR",      PERCENT, D("0.40")),

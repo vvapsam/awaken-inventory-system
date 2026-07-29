@@ -59,6 +59,79 @@ with TestClient(app) as c:
     check("  Awaken Force pack totals present", "9600" in r.text and "1200" in r.text)
     r = c.get("/admin/commission-rates")
     check("  coach is a person picker, not free text", 'name="coach_id"' in r.text)
+    check("  rows open a popup", 'data-modal="coach-' in r.text)
+    check("  a panel exists per coach",
+          len(re.findall(r'class="scrim" id="coach-\d+"', r.text)) == 7)
+    check("  override count chip shows 2 for the flat coaches",
+          r.text.count('</svg>2</span>') == 2)
+    check("  coaches with no override show a dash", r.text.count('ov none') == 5)
+
+    print("\n  overrides — a row per plan")
+    rid_anjo = re.search(r'action="/admin/commission-rates/(\d+)"[\s\S]{0,400}?Anjo',
+                         r.text) or re.search(r'/admin/commission-rates/(\d+)', r.text)
+    # find Anjo's panel specifically
+    for m in re.finditer(r'<div class="scrim" id="coach-(\d+)">([\s\S]*?)\n</div>', r.text):
+        if ">Anjo<" in m.group(2):
+            anjo, panel = m.group(1), m.group(2)
+            break
+    else:
+        anjo, panel = None, ""
+    check("  found Anjo's panel", anjo is not None)
+    check("    two override rows", panel.count('name="ov_id"') == 2)
+    check("    plan is a dropdown, not a textbox", 'name="ov_plan"' in panel)
+    check("    each row carries its own basis and rate",
+          panel.count('name="ov_type"') == 2 and panel.count('name="ov_value"') == 2)
+    check("    an add row is present", 'name="new_plan"' in panel)
+
+    ids = re.findall(r'name="ov_id" value="(\d+)"', panel)
+    # edit one override to a different basis, add a third plan, in one save
+    r2 = c.post(f"/admin/commission-rates/{anjo}", data={
+        "coach": "Anjo", "staff_raw": "Anjo R", "coach_id": "",
+        "rate_type": "flat", "rate_value": "750", "is_active": "on",
+        "ov_id": ids, "ov_plan": ["Drop-In", "Awaken Force"],
+        "ov_type": ["flat", "percent"], "ov_value": ["900", "60"],
+        "ov_active": ["on", "on"],
+        "new_plan": "12 Sessions", "new_type": "percent", "new_value": "55",
+    }, follow_redirects=False)
+    check("    save returns to the list", r2.status_code == 303)
+    page = c.get("/admin/commission-rates").text
+    panel = [m.group(2) for m in
+             re.finditer(r'<div class="scrim" id="coach-(\d+)">([\s\S]*?)\n</div>', page)
+             if m.group(1) == anjo][0]
+    check("    third override added", panel.count('name="ov_id"') == 3)
+    check("    chip now counts 3", '</svg>3</span>' in page)
+    check("    one plan is flat while another is percent",
+          'value="900"' in panel and 'value="60"' in panel)
+
+    # the engine must see the new numbers
+    from app.db import SessionLocal as _SL                      # noqa: E402
+    from app.commission_routes import build_config as _bc       # noqa: E402
+    _d = _SL(); _cfg = _bc(_d); _d.close()
+    ov = _cfg.coach_rates["Anjo R"].overrides
+    check("    engine sees three plans", len(ov) == 3, str(sorted(ov)))
+    check("    engine sees Drop-In as flat 900", ov.get("drop-in") == ("flat", 900))
+    check("    a plan with no row falls back to the default",
+          _cfg.coach_rates["Anjo R"].for_plan("36 Sessions") == ("flat", 750))
+
+    # delete the one we added, put Anjo back the way he was
+    newest = re.findall(r'name="ov_id" value="(\d+)"', panel)
+    gone = [i for i in newest if i not in ids][0]
+    r2 = c.post(f"/admin/commission-rates/{anjo}/override-delete",
+                data={"ov_delete": gone}, follow_redirects=False)
+    check("    delete removes just that plan", r2.status_code == 303)
+    page = c.get("/admin/commission-rates").text
+    check("    chip back to 2", '</svg>2</span>' in page)
+    c.post(f"/admin/commission-rates/{anjo}", data={
+        "coach": "Anjo", "staff_raw": "Anjo R", "coach_id": "",
+        "rate_type": "flat", "rate_value": "750", "is_active": "on",
+        "ov_id": ids, "ov_plan": ["Drop-In", "Awaken Force"],
+        "ov_type": ["percent", "percent"], "ov_value": ["50", "50"],
+        "ov_active": ["on", "on"],
+    }, follow_redirects=False)
+    _d = _SL(); _cfg = _bc(_d); _d.close()
+    check("    restored to 50/50",
+          _cfg.coach_rates["Anjo R"].overrides.get("drop-in") == ("percent", 0.50))
+
     r = c.get("/admin/commission-delegators")
     check("  delegator is a person picker", 'name="entity_id"' in r.text)
 
