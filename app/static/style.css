@@ -206,3 +206,43 @@ tr.inactive{opacity:.5}
 tr.rowlink{cursor:pointer}
 tr.rowlink:hover td{background:var(--teal-tint)}
 tr.rowlink td:first-child{position:relative}
+
+/* Popup panels. A row carrying data-modal opens the .scrim with that id; the
+   list itself stays read-only, so there is exactly one place a coach is
+   edited and no half-saved state to reconcile. */
+tr[data-modal]{cursor:pointer}
+tr[data-modal]:hover td{background:var(--teal-tint)}
+tr.needs td{background:var(--low)}
+tr.needs:hover td{background:#f6ecd6}
+.scrim{position:fixed;inset:0;background:rgba(10,18,28,.46);display:none;
+  align-items:flex-start;justify-content:center;padding:40px 16px;z-index:60;overflow:auto}
+.scrim.on{display:flex}
+.modal{background:var(--bg);border-radius:11px;width:min(740px,100%);
+  box-shadow:0 18px 50px rgba(8,14,22,.35);overflow:hidden}
+.modal .mhead{display:flex;align-items:center;gap:10px;padding:14px 18px;
+  border-bottom:1px solid var(--line);background:#fbfcfd}
+.modal .mhead h3{margin:0;font-size:1.05rem;font-weight:650}
+.modal .mbody{padding:15px 18px 8px}
+.modal .mfoot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;
+  border-top:1px solid var(--line);background:#fbfcfd;margin-top:14px}
+.modal .x{margin-left:auto;border:0;background:none;font-size:1.15rem;color:var(--muted);
+  cursor:pointer;line-height:1;padding:0 2px}
+.modal h4{font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--muted);margin:16px 0 5px}
+.modal .fieldset{display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap}
+.modal .fld{display:flex;flex-direction:column;gap:3px}
+.modal .fld label{font-size:.67rem;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em;margin:0}
+.modal table{margin:0}
+.modal table td,.modal table th{padding:6px 7px}
+.modal tr.addrow td{border-bottom:0;background:#fbfcfd}
+.warnbox{background:var(--low);border:1px solid var(--low-line);border-radius:6px;
+  padding:10px 13px;font-size:.84rem;margin:0 0 12px}
+
+/* Override count chip — tells you whether a popup is worth opening. */
+.ov{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(0,128,128,.30);
+  background:var(--teal-tint);color:var(--teal-dark);border-radius:999px;
+  padding:2px 9px 2px 7px;font-size:.76rem;font-weight:650}
+.ov svg{width:13px;height:13px}
+.ov.none{background:var(--bg);border-color:var(--line);color:var(--muted);font-weight:550}
+.tag.amber{background:var(--low-line);color:#4a3a12}
