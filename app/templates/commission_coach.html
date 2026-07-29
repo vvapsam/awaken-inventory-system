@@ -24,7 +24,7 @@
         on {{ signoff.approved_at.strftime('%d %b %Y') if signoff.approved_at }}.
         Changing any figure below clears this.</div>
     </div>
-    {% if is_draft %}
+    {% if is_draft and can_pay %}
     <form method="post" action="/commissions/{{ run.id }}/coach/{{ coach }}/signoff">
       <input type="hidden" name="confirm" value="off">
       <button class="btn">Withdraw approval</button>
@@ -37,13 +37,18 @@
   <div class="row-between" style="align-items:center">
     <div>
       <b>Not approved yet.</b>
-      <div class="muted small" style="margin-top:2px">Approving says these figures are correct and clears
-        {{ coach }} for payout. The run can't be finalized until every coach is approved.</div>
+      <div class="muted small" style="margin-top:2px">
+        {% if can_pay %}Approving says these figures are correct and clears
+        {{ coach }} for payout. The run can't be finalized until every coach is approved.
+        {% else %}An admin has to confirm these figures before {{ coach }} can be paid.
+        You can review them here and flag anything that looks wrong.{% endif %}</div>
     </div>
+    {% if can_pay %}
     <form method="post" action="/commissions/{{ run.id }}/coach/{{ coach }}/signoff">
       <input type="hidden" name="confirm" value="on">
       <button class="btn primary">✓ Approve {{ peso(commission) }}</button>
     </form>
+    {% else %}<span class="tag" style="background:var(--low-line);color:#4a3a12">Admin only</span>{% endif %}
   </div>
 </div>
 {% endif %}
@@ -70,7 +75,7 @@
 <h2 style="margin-top:22px">{{ g.status }} · {{ g.rows|length }}
   {% if not reviewable %}<span class="tag">Always counts</span>{% endif %}</h2>
 
-{% if reviewable and is_draft %}
+{% if reviewable and is_draft and can_pay %}
 <form method="post" action="/commissions/{{ run.id }}/coach/{{ coach }}/approve-status" style="margin:0 0 6px">
   <input type="hidden" name="status" value="{{ g.status }}">
   {% if g.approved < g.rows|length %}
@@ -93,7 +98,7 @@
   <tr id="{{ b.booking_ref }}" {% if b.approved %}style="background:var(--teal-tint)"{% endif %}>
     {% if reviewable %}
     <td>
-      {% if is_draft %}
+      {% if is_draft and can_pay %}
       <form method="post" action="/commissions/{{ run.id }}/booking/{{ b.id }}/approve">
         <button class="btn" style="padding:4px 10px;font-size:.78rem;{% if b.approved %}background:var(--teal);color:#fff;border-color:var(--teal){% endif %}">{{ '✓ Yes' if b.approved else 'Include' }}</button>
       </form>
@@ -111,7 +116,7 @@
     <td class="small">
       {% if b.rule == 'delegation' %}Delegation cost
         <div class="muted small">settled with the delegator</div>
-      {% elif is_draft and b.is_commissionable %}
+      {% elif is_draft and can_pay and b.is_commissionable %}
       <form method="post" action="/commissions/{{ run.id }}/booking/{{ b.id }}/rate"
             style="display:flex;gap:4px;align-items:center">
         <select name="rate_type" style="width:74px;padding:3px 5px;font-size:.78rem">
@@ -125,10 +130,12 @@
                 title="Back to {{ coach }}'s configured rate">↺</button>
         {% endif %}
       </form>
-      {% if b.rate_manual %}<span class="tag amber" style="margin-top:3px">Manual</span>{% endif %}
       {% elif b.rate_type == 'percent' %}{{ '%g'|format(b.rate_value * 100) }}% of revenue
       {% elif b.rate_type == 'flat' %}Fixed {{ peso(b.rate_value) }}
       {% else %}<span class="muted">not counted</span>{% endif %}
+      {# outside the branches: a hand-set rate must be visible to whoever is
+         reading, not only to the admin who can change it #}
+      {% if b.rate_manual %}<div><span class="tag amber" style="margin-top:3px">Manual</span></div>{% endif %}
     </td>
     <td style="text-align:right">{% if b.commission is not none %}{{ peso(b.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
   </tr>

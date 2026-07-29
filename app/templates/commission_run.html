@@ -32,7 +32,7 @@
 </div>
 {% endif %}
 
-{% if block.blocking %}
+{% if block.blocking and run.status == RUN_DRAFT %}
 <div class="error">
   <b>Finalizing is blocked.</b>
   {% if block.unmapped %}
