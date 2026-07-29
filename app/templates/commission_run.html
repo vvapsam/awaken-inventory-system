@@ -15,6 +15,9 @@
   <div style="display:flex;gap:8px">
     <a class="btn" href="/commissions">All runs</a>
     {% if is_draft %}
+    <form method="post" action="/commissions/{{ run.id }}/recalculate">
+      <button class="btn" title="Re-apply the current coach rates, delegator amounts and revenue rules">↻ Recalculate</button>
+    </form>
     <form method="post" action="/commissions/{{ run.id }}/finalize">
       <button class="btn primary" {{ 'disabled' if block.blocking }}>Finalize →</button>
     </form>
