@@ -4,6 +4,7 @@ Every case here is drawn from something actually present in a real Rezerv
 export, or from a rule in the commission spec that the export can violate.
 """
 import sys
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -11,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.commissions import (                                   # noqa: E402
     BACKFILL_CREDIT_AND_FREE, BACKFILL_CREDIT_ONLY, Config, Delegator,
-    delegation_code, run,
+    delegation_code, run, SessionRate,
     recompute_row as engine_recompute,
 )
 from tests.conf_sample import config, DELEGATORS                # noqa: E402
@@ -402,3 +403,60 @@ def test_status_filter_is_case_insensitive():
     cfg = config()
     cfg.settings.statuses = frozenset({"no show"})
     assert len(run(csv(status="No Show"), cfg).rows) == 1
+
+
+# ---------------------------------------------------- dated session rates
+
+def _dated(cfg, *rates):
+    cfg.settings.session_rates = tuple(rates)
+    return cfg
+
+
+def test_session_rate_picks_the_one_in_force_that_day():
+    """A booking is valued with the rate that applied on its own date, not
+    with whatever the rate happens to be now."""
+    cfg = _dated(config(),
+                 SessionRate("12 Sessions", D("1700"), 12,
+                             effective_to=date(2026, 5, 31)),
+                 SessionRate("12 Sessions", D("2000"), 12,
+                             effective_from=date(2026, 6, 1)))
+    row = one(plan="12 Sessions", pay="Credit", revenue="₱0.00", cfg=cfg)
+    assert row.appointment_date == date(2026, 6, 3)
+    assert row.revenue == D("2000.00")
+
+
+def test_session_rate_before_the_increase_uses_the_old_rate():
+    cfg = _dated(config(),
+                 SessionRate("12 Sessions", D("1700"), 12,
+                             effective_to=date(2026, 5, 31)),
+                 SessionRate("12 Sessions", D("2000"), 12,
+                             effective_from=date(2026, 6, 1)))
+    assert cfg.settings.rate_for("12 Sessions", date(2026, 5, 30)).rate == D("1700")
+
+
+def test_open_ended_rate_covers_everything():
+    cfg = _dated(config(), SessionRate("12 Sessions", D("1700"), 12))
+    for day in (date(2020, 1, 1), date(2030, 1, 1)):
+        assert cfg.settings.rate_for("12 Sessions", day).rate == D("1700")
+
+
+def test_overlapping_rates_take_the_most_recent():
+    """Adding a new rate without closing the old one still does the right
+    thing, rather than silently picking whichever was listed first."""
+    cfg = _dated(config(),
+                 SessionRate("12 Sessions", D("1700"), 12),
+                 SessionRate("12 Sessions", D("2000"), 12,
+                             effective_from=date(2026, 1, 1)))
+    assert cfg.settings.rate_for("12 Sessions", date(2026, 6, 3)).rate == D("2000")
+
+
+def test_plan_with_no_rate_is_not_backfilled():
+    cfg = _dated(config(), SessionRate("12 Sessions", D("1700"), 12))
+    row = one(plan="8 Sessions", pay="Credit", revenue="₱0.00", cfg=cfg)
+    assert row.revenue == D("0.00")
+    assert row.adjustment is None
+
+
+def test_plan_match_is_case_insensitive():
+    cfg = _dated(config(), SessionRate("12 SESSIONS", D("1700"), 12))
+    assert cfg.settings.rate_for("12 sessions", date(2026, 6, 3)).rate == D("1700")

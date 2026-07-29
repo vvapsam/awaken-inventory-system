@@ -24,12 +24,23 @@ def check(label, ok, detail=""):
 
 
 with TestClient(app) as c:
+    # Start from no runs at all. Finalized runs have no delete route (by
+    # design), and leaving one behind would make the double-payment guard skip
+    # every booking on the next pass — correct behaviour, wrong for a test.
+    from app.db import SessionLocal                 # noqa: E402
+    from app.models import CommissionRun            # noqa: E402
+    _db = SessionLocal()
+    for _run in _db.query(CommissionRun).all():
+        _db.delete(_run)
+    _db.commit()
+    _db.close()
+
     r = c.post("/login", data={"username": "admin", "pin": "1234"}, follow_redirects=False)
     check("login", r.status_code == 303, r.headers.get("location", ""))
 
     print("\nphase 2 — configuration")
     for url in ("/admin/commission-rates", "/admin/commission-delegators",
-                "/admin/commission-settings"):
+                "/admin/commission-session-rates", "/admin/commission-settings"):
         r = c.get(url)
         check(url, r.status_code == 200)
 
@@ -39,6 +50,10 @@ with TestClient(app) as c:
     r = c.get("/admin/commission-delegators")
     check("  Gab + Culver seeded", "Gab Rosario" in r.text and "Culver Padilla" in r.text)
     check("  Culver carries both codes", "KP,CP" in r.text)
+    r = c.get("/admin/commission-session-rates")
+    n_rates = len(set(re.findall(r"/admin/commission-session-rates/(\d+)\"", r.text)))
+    check("  five session rates seeded", n_rates == 5, "found %d" % n_rates)
+    check("  session rates are dated", "effective_from" in r.text)
 
     print("\nphase 3 — upload & preview")
     r = c.get("/commissions")
