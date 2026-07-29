@@ -154,7 +154,11 @@ with TestClient(app) as c:
 
     r = c.get(f"/commissions/{rid}?tab=summary")
     check("  delegation has its own pivot column", ">Delegation<" in r.text)
-    check("  no unmapped-staff blocker", "Finalizing is blocked" not in r.text)
+    # The run *is* blocked at this point — every coach still needs approving.
+    # What must not appear is an unmapped-staff or unknown-delegator blocker.
+    check("  no unmapped-staff blocker", "don't match any coach" not in r.text)
+    check("  no unknown-delegator blocker", "isn't configured" not in r.text)
+    check("  unapproved coaches block on their own", "haven't been approved yet" in r.text)
     for coach in ("Anjo", "Julio", "Laurent"):
         check(f"  coach {coach} in pivot", f">{coach}</b>" in r.text)
         r2 = c.get(f"/commissions/{rid}/coach/{coach}")
@@ -281,7 +285,70 @@ with TestClient(app) as c:
     rid = r.headers.get("location", "").rstrip("/").split("/")[-1]
     check("  re-upload recreates the draft", r.status_code == 303)
 
+    print("\nstatuses tab")
+    page = c.get(f"/commissions/{rid}?tab=statuses").text
+    check("  tab renders", "Every booking, by status" in page)
+    check("  Completed bucket present", ">Completed</b>" in page)
+    check("  bucket counts add up to the run",
+          str(int(re.search(r'<td>Total</td><td style="text-align:right">(\d+)</td>',
+                            page).group(1))) ==
+          re.search(r'<td>Total</td><td style="text-align:right">(\d+)</td>',
+                    page).group(1))
+    page = c.get(f"/commissions/{rid}?tab=statuses&status=Completed").text
+    check("  picking a status lists its bookings", "booking" in page and "Counts?" in page)
+
+    print("\nper-row rate override")
+    coach0 = re.search(r'/commissions/%s/coach/([^"?#]+)' % rid,
+                       c.get(f"/commissions/{rid}?tab=coaches").text).group(1)
+    page = c.get(f"/commissions/{rid}/coach/{coach0}").text
+    check("  rate cell is editable", 'name="rate_value"' in page)
+    bid = re.search(r'/commissions/%s/booking/(\d+)/rate' % rid, page).group(1)
+    r = c.post(f"/commissions/{rid}/booking/{bid}/rate",
+               data={"rate_type": "flat", "rate_value": "1234"},
+               follow_redirects=False)
+    check("  set a rate on one row", r.status_code == 303)
+    page = c.get(f"/commissions/{rid}/coach/{coach0}").text
+    check("    row is marked manual", "Manual" in page)
+    check("    row now pays the typed amount", "1,234.00" in page)
+    r = c.post(f"/commissions/{rid}/recalculate", follow_redirects=False)
+    page = c.get(f"/commissions/{rid}/coach/{coach0}").text
+    check("    survives Recalculate", "1,234.00" in page and "Manual" in page)
+    r = c.post(f"/commissions/{rid}/booking/{bid}/rate",
+               data={"reset": "on"}, follow_redirects=False)
+    page = c.get(f"/commissions/{rid}/coach/{coach0}").text
+    check("    reset puts it back", "1,234.00" not in page)
+
+    print("\nPDF statement")
+    r = c.get(f"/commissions/{rid}/coach/{coach0}/statement.pdf")
+    check("  renders", r.status_code == 200 and r.content[:5] == b"%PDF-")
+    check("  served inline for preview",
+          "inline" in r.headers.get("content-disposition", ""))
+    check("  is a real document", len(r.content) > 3000, "%d bytes" % len(r.content))
+    r2 = c.get(f"/commissions/{rid}/coach/{coach0}/statement.pdf?download=1")
+    check("  download variant attaches",
+          "attachment" in r2.headers.get("content-disposition", ""))
+
     print("\nphase 4 — finalize")
+    r = c.post(f"/commissions/{rid}/finalize", follow_redirects=False)
+    check("finalize is blocked until coaches are approved",
+          c.get(f"/commissions/{rid}?tab=documents").text.count("/commissions/payouts/") == 0)
+    page = c.get(f"/commissions/{rid}").text
+    check("  and says who is waiting", "haven't been approved yet" in page)
+
+    for coach in re.findall(r'href="/commissions/%s/coach/([^"?#]+)"' % rid, page) or []:
+        pass
+    signed = 0
+    for coach in sorted(set(re.findall(
+            r'/commissions/%s/coach/([^"?#/]+)' % rid,
+            c.get(f"/commissions/{rid}?tab=coaches").text))):
+        rr = c.post(f"/commissions/{rid}/coach/{coach}/signoff",
+                    data={"confirm": "on"}, follow_redirects=False)
+        if rr.status_code == 303:
+            signed += 1
+    check("  approve each coach", signed == 7, "signed %d" % signed)
+    page = c.get(f"/commissions/{rid}?tab=coaches").text
+    check("  coaches tab shows the sign-off", page.count(">Approved<") >= 7)
+
     r = c.post(f"/commissions/{rid}/finalize", follow_redirects=False)
     check("finalize", r.status_code == 303, r.headers.get("location", ""))
     r = c.get(f"/commissions/{rid}?tab=documents")
