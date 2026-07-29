@@ -2,7 +2,7 @@ import math
 from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
-    LargeBinary, Numeric, String, Text,
+    LargeBinary, Numeric, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship, backref
 from .db import Base
@@ -588,11 +588,11 @@ RUN_SUPERSEDED = "superseded"
 # so the export spelling is stored alongside the coach.
 COMMISSION_RATE_DEFAULTS = [
     dict(coach="Anjo", staff_raw="Anjo R", rate_type=COMMISSION_FLAT, rate_value=750,
-         override_plans="drop-in,awaken force", override_rate_type=COMMISSION_PERCENT,
-         override_rate_value=0.50),
+         overrides=[("Drop-In", COMMISSION_PERCENT, 0.50),
+                    ("Awaken Force", COMMISSION_PERCENT, 0.50)]),
     dict(coach="JC", staff_raw="JC S", rate_type=COMMISSION_FLAT, rate_value=750,
-         override_plans="drop-in,awaken force", override_rate_type=COMMISSION_PERCENT,
-         override_rate_value=0.50),
+         overrides=[("Drop-In", COMMISSION_PERCENT, 0.50),
+                    ("Awaken Force", COMMISSION_PERCENT, 0.50)]),
     dict(coach="Ric", staff_raw="Rick F", rate_type=COMMISSION_PERCENT, rate_value=0.50),
     dict(coach="Julio", staff_raw="Julio D", rate_type=COMMISSION_PERCENT, rate_value=0.70),
     dict(coach="AR", staff_raw="AR M", rate_type=COMMISSION_PERCENT, rate_value=0.40),
@@ -631,15 +631,46 @@ class CommissionCoachRate(Base):
     coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     rate_type = Column(String, nullable=False, default=COMMISSION_PERCENT)
     rate_value = Column(Numeric(10, 4), nullable=False, default=0)
-    override_plans = Column(String, default="")             # comma-separated, lowercase
-    override_rate_type = Column(String)
-    override_rate_value = Column(Numeric(10, 4))
     is_active = Column(Boolean, nullable=False, default=True)
 
     entity = relationship("Staff", foreign_keys=[coach_id])
+    overrides = relationship(
+        "CommissionCoachOverride", back_populates="rate",
+        cascade="all, delete-orphan",
+        order_by="CommissionCoachOverride.plan")
+
+    @property
+    def live_overrides(self):
+        return [o for o in self.overrides if o.is_active]
 
     def plan_list(self):
-        return [p.strip().lower() for p in (self.override_plans or "").split(",") if p.strip()]
+        """Lowercased plans this coach is paid differently for."""
+        return [o.plan.strip().lower() for o in self.live_overrides if o.plan]
+
+
+class CommissionCoachOverride(Base):
+    """One plan that pays this coach differently from their default.
+
+    A row per plan rather than a comma-separated column, so each plan carries
+    its own basis and rate — Drop-In at 50% and Awaken Force at 60% is
+    expressible, which the old single-override column could not do.
+    """
+    __tablename__ = "commission_coach_overrides"
+    id = Column(Integer, primary_key=True)
+    rate_id = Column(Integer, ForeignKey("commission_coach_rates.id",
+                                         ondelete="CASCADE"), nullable=False)
+    plan = Column(String, nullable=False)                   # as displayed
+    rate_type = Column(String, nullable=False, default=COMMISSION_PERCENT)
+    rate_value = Column(Numeric(10, 4), nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    rate = relationship("CommissionCoachRate", back_populates="overrides")
+
+    # Deferred to commit time: editing two rows can swap their plans, which is
+    # briefly a duplicate mid-statement even though the end state is valid.
+    __table_args__ = (UniqueConstraint("rate_id", "plan",
+                                       name="uq_coach_override_plan",
+                                       deferrable=True, initially="DEFERRED"),)
 
 
 class CommissionDelegator(Base):

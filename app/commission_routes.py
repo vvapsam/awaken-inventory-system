@@ -29,7 +29,7 @@ from .models import (
     COMMISSION_SESSION_RATE_DEFAULTS, CommissionSessionRate, AWAKEN_FORCE,
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
     CommissionBooking, CommissionCharge, CommissionChargeLine,
-    CommissionCoachRate, CommissionDelegator, CommissionPayout,
+    CommissionCoachOverride, CommissionCoachRate, CommissionDelegator, CommissionPayout,
     CommissionPayoutLine, CommissionRun, CommissionSetting, Staff,
 )
 
@@ -50,7 +50,13 @@ def seed(db: Session) -> None:
     """Idempotent. Runs at startup; safe on every boot."""
     if not db.query(CommissionCoachRate).first():
         for d in COMMISSION_RATE_DEFAULTS:
-            db.add(CommissionCoachRate(**d))
+            d = dict(d)
+            overrides = d.pop("overrides", [])
+            rate = CommissionCoachRate(**d)
+            rate.overrides = [
+                CommissionCoachOverride(plan=plan, rate_type=rtype, rate_value=value)
+                for plan, rtype, value in overrides]
+            db.add(rate)
     if not db.query(CommissionDelegator).first():
         for d in COMMISSION_DELEGATOR_DEFAULTS:
             db.add(CommissionDelegator(**d))
@@ -121,10 +127,9 @@ def build_config(db: Session) -> engine.Config:
             coach=r.coach,
             rate_type=r.rate_type,
             rate_value=Decimal(str(r.rate_value or 0)),
-            override_plans=frozenset(r.plan_list()),
-            override_rate_type=r.override_rate_type or None,
-            override_rate_value=(Decimal(str(r.override_rate_value))
-                                 if r.override_rate_value is not None else None),
+            overrides={o.plan.strip().lower():
+                       (o.rate_type, Decimal(str(o.rate_value or 0)))
+                       for o in r.live_overrides if (o.plan or "").strip()},
         )
     delegators = []
     for d in db.query(CommissionDelegator).filter(CommissionDelegator.is_active == True):  # noqa: E712
@@ -156,6 +161,31 @@ def people(db: Session):
     return (db.query(Staff)
             .filter(Staff.person_type.in_(("coach", "affiliate", "employee")))
             .order_by(Staff.name).all())
+
+
+def plan_choices(db: Session) -> list:
+    """Plans you can write an override against.
+
+    Sourced from what the exports have actually contained, plus the session
+    rate card, plus the two plans that are always priced separately — so the
+    dropdown offers real plan spellings instead of trusting anyone to retype
+    them.
+    """
+    seen, out = set(), []
+    for name in ("Drop-In", "Awaken Force"):
+        seen.add(name.lower())
+        out.append(name)
+    rows = db.query(CommissionSessionRate.plan).distinct().all()
+    rows += db.query(CommissionBooking.pricing_plan).distinct().all()
+    rows += db.query(CommissionCoachOverride.plan).distinct().all()
+    extra = []
+    for (plan,) in rows:
+        plan = (plan or "").strip()
+        if not plan or plan.lower() in seen:
+            continue
+        seen.add(plan.lower())
+        extra.append(plan)
+    return out + sorted(extra, key=str.lower)
 
 
 def _delegator_ids(db: Session) -> dict:
@@ -360,7 +390,7 @@ def register(app, deps):
         rates = db.query(CommissionCoachRate).order_by(CommissionCoachRate.coach).all()
         return render(request, "commission_rates.html", db, staff, rates=rates,
                       rate_types=COMMISSION_RATE_TYPES, people=people(db),
-                      active="rates")
+                      plans=plan_choices(db), active="rates")
 
     @app.post("/admin/commission-rates/{rid}")
     def commission_rate_update(
@@ -368,9 +398,18 @@ def register(app, deps):
             coach: str = Form(...), staff_raw: str = Form(...),
             coach_id: str = Form(""),
             rate_type: str = Form(COMMISSION_PERCENT), rate_value: str = Form("0"),
-            override_plans: str = Form(""), override_rate_type: str = Form(""),
-            override_rate_value: str = Form(""), is_active: str = Form(""),
+            is_active: str = Form(""),
+            ov_id: list[str] = Form([]), ov_plan: list[str] = Form([]),
+            ov_type: list[str] = Form([]), ov_value: list[str] = Form([]),
+            ov_active: list[str] = Form([]),
+            new_plan: str = Form(""), new_type: str = Form(COMMISSION_PERCENT),
+            new_value: str = Form(""),
             db: Session = Depends(get_db)):
+        """One save for the whole coach — default rate and every override row.
+
+        The popup is the only place these are edited, so they commit together;
+        that is what stops a half-saved coach from existing.
+        """
         staff, redir = guard(request, db)
         if redir:
             return redir
@@ -385,14 +424,67 @@ def register(app, deps):
         r.staff_raw = staff_raw.strip()
         r.rate_type = rate_type
         r.rate_value = _num(rate_value, rate_type)
-        r.override_plans = ",".join(
-            p.strip().lower() for p in override_plans.split(",") if p.strip())
-        r.override_rate_type = override_rate_type or None
-        r.override_rate_value = (_num(override_rate_value, override_rate_type)
-                                 if override_rate_type and override_rate_value.strip()
-                                 else None)
         r.is_active = (is_active == "on")
+
+        existing = {o.id: o for o in r.overrides}
+        # No autoflush while the rows are half-rewritten: two rows swapping
+        # plans is only a duplicate in between, and the constraint is deferred
+        # to commit for exactly that reason.
+        with db.no_autoflush:
+            for i, oid in enumerate(ov_id):
+                o = existing.get(int(oid)) if oid.strip().isdigit() else None
+                if o is None:
+                    continue
+                plan = (ov_plan[i] if i < len(ov_plan) else "").strip()
+                if not plan:                   # blanking the plan removes it
+                    db.delete(o)
+                    continue
+                otype = (ov_type[i] if i < len(ov_type) else COMMISSION_PERCENT)
+                o.plan = plan
+                o.rate_type = otype
+                o.rate_value = _num(ov_value[i] if i < len(ov_value) else "0", otype)
+                o.is_active = ((ov_active[i] if i < len(ov_active) else "") == "on")
+
+            # Renaming one override onto another's plan would leave two rules
+            # for the same plan; the later row loses.
+            kept = set()
+            for o in list(r.overrides):
+                key = (o.plan or "").strip().lower()
+                if key in kept:
+                    db.delete(o)
+                else:
+                    kept.add(key)
+
+        if new_plan.strip():
+            plan = new_plan.strip()
+            db.flush()
+            # Adding a plan the coach already overrides edits that row rather
+            # than failing on the unique index — two rules for one plan would
+            # be ambiguous, and the newer number is the one meant.
+            dup = next((o for o in r.overrides
+                        if (o.plan or "").strip().lower() == plan.lower()), None)
+            if dup is not None:
+                dup.plan, dup.rate_type = plan, new_type
+                dup.rate_value, dup.is_active = _num(new_value, new_type), True
+            else:
+                db.add(CommissionCoachOverride(
+                    rate_id=r.id, plan=plan, rate_type=new_type,
+                    rate_value=_num(new_value, new_type), is_active=True))
         db.commit()
+        return RedirectResponse("/admin/commission-rates", status_code=303)
+
+    @app.post("/admin/commission-rates/{rid}/override-delete")
+    def commission_override_delete(request: Request, rid: int,
+                                   ov_delete: str = Form(""),
+                                   db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        o = db.get(CommissionCoachOverride, int(ov_delete)) \
+            if ov_delete.strip().isdigit() else None
+        if o and o.rate_id == rid:
+            db.delete(o)
+            db.commit()
         return RedirectResponse("/admin/commission-rates", status_code=303)
 
     @app.post("/admin/commission-rates/new")

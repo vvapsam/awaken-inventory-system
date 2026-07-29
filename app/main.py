@@ -392,6 +392,30 @@ def startup():
                 "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
                 "CREATE INDEX IF NOT EXISTS commission_bookings_ref_idx "
                 "ON commission_bookings (booking_ref); END IF; END $$;"))
+            # Coach overrides moved from a comma-separated column with one
+            # shared rate to a row per plan, each with its own basis and rate.
+            # Copy first, then drop the old columns — leaving them would let a
+            # deleted override come back on the next boot.
+            conn.execute(text(
+                "DO $$ BEGIN "
+                "IF to_regclass('public.commission_coach_overrides') IS NOT NULL "
+                "AND EXISTS (SELECT 1 FROM information_schema.columns "
+                "            WHERE table_name = 'commission_coach_rates' "
+                "              AND column_name = 'override_plans') THEN "
+                "  INSERT INTO commission_coach_overrides "
+                "         (rate_id, plan, rate_type, rate_value, is_active) "
+                "  SELECT DISTINCT r.id, initcap(btrim(p)), r.override_rate_type, "
+                "         COALESCE(r.override_rate_value, 0), TRUE "
+                "  FROM commission_coach_rates r, "
+                "       unnest(string_to_array(r.override_plans, ',')) AS p "
+                "  WHERE r.override_rate_type IS NOT NULL AND btrim(p) <> '' "
+                "    AND NOT EXISTS (SELECT 1 FROM commission_coach_overrides x "
+                "                    WHERE x.rate_id = r.id "
+                "                      AND lower(x.plan) = lower(btrim(p))); "
+                "  ALTER TABLE commission_coach_rates DROP COLUMN IF EXISTS override_plans; "
+                "  ALTER TABLE commission_coach_rates DROP COLUMN IF EXISTS override_rate_type; "
+                "  ALTER TABLE commission_coach_rates DROP COLUMN IF EXISTS override_rate_value; "
+                "END IF; END $$;"))
         # Seed commission rules (coach rates, delegators, settings). Idempotent.
         from . import commission_routes
         commission_routes.seed(db)

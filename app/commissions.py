@@ -74,18 +74,23 @@ HYROX_WITH_COACH = "hyrox simulation (with coach)"
 
 @dataclass(frozen=True)
 class CoachRate:
-    """How one coach is paid."""
+    """How one coach is paid.
+
+    ``overrides`` maps a lowercased pricing plan to the (basis, rate) that
+    plan pays instead of the default — so each plan can differ from the next,
+    not just differ from the default as a group.
+    """
     coach: str
     rate_type: str                      # FLAT | PERCENT
     rate_value: Decimal                 # 750.00, or 0.70
-    override_plans: frozenset = frozenset()
-    override_rate_type: str | None = None
-    override_rate_value: Decimal | None = None
+    overrides: dict = field(default_factory=dict)   # plan -> (type, value)
+
+    def has_override(self, plan: str) -> bool:
+        return (plan or "").strip().lower() in self.overrides
 
     def for_plan(self, plan: str) -> tuple[str, Decimal]:
-        if self.override_rate_type and plan.strip().lower() in self.override_plans:
-            return self.override_rate_type, self.override_rate_value
-        return self.rate_type, self.rate_value
+        hit = self.overrides.get((plan or "").strip().lower())
+        return hit if hit else (self.rate_type, self.rate_value)
 
 
 @dataclass(frozen=True)
@@ -580,14 +585,12 @@ def compute_row(row: Row, config: Config) -> Row:
 
     rate_type, rate_value = rate.for_plan(row.pricing_plan)
     row.rate_type, row.rate_value = rate_type, rate_value
+    overridden = rate.has_override(row.pricing_plan)
     if rate_type == FLAT:
-        row.rule = "coach_flat"
+        row.rule = "plan_override" if overridden else "coach_flat"
         row.commission = money(rate_value)
     else:
-        row.rule = ("plan_override"
-                    if rate.override_rate_type
-                    and row.pricing_plan.lower() in rate.override_plans
-                    else "coach_percent")
+        row.rule = "plan_override" if overridden else "coach_percent"
         row.commission = money(row.revenue * rate_value)
     return row
 
