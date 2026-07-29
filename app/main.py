@@ -46,7 +46,7 @@ def _tz():
     return timezone(timedelta(hours=8))  # Manila fallback
 
 BASE_DIR = os.path.dirname(__file__)
-app = FastAPI(title="AWAKEN Inventory")
+app = FastAPI(title="AWAKEN System")
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SECRET_KEY", "dev-insecure-change-me"),
