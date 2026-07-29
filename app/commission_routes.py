@@ -298,7 +298,10 @@ def blockers(run: CommissionRun, db: Session | None = None) -> dict:
             unmapped[b.staff_raw or "(blank)"] = unmapped.get(b.staff_raw or "(blank)", 0) + 1
         if re.search(r"\bdelegation\b", b.variant or "", re.I) and not b.delegator_id:
             unknown[b.variant] = unknown.get(b.variant, 0) + 1
-    waiting = unsigned(run, db) if db is not None else []
+    # Only a draft can be finalized, so only a draft can be blocked. A
+    # finalized run predates sign-off and must not be told it is missing one.
+    waiting = (unsigned(run, db)
+               if db is not None and run.status == RUN_DRAFT else [])
     return {"unmapped": unmapped, "unknown": unknown, "unsigned": waiting,
             "blocking": bool(unmapped or unknown or waiting)}
 
@@ -459,6 +462,16 @@ def register(app, deps):
         """Admins, or anyone granted the manage_commissions area."""
         staff, redir = require(request, db, perm="manage_commissions")
         return staff, redir
+
+    def guard_money(request, db):
+        """Admins only.
+
+        Reading a run is one thing; deciding what a coach gets paid is another.
+        Approving figures and typing a rate onto a booking both change money
+        leaving the business, so they need the admin role rather than the
+        manage_commissions area a reviewer might hold.
+        """
+        return require_admin(request, db)
 
     # ---------------------------------------------------------------- phase 2
 
@@ -952,6 +965,8 @@ def register(app, deps):
             manual_count=len([b for b in rows if b.rate_manual]),
             signoff=signoffs(run, db).get(coach),
             rate_types=COMMISSION_RATE_TYPES,
+            # Approving and repricing are admin-only; everyone else reads.
+            can_pay=(getattr(staff, "role", "") == "admin"),
             is_draft=(run.status == RUN_DRAFT))
 
     @app.get("/commissions/{rid}/coach/{coach}/statement.pdf")
@@ -991,7 +1006,7 @@ def register(app, deps):
                            confirm: str = Form("on"),
                            db: Session = Depends(get_db)):
         """Confirm one coach's figures are correct and clear them for payout."""
-        staff, redir = guard(request, db)
+        staff, redir = guard_money(request, db)
         if redir:
             return redir
         run = db.get(CommissionRun, rid)
@@ -1023,7 +1038,7 @@ def register(app, deps):
                                 reset: str = Form(""),
                                 db: Session = Depends(get_db)):
         """Set (or clear) a hand-typed rate on a single booking."""
-        staff, redir = guard(request, db)
+        staff, redir = guard_money(request, db)
         if redir:
             return redir
         run = db.get(CommissionRun, rid)
@@ -1076,7 +1091,7 @@ def register(app, deps):
     def commission_approve(request: Request, rid: int, bid: int,
                            db: Session = Depends(get_db)):
         """Toggle whether one non-Completed booking earns commission."""
-        staff, redir = guard(request, db)
+        staff, redir = guard_money(request, db)
         if redir:
             return redir
         run = db.get(CommissionRun, rid)
@@ -1102,7 +1117,7 @@ def register(app, deps):
                                   status: str = Form(...), include: str = Form("on"),
                                   db: Session = Depends(get_db)):
         """Approve (or un-approve) every booking of one status for one coach."""
-        staff, redir = guard(request, db)
+        staff, redir = guard_money(request, db)
         if redir:
             return redir
         run = db.get(CommissionRun, rid)

@@ -237,6 +237,12 @@ def statement(run, coach: str, rows, *, signoff=None, generated_by: str = "",
         tail += [Spacer(1, 8), Paragraph(
             "Approved by <b>%s</b> on %s. Figures confirmed correct and "
             "cleared for payout." % (who, when), st["note"])]
+    elif (getattr(run, "status", "") or "") == "finalized":
+        # Finalized without a sign-off row: the run predates sign-off, or it
+        # was cleared some other way. Calling that a draft would be a lie.
+        tail += [Spacer(1, 8), Paragraph(
+            "<b>Finalized.</b> This run has been closed and its payouts "
+            "issued.", st["note"])]
     else:
         tail += [Spacer(1, 8), Paragraph(
             "<b>Draft — not yet approved.</b> These figures are still under "
