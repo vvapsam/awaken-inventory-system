@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block body %}
+<h1 style="margin:0">Session rates</h1>
+<p class="muted small" style="margin:2px 0 0">Per-session rate for each plan, used to value a booking the
+  export sent through at ₱0. Dated, so an old month keeps the rate that applied at the time.</p>
+{% include "_commission_tabs.html" %}
+
+<table>
+  <tr><th>Plan</th><th style="text-align:right"># Sessions</th><th style="text-align:right">Rate</th>
+      <th>Effective from</th><th>Effective to</th><th>Note</th><th>Active</th><th></th></tr>
+  {% for r in rates %}
+  <tr>
+    <form method="post" action="/admin/commission-session-rates/{{ r.id }}">
+      <td><input name="plan" value="{{ r.plan }}" style="width:150px"></td>
+      <td style="text-align:right"><input name="sessions" value="{{ r.sessions if r.sessions is not none }}" style="width:70px;text-align:right"></td>
+      <td style="text-align:right"><input name="rate" value="{{ '%g'|format(r.rate) }}" style="width:100px;text-align:right"></td>
+      <td><input type="date" name="effective_from" value="{{ r.effective_from.isoformat() if r.effective_from }}" style="width:150px"></td>
+      <td><input type="date" name="effective_to" value="{{ r.effective_to.isoformat() if r.effective_to }}" style="width:150px"></td>
+      <td><input name="note" value="{{ r.note or '' }}" style="width:150px"></td>
+      <td><input type="checkbox" name="is_active" {{ 'checked' if r.is_active }}></td>
+      <td><button class="btn primary" style="padding:6px 12px">Save</button></td>
+    </form>
+  </tr>
+  {% endfor %}
+</table>
+
+<p class="muted small">Leave <b>Effective from</b> blank for "as far back as there is data", and
+  <b>Effective to</b> blank while a rate is current. When ranges overlap, the most recently effective
+  one wins — so you can add a new rate without having to close the old one first.</p>
+
+<div class="card" style="margin-top:18px">
+  <h3 style="margin:0 0 4px;font-size:.95rem">Add a rate</h3>
+  <p class="muted small" style="margin:0 0 10px">Plan must match the <span class="mono">Pricing plan used</span>
+    value in the export, e.g. <span class="mono">12 Sessions</span>.</p>
+  <form method="post" action="/admin/commission-session-rates/new" class="row-between" style="gap:10px;align-items:flex-end">
+    <div style="flex:1.4"><label>Plan<input name="plan" required placeholder="12 Sessions"></label></div>
+    <div style="flex:.7"><label># Sessions<input name="sessions" placeholder="12"></label></div>
+    <div style="flex:.9"><label>Rate<input name="rate" placeholder="1700"></label></div>
+    <div style="flex:1"><label>Effective from<input type="date" name="effective_from"></label></div>
+    <div style="flex:1"><label>Effective to<input type="date" name="effective_to"></label></div>
+    <div style="flex:1"><label>Note<input name="note" placeholder="2026 price list"></label></div>
+    <button class="btn primary">Add</button>
+  </form>
+</div>
+
+{% if rates %}
+<h2>Remove</h2>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+  {% for r in rates %}
+  <form method="post" action="/admin/commission-session-rates/{{ r.id }}/delete">
+    <button class="btn" style="padding:5px 11px;color:#9c2c1e;border-color:#e6a49b">✕ {{ r.plan }}{% if r.effective_from %} from {{ r.effective_from.strftime('%d %b %Y') }}{% endif %}</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -10,14 +10,52 @@
     <label style="margin:0">Rezerv export (.csv)
       <input type="file" name="file" accept=".csv,text/csv" required>
     </label>
-    <p class="muted small" style="margin:10px 0 0">
-      The period is detected from the booking dates. Re-uploading a period that is still a draft
-      replaces it; finalized runs are never overwritten.
-    </p>
+    <p class="muted small" style="margin:10px 0 0">The period is detected from the booking dates.</p>
   </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 2px;font-size:.95rem">If this period already has a draft</h3>
+    <p class="muted small" style="margin:0 0 10px">Bookings are matched on <b>Booking ref</b>, which is
+      unique per booking in Rezerv.</p>
+
+    <label class="check" style="align-items:flex-start;margin-bottom:10px">
+      <input type="radio" name="mode" value="merge" {{ 'checked' if mode != 'replace' }}>
+      <span><b>Add new bookings only</b>
+        <div class="muted small">Imports anything whose Booking ref isn't already in the draft and leaves
+          the rest alone. Your approvals survive. Use this for a corrected or extended export.</div></span>
+    </label>
+
+    <label class="check" style="align-items:flex-start">
+      <input type="radio" name="mode" value="replace" {{ 'checked' if mode == 'replace' }}>
+      <span><b>Replace the draft</b>
+        <div class="muted small">Deletes the existing draft for this period and imports the file fresh.
+          Approvals on that draft are lost. Use this when the export itself was wrong.</div></span>
+    </label>
+
+    <p class="muted small" style="margin:12px 0 0">Either way, a booking already paid out in a
+      <b>finalized</b> run is never imported again — that's the double-payment case, and it's reported
+      rather than silently skipped.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 2px;font-size:.95rem">Statuses to import</h3>
+    <p class="muted small" style="margin:0 0 10px">Anything unticked is dropped at import, with the reason
+      recorded. Non-Completed bookings still earn nothing until you approve them per coach.</p>
+    <div style="display:flex;gap:18px;flex-wrap:wrap">
+      {% for s in statuses %}
+      <label class="check">
+        <input type="checkbox" name="status_{{ skey(s) }}" {{ 'checked' if s in chosen }}>
+        <span>{{ s }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="muted small" style="margin:10px 0 0">The Paid Bookings report is usually filtered to
+      Completed only — drop that filter in Rezerv if you want the others to reach this screen.</p>
+  </div>
+
   <div class="row-between">
     <a class="btn" href="/commissions">Cancel</a>
-    <button class="btn primary">Parse &amp; preview →</button>
+    <button class="btn primary">Import &amp; preview →</button>
   </div>
 </form>
 {% endblock %}

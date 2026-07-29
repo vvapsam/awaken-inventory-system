@@ -25,6 +25,13 @@
   </div>
 </div>
 
+{% if run.last_import_note %}
+<div class="card" style="border-left:3px solid var(--teal);background:var(--teal-tint)">
+  <b class="small">Last import</b>
+  <div class="small" style="margin-top:2px">{{ run.last_import_note }}</div>
+</div>
+{% endif %}
+
 {% if block.blocking %}
 <div class="error">
   <b>Finalizing is blocked.</b>
