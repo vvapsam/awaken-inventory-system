@@ -460,3 +460,45 @@ def test_plan_with_no_rate_is_not_backfilled():
 def test_plan_match_is_case_insensitive():
     cfg = _dated(config(), SessionRate("12 SESSIONS", D("1700"), 12))
     assert cfg.settings.rate_for("12 sessions", date(2026, 6, 3)).rate == D("1700")
+
+
+# --------------------------------------------------- Awaken Force rate card
+
+def test_awaken_force_uses_its_own_rate_card():
+    """AF is a separate card from the PT packs: 1 session ₱1,500, 8 ₱1,200."""
+    cfg = config()
+    assert cfg.settings.rate_for("Awaken Force", date(2026, 6, 3),
+                                 package=D("9600")).rate == D("1200")
+    assert cfg.settings.rate_for("Awaken Force", date(2026, 6, 3),
+                                 package=D("1500")).rate == D("1500")
+
+
+def test_awaken_force_pack_identified_by_the_exported_total():
+    """Every AF row exports credit 1, so the pack size can only come from the
+    package total — 8 × 1,200 = 9,600."""
+    row = one(plan="Awaken Force", revenue="₱9600.00", staff="AR M")
+    assert row.revenue == D("1200.00")
+    assert "8-session pack" in row.adjustment_note
+    assert row.commission == D("480.00")            # 40% of 1,200
+
+
+def test_awaken_force_single_session_pack():
+    row = one(plan="Awaken Force", revenue="₱1500.00", staff="AR M")
+    assert row.revenue == D("1500.00")
+    assert row.commission == D("600.00")            # 40% of 1,500
+
+
+def test_session_count_comes_from_the_export_not_the_plan_name():
+    """'Total pricing plan credit' carries the pack size for PT plans."""
+    result = run(csv(plan="12 Sessions", pay="Credit", revenue="₱0.00"), config())
+    assert result.rows[0].credits == 12
+
+
+def test_credits_break_a_tie_when_no_package_total_matches():
+    cfg = config()
+    cfg.settings.session_rates = (
+        SessionRate("Pack", D("900"), 4, "PT"),
+        SessionRate("Pack", D("800"), 8, "PT"),
+    )
+    assert cfg.settings.rate_for("Pack", None, credits=8).rate == D("800")
+    assert cfg.settings.rate_for("Pack", None, credits=4).rate == D("900")

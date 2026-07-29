@@ -52,8 +52,15 @@ with TestClient(app) as c:
     check("  Culver carries both codes", "KP,CP" in r.text)
     r = c.get("/admin/commission-session-rates")
     n_rates = len(set(re.findall(r"/admin/commission-session-rates/(\d+)\"", r.text)))
-    check("  five session rates seeded", n_rates == 5, "found %d" % n_rates)
+    check("  seven session rates seeded (5 PT + 2 AF)", n_rates == 7, "found %d" % n_rates)
     check("  session rates are dated", "effective_from" in r.text)
+    check("  grouped by programme",
+          "Private Coaching" in r.text and "Awaken Force" in r.text)
+    check("  Awaken Force pack totals present", "9600" in r.text and "1200" in r.text)
+    r = c.get("/admin/commission-rates")
+    check("  coach is a person picker, not free text", 'name="coach_id"' in r.text)
+    r = c.get("/admin/commission-delegators")
+    check("  delegator is a person picker", 'name="entity_id"' in r.text)
 
     print("\nphase 3 — upload & preview")
     r = c.get("/commissions")
@@ -114,6 +121,7 @@ with TestClient(app) as c:
     page = c.get(f"/commissions/{dup_rid}").text
     check("  first import lands", r.status_code == 303)
     check("  import receipt shown", "Last import" in page)
+    check("  run rows are clickable", 'data-href="/commissions/' in c.get("/commissions").text)
 
     # same file again in merge mode → everything is a duplicate
     r = upload("\n".join([head] + half))
