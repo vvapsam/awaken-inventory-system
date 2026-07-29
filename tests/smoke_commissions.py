@@ -76,6 +76,62 @@ with TestClient(app) as c:
         shown = "₱{:,.2f}".format(float(value))
         check(f"  screen shows {label} {shown}", shown in page)
 
+    print("\nreview — non-Completed statuses")
+    # The Paid Bookings export is Completed-only, so synthesise the other
+    # statuses to prove the review flow end to end.
+    src = open(CSV, encoding="utf-8-sig").read().splitlines()
+    head, body = src[0], src[1:]
+    extra = []
+    for i, status in enumerate(("Cancelled", "Late cancelled", "No show", "Booked")):
+        cells = body[i].split(",")
+        cells[0] = "REVIEW%d" % i
+        cells[7] = status
+        extra.append(",".join(cells))
+    mixed = "\n".join([head] + body + extra)
+    r = c.post("/commissions/new", files={"file": ("mixed.csv", mixed.encode(), "text/csv")},
+               follow_redirects=False)
+    mid = r.headers.get("location", "").rstrip("/").split("/")[-1]
+    page = c.get(f"/commissions/{mid}?tab=coaches").text
+    check("  coach table lists awaiting-review counts", "Awaiting review" in page)
+    r = c.get(f"/commissions/{mid}?tab=summary")
+    check("  preview flags rows awaiting review", "awaiting review" in r.text)
+
+    # Find the coach page holding a REVIEW row and approve one booking.
+    approved_any = False
+    for coach in ("Anjo", "AR", "JC", "Ric", "Laurent", "Joseph", "Julio"):
+        page = c.get(f"/commissions/{mid}/coach/{coach}").text
+        m = re.search(r'/commissions/%s/booking/(\d+)/approve' % mid, page)
+        if not m:
+            continue
+        before = page
+        check(f"  {coach}: review controls present", "Include" in before)
+        r = c.post(f"/commissions/{mid}/booking/{m.group(1)}/approve",
+                   follow_redirects=False)
+        check("  approve toggles", r.status_code == 303)
+        after = c.get(f"/commissions/{mid}/coach/{coach}").text
+        check("  approved row now counts", "✓ Yes" in after)
+        r = c.post(f"/commissions/{mid}/booking/{m.group(1)}/approve",
+                   follow_redirects=False)
+        after2 = c.get(f"/commissions/{mid}/coach/{coach}").text
+        check("  un-approve reverts", "✓ Yes" not in after2)
+        # bulk approve a whole status for this coach
+        r = c.post(f"/commissions/{mid}/coach/{coach}/approve-status",
+                   data={"status": "Cancelled", "include": "on"},
+                   follow_redirects=False)
+        check("  bulk approve-status", r.status_code == 303)
+        approved_any = True
+        break
+    check("  found a coach with reviewable rows", approved_any)
+    c.post(f"/commissions/{mid}/delete", follow_redirects=False)
+
+    # Re-uploading a period supersedes the earlier draft, so rebuild it before
+    # finalizing. (That supersede behaviour is deliberate — see commissions_upload.)
+    with open(CSV, "rb") as fh:
+        r = c.post("/commissions/new", files={"file": ("export.csv", fh, "text/csv")},
+                   follow_redirects=False)
+    rid = r.headers.get("location", "").rstrip("/").split("/")[-1]
+    check("  re-upload recreates the draft", r.status_code == 303)
+
     print("\nphase 4 — finalize")
     r = c.post(f"/commissions/{rid}/finalize", follow_redirects=False)
     check("finalize", r.status_code == 303, r.headers.get("location", ""))

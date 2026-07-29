@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.commissions import (                                   # noqa: E402
     BACKFILL_CREDIT_AND_FREE, Config, Delegator, delegation_code, run,
+    recompute_row as engine_recompute,
 )
 from tests.conf_sample import config, DELEGATORS                # noqa: E402
 
@@ -255,6 +256,75 @@ def test_non_completed_rows_earn_nothing():
         row = one(status=status)
         assert row.commission is None, status
         assert row.revenue == D("1700.00"), status  # raw revenue retained
+
+
+# ------------------------------------------------------- reviewer approval
+
+def test_approving_a_cancelled_row_pays_it():
+    """A late cancel that was still charged should be payable on review."""
+    cfg = config()
+    row = one(status="Late cancelled", staff="Julio D", cfg=cfg)
+    assert row.commission is None
+    row.approved = True
+    engine_recompute(row, cfg)
+    assert row.commission == D("1190.00")          # 70% of 1,700
+
+
+def test_un_approving_reverts_to_no_commission():
+    cfg = config()
+    row = one(status="Cancelled", staff="Julio D", cfg=cfg)
+    row.approved = True
+    engine_recompute(row, cfg)
+    assert row.commission == D("1190.00")
+    row.approved = False
+    engine_recompute(row, cfg)
+    assert row.commission is None
+    assert row.revenue == D("1700.00")             # back to the exported figure
+
+
+def test_approval_applies_the_same_revenue_adjustments():
+    """An approved row is not a special case — Awaken Force still overrides."""
+    cfg = config()
+    row = one(status="No show", plan="Awaken Force", revenue="₱9600.00",
+              staff="AR M", cfg=cfg)
+    assert row.revenue == D("9600.00")             # untouched while unapproved
+    row.approved = True
+    engine_recompute(row, cfg)
+    assert row.revenue == D("1200.00")
+    assert row.commission == D("480.00")
+
+
+def test_approved_delegation_row_pays_the_delegation_cost():
+    cfg = config()
+    row = one(status="Cancelled", variant="Delegation – KP", plan="Drop-In",
+              pay="Free", revenue="₱0.00", staff="Julio D", cfg=cfg)
+    row.approved = True
+    engine_recompute(row, cfg)
+    assert row.rule == "delegation"
+    assert row.commission == D("640.00")
+    assert row.delegation_charge == D("1000.00")
+
+
+def test_completed_rows_are_commissionable_without_approval():
+    row = one(status="Completed")
+    assert row.is_commissionable is True
+    assert row.approved is False
+
+
+def test_approval_moves_a_row_into_the_totals():
+    cfg = config()
+    csv_two = csv(status="Cancelled", staff="Julio D") + "\n" + \
+        ",".join(["BK2", "B Client", "04 Jun 2026", "Private Coaching", "01:30",
+                  "Private Coaching", "Julio D", "Completed", "01 Jun 2026",
+                  "12 Sessions", "Manual", "1", "12", "Business Portal", "--",
+                  "--", "₱1700.00", "₱1700.00"])
+    result = run(csv_two, cfg)
+    assert result.totals()["sessions"] == 1        # only the Completed one
+    cancelled = next(r for r in result.rows if r.booking_status == "Cancelled")
+    cancelled.approved = True
+    engine_recompute(cancelled, cfg)
+    assert result.totals()["sessions"] == 2
+    assert result.totals()["commission"] == D("2380.00")
 
 
 def test_rounding_is_half_up_to_two_places():
