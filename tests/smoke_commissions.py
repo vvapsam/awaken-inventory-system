@@ -315,6 +315,23 @@ with TestClient(app) as c:
     check("    every search box names the note it writes into",
           p3.count('data-note=') == p3.count('class="tsearch"'))
 
+    print("\ncoach page — status filter instead of stacked groups")
+    page = c.get(f"/commissions/{rid}/coach/{coach0}").text
+    check("  filter pills are present", 'href="?status=' in page)
+    check("    All is selected by default", '<a href="?" class="on">All' in page)
+    check("    one table, not one per status", page.count('class="bktbl"') == 1)
+    check("    the flat view names each row's status", ">Status</th>" in page)
+    p2 = c.get(f"/commissions/{rid}/coach/{coach0}?status=Completed").text
+    check("  picking a status filters the table", "Completed · " in p2)
+    check("    and drops the Status column, since every row shares it",
+          ">Status</th>" not in p2)
+    n_all = page.count('<tr id=')
+    n_one = p2.count('<tr id=')
+    check("    fewer rows than All", 0 < n_one <= n_all, "%d of %d" % (n_one, n_all))
+    p3 = c.get(f"/commissions/{rid}/coach/{coach0}?status=Nonexistent").text
+    check("  an unknown status falls back to All rather than an empty page",
+          p3.count('<tr id=') == n_all)
+
     print("\nstatuses tab")
     page = c.get(f"/commissions/{rid}?tab=statuses").text
     check("  tab renders", "Every booking, by status" in page)
@@ -408,6 +425,52 @@ with TestClient(app) as c:
     _b = _d.get(CommissionBooking, int(bid))
     check("    nothing was signed off", n_signed == 0, str(n_signed))
     check("    no rate was written", not _b.rate_manual)
+    _d.close()
+
+    print("\ndelegation section")
+    r = c.get("/commissions/delegation")
+    check("  /commissions/delegation", r.status_code == 200)
+    check("    reachable from the commission tabs",
+          "/commissions/delegation" in c.get("/commissions").text)
+    dids = sorted(set(re.findall(r"/commissions/delegation/(\d+)", r.text)))
+    check("    both delegators listed", len(dids) == 2, str(dids))
+    check("    leads with margin", ">Margin<" in r.text)
+
+    # the screen must agree with the engine, to the peso
+    from app.commission_routes import (delegator_rollup as _roll,      # noqa: E402
+                                       delegated_rows as _drows,
+                                       schedule_matrix as _matrix)
+    from app.models import CommissionRun as _Run                        # noqa: E402
+    _d = _SL()
+    _runs = [x for x in _d.query(_Run).all() if any(b.delegator_id for b in x.bookings)]
+    _run = max(_runs, key=lambda x: x.id)
+    _rollup = _roll(_run, _d)
+    for _r in _rollup:
+        check("    %s shown at %s margin" % (_r["delegator"].name, _r["margin"]),
+              "₱{:,.2f}".format(float(_r["margin"])) in r.text)
+    _total = sum(float(_r["charged"]) for _r in _rollup)
+    check("    totals reconcile with the engine",
+          "₱{:,.2f}".format(_total) in r.text, "₱{:,.2f}".format(_total))
+
+    for did in dids:
+        for tab in ("sessions", "schedule", "clients", "coaches"):
+            rr = c.get(f"/commissions/delegation/{did}?tab={tab}")
+            check(f"  delegator {did} · {tab}", rr.status_code == 200)
+
+    big = max(_rollup, key=lambda x: x["sessions"])
+    page = c.get("/commissions/delegation/%d?tab=schedule" % big["delegator"].id).text
+    _rows = [b for b in _drows(_run) if b.delegator_id == big["delegator"].id]
+    m = _matrix(_rows)
+    check("  schedule is a whole calendar month",
+          page.count('class="d') >= len(m["days"]), "%d days" % len(m["days"]))
+    check("    one row per client", page.count('class="cli" title=') == len(m["clients"]))
+    check("    every coach has a distinct code",
+          len(set(m["codes"].values())) == len(m["codes"]), str(m["codes"]))
+    check("    cells add up to the session count",
+          sum(cl["total"] for cl in m["clients"]) == big["sessions"])
+    check("    day totals add up too", sum(m["totals"].values()) == big["sessions"])
+    check("    legend names every coach",
+          all(name in page for name in m["codes"]))
     _d.close()
 
     print("\nphase 4 — finalize")
