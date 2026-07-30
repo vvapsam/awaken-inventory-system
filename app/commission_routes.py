@@ -934,6 +934,7 @@ def register(app, deps):
                       statuses=status_groups(run, request.query_params.get("status")),
                       status_pick=request.query_params.get("status") or "",
                       pending=waiting, pending_count=len(waiting),
+                      can_pay=(getattr(staff, "role", "") == "admin"),
                       RUN_DRAFT=RUN_DRAFT, RUN_FINALIZED=RUN_FINALIZED)
 
     @app.get("/commissions/{rid}/coach/{coach}", response_class=HTMLResponse)
@@ -1151,6 +1152,46 @@ def register(app, deps):
         return RedirectResponse("/commissions", status_code=303)
 
     # ---------------------------------------------------------------- phase 4
+
+    @app.post("/commissions/{rid}/reopen")
+    def commission_reopen(request: Request, rid: int,
+                          db: Session = Depends(get_db)):
+        """Put a finalized run back to draft and tear up its documents.
+
+        Admin only, and refused once any payout is marked paid: reopening a run
+        somebody has already been paid from is how a coach ends up paid twice.
+        Un-mark the payout first if that really is what you want.
+        """
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        if not run or run.status != RUN_FINALIZED:
+            return RedirectResponse(f"/commissions/{rid}", status_code=303)
+        payouts = db.query(CommissionPayout).filter_by(run_id=rid).all()
+        charges = db.query(CommissionCharge).filter_by(run_id=rid).all()
+        if any(p.status == "paid" for p in payouts):
+            run.last_import_note = (
+                "Reopen refused — %s already marked paid. Un-mark it on the "
+                "payout first." % ", ".join(
+                    p.coach for p in payouts if p.status == "paid"))
+            db.commit()
+            return RedirectResponse(f"/commissions/{rid}?tab=documents",
+                                    status_code=303)
+        n = len(payouts) + len(charges)
+        for row in payouts + charges:
+            db.delete(row)
+        run.status = RUN_DRAFT
+        run.finalized_at = None
+        run.finalized_by_id = None
+        # Sign-offs confirmed figures that are now editable again.
+        void_signoff(db, rid)
+        run.last_import_note = (
+            "Reopened as a draft by %s · %d document%s deleted · every coach "
+            "needs approving again." % (getattr(staff, "name", "someone"), n,
+                                        "" if n == 1 else "s"))
+        db.commit()
+        return RedirectResponse(f"/commissions/{rid}", status_code=303)
 
     @app.post("/commissions/{rid}/finalize")
     def commission_finalize(request: Request, rid: int, db: Session = Depends(get_db)):
