@@ -17,6 +17,12 @@ CSV = sys.argv[1] if len(sys.argv) > 1 else "/home/claude/sample.csv"
 fails = []
 
 
+def _total(page):
+    """The run's headline commission figure, for before/after comparisons."""
+    m = re.search(r'Commission</div><div class="stat-value">\u20b1([\d,]+\.\d\d)', page)
+    return m.group(1) if m else None
+
+
 def check(label, ok, detail=""):
     print(("  ok   " if ok else "  FAIL ") + label + ("  " + detail if detail else ""))
     if not ok:
@@ -249,6 +255,51 @@ with TestClient(app) as c:
     check("  coach table lists awaiting-review counts", "Awaiting review" in page)
     r = c.get(f"/commissions/{mid}?tab=summary")
     check("  preview flags rows awaiting review", "awaiting review" in r.text)
+
+    print("\nlate cancels pay without review")
+
+    def status_page(status):
+        return c.get(f"/commissions/{mid}?tab=statuses&status={status}").text
+
+    page = status_page("Late cancelled")
+    check("  the late cancelled row is there", "REVIEW1" in page)
+    check("    and counts on its own", ">Yes<" in page)
+    for other in ("Cancelled", "No show", "Booked"):
+        check("  %s still waits for review" % other, ">Yes<" not in status_page(other))
+    # A row that already pays has nothing to approve — offering the button
+    # would imply the commission could be switched off from there.
+    lc_row = None
+    for _c in ("Anjo", "AR", "JC", "Ric", "Laurent", "Joseph", "Julio"):
+        hit = re.search(r'<tr id="REVIEW1".*?</tr>',
+                        c.get(f"/commissions/{mid}/coach/{_c}").text, re.S)
+        if hit:
+            lc_row = hit.group(0)
+            break
+    check("    the coach page marks it Always", bool(lc_row) and "Always" in lc_row)
+    check("    and offers no approve button", bool(lc_row) and "/approve" not in lc_row)
+
+    # The rule is a setting, so prove the whole loop: turn it off, Recalculate,
+    # and the same rows stop paying. Anything less only tests today's default.
+    money_before = c.get(f"/commissions/{mid}").text
+    r = c.post("/admin/commission-settings", data={"paid_statuses": "completed"},
+               follow_redirects=False)
+    check("  narrowing the setting", r.status_code == 303)
+    c.post(f"/commissions/{mid}/recalculate", follow_redirects=False)
+    check("    after Recalculate the late cancel stops paying",
+          ">Yes<" not in status_page("Late cancelled"))
+    check("    and it goes back into the review queue",
+          "awaiting review" in c.get(f"/commissions/{mid}?tab=summary").text)
+    r = c.post("/admin/commission-settings",
+               data={"paid_statuses": "Completed, Late-Cancelled"},
+               follow_redirects=False)
+    c.post(f"/commissions/{mid}/recalculate", follow_redirects=False)
+    check("  restoring it pays again (spelling ignored)",
+          ">Yes<" in status_page("Late cancelled"))
+    check("    and the run total is back where it started",
+          _total(c.get(f"/commissions/{mid}").text) == _total(money_before),
+          "%s vs %s" % (_total(c.get(f"/commissions/{mid}").text), _total(money_before)))
+    check("  the rule is written on the Rules screen",
+          "paid_statuses" in c.get("/admin/commission-settings").text)
 
     # Find the coach page holding a REVIEW row and approve one booking.
     approved_any = False

@@ -278,19 +278,69 @@ def test_percent_coach_has_no_override():
     assert row.commission == D("1200.00")          # 40% everywhere
 
 
-def test_non_completed_rows_earn_nothing():
-    for status in ("Cancelled", "Late cancelled", "No show", "Booked"):
+def test_unreviewed_statuses_earn_nothing():
+    for status in ("Cancelled", "No show", "Booked"):
         row = one(status=status)
         assert row.commission is None, status
         assert row.revenue == D("1700.00"), status  # raw revenue retained
 
 
+# --------------------------------------------------- statuses that pay alone
+
+def test_completed_pays_without_review():
+    row = one(status="Completed", staff="Julio D")
+    assert row.pays_by_status
+    assert row.commission == D("1190.00")          # 70% of 1,700
+
+
+def test_late_cancelled_pays_without_review():
+    """The client was charged and the coach lost the hour, so it pays."""
+    row = one(status="Late cancelled", staff="Julio D")
+    assert row.pays_by_status
+    assert not row.approved                        # nobody had to approve it
+    assert row.commission == D("1190.00")
+
+
+def test_late_cancelled_spelling_does_not_matter():
+    for status in ("Late cancelled", "Late Cancelled", "late-cancelled",
+                   "  LATE   CANCELLED  "):
+        assert one(status=status, staff="Julio D").commission == D("1190.00"), status
+
+
+def test_a_paying_status_still_gets_the_revenue_adjustments():
+    """An approved row is not a special case, and neither is a late cancel:
+    the same normalisation runs before the rate is applied."""
+    row = one(status="Late cancelled", staff="Julio D", plan="24 Sessions",
+              pay="Credit", revenue="₱0.00")
+    assert row.adjustment == "zero_backfill"
+    assert row.revenue == D("1600.00")
+    assert row.commission == D("1120.00")          # 70% of the backfilled 1,600
+
+
+def test_which_statuses_pay_is_configurable():
+    cfg = config()
+    cfg.settings.paid_statuses = frozenset({"completed"})
+    row = one(status="Late cancelled", staff="Julio D", cfg=cfg)
+    assert not row.pays_by_status
+    assert row.commission is None
+
+
+def test_a_status_that_pays_needs_no_approval_flag():
+    """Approving a row that already pays must not double it."""
+    cfg = config()
+    row = one(status="Late cancelled", staff="Julio D", cfg=cfg)
+    before = row.commission
+    row.approved = True
+    engine_recompute(row, cfg)
+    assert row.commission == before
+
+
 # ------------------------------------------------------- reviewer approval
 
 def test_approving_a_cancelled_row_pays_it():
-    """A late cancel that was still charged should be payable on review."""
+    """A cancellation that was still charged should be payable on review."""
     cfg = config()
-    row = one(status="Late cancelled", staff="Julio D", cfg=cfg)
+    row = one(status="Cancelled", staff="Julio D", cfg=cfg)
     assert row.commission is None
     row.approved = True
     engine_recompute(row, cfg)
