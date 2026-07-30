@@ -519,6 +519,63 @@ with TestClient(app) as c:
     check("  still 7 payouts after re-finalize",
           len(set(re.findall(r"/commissions/payouts/(\d+)", r.text))) == 7)
 
+    print("\ncoach statement links")
+    from app.models import (CommissionStatementLink as _Link,       # noqa: E402
+                            STATEMENT_LINK_DAYS as _DAYS)
+    r = c.get(f"/commissions/{rid}/statements")
+    check("  statements screen", r.status_code == 200)
+    check("    reachable from a finalized run",
+          "/statements" in c.get(f"/commissions/{rid}").text)
+    r = c.post(f"/commissions/{rid}/statements/link-all", follow_redirects=False)
+    check("  create links for approved coaches", r.status_code == 303)
+    page = c.get(f"/commissions/{rid}/statements").text
+    toks = re.findall(r"/statement/([A-Za-z0-9_\-]{20,})", page)
+    check("    one link per approved coach", len(toks) == 7, "%d links" % len(toks))
+    check("    tokens are long and random", all(len(t) >= 30 for t in toks))
+    check("    no two coaches share a token", len(set(toks)) == len(toks))
+
+    _d = _SL()
+    _ln = _d.query(_Link).filter_by(token=toks[0]).first()
+    _span = (_ln.expires_at - _ln.created_at).days
+    check("    links expire after %d days" % _DAYS, _span == _DAYS, "%d days" % _span)
+    _coach, _rid_of = _ln.coach, _ln.run_id
+    _d.close()
+
+    # the public page must work with no session at all
+    from fastapi.testclient import TestClient as _TC2             # noqa: E402
+    with _TC2(app) as anon:
+        rr = anon.get("/statement/" + toks[0])
+        check("  a stranger with the link can read it", rr.status_code == 200)
+        check("    it is that coach's statement", _coach in rr.text)
+        check("    no app navigation on the page", "side-nav" not in rr.text)
+        check("    status filters are present", 'id="sfil"' in rr.text)
+        check("    non-completed rows are included",
+              rr.text.count('data-status="') >= 1)
+        check("    search engines are told to stay out", "noindex" in rr.text)
+        check("    the same stranger cannot reach the app",
+              anon.get("/commissions", follow_redirects=False).status_code == 303)
+        check("  an unknown token 404s", anon.get("/statement/nope-nope-nope").status_code == 404)
+
+    # revoking kills it immediately
+    r = c.post(f"/commissions/{rid}/statements/link",
+               data={"coach": _coach, "action": "revoke"}, follow_redirects=False)
+    check("  revoke", r.status_code == 303)
+    with _TC2(app) as anon:
+        rr = anon.get("/statement/" + toks[0])
+        check("    a revoked link stops working", rr.status_code == 410)
+        check("    and says why", "turned off" in rr.text)
+
+    # a fresh link replaces the old one
+    r = c.post(f"/commissions/{rid}/statements/link",
+               data={"coach": _coach}, follow_redirects=False)
+    page = c.get(f"/commissions/{rid}/statements").text
+    fresh = re.findall(r"/statement/([A-Za-z0-9_\-]{20,})", page)
+    check("  a new link is issued", toks[0] not in fresh)
+    with _TC2(app) as anon:
+        rr = anon.get("/statement/" + toks[0])
+        check("    the old URL is dead", rr.status_code == 410)
+        check("    and points at the newer one", "newer one was sent" in rr.text)
+
     print("\nregression — existing pages still render")
     for url in ("/dashboard", "/sales", "/admin/staff", "/coaches/billing",
                 "/invoices", "/customers", "/stock", "/admin/reports"):
