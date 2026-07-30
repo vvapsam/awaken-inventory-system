@@ -12,8 +12,8 @@
 <div class="row-between">
   <div>
     <h1 style="margin:0">{{ coach }} — {{ run.period_label }}</h1>
-    <p class="muted small" style="margin:2px 0 0">Every booking, grouped by status. Completed always counts;
-      anything else only counts if you approve it here.</p>
+    <p class="muted small" style="margin:2px 0 0">Every booking, grouped by status. Completed and late
+      cancelled count on their own; anything else only counts if you approve it here.</p>
   </div>
   <div style="display:flex;gap:7px;align-items:center">
     <a class="btn" target="_blank" href="/commissions/{{ run.id }}/coach/{{ coach }}/statement.pdf">📄 Preview PDF</a>
@@ -64,7 +64,7 @@
 
 <div class="grid" style="margin:14px 0">
   <div class="card stat"><div class="stat-label">Counting</div><div class="stat-value">{{ sessions }}</div>
-    <div class="muted small">{{ approved_count }} approved on top of Completed</div></div>
+    <div class="muted small">{{ approved_count }} approved on top of the statuses that pay</div></div>
   <div class="card stat"><div class="stat-label">Revenue</div><div class="stat-value">{{ peso(revenue) }}</div></div>
   <div class="card stat warn"><div class="stat-label">Commission</div><div class="stat-value">{{ peso(commission) }}</div></div>
   <div class="card stat"><div class="stat-label">Of which delegation</div><div class="stat-value">{{ peso(delegation_total) }}</div>
@@ -118,7 +118,7 @@
   <tr id="{{ b.booking_ref }}" {% if b.approved %}style="background:var(--teal-tint)"{% endif %}>
     {% if reviewable %}
     <td>
-      {% if b.is_completed %}<span class="tag">Always</span>
+      {% if b.pays_by_status %}<span class="tag">Always</span>
       {% elif is_draft and can_pay %}
       <form method="post" action="/commissions/{{ run.id }}/booking/{{ b.id }}/approve">
         <button class="btn" style="padding:4px 10px;font-size:.78rem;{% if b.approved %}background:var(--teal);color:#fff;border-color:var(--teal){% endif %}">{{ '✓ Yes' if b.approved else 'Include' }}</button>
@@ -177,9 +177,9 @@
 <div class="card"><p class="muted" style="margin:0">No {{ pick|lower }} bookings for {{ coach }} in this run.</p></div>
 {% endif %}
 
-<p class="muted small" style="margin-top:18px">Approving a booking runs it through exactly the same rules as a
-  Completed one — the same revenue adjustments, the same coach rate — so an approved row is never a special
-  case. Approvals lock once the run is finalized.
+<p class="muted small" style="margin-top:18px">Approving a booking runs it through exactly the same rules as
+  one that pays on its status — the same revenue adjustments, the same coach rate — so an approved row is never
+  a special case. Approvals lock once the run is finalized.
   {% if manual_count %}<br><b>{{ manual_count }} row{{ 's' if manual_count != 1 }} carry a hand-set rate.</b>
   Those survive Recalculate — a correction shouldn't be undone by a later config change — and ↺ puts a row back
   on {{ coach }}'s configured rate.{% endif %}</p>

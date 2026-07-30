@@ -157,7 +157,7 @@
     <td>{{ b.customer }}</td>
     <td>{{ b.appointment_name }}{% if b.variant %}<div class="muted small">{{ b.variant }}</div>{% endif %}</td>
     <td><a href="/commissions/{{ run.id }}/coach/{{ b.coach or b.staff_raw }}">{{ b.coach or b.staff_raw }}</a></td>
-    <td>{% if b.is_completed %}<span class="tag">Yes</span>
+    <td>{% if b.pays_by_status %}<span class="tag">Yes</span>
         {% elif b.approved %}<span class="tag">Approved</span>
         {% else %}<span class="muted small">{{ b.booking_status|lower }}</span>{% endif %}</td>
     <td style="text-align:right" data-money="charged" data-value="{{ b.delegation_charge or 0 }}">{{ peso(b.delegation_charge) }}</td>

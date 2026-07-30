@@ -40,7 +40,8 @@
   <div class="card">
     <h3 style="margin:0 0 2px;font-size:.95rem">Statuses to import</h3>
     <p class="muted small" style="margin:0 0 10px">Anything unticked is dropped at import, with the reason
-      recorded. Non-Completed bookings still earn nothing until you approve them per coach.</p>
+      recorded. Bookings whose status doesn't pay on its own still earn nothing until you approve them
+      per coach.</p>
     <div style="display:flex;gap:18px;flex-wrap:wrap">
       {% for s in statuses %}
       <label class="check">

@@ -91,9 +91,9 @@
 <div class="card" style="background:var(--low);border-color:var(--low-line)">
   <div class="row-between">
     <div>
-      <b>{{ pending_count }} non-Completed booking{{ 's' if pending_count != 1 }} awaiting review.</b>
-      <div class="muted small" style="margin-top:2px">Cancelled, late cancelled, no-show and booked sessions earn
-        nothing unless you approve them. Open a coach to decide.</div>
+      <b>{{ pending_count }} booking{{ 's' if pending_count != 1 }} awaiting review.</b>
+      <div class="muted small" style="margin-top:2px">Cancelled, no-show and booked sessions earn nothing
+        unless you approve them. Open a coach to decide.</div>
     </div>
     <a class="btn" href="?tab=coaches">Review by coach →</a>
   </div>
@@ -243,7 +243,7 @@
 {% elif tab == 'statuses' %}
 <h2>Every booking, by status</h2>
 <p class="muted small">The Rezerv export can be filtered to Completed only. Everything it did send is here —
-  pick a status to read the rows. Only Completed counts automatically; anything else needs approving on the
+  pick a status to read the rows. Completed and late cancelled count automatically; anything else needs approving on the
   coach's page before it pays.</p>
 
 <table>
@@ -289,7 +289,7 @@
     <td>{% if b.delegator_id %}<span class="tag" style="background:#8a94a1">Delegation</span>{% else %}{{ b.pricing_plan }}{% endif %}</td>
     <td style="text-align:right" data-money="revenue" data-value="{{ b.revenue or 0 }}">{{ peso(b.revenue) }}</td>
     <td>
-      {% if b.is_completed %}<span class="tag">Yes</span>
+      {% if b.pays_by_status %}<span class="tag">Yes</span>
       {% elif b.approved %}<span class="tag">Approved</span>
       {% else %}<span class="muted small">not counted</span>{% endif %}
     </td>
@@ -304,7 +304,7 @@
 
 {% elif tab == 'coaches' %}
 <h2>By coach</h2>
-<p class="muted small">Open a coach to see every booking and approve any non-Completed ones that should still be paid.</p>
+<p class="muted small">Open a coach to see every booking and approve any that should be paid but don't count on their own.</p>
 {{ searchbar('coaches', 'Search coach…') }}
 <table id="coaches">
   <thead>

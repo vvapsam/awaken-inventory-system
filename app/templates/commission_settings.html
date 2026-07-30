@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block body %}
 <h1 style="margin:0">Rules &amp; rates</h1>
-<p class="muted small" style="margin:2px 0 0">Revenue normalisation applied to Completed rows before commission is calculated.</p>
+<p class="muted small" style="margin:2px 0 0">Which bookings earn commission, and the revenue normalisation
+  applied to them before it is calculated.</p>
 {% include "_commission_tabs.html" %}
 
 <form method="post" action="/admin/commission-settings">
