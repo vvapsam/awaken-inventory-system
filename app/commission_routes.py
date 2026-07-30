@@ -11,9 +11,10 @@ Phases implemented here:
 
 from __future__ import annotations
 
+import calendar
 import hashlib
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import Depends, Form, Request, UploadFile
@@ -420,6 +421,126 @@ def recompute(b: CommissionBooking, config: engine.Config, db: Session,
         # the delegator; either way the manual rate no longer has anything to
         # apply to, so drop the flag rather than leave a stale marker.
         b.rate_manual = False
+
+
+# --------------------------------------------------------------------------
+# delegation — the delegator's side of the business
+# --------------------------------------------------------------------------
+
+#: Cell colours for the schedule matrix, in assignment order.
+COACH_SWATCHES = ("c1", "c5", "c2", "c4", "c3", "c6", "c7", "c8")
+
+
+def coach_codes(names) -> dict:
+    """name -> a short code that fits a calendar cell.
+
+    Initials where the name has several words, otherwise the first letters.
+    Collisions get a digit rather than being silently merged — two coaches
+    sharing a cell label would misread the whole matrix.
+    """
+    out, taken = {}, set()
+    for name in sorted({(n or "").strip() for n in names if (n or "").strip()}):
+        parts = [p for p in re.split(r"[\s.]+", name) if p]
+        if len(parts) >= 2:
+            code = (parts[0][0] + parts[-1][0]).upper()
+        else:
+            code = parts[0][:2].upper()
+        base, n = code, 2
+        while code in taken:
+            code = "%s%d" % (base[:1], n)
+            n += 1
+        taken.add(code)
+        out[name] = code
+    return out
+
+
+def delegated_rows(run: CommissionRun):
+    """Every delegated booking in a run, oldest first."""
+    return sorted((b for b in _live(run) if b.delegator_id),
+                  key=lambda b: (b.appointment_date or date.min, b.booking_ref or ""))
+
+
+def delegator_rollup(run: CommissionRun, db: Session) -> list:
+    """One row per delegator: volume, reach, and the margin on their sessions."""
+    rows = delegated_rows(run)
+    by_id = {}
+    for b in rows:
+        d = by_id.setdefault(b.delegator_id, {
+            "delegator": b.delegator, "rows": [], "clients": set(), "coaches": set()})
+        d["rows"].append(b)
+        if b.customer:
+            d["clients"].add(b.customer.strip())
+        if b.coach or b.staff_raw:
+            d["coaches"].add((b.coach or b.staff_raw).strip())
+    out = []
+    for d in by_id.values():
+        counted = [b for b in d["rows"] if b.is_commissionable]
+        charged = sum((Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
+        cost = sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0))
+        out.append({
+            "delegator": d["delegator"],
+            "sessions": len(d["rows"]),
+            "counting": len(counted),
+            "clients": len(d["clients"]),
+            "coaches": len(d["coaches"]),
+            "charged": charged,
+            "cost": cost,
+            "margin": charged - cost,
+        })
+    return sorted(out, key=lambda r: (-r["sessions"],
+                                      (r["delegator"].name if r["delegator"] else "")))
+
+
+def schedule_matrix(rows) -> dict:
+    """Clients down the side, days of the month across the top.
+
+    Reading down a column says who trained that day and with whom; reading
+    across a row says whether a client has one regular coach or is being passed
+    around. Neither question is answerable from a date-sorted list.
+    """
+    dates = [b.appointment_date for b in rows if b.appointment_date]
+    if not dates:
+        return {"days": [], "clients": [], "codes": {}, "colors": {}, "totals": {},
+                "month": None}
+    month_start = min(dates).replace(day=1)
+    last = max(dates)
+    # Whole calendar month, so the columns line up week to week even where a
+    # day has no sessions.
+    ndays = calendar.monthrange(month_start.year, month_start.month)[1]
+    days = [month_start.replace(day=n) for n in range(1, ndays + 1)]
+    if last.month != month_start.month or last.year != month_start.year:
+        # An export straddling two months: fall back to the exact span.
+        days = []
+        cur = month_start
+        while cur <= last:
+            days.append(cur)
+            cur = cur + timedelta(days=1)
+
+    cells = {}
+    for b in rows:
+        if not b.appointment_date:
+            continue
+        cells.setdefault((b.customer or "—").strip(), {}) \
+             .setdefault(b.appointment_date, []).append(b)
+    names = sorted(cells, key=lambda c: (-sum(len(v) for v in cells[c].values()), c))
+    codes = coach_codes((b.coach or b.staff_raw) for b in rows)
+    colors = {name: COACH_SWATCHES[i % len(COACH_SWATCHES)]
+              for i, name in enumerate(sorted(codes))}
+    clients = []
+    for name in names:
+        row = []
+        for day in days:
+            got = cells[name].get(day, [])
+            row.append({
+                "bookings": got,
+                "coach": (got[0].coach or got[0].staff_raw) if got else None,
+                "n": len(got),
+            })
+        clients.append({"client": name, "cells": row,
+                        "total": sum(len(v) for v in cells[name].values())})
+    totals = {day: sum(len(cells[c].get(day, [])) for c in cells) for day in days}
+    return {"days": days, "clients": clients, "codes": codes, "colors": colors,
+            "totals": totals, "month": month_start}
 
 
 def coach_groups(run: CommissionRun, coach: str):
@@ -894,6 +1015,91 @@ def register(app, deps):
         run.dropped_count = len(run.bookings) - len(live)
         db.commit()
         return RedirectResponse(f"/commissions/{run.id}", status_code=303)
+
+    # ---------------------------------------------------------- delegation
+
+    def _period_runs(db: Session):
+        """Runs that carry delegated sessions, newest first — the period picker."""
+        out = []
+        for run in db.query(CommissionRun).order_by(CommissionRun.id.desc()).all():
+            if run.status == RUN_SUPERSEDED:
+                continue
+            if any(b.delegator_id for b in run.bookings):
+                out.append(run)
+        return out
+
+    def _pick_run(db: Session, request: Request):
+        runs = _period_runs(db)
+        want = (request.query_params.get("run") or "").strip()
+        run = next((r for r in runs if str(r.id) == want), None) if want else None
+        return (run or (runs[0] if runs else None)), runs
+
+    @app.get("/commissions/delegation", response_class=HTMLResponse)
+    def delegation_index(request: Request, db: Session = Depends(get_db)):
+        """Delegation as its own section: the delegator is the customer here,
+        so the figure that leads is margin, not commission."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run, runs = _pick_run(db, request)
+        rows = delegator_rollup(run, db) if run else []
+        return render(request, "delegation.html", db, staff, active="delegation",
+                      run=run, runs=runs, rows=rows,
+                      totals={
+                          "sessions": sum(r["sessions"] for r in rows),
+                          "clients": len({(b.customer or "").strip()
+                                          for b in (delegated_rows(run) if run else [])
+                                          if (b.customer or "").strip()}),
+                          "charged": sum((r["charged"] for r in rows), Decimal(0)),
+                          "cost": sum((r["cost"] for r in rows), Decimal(0)),
+                          "margin": sum((r["margin"] for r in rows), Decimal(0)),
+                      })
+
+    @app.get("/commissions/delegation/{did}", response_class=HTMLResponse)
+    def delegation_detail(request: Request, did: int, tab: str = "sessions",
+                          db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        delegator = db.get(CommissionDelegator, did)
+        run, runs = _pick_run(db, request)
+        if not delegator:
+            return RedirectResponse("/commissions/delegation", status_code=303)
+        rows = [b for b in delegated_rows(run) if b.delegator_id == did] if run else []
+        counted = [b for b in rows if b.is_commissionable]
+        charged = sum((Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
+        cost = sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0))
+
+        by_client, by_coach = {}, {}
+        for b in rows:
+            for key, bucket in ((b.customer or "—").strip(), by_client), \
+                               ((b.coach or b.staff_raw or "—").strip(), by_coach):
+                d = bucket.setdefault(key, {"name": key, "sessions": 0,
+                                            "charged": Decimal(0), "cost": Decimal(0),
+                                            "first": None, "last": None,
+                                            "others": set()})
+                d["sessions"] += 1
+                if b.is_commissionable:
+                    d["charged"] += Decimal(str(b.delegation_charge or 0))
+                    d["cost"] += Decimal(str(b.commission or 0))
+                if b.appointment_date:
+                    d["first"] = min(d["first"] or b.appointment_date, b.appointment_date)
+                    d["last"] = max(d["last"] or b.appointment_date, b.appointment_date)
+        for b in rows:
+            by_client[(b.customer or "—").strip()]["others"].add(
+                (b.coach or b.staff_raw or "—").strip())
+            by_coach[(b.coach or b.staff_raw or "—").strip()]["others"].add(
+                (b.customer or "—").strip())
+
+        return render(request, "delegation_detail.html", db, staff, active="delegation",
+                      run=run, runs=runs, delegator=delegator, tab=tab,
+                      rows=rows, sessions=len(rows), counting=len(counted),
+                      charged=charged, cost=cost, margin=charged - cost,
+                      clients=sorted(by_client.values(),
+                                     key=lambda r: (-r["sessions"], r["name"])),
+                      coaches=sorted(by_coach.values(),
+                                     key=lambda r: (-r["sessions"], r["name"])),
+                      matrix=schedule_matrix(rows))
 
     @app.get("/commissions/{rid}", response_class=HTMLResponse)
     def commission_run_view(request: Request, rid: int, tab: str = "summary",
