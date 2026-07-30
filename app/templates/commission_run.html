@@ -30,7 +30,10 @@
     <form method="post" action="/commissions/{{ run.id }}/finalize">
       <button class="btn primary" {{ 'disabled' if block.blocking }}>Finalize →</button>
     </form>
-    {% elif run.status == RUN_FINALIZED and can_pay %}
+    {% elif run.status == RUN_FINALIZED %}
+    <a class="btn" href="/commissions/{{ run.id }}/statements">✉ Statements</a>
+    {% endif %}
+    {% if run.status == RUN_FINALIZED and can_pay %}
     <form method="post" action="/commissions/{{ run.id }}/reopen"
           onsubmit="return confirm('Reopen {{ run.period_label or run.period }} as a draft? Its payouts and delegator charges are deleted and every coach has to be approved again.')">
       <button class="btn" title="Delete the payouts and put this run back to draft">↩ Reopen as draft</button>

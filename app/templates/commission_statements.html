@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Statements — {{ run.period_label or run.period }}</h1>
+    <p class="muted small" style="margin:2px 0 0">A private link per coach showing what they were paid.
+      Links open for {{ days }} days, then stop working.</p>
+  </div>
+  <div style="display:flex;gap:7px">
+    <form method="post" action="/commissions/{{ run.id }}/statements/link-all">
+      <button class="btn primary">🔗 Create links for approved coaches</button>
+    </form>
+    <a class="btn" href="/commissions/{{ run.id }}">← Back to run</a>
+  </div>
+</div>
+
+{% if request.query_params.get('blocked') %}
+<div class="error"><b>{{ request.query_params.get('blocked') }} isn't approved yet.</b>
+  A statement can only go out once someone has confirmed the figures — otherwise it's the coach who finds
+  the mistake. <a href="/commissions/{{ run.id }}/coach/{{ request.query_params.get('blocked') }}">Review and
+  approve them →</a></div>
+{% endif %}
+
+<table>
+  <thead>
+  <tr><th>Coach</th><th>Email</th><th style="text-align:right">Sessions</th>
+      <th style="text-align:right">Commission</th><th>Approved</th><th>Link</th><th>Read</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><b>{{ r.coach }}</b></td>
+    <td>{% if r.email %}<span class="mono">{{ r.email }}</span>
+        {% else %}<span class="tag amber">No email</span>{% endif %}</td>
+    <td style="text-align:right">{{ r.counted }}</td>
+    <td style="text-align:right">{{ peso(r.commission) }}</td>
+    <td>{% if r.signoff %}<span class="tag">Approved</span>
+        {% else %}<span class="tag amber">Not approved</span>{% endif %}</td>
+    <td>
+      {% if r.link and r.link.is_live %}
+        <input class="mono" readonly onclick="this.select()" style="width:270px;padding:5px 9px;font-size:.76rem"
+               value="{{ base_url }}/statement/{{ r.link.token }}">
+        <div class="muted small">expires {{ r.link.expires_at.strftime('%d %b') if r.link.expires_at }}</div>
+      {% elif r.link and r.link.revoked_at %}<span class="tag" style="background:#8a94a1">Revoked</span>
+      {% elif r.link %}<span class="tag" style="background:#8a94a1">Expired</span>
+      {% else %}<span class="muted small">—</span>{% endif %}
+    </td>
+    <td>
+      {% if r.link and r.link.opens %}<span class="tag">Opened</span>
+        <div class="muted small">{{ r.link.opens }}× · {{ r.link.last_opened_at.strftime('%d %b, %H:%M') if r.link.last_opened_at }}</div>
+      {% elif r.link and r.link.is_live %}<span class="muted small">not opened yet</span>
+      {% else %}<span class="muted small">—</span>{% endif %}
+    </td>
+    <td style="white-space:nowrap">
+      {% if r.signoff %}
+      <form method="post" action="/commissions/{{ run.id }}/statements/link" style="display:inline">
+        <input type="hidden" name="coach" value="{{ r.coach }}">
+        <button class="btn" style="padding:4px 10px;font-size:.78rem">
+          {{ 'New link' if r.link else 'Create link' }}</button>
+      </form>
+      {% if r.link and r.link.is_live %}
+      <form method="post" action="/commissions/{{ run.id }}/statements/link" style="display:inline"
+            onsubmit="return confirm('Turn off {{ r.coach }}’s link? They will see a message telling them to ask for a new one.')">
+        <input type="hidden" name="coach" value="{{ r.coach }}">
+        <input type="hidden" name="action" value="revoke">
+        <button class="btn" style="padding:4px 10px;font-size:.78rem;color:#9c2c1e;border-color:#e6a49b">Revoke</button>
+      </form>
+      {% endif %}
+      {% else %}<span class="muted small">approve first</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<p class="muted small" style="margin-top:10px">A new link replaces the old one — the previous URL stops
+  working immediately, which is what you want if it went to the wrong address. Emailing these automatically
+  is the next piece; for now, copy the link to a coach however you already talk to them.</p>
+{% endblock %}

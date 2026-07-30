@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{{ coach }} — commission {{ run.period_label or run.period }}</title>
+<link rel="icon" href="/static/logo.svg">
+<link rel="stylesheet" href="/static/style.css?v={{ ASSET_V }}">
+<style>
+/* The statement is its own page — no app shell, no nav, nothing a coach could
+   click into. Styles live here rather than in the app stylesheet for that
+   reason: this page should keep working exactly as it looks today. */
+body{background:var(--panel)}
+.sbar{background:var(--side-bg);color:#fff;padding:20px 30px}
+.sbar .wm{font-size:.64rem;letter-spacing:.3em;font-weight:600;color:#a9bcd8}
+.sbar h1{margin:7px 0 2px;font-size:1.5rem;font-weight:650;letter-spacing:-.01em;color:#fff}
+.sbar p{margin:0;color:#a9bcd8;font-size:.86rem}
+.sbody{max-width:1000px;margin:0 auto;padding:22px 20px 0}
+.hero{display:flex;gap:16px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px}
+.hero .big{flex:1.4;min-width:270px;background:var(--bg);border:1px solid var(--teal);
+  border-radius:10px;padding:17px 19px}
+.hero .big .l{font-size:.63rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--teal-dark);font-weight:700}
+.hero .big .v{font-size:2.3rem;font-weight:700;color:var(--teal-dark);letter-spacing:-.02em;
+  line-height:1.15;margin-top:2px}
+.hero .side{flex:1;min-width:225px;display:flex;flex-direction:column;gap:9px}
+.mini{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 15px;
+  display:flex;justify-content:space-between;align-items:center;gap:10px}
+.mini .l{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.mini .v{font-weight:700;font-size:1.05rem;white-space:nowrap}
+.sub{font-size:.76rem;color:var(--muted)}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h2.sec{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--muted);margin:16px 0 6px}
+.sfil{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 10px}
+.sfil button{font-size:.8rem;padding:5px 12px;border:1px solid var(--line);border-radius:999px;
+  background:var(--bg);color:var(--muted);cursor:pointer;font-family:inherit;
+  display:inline-flex;align-items:center;gap:7px}
+.sfil button .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.sfil button .n{opacity:.55;font-variant-numeric:tabular-nums}
+.sfil button:hover{border-color:#c3ccd6;color:var(--ink)}
+.sfil button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.sfil button.on .n{opacity:.7}
+.stp{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.7rem;font-weight:700;
+  white-space:nowrap}
+.st-completed{background:#d6f0ea;color:#0b6b60}
+.st-cancelled{background:#fadedb;color:#9c2c1e}
+.st-latecancelled{background:#fbeecb;color:#7a5a12}
+.st-noshow{background:#e6e1f7;color:#4a3a9a}
+.st-booked{background:#dcecff;color:#1c4e8a}
+.st-other{background:#e9edf1;color:#4a5765}
+.d-all{background:#8a94a1}.d-completed{background:#0f9e91}.d-cancelled{background:#c9503f}
+.d-latecancelled{background:#d9b45a}.d-noshow{background:#6d5cc4}.d-booked{background:#3f7cc2}
+.d-other{background:#8a94a1}
+.scroller{max-height:430px;overflow-y:auto;border-radius:10px;border:1px solid var(--line);
+  background:var(--bg)}
+.scroller table{border:0;border-radius:0;margin:0}
+.scroller thead th{position:sticky;top:0;z-index:1}
+.zero{color:#c2c9d2}
+td.dt{white-space:nowrap;color:var(--muted)}
+td.amt{text-align:right;font-weight:650;white-space:nowrap}
+th.amt{text-align:right}
+tr.notpaid td{background:#fcfcfd}
+.pill{display:inline-block;background:#8a94a1;color:#fff;border-radius:999px;padding:0 8px;
+  font-size:.63rem;font-weight:700}
+.foot{max-width:1000px;margin:24px auto 0;padding:15px 20px 34px;border-top:1px solid var(--line);
+  color:var(--muted);font-size:.78rem}
+@media (max-width:720px){
+  .sbar{padding:16px 16px}.sbar h1{font-size:1.2rem}
+  .sbody{padding:15px 12px 0}
+  .hero .big .v{font-size:1.95rem}
+  .scroller{max-height:none;overflow:visible;border:0;background:none}
+  .scroller table,.scroller tbody,.scroller tr,.scroller td{display:block;width:auto}
+  .scroller thead,.scroller tfoot{display:none}
+  .scroller tbody tr{background:var(--bg);border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;margin-bottom:8px;position:relative}
+  .scroller tbody td{border:0;padding:1px 0}
+  .scroller td.dt{font-size:.7rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+  .scroller td.cl{font-weight:650;font-size:.95rem;padding-right:92px}
+  .scroller td.se,.scroller td.pl,.scroller td.stc{display:inline-block;margin:2px 7px 0 0;
+    font-size:.79rem;color:var(--muted)}
+  .scroller td.amt{position:absolute;top:10px;right:12px;color:var(--teal-dark);font-size:1.02rem}
+}
+</style>
+</head>
+<body>
+<div class="sbar">
+  <div class="wm">A W A K E N</div>
+  <h1>{{ coach }}</h1>
+  <p>Commission statement · {{ run.period_label or run.period }}{% if signoff and signoff.approved_at %} ·
+    approved {{ signoff.approved_at.strftime('%d %b %Y') }}{% if signoff.approved_by %} by
+    {{ signoff.approved_by.name }}{% endif %}{% endif %}</p>
+</div>
+
+<div class="sbody">
+  <div class="hero">
+    <div class="big">
+      <div class="l">Total commission</div>
+      <div class="v">{{ peso(total) }}</div>
+      <div class="sub" style="margin-top:4px">{{ paid_count }} paid session{{ 's' if paid_count != 1 }} ·
+        {{ run.period_label or run.period }}</div>
+    </div>
+    <div class="side">
+      <div class="mini"><div><div class="l">Your own sessions</div>
+        <div class="sub">{{ own_count }} session{{ 's' if own_count != 1 }}</div></div>
+        <div class="v">{{ peso(own_total) }}</div></div>
+      {% if dele_count %}
+      <div class="mini"><div><div class="l">Delegated to you</div>
+        <div class="sub">{{ dele_count }} session{{ 's' if dele_count != 1 }}{% if delegators %} ·
+          {{ delegators|join(', ') }}{% endif %}</div></div>
+        <div class="v">{{ peso(dele_total) }}</div></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="srow">
+    <h2 class="sec" style="margin:6px 0">Every session</h2>
+    <span class="sub" id="cnt">{{ rows|length }} session{{ 's' if rows|length != 1 }} · {{ peso(total) }}</span>
+  </div>
+
+  <div class="sfil" id="sfil">
+    <button class="on" data-f="all"><span class="dot d-all"></span>All <span class="n">{{ rows|length }}</span></button>
+    {% for b in buckets %}
+    <button data-f="{{ b.status }}">
+      <span class="dot d-{{ b.status|lower|replace(' ', '')|replace('-', '') }}"></span>
+      {{ b.status }} <span class="n">{{ b.n }}</span></button>
+    {% endfor %}
+  </div>
+
+  <div class="scroller">
+  <table>
+    <thead><tr><th>Date</th><th>Client</th><th>Session</th><th>Plan</th><th>Status</th>
+      <th class="amt">Commission</th></tr></thead>
+    <tbody id="tb">
+    {% for b in rows %}
+    {% set st = (b.booking_status or '—').strip() %}
+    <tr data-status="{{ st }}" {% if not b.is_commissionable %}class="notpaid"{% endif %}>
+      <td class="dt">{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+      <td class="cl">{{ b.customer }}</td>
+      <td class="se">{{ b.appointment_name }}</td>
+      <td class="pl">{% if b.delegator_id %}<span class="pill">Delegation</span>{% else %}{{ b.pricing_plan }}{% endif %}</td>
+      <td class="stc"><span class="stp st-{{ st|lower|replace(' ', '')|replace('-', '') or 'other' }}">{{ st }}</span></td>
+      <td class="amt">{% if b.is_commissionable and b.commission is not none %}{{ peso(b.commission) }}
+        {% else %}<span class="zero">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <p class="sub" style="margin:14px 0 0">Something look wrong? Reply to the email this link came from and
+    we'll check it before payout.</p>
+</div>
+
+<div class="foot">
+  AWAKEN Fitness Center · This page is private to you{% if link.expires_at %} and stops working on
+  {{ link.expires_at.strftime('%d %B %Y') }}{% endif %}.
+</div>
+
+<script>
+(function(){
+  var tb = document.getElementById('tb'), cnt = document.getElementById('cnt');
+  if(!tb || !cnt) return;
+  function peso(n){
+    return '₱' + n.toLocaleString(undefined,
+      {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  document.getElementById('sfil').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if(!b) return;
+    Array.prototype.forEach.call(this.querySelectorAll('button'), function(x){
+      x.classList.toggle('on', x === b); });
+    var want = b.getAttribute('data-f'), shown = 0, total = 0;
+    Array.prototype.forEach.call(tb.rows, function(r){
+      var hit = want === 'all' || r.getAttribute('data-status') === want;
+      r.style.display = hit ? '' : 'none';
+      if(!hit) return;
+      shown++;
+      var cell = r.querySelector('td.amt');
+      var txt = cell ? cell.textContent.replace(/[^0-9.]/g, '') : '';
+      if(txt) total += parseFloat(txt);
+    });
+    cnt.textContent = shown + ' session' + (shown === 1 ? '' : 's') + ' · ' + peso(total);
+  });
+})();
+</script>
+</body>
+</html>

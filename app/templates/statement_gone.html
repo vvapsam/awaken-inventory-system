@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Statement link — AWAKEN</title>
+<link rel="icon" href="/static/logo.svg">
+<link rel="stylesheet" href="/static/style.css?v={{ ASSET_V }}">
+<style>
+body{background:var(--panel)}
+.box{max-width:520px;margin:80px auto;background:var(--bg);border:1px solid var(--line);
+  border-radius:12px;padding:34px 30px;text-align:center}
+.box svg{width:44px;height:44px;margin:0 auto 12px;display:block;color:var(--low-line)}
+.box h1{font-size:1.12rem;margin:0 0 8px}
+.box p{color:var(--muted);font-size:.9rem;margin:0 auto;max-width:46ch}
+.wm{text-align:center;font-size:.64rem;letter-spacing:.3em;font-weight:600;color:var(--muted);
+  margin-top:34px}
+</style>
+</head>
+<body>
+<div class="box">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+    <circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.01"/></svg>
+  {# Each case says what actually happened and what to do. A bare 404 reads as
+     "the gym lost my record", which is never what has occurred. #}
+  {% if reason == 'expired' %}
+  <h1>This statement link has expired</h1>
+  <p>Links stay open for {{ days }} days. Ask AWAKEN to send you a new one — your statement itself hasn't
+    changed and nothing has been lost.</p>
+  {% elif reason == 'revoked' %}
+  <h1>This statement link has been turned off</h1>
+  <p>AWAKEN has withdrawn this link, usually because a newer one was sent. Check your email for a more
+    recent statement, or ask them to resend it.</p>
+  {% else %}
+  <h1>We can't find that statement</h1>
+  <p>The link may have been mistyped or cut short by a messaging app. Try opening it straight from the
+    email, or ask AWAKEN to send it again.</p>
+  {% endif %}
+</div>
+<div class="wm">A W A K E N</div>
+</body>
+</html>
