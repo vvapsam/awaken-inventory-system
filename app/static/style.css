@@ -257,3 +257,36 @@ tr.needs:hover td{background:#f6ecd6}
 .tsearch::placeholder{color:#9aa4b1}
 .tsearch-note{font-size:.78rem;color:var(--muted)}
 .tsearch-note.none{color:#9c2c1e}
+
+/* ---- delegation schedule matrix ---- */
+.legend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+.legend b{border-radius:5px;padding:2px 7px;font-size:.72rem;font-weight:700}
+.mxwrap{overflow-x:auto;border-radius:var(--radius)}
+.mx{font-size:.78rem;table-layout:fixed;width:auto;min-width:100%;margin:0}
+.mx th,.mx td{padding:0;border-bottom:1px solid var(--line);text-align:center}
+.mx th.cli,.mx td.cli{width:170px;min-width:170px;text-align:left;padding:6px 10px;
+  position:sticky;left:0;background:var(--bg);z-index:2;border-right:1px solid var(--line);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx thead th.cli{background:var(--panel)}
+.mx th.d,.mx td.d{width:31px;min-width:31px}
+.mx th.tot,.mx td.tot{width:66px;min-width:66px;text-align:right;padding-right:11px;
+  border-left:1px solid var(--line)}
+.mx thead th.d{padding:4px 0 5px;line-height:1.1}
+.mx .wd{display:block;font-size:.56rem;color:#9aa4b1;font-weight:600}
+.mx .dn{display:block;font-size:.72rem;color:var(--muted);font-weight:600}
+.mx td.d{height:32px}
+.mx .we{background:#f6f8fa}
+.mx thead th.we{background:#eef1f5}
+.mx td i{color:#d5dbe2;font-style:normal}
+.mx td b{display:inline-block;min-width:24px;padding:2px 4px;border-radius:5px;
+  font-size:.68rem;font-weight:700;cursor:default}
+.mx tbody tr:hover td.cli{background:var(--teal-tint)}
+.mx tfoot td{background:#fbfcfd;font-weight:650;color:var(--muted);font-size:.72rem}
+.c1{background:#dcecff;color:#1c4e8a}
+.c2{background:#e4e0ff;color:#463a9a}
+.c3{background:#ffe4dc;color:#8a3a22}
+.c4{background:#fdeec2;color:#7a5a12}
+.c5{background:#d6f0ea;color:#0b6b60}
+.c6{background:#e9edf1;color:#4a5765}
+.c7{background:#ffe0ef;color:#8a2a5c}
+.c8{background:#e2f5cd;color:#3f6b12}
