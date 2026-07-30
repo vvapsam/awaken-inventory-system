@@ -1,4 +1,13 @@
 {% extends "base.html" %}
+{% macro searchbar(target, placeholder, selector='') %}
+<div class="tsearchbar">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <input type="search" class="tsearch" data-filter="{{ selector or '#' ~ target }}"
+         data-note="{{ target }}-note" placeholder="{{ placeholder }}"
+         autocomplete="off" spellcheck="false">
+  <span class="tsearch-note" id="{{ target }}-note"></span>
+</div>
+{% endmacro %}
 {% block body %}
 <div class="row-between">
   <div>
@@ -70,6 +79,8 @@
 </div>
 {% endif %}
 
+{{ searchbar('bk', 'Search customer, booking ref, plan…', selector='table.bktbl') }}
+
 {% for g in groups %}
 {% set reviewable = g.status|lower != 'completed' %}
 <h2 style="margin-top:22px">{{ g.status }} · {{ g.rows|length }}
@@ -88,12 +99,15 @@
 </form>
 {% endif %}
 
-<table>
+<table class="bktbl">
+  <thead>
   <tr>
     {% if reviewable %}<th style="width:96px">Counts?</th>{% endif %}
     <th>Booking</th><th>Customer</th><th>Date</th><th>Appointment</th><th>Plan</th>
     <th style="text-align:right">Revenue</th><th>Rate applied</th><th style="text-align:right">Commission</th>
   </tr>
+  </thead>
+  <tbody>
   {% for b in g.rows %}
   <tr id="{{ b.booking_ref }}" {% if b.approved %}style="background:var(--teal-tint)"{% endif %}>
     {% if reviewable %}
@@ -112,7 +126,7 @@
     <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
     <td>{{ b.appointment_name }}</td>
     <td>{% if b.delegator_id %}<span class="tag" style="background:#8a94a1">Delegation · {{ b.delegator.name if b.delegator }}</span>{% else %}{{ b.pricing_plan }}{% endif %}</td>
-    <td style="text-align:right">{{ peso(b.revenue) }}</td>
+    <td style="text-align:right" data-money="revenue" data-value="{{ b.revenue or 0 }}">{{ peso(b.revenue) }}</td>
     <td class="small">
       {% if b.rule == 'delegation' %}Delegation cost
         <div class="muted small">settled with the delegator</div>
@@ -137,15 +151,18 @@
          reading, not only to the admin who can change it #}
       {% if b.rate_manual %}<div><span class="tag amber" style="margin-top:3px">Manual</span></div>{% endif %}
     </td>
-    <td style="text-align:right">{% if b.commission is not none %}{{ peso(b.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td style="text-align:right" data-money="commission" data-value="{{ b.commission or 0 }}">{% if b.commission is not none %}{{ peso(b.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
   </tr>
   {% endfor %}
+  </tbody>
+  <tfoot>
   <tr style="background:#fafbfc;font-weight:650">
     <td colspan="{{ 6 if reviewable else 5 }}">{{ g.status }} subtotal
       {% if reviewable %}<span class="muted small" style="font-weight:400">· {{ g.approved }} of {{ g.rows|length }} counting</span>{% endif %}</td>
     <td style="text-align:right">{{ peso(g.revenue) }}</td><td></td>
     <td style="text-align:right">{% if g.commission %}{{ peso(g.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
   </tr>
+  </tfoot>
 </table>
 {% endfor %}
 

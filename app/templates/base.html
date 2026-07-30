@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AWAKEN System</title>
   <link rel="icon" href="/static/logo.svg">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v={{ ASSET_V }}">
   <style>
     /* Flyout submenus: a floating panel to the right of the parent icon. */
     .nav-group{position:relative}
@@ -336,28 +336,32 @@
                                                    maximumFractionDigits:2});
   }
   function apply(input){
-    var table = document.querySelector(input.getAttribute('data-filter'));
-    if(!table) return;
+    // A selector, not an id: the coach page filters several status tables from
+    // one box, and one search that misses half the page would be a trap.
+    var tables = document.querySelectorAll(input.getAttribute('data-filter'));
+    if(!tables.length) return;
     var q = input.value.trim().toLowerCase();
-    var rows = table.tBodies.length ? table.tBodies[0].rows : table.rows;
     var shown = 0, total = 0, sums = {}, order = [];
-    for(var i = 0; i < rows.length; i++){
-      var row = rows[i];
-      total++;
-      var hit = !q || row.textContent.toLowerCase().indexOf(q) !== -1;
-      row.style.display = hit ? '' : 'none';
-      if(!hit) continue;
-      shown++;
-      var cells = row.querySelectorAll('[data-money]');
-      for(var j = 0; j < cells.length; j++){
-        var key = cells[j].getAttribute('data-money');
-        if(!(key in sums)){ sums[key] = 0; order.push(key); }
-        sums[key] += parseFloat(cells[j].getAttribute('data-value') || 0);
+    for(var t = 0; t < tables.length; t++){
+      var table = tables[t];
+      var rows = table.tBodies.length ? table.tBodies[0].rows : table.rows;
+      for(var i = 0; i < rows.length; i++){
+        var row = rows[i];
+        total++;
+        var hit = !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+        row.style.display = hit ? '' : 'none';
+        if(!hit) continue;
+        shown++;
+        var cells = row.querySelectorAll('[data-money]');
+        for(var j = 0; j < cells.length; j++){
+          var key = cells[j].getAttribute('data-money');
+          if(!(key in sums)){ sums[key] = 0; order.push(key); }
+          sums[key] += parseFloat(cells[j].getAttribute('data-value') || 0);
+        }
       }
+      if(table.tFoot) table.tFoot.style.display = q ? 'none' : '';
     }
-    var foot = table.tFoot;
-    if(foot) foot.style.display = q ? 'none' : '';
-    var note = document.getElementById(input.getAttribute('data-filter').slice(1) + '-note');
+    var note = document.getElementById(input.getAttribute('data-note'));
     if(!note) return;
     if(!q){ note.textContent = ''; return; }
     var parts = [shown + ' of ' + total + ' row' + (total === 1 ? '' : 's')];

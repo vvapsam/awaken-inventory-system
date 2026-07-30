@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% macro searchbar(target, placeholder) %}
+{% macro searchbar(target, placeholder, selector='') %}
 <div class="tsearchbar">
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-  <input type="search" class="tsearch" data-filter="#{{ target }}" placeholder="{{ placeholder }}"
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <input type="search" class="tsearch" data-filter="{{ selector or '#' ~ target }}"
+         data-note="{{ target }}-note" placeholder="{{ placeholder }}"
          autocomplete="off" spellcheck="false">
   <span class="tsearch-note" id="{{ target }}-note"></span>
 </div>
@@ -108,19 +109,25 @@
 
 {% if tab == 'summary' %}
 <h2>Sessions by coach and plan</h2>
-<table>
+{{ searchbar('pivot', 'Search coach…') }}
+<table id="pivot">
+  <thead>
   <tr><th>Coach</th>
     {% for p in plans %}<th style="text-align:right">{{ p }}</th>{% endfor %}
     <th style="text-align:right">Sessions</th><th style="text-align:right">Revenue</th><th style="text-align:right">Commission</th></tr>
+  </thead>
+  <tbody>
   {% for coach, r in prows %}
   <tr>
     <td><a href="/commissions/{{ run.id }}/coach/{{ coach }}"><b>{{ coach }}</b></a></td>
     {% for p in plans %}<td style="text-align:right">{{ r.get(p, 0) or '' }}</td>{% endfor %}
     <td style="text-align:right">{{ r['_sessions'] }}</td>
-    <td style="text-align:right">{{ peso(r['_revenue']) }}</td>
-    <td style="text-align:right">{{ peso(r['_commission']) }}</td>
+    <td style="text-align:right" data-money="revenue" data-value="{{ r['_revenue'] }}">{{ peso(r['_revenue']) }}</td>
+    <td style="text-align:right" data-money="commission" data-value="{{ r['_commission'] }}">{{ peso(r['_commission']) }}</td>
   </tr>
   {% endfor %}
+  </tbody>
+  <tfoot>
   <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
     <td>Total</td>
     {% for p in plans %}<td style="text-align:right">{{ ptotals.get(p, 0) }}</td>{% endfor %}
@@ -128,6 +135,7 @@
     <td style="text-align:right">{{ peso(ptotals['_revenue']) }}</td>
     <td style="text-align:right">{{ peso(ptotals['_commission']) }}</td>
   </tr>
+  </tfoot>
 </table>
 <p class="muted small">Delegation is counted in its own column. Every delegated booking carries a
   <span class="mono">Drop-In</span> pricing plan in the export, so without the split those sessions
@@ -294,10 +302,14 @@
 {% elif tab == 'coaches' %}
 <h2>By coach</h2>
 <p class="muted small">Open a coach to see every booking and approve any non-Completed ones that should still be paid.</p>
-<table>
+{{ searchbar('coaches', 'Search coach…') }}
+<table id="coaches">
+  <thead>
   <tr><th>Coach</th><th style="text-align:right">Counting</th><th style="text-align:right">Rows approved</th>
       <th style="text-align:right">Awaiting review</th><th style="text-align:right">Commission</th>
       <th>Sign-off</th><th></th></tr>
+  </thead>
+  <tbody>
   {% for c in coaches %}
   <tr data-href="/commissions/{{ run.id }}/coach/{{ c.coach }}">
     <td><b>{{ c.coach }}</b></td>
@@ -307,7 +319,7 @@
       {% if c.pending %}<span class="tag" style="background:var(--low-line);color:#4a3a12">{{ c.pending }}</span>
       {% else %}<span class="muted">—</span>{% endif %}
     </td>
-    <td style="text-align:right">{{ peso(c.commission) }}</td>
+    <td style="text-align:right" data-money="commission" data-value="{{ c.commission }}">{{ peso(c.commission) }}</td>
     <td>
       {% if c.signoff %}<span class="tag">Approved</span>
         <div class="muted small">{{ c.signoff.approved_by.name if c.signoff.approved_by }}</div>
@@ -317,43 +329,54 @@
     <td><a class="btn" style="padding:5px 12px" href="/commissions/{{ run.id }}/coach/{{ c.coach }}">Review</a></td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 
 {% elif tab == 'documents' %}
 <h2>Coach payouts</h2>
-<table>
+{{ searchbar('payouts', 'Search coach, number…') }}
+<table id="payouts">
+  <thead>
   <tr><th>Number</th><th>Coach</th><th style="text-align:right">Sessions</th>
       <th style="text-align:right">Commission</th><th style="text-align:right">Delegation</th>
       <th style="text-align:right">Total</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
   {% for p in run.payouts|sort(attribute='coach') %}
   <tr data-href="/commissions/payouts/{{ p.id }}">
     <td class="mono">{{ p.number }}</td><td><b>{{ p.coach }}</b></td>
     <td style="text-align:right">{{ p.sessions }}</td>
     <td style="text-align:right">{{ peso(p.commission_total) }}</td>
     <td style="text-align:right">{{ peso(p.delegation_total) }}</td>
-    <td style="text-align:right"><b>{{ peso(p.total) }}</b></td>
+    <td style="text-align:right" data-money="total" data-value="{{ p.total or 0 }}"><b>{{ peso(p.total) }}</b></td>
     <td>{% if p.status == 'paid' %}<span class="tag">Paid</span>{% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}</td>
     <td><a class="btn" style="padding:5px 12px" href="/commissions/payouts/{{ p.id }}">Open</a></td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 
 <h2>Delegation charges</h2>
-<table>
+{{ searchbar('charges', 'Search delegator, number…') }}
+<table id="charges">
+  <thead>
   <tr><th>Number</th><th>Delegator</th><th style="text-align:right">Sessions</th>
       <th style="text-align:right">Charged</th><th style="text-align:right">Coach cost</th>
       <th style="text-align:right">Margin</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
   {% for c in run.charges %}
   <tr data-href="/commissions/charges/{{ c.id }}">
     <td class="mono">{{ c.number }}</td><td><b>{{ c.delegator_name }}</b></td>
     <td style="text-align:right">{{ c.sessions }}</td>
     <td style="text-align:right">{{ peso(c.total) }}</td>
     <td style="text-align:right">{{ peso(c.coach_cost) }}</td>
-    <td style="text-align:right;color:var(--teal-dark);font-weight:600">{{ peso(c.margin) }}</td>
+    <td style="text-align:right;color:var(--teal-dark);font-weight:600" data-money="margin" data-value="{{ c.margin or 0 }}">{{ peso(c.margin) }}</td>
     <td>{% if c.status == 'paid' %}<span class="tag">Paid</span>{% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}</td>
     <td><a class="btn" style="padding:5px 12px" href="/commissions/charges/{{ c.id }}">Open</a></td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% endif %}
 
