@@ -21,7 +21,7 @@
     <td>
       {% if r.live_overrides %}
         <span class="ov" title="{% for o in r.live_overrides %}{{ o.plan }} · {{ money(o) }}{{ ', ' if not loop.last }}{% endfor %}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>{{ r.live_overrides|length }}</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>{{ r.live_overrides|length }}</span>
       {% else %}<span class="ov none">—</span>{% endif %}
     </td>
     <td>
