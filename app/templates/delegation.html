@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Delegation</h1>
+    <p class="muted small" style="margin:2px 0 0">Everyone who brings their own clients and hands the sessions
+      to an AWAKEN coach. What you charge them, what you pay the coach, what's left.</p>
+  </div>
+  {% if runs|length > 1 %}
+  <form method="get" style="margin:0">
+    <select name="run" onchange="this.form.submit()" style="width:auto;padding:7px 11px">
+      {% for r in runs %}
+      <option value="{{ r.id }}" {{ 'selected' if run and r.id == run.id }}>{{ r.period_label or r.period }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% endif %}
+</div>
+{% include "_commission_tabs.html" %}
+
+{% if not run %}
+<div class="card"><p class="muted" style="margin:0">No delegated sessions have been imported yet.
+  <a href="/commissions/new">Upload a Rezerv export</a> and any booking whose variant names a delegator
+  will show up here.</p></div>
+{% else %}
+
+<div class="grid" style="margin:14px 0">
+  <div class="card stat"><div class="stat-label">Delegated sessions</div>
+    <div class="stat-value">{{ totals.sessions }}</div>
+    <div class="muted small">{{ rows|length }} delegator{{ 's' if rows|length != 1 }} · {{ totals.clients }} client{{ 's' if totals.clients != 1 }}</div></div>
+  <div class="card stat"><div class="stat-label">Charged</div>
+    <div class="stat-value">{{ peso(totals.charged) }}</div></div>
+  <div class="card stat"><div class="stat-label">Paid to coaches</div>
+    <div class="stat-value">{{ peso(totals.cost) }}</div></div>
+  <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Margin</div>
+    <div class="stat-value">{{ peso(totals.margin) }}</div>
+    {% if totals.charged %}<div class="muted small">{{ '%d'|format(totals.margin / totals.charged * 100) }}% of charged</div>{% endif %}</div>
+</div>
+
+<div class="tsearchbar">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <input type="search" class="tsearch" data-filter="#dg" data-note="dg-note"
+         placeholder="Search delegator…" autocomplete="off" spellcheck="false">
+  <span class="tsearch-note" id="dg-note"></span>
+</div>
+
+<table id="dg">
+  <thead>
+  <tr><th>Delegator</th><th>Codes</th><th style="text-align:right">Sessions</th>
+      <th style="text-align:right">Clients</th><th style="text-align:right">Coaches</th>
+      <th style="text-align:right">Rate</th><th style="text-align:right">Cost</th>
+      <th style="text-align:right">Charged</th><th style="text-align:right">Paid out</th>
+      <th style="text-align:right">Margin</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+  <tr data-href="/commissions/delegation/{{ r.delegator.id }}?run={{ run.id }}">
+    <td><b>{{ r.delegator.name }}</b>
+      {% if r.delegator.entity_id %}<div class="small"><a href="/admin/staff/{{ r.delegator.entity_id }}/edit">Person record ↗</a></div>{% endif %}</td>
+    <td class="mono">{{ r.delegator.codes }}</td>
+    <td style="text-align:right">{{ r.sessions }}
+      {% if r.counting != r.sessions %}<div class="muted small">{{ r.counting }} counting</div>{% endif %}</td>
+    <td style="text-align:right">{{ r.clients }}</td>
+    <td style="text-align:right">{{ r.coaches }}</td>
+    <td style="text-align:right">{{ peso(r.delegator.rate) }}</td>
+    <td style="text-align:right">{{ peso(r.delegator.cost) }}</td>
+    <td style="text-align:right" data-money="charged" data-value="{{ r.charged }}">{{ peso(r.charged) }}</td>
+    <td style="text-align:right" data-money="paid" data-value="{{ r.cost }}">{{ peso(r.cost) }}</td>
+    <td style="text-align:right;color:var(--teal-dark);font-weight:650"
+        data-money="margin" data-value="{{ r.margin }}">{{ peso(r.margin) }}</td>
+    <td><a class="btn" style="padding:5px 12px" href="/commissions/delegation/{{ r.delegator.id }}?run={{ run.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+  <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
+    <td colspan="2">Total</td><td style="text-align:right">{{ totals.sessions }}</td>
+    <td style="text-align:right">{{ totals.clients }}</td><td></td><td></td><td></td>
+    <td style="text-align:right">{{ peso(totals.charged) }}</td>
+    <td style="text-align:right">{{ peso(totals.cost) }}</td>
+    <td style="text-align:right">{{ peso(totals.margin) }}</td><td></td>
+  </tr>
+  </tfoot>
+</table>
+<p class="muted small" style="margin-top:8px">Rate and cost come from the delegator's settings —
+  change them under <a href="/admin/commission-delegators">Delegators</a>. Changes apply to future runs;
+  every past booking keeps the amounts that were used at the time.</p>
+{% endif %}
+{% endblock %}

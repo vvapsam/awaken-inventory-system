@@ -1,5 +1,6 @@
 <div class="tfilter" style="margin:10px 0 14px">
   <a href="/commissions" class="{{ 'on' if not active }}">Runs</a>
+  <a href="/commissions/delegation" class="{{ 'on' if active == 'delegation' }}">Delegation</a>
   <a href="/admin/commission-rates" class="{{ 'on' if active == 'rates' }}">Coach rates</a>
   <a href="/admin/commission-delegators" class="{{ 'on' if active == 'delegators' }}">Delegators</a>
   <a href="/admin/commission-session-rates" class="{{ 'on' if active == 'session_rates' }}">Session rates</a>
