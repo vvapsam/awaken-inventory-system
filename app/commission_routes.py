@@ -948,6 +948,14 @@ def register(app, deps):
             return RedirectResponse("/commissions", status_code=303)
         groups = coach_groups(run, coach)
         rows = [b for b in _live(run) if (b.coach or b.staff_raw) == coach]
+        # One status at a time, picked from the filter — the page used to stack
+        # every status down the page, which buried the one you came to read.
+        pick = (request.query_params.get("status") or "").strip()
+        chosen = next((g for g in groups
+                       if g["status"].lower() == pick.lower()), None) if pick else None
+        shown = (chosen["rows"] if chosen else
+                 sorted(rows, key=lambda b: (b.appointment_date or date.min,
+                                             b.booking_ref or "")))
         counted = [b for b in rows if b.is_commissionable]
         dele = [b for b in counted if b.delegator_id]
         return render(
@@ -963,6 +971,12 @@ def register(app, deps):
             delegation_sessions=len(dele),
             approved_count=len([b for b in rows if b.approved]),
             pending_count=len([b for b in rows if not b.is_completed and not b.approved]),
+            shown=shown, chosen=chosen, pick=(chosen["status"] if chosen else ""),
+            total_rows=len(rows),
+            shown_revenue=sum((Decimal(str(b.revenue or 0)) for b in shown), Decimal(0)),
+            shown_commission=sum((Decimal(str(b.commission or 0))
+                                  for b in shown if b.is_commissionable), Decimal(0)),
+            shown_counting=len([b for b in shown if b.is_commissionable]),
             manual_count=len([b for b in rows if b.rate_manual]),
             signoff=signoffs(run, db).get(coach),
             rate_types=COMMISSION_RATE_TYPES,
