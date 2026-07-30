@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from . import commissions as engine
 from .db import get_db
+from .mailer import Mailer, looks_like_email
 from .models import (
     BOOKING_STATUSES, IMPORT_MERGE, IMPORT_REPLACE,
     COMMISSION_DELEGATOR_DEFAULTS, COMMISSION_FLAT, COMMISSION_PERCENT,
@@ -1059,6 +1060,88 @@ def register(app, deps):
         db.add(link)
         return link
 
+    def _coach_email(db: Session, coach: str):
+        """The address on the coach's person record, if it looks usable."""
+        person = db.query(Staff).filter(Staff.name == coach).first()
+        email = (person.email or "").strip() if person and person.email else ""
+        return email if looks_like_email(email) else ""
+
+    def _statement_email(coach: str, run: CommissionRun, url: str, total, expires):
+        """The message itself.
+
+        Short on purpose. The statement is the page; this is the doorway to it,
+        and every extra paragraph is one more thing between a coach on a phone
+        and the number they opened the message for.
+        """
+        period = run.period_label or run.period
+        subject = f"Your {period} commission — AWAKEN"
+        gone = expires.strftime("%d %B") if expires else ""
+        first = (coach or "").split()[0] if coach else "there"
+        text = (
+            f"Hi {first},\n\n"
+            f"Your commission for {period} has been reviewed and comes to {_fmt(total)}.\n\n"
+            f"See every session behind that figure here:\n{url}\n\n"
+            + (f"The link works until {gone}.\n\n" if gone else "")
+            + "If something doesn't look right, just reply to this message and we'll "
+              "check it before payout.\n\n"
+              "— AWAKEN Fitness Center\n")
+        html = f"""\
+<!DOCTYPE html><html><body style="margin:0;padding:0;background:#eef1f4">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f4;padding:26px 12px">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:12px;overflow:hidden;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<tr><td style="background:#132a44;padding:20px 26px">
+  <div style="font-size:11px;letter-spacing:.3em;font-weight:700;color:#a9bcd8">A W A K E N</div>
+  <div style="color:#fff;font-size:19px;font-weight:650;margin-top:6px">Your {period} commission</div>
+</td></tr>
+<tr><td style="padding:24px 26px 6px;color:#22303d;font-size:15px;line-height:1.55">
+  <p style="margin:0 0 16px">Hi {first},</p>
+  <p style="margin:0 0 18px">Your commission for {period} has been reviewed. Here's the total:</p>
+  <div style="border:1px solid #bfe3dc;background:#f2fbf9;border-radius:10px;padding:16px 18px;text-align:center">
+    <div style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#0b6b60;font-weight:700">Total commission</div>
+    <div style="font-size:30px;font-weight:700;color:#0b6b60;letter-spacing:-.02em;margin-top:2px">{_fmt(total)}</div>
+  </div>
+  <p style="margin:20px 0 0;text-align:center">
+    <a href="{url}" style="display:inline-block;background:#132a44;color:#fff;text-decoration:none;
+       font-weight:650;font-size:15px;padding:13px 30px;border-radius:9px">See every session &rarr;</a>
+  </p>
+  {'<p style="margin:16px 0 0;text-align:center;color:#7c8794;font-size:12.5px">This link works until ' + gone + '.</p>' if gone else ''}
+  <p style="margin:22px 0 0;color:#5b6773;font-size:13.5px">If something doesn't look right, just reply to
+    this message and we'll check it before payout.</p>
+</td></tr>
+<tr><td style="padding:20px 26px 24px;color:#96a0ab;font-size:11.5px">
+  AWAKEN Fitness Center · This link is private to you — please don't forward it.
+</td></tr>
+</table></td></tr></table></body></html>"""
+        return subject, text, html
+
+    def _send_one(db: Session, run: CommissionRun, coach: str, staff, now,
+                  base: str, mailer: Mailer, force: bool = False):
+        """Make sure the coach has a live link, then email it.
+
+        Returns (status, detail) where status is sent / skipped / failed.
+        """
+        email = _coach_email(db, coach)
+        if not email:
+            return "failed", "no email address on their record"
+        link = _current_link(db, run.id, coach)
+        if link is None or not link.is_live:
+            link = _issue_link(db, run.id, coach, staff, now)
+            db.flush()
+        elif link.sent_at and not force:
+            # Pressing the button twice shouldn't mail everyone twice.
+            return "skipped", "already sent"
+        url = f"{base}/statement/{link.token}"
+        totals = _statement_context(run, coach, db)
+        subject, text, html = _statement_email(
+            coach, run, url, totals.get("total"), link.expires_at)
+        ok, why = mailer.send(email, subject, text, html)
+        if not ok:
+            return "failed", why
+        link.sent_to = email
+        link.sent_at = now
+        return "sent", email
+
     def _coach_rows(run: CommissionRun, coach: str):
         """Everything for this coach in this run — paid or not.
 
@@ -1147,9 +1230,16 @@ def register(app, deps):
             rows.append({**c, "signoff": signed.get(c["coach"]),
                          "link": links.get(c["coach"]),
                          "email": (person.email if person else None)})
+        mail = Mailer()
         return render(request, "commission_statements.html", db, staff,
                       run=run, rows=rows, days=STATEMENT_LINK_DAYS,
                       base_url=_public_base(request),
+                      # Shown once, after a send — a page refresh shouldn't
+                      # keep reporting a result that has already been read.
+                      result=request.session.pop("mail_result", None),
+                      mail_ready=mail.cfg.configured,
+                      mail_missing=mail.cfg.missing,
+                      mail_from=mail.cfg.from_addr,
                       RUN_FINALIZED=RUN_FINALIZED)
 
     @app.post("/commissions/{rid}/statements/link")
@@ -1177,6 +1267,47 @@ def register(app, deps):
             return RedirectResponse(back + "?blocked=" + coach, status_code=303)
         _issue_link(db, rid, coach, staff, now)
         db.commit()
+        return RedirectResponse(back, status_code=303)
+
+    @app.post("/commissions/{rid}/statements/send")
+    def commission_statements_send(request: Request, rid: int,
+                                   coach: str = Form(""), force: str = Form(""),
+                                   db: Session = Depends(get_db)):
+        """Email approved coaches their statement. With no `coach`, everyone
+        approved who hasn't already had this month's link sent."""
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        if not run:
+            return RedirectResponse("/commissions", status_code=303)
+        back = f"/commissions/{rid}/statements"
+        mailer = Mailer()
+        if not mailer.cfg.configured:
+            request.session["mail_result"] = {
+                "sent": [], "skipped": [], "failed": [],
+                "setup": "Mail isn't set up yet — %s missing on the server."
+                         % ", ".join(mailer.cfg.missing)}
+            return RedirectResponse(back, status_code=303)
+        approved = list(signoffs(run, db))
+        targets = [coach] if coach else [c["coach"] for c in coach_summary(run)
+                                         if c["coach"] in approved]
+        if coach and coach not in approved:
+            return RedirectResponse(back + "?blocked=" + coach, status_code=303)
+        now = datetime.now(timezone.utc)
+        base = _public_base(request)
+        out = {"sent": [], "skipped": [], "failed": [], "setup": ""}
+        for name in targets:
+            status, detail = _send_one(db, run, name, staff, now, base, mailer,
+                                       force=bool(force))
+            if status == "sent":
+                out["sent"].append({"coach": name, "detail": detail})
+            elif status == "skipped":
+                out["skipped"].append({"coach": name, "detail": detail})
+            else:
+                out["failed"].append({"coach": name, "detail": detail})
+            db.commit()          # one coach's failure shouldn't undo the rest
+        request.session["mail_result"] = out
         return RedirectResponse(back, status_code=303)
 
     @app.post("/commissions/{rid}/statements/link-all")

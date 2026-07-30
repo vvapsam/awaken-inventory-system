@@ -1612,7 +1612,8 @@ async def staff_create(request: Request, db: Session = Depends(get_db)):
         return err("Name is required.")
 
     new = Staff(name=name, has_access=has_access, permissions="", role="staff",
-                phone=(form.get("phone") or "").strip() or None)
+                phone=(form.get("phone") or "").strip() or None,
+                email=(form.get("email") or "").strip() or None)
     r = _apply_type(db, new, person_type, form, err)
     if r:
         return r
@@ -1654,6 +1655,10 @@ async def staff_update(request: Request, sid: int, db: Session = Depends(get_db)
 
     person.name = name or person.name
     person.phone = (form.get("phone") or "").strip() or None
+    # Only touch email when this form carried the field — a form that doesn't
+    # show email shouldn't silently erase one set elsewhere.
+    if "email" in form:
+        person.email = (form.get("email") or "").strip() or None
     person.is_active = form.get("is_active") == "on"
 
     r = _apply_type(db, person, person_type, form, err)
