@@ -582,6 +582,124 @@ with TestClient(app) as c:
         check("    the old URL is dead", rr.status_code == 410)
         check("    and points at the newer one", "newer one was sent" in rr.text)
 
+    print("\nemailing statements")
+    from app import commission_routes as _cr                    # noqa: E402
+    from app.mailer import MailConfig as _MC                    # noqa: E402
+    _outbox = []
+
+    class _FakeMailer:
+        """Stands in for the real Mailer inside the routes. `ready` off means
+        the server has no credentials — the screen should say so rather than
+        pretend a send happened."""
+        ready = True
+        refuse = ""
+
+        def __init__(self, *a, **k):
+            self.cfg = _MC(host="smtp.test", user="pay@awakengym.com",
+                           password="pw" if _FakeMailer.ready else "",
+                           from_addr="pay@awakengym.com")
+
+        def send(self, to, subject, text, html=None):
+            if _FakeMailer.refuse:
+                return False, _FakeMailer.refuse
+            _outbox.append({"to": to, "subject": subject, "text": text, "html": html})
+            return True, ""
+
+    _real_mailer, _cr.Mailer = _cr.Mailer, _FakeMailer
+
+    # Nobody has an address yet — the button should be off, not silently useless.
+    page = c.get(f"/commissions/{rid}/statements").text
+    check("  send button is disabled while no coach has an email", "disabled" in page)
+    r = c.post(f"/commissions/{rid}/statements/send", follow_redirects=False)
+    check("    sending anyway sends nothing", r.status_code == 303 and not _outbox)
+    page = c.get(f"/commissions/{rid}/statements").text
+    check("    and every coach is listed as failed", "no email address" in page)
+
+    # Give the coaches addresses on their person records.
+    from app.models import Staff as _Staff                      # noqa: E402
+    _db = SessionLocal()
+    _names = [row.coach for row in _db.query(CommissionSignoff)
+              .filter_by(run_id=rid).all()]
+    for _n in _names:
+        _p = _db.query(_Staff).filter(_Staff.name == _n).first()
+        if _p is None:
+            _p = _Staff(name=_n, person_type="coach", has_access=False,
+                        permissions="", role="staff")
+            _db.add(_p)
+        _p.email = _n.lower().replace(" ", ".") + "@awakengym.com"
+    _db.commit()
+    _db.close()
+
+    r = c.post(f"/commissions/{rid}/statements/send", follow_redirects=False)
+    check("  send to all approved coaches", r.status_code == 303)
+    check("    one message each", len(_outbox) == len(_names),
+          "%d sent, %d coaches" % (len(_outbox), len(_names)))
+    if _outbox:
+        m = _outbox[0]
+        check("    addressed to the coach's own address", m["to"].endswith("@awakengym.com"))
+        check("    the period is in the subject", "commission" in m["subject"].lower())
+        check("    the link is in the body", "/statement/" in m["text"])
+        check("    and in the html too", m["html"] and "/statement/" in m["html"])
+        check("    the amount is shown", "₱" in m["text"])
+        _tok = re.search(r"/statement/([A-Za-z0-9_\-]{20,})", m["text"]).group(1)
+        with _TC2(app) as anon:
+            check("    that link opens the statement", anon.get("/statement/" + _tok).status_code == 200)
+        # No coach should ever be able to read another's figures from their mail.
+        _tokens = [re.search(r"/statement/([A-Za-z0-9_\-]{20,})", x["text"]).group(1)
+                   for x in _outbox]
+        check("    no two coaches were sent the same link", len(set(_tokens)) == len(_tokens))
+
+    page = c.get(f"/commissions/{rid}/statements").text
+    check("    the screen reports the send", "Sent to" in page)
+    check("    and the rows show as emailed", "Emailed" in page)
+    check("    the result is only shown once", "Sent to" not in
+          c.get(f"/commissions/{rid}/statements").text)
+
+    _before = len(_outbox)
+    r = c.post(f"/commissions/{rid}/statements/send", follow_redirects=False)
+    check("  pressing send again doesn't mail anyone twice", len(_outbox) == _before)
+    check("    and says they were skipped",
+          "already had this month" in c.get(f"/commissions/{rid}/statements").text)
+
+    if _names:
+        r = c.post(f"/commissions/{rid}/statements/send",
+                   data={"coach": _names[0], "force": "1"}, follow_redirects=False)
+        check("  resending one coach does send again", len(_outbox) == _before + 1)
+
+    _FakeMailer.refuse = "the mail server said no"
+    r = c.post(f"/commissions/{rid}/statements/send",
+               data={"coach": _names[0], "force": "1"}, follow_redirects=False)
+    check("  a refused send is reported, not swallowed",
+          "the mail server said no" in c.get(f"/commissions/{rid}/statements").text)
+    _FakeMailer.refuse = ""
+
+    _FakeMailer.ready = False
+    page = c.get(f"/commissions/{rid}/statements").text
+    check("  with no credentials the screen says what to set", "SMTP_PASSWORD" in page)
+    r = c.post(f"/commissions/{rid}/statements/send", follow_redirects=False)
+    check("    and refuses to pretend it sent", "isn't set up" in
+          c.get(f"/commissions/{rid}/statements").text)
+    _FakeMailer.ready = True
+    _cr.Mailer = _real_mailer
+
+    print("\nemail on the person record")
+    _db = SessionLocal()
+    _p = _db.query(_Staff).filter(_Staff.person_type == "coach").first()
+    _pid, _pname = (_p.id, _p.name) if _p else (None, None)
+    _db.close()
+    if _pid:
+        r = c.get(f"/admin/staff/{_pid}/edit")
+        check("  the person form has an email field", 'name="email"' in r.text)
+        r = c.post(f"/admin/staff/{_pid}/edit",
+                   data={"name": _pname, "person_type": "coach",
+                         "email": " Coach.One@Awakengym.com ", "is_active": "on"},
+                   follow_redirects=False)
+        check("  saving an email", r.status_code == 303)
+        _db = SessionLocal()
+        _saved = _db.get(_Staff, _pid).email
+        _db.close()
+        check("    it is stored trimmed", _saved == "Coach.One@Awakengym.com", str(_saved))
+
     print("\nregression — existing pages still render")
     for url in ("/dashboard", "/sales", "/admin/staff", "/coaches/billing",
                 "/invoices", "/customers", "/stock", "/admin/reports"):
