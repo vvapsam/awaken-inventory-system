@@ -1,4 +1,12 @@
 {% extends "base.html" %}
+{% macro searchbar(target, placeholder) %}
+<div class="tsearchbar">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <input type="search" class="tsearch" data-filter="#{{ target }}" placeholder="{{ placeholder }}"
+         autocomplete="off" spellcheck="false">
+  <span class="tsearch-note" id="{{ target }}-note"></span>
+</div>
+{% endmacro %}
 {% block body %}
 {% set is_draft = run.status == RUN_DRAFT %}
 <div class="row-between">
@@ -20,6 +28,11 @@
     </form>
     <form method="post" action="/commissions/{{ run.id }}/finalize">
       <button class="btn primary" {{ 'disabled' if block.blocking }}>Finalize →</button>
+    </form>
+    {% elif run.status == RUN_FINALIZED and can_pay %}
+    <form method="post" action="/commissions/{{ run.id }}/reopen"
+          onsubmit="return confirm('Reopen {{ run.period_label or run.period }} as a draft? Its payouts and delegator charges are deleted and every coach has to be approved again.')">
+      <button class="btn" title="Delete the payouts and put this run back to draft">↩ Reopen as draft</button>
     </form>
     {% endif %}
   </div>
@@ -123,20 +136,26 @@
 {% elif tab == 'adjustments' %}
 <h2>Revenue adjustments</h2>
 {% if adjusted %}
-<table>
-  <tr><th>Booking</th><th>Date</th><th>Coach</th><th>Plan</th><th>Rule</th>
+{{ searchbar('adj', 'Search customer, coach, plan, booking ref…') }}
+<table id="adj">
+  <thead>
+  <tr><th>Booking</th><th>Date</th><th>Customer</th><th>Coach</th><th>Plan</th><th>Rule</th>
       <th style="text-align:right">As exported</th><th style="text-align:right">Adjusted to</th></tr>
+  </thead>
+  <tbody>
   {% for b in adjusted %}
   <tr>
     <td class="mono">{{ b.booking_ref }}</td>
     <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+    <td>{{ b.customer }}</td>
     <td>{{ b.coach or b.staff_raw }}</td>
     <td>{{ b.pricing_plan }}</td>
     <td><span class="tag" style="background:#8a94a1">{{ b.adjustment.replace('_', ' ') }}</span></td>
     <td style="text-align:right" class="muted">{{ peso(b.revenue_raw) }}</td>
-    <td style="text-align:right">{{ peso(b.revenue) }}</td>
+    <td style="text-align:right" data-money="revenue" data-value="{{ b.revenue or 0 }}">{{ peso(b.revenue) }}</td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% else %}<div class="card"><p class="muted" style="margin:0">No revenue adjustments fired on this run.</p></div>{% endif %}
 
@@ -144,18 +163,25 @@
 <h2>Dropped rows</h2>
 <p class="muted small">Kept and shown rather than silently discarded.</p>
 {% if dropped %}
-<table>
-  <tr><th>Booking</th><th>Date</th><th>Staff</th><th>Plan</th><th style="text-align:right">Revenue</th><th>Reason</th></tr>
+{{ searchbar('drop', 'Search customer, staff, plan, reason…') }}
+<table id="drop">
+  <thead>
+  <tr><th>Booking</th><th>Date</th><th>Customer</th><th>Staff</th><th>Plan</th>
+      <th style="text-align:right">Revenue</th><th>Reason</th></tr>
+  </thead>
+  <tbody>
   {% for b in dropped %}
   <tr>
     <td class="mono">{{ b.booking_ref }}</td>
     <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+    <td>{{ b.customer }}</td>
     <td class="mono">{{ b.staff_raw }}</td>
     <td>{{ b.pricing_plan }}</td>
-    <td style="text-align:right">{{ peso(b.revenue_raw) }}</td>
+    <td style="text-align:right" data-money="revenue" data-value="{{ b.revenue_raw or 0 }}">{{ peso(b.revenue_raw) }}</td>
     <td>{{ b.dropped_reason }}</td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% else %}<div class="card"><p class="muted" style="margin:0">Nothing was dropped.</p></div>{% endif %}
 
@@ -163,34 +189,43 @@
 <h2>Delegation — both sides</h2>
 <p class="muted small">What you charge the delegator sits beside what you pay the covering coach.</p>
 {% if delegated %}
-<table>
-  <tr><th>Booking</th><th>Date</th><th>Delegator</th><th>Coach covering</th>
+{{ searchbar('deleg', 'Search customer, coach, delegator, booking ref…') }}
+<table id="deleg">
+  <thead>
+  <tr><th>Booking</th><th>Date</th><th>Customer</th><th>Session</th><th>Delegator</th><th>Coach covering</th>
       <th style="text-align:right">Charged</th><th style="text-align:right">Paid to coach</th><th style="text-align:right">Margin</th></tr>
+  </thead>
+  <tbody>
   {% for b in delegated %}
   <tr>
     <td class="mono">{{ b.booking_ref }}</td>
     <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+    <td>{{ b.customer }}</td>
+    <td>{{ b.appointment_name }}{% if b.variant %}<div class="muted small">{{ b.variant }}</div>{% endif %}</td>
     <td>{{ b.delegator.name if b.delegator else '—' }}{% if b.delegator_assumed %}<span class="tag" style="background:#d9b45a;color:#4a3a12;margin-left:4px">assumed</span>{% endif %}</td>
     <td>{{ b.coach or b.staff_raw }}</td>
-    <td style="text-align:right">{{ peso(b.delegation_charge) }}</td>
-    <td style="text-align:right">{{ peso(b.commission) }}</td>
-    <td style="text-align:right">{{ peso((b.delegation_charge or 0) - (b.commission or 0)) }}</td>
+    <td style="text-align:right" data-money="charged" data-value="{{ b.delegation_charge or 0 }}">{{ peso(b.delegation_charge) }}</td>
+    <td style="text-align:right" data-money="paid" data-value="{{ b.commission or 0 }}">{{ peso(b.commission) }}</td>
+    <td style="text-align:right" data-money="margin" data-value="{{ (b.delegation_charge or 0) - (b.commission or 0) }}">{{ peso((b.delegation_charge or 0) - (b.commission or 0)) }}</td>
   </tr>
   {% endfor %}
+  </tbody>
+  <tfoot>
   {% for name, d in by_delegator.items() %}
   <tr style="background:#fafbfc;font-weight:650">
-    <td colspan="4">{{ name }} · {{ d.sessions }} sessions</td>
+    <td colspan="6">{{ name }} · {{ d.sessions }} sessions</td>
     <td style="text-align:right">{{ peso(d.charged) }}</td>
     <td style="text-align:right">{{ peso(d.cost) }}</td>
     <td style="text-align:right">{{ peso(d.margin) }}</td>
   </tr>
   {% endfor %}
   <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
-    <td colspan="4">Total · {{ totals.delegation_sessions }} delegated sessions</td>
+    <td colspan="6">Total · {{ totals.delegation_sessions }} delegated sessions</td>
     <td style="text-align:right">{{ peso(totals.delegation_charged) }}</td>
     <td style="text-align:right">{{ peso(totals.delegation_cost) }}</td>
     <td style="text-align:right">{{ peso(totals.delegation_margin) }}</td>
   </tr>
+  </tfoot>
 </table>
 {% else %}<div class="card"><p class="muted" style="margin:0">No delegated sessions in this run.</p></div>{% endif %}
 
@@ -226,9 +261,13 @@
 
 {% if statuses.chosen %}
 <h2 style="margin-top:24px">{{ statuses.chosen.status }} · {{ statuses.chosen.count }} booking{{ 's' if statuses.chosen.count != 1 }}</h2>
-<table>
+{{ searchbar('stat', 'Search customer, coach, plan, booking ref…') }}
+<table id="stat">
+  <thead>
   <tr><th>Booking</th><th>Date</th><th>Coach</th><th>Customer</th><th>Appointment</th><th>Plan</th>
       <th style="text-align:right">Revenue</th><th>Counts?</th><th style="text-align:right">Commission</th></tr>
+  </thead>
+  <tbody>
   {% for b in statuses.chosen.rows %}
   <tr>
     <td class="mono">{{ b.booking_ref }}</td>
@@ -237,15 +276,16 @@
     <td>{{ b.customer }}</td>
     <td>{{ b.appointment_name }}</td>
     <td>{% if b.delegator_id %}<span class="tag" style="background:#8a94a1">Delegation</span>{% else %}{{ b.pricing_plan }}{% endif %}</td>
-    <td style="text-align:right">{{ peso(b.revenue) }}</td>
+    <td style="text-align:right" data-money="revenue" data-value="{{ b.revenue or 0 }}">{{ peso(b.revenue) }}</td>
     <td>
       {% if b.is_completed %}<span class="tag">Yes</span>
       {% elif b.approved %}<span class="tag">Approved</span>
       {% else %}<span class="muted small">not counted</span>{% endif %}
     </td>
-    <td style="text-align:right">{% if b.commission is not none %}{{ peso(b.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td style="text-align:right" data-money="commission" data-value="{{ b.commission or 0 }}">{% if b.commission is not none %}{{ peso(b.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% else %}
 <p class="muted small" style="margin-top:14px">Pick a status above to list its bookings.</p>

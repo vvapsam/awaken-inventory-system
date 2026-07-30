@@ -325,6 +325,55 @@
   });
 })();
 
+/* Table search. An .tsearch input filters the rows of the table it points at,
+   in the browser — a run is a few hundred rows, so a round trip to the server
+   would be slower and would lose your place. Summary rows in <tfoot> are
+   hidden while a search is active because they describe the whole table, not
+   what you are looking at; live totals for the visible rows take their place. */
+(function(){
+  function peso(n){
+    return '₱' + n.toLocaleString(undefined, {minimumFractionDigits:2,
+                                                   maximumFractionDigits:2});
+  }
+  function apply(input){
+    var table = document.querySelector(input.getAttribute('data-filter'));
+    if(!table) return;
+    var q = input.value.trim().toLowerCase();
+    var rows = table.tBodies.length ? table.tBodies[0].rows : table.rows;
+    var shown = 0, total = 0, sums = {}, order = [];
+    for(var i = 0; i < rows.length; i++){
+      var row = rows[i];
+      total++;
+      var hit = !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+      row.style.display = hit ? '' : 'none';
+      if(!hit) continue;
+      shown++;
+      var cells = row.querySelectorAll('[data-money]');
+      for(var j = 0; j < cells.length; j++){
+        var key = cells[j].getAttribute('data-money');
+        if(!(key in sums)){ sums[key] = 0; order.push(key); }
+        sums[key] += parseFloat(cells[j].getAttribute('data-value') || 0);
+      }
+    }
+    var foot = table.tFoot;
+    if(foot) foot.style.display = q ? 'none' : '';
+    var note = document.getElementById(input.getAttribute('data-filter').slice(1) + '-note');
+    if(!note) return;
+    if(!q){ note.textContent = ''; return; }
+    var parts = [shown + ' of ' + total + ' row' + (total === 1 ? '' : 's')];
+    for(var k = 0; k < order.length; k++){
+      parts.push(order[k] + ' ' + peso(sums[order[k]]));
+    }
+    note.textContent = parts.join('  ·  ');
+    note.className = 'tsearch-note' + (shown ? '' : ' none');
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tsearch'), function(input){
+    input.addEventListener('input', function(){ apply(input); });
+    input.addEventListener('search', function(){ apply(input); });   // the ✕
+    if(input.value) apply(input);
+  });
+})();
+
 /* Popup panels. A row with data-modal="x" opens .scrim#x. Closed by the ✕,
    any [data-close], Escape, or clicking the backdrop — never by clicking
    inside the panel, so a stray click can't discard what you typed. */
