@@ -79,40 +79,47 @@
 </div>
 {% endif %}
 
+{# ---- status filter: one status at a time, not every status stacked ---- #}
+<div class="tfilter" style="margin-top:18px">
+  <a href="?" class="{{ 'on' if not pick }}">All · {{ total_rows }}</a>
+  {% for g in groups %}
+  <a href="?status={{ g.status|urlencode }}" class="{{ 'on' if pick == g.status }}">{{ g.status }} · {{ g.rows|length }}</a>
+  {% endfor %}
+</div>
+
 {{ searchbar('bk', 'Search customer, booking ref, plan…', selector='table.bktbl') }}
 
-{% for g in groups %}
-{% set reviewable = g.status|lower != 'completed' %}
-<h2 style="margin-top:22px">{{ g.status }} · {{ g.rows|length }}
-  {% if not reviewable %}<span class="tag">Always counts</span>{% endif %}</h2>
-
-{% if reviewable and is_draft and can_pay %}
-<form method="post" action="/commissions/{{ run.id }}/coach/{{ coach }}/approve-status" style="margin:0 0 6px">
-  <input type="hidden" name="status" value="{{ g.status }}">
-  {% if g.approved < g.rows|length %}
+{% set reviewable = (not pick) or pick|lower != 'completed' %}
+{% if chosen and pick|lower != 'completed' and is_draft and can_pay %}
+<form method="post" action="/commissions/{{ run.id }}/coach/{{ coach }}/approve-status" style="margin:0 0 8px">
+  <input type="hidden" name="status" value="{{ chosen.status }}">
+  {% if chosen.approved < chosen.rows|length %}
     <input type="hidden" name="include" value="on">
-    <button class="btn" style="padding:5px 12px">✓ Approve all {{ g.rows|length }} {{ g.status|lower }}</button>
+    <button class="btn" style="padding:5px 12px">✓ Approve all {{ chosen.rows|length }} {{ chosen.status|lower }}</button>
   {% else %}
     <input type="hidden" name="include" value="off">
-    <button class="btn" style="padding:5px 12px">Remove all {{ g.status|lower }}</button>
+    <button class="btn" style="padding:5px 12px">Remove all {{ chosen.status|lower }}</button>
   {% endif %}
 </form>
 {% endif %}
 
+{% if shown %}
 <table class="bktbl">
   <thead>
   <tr>
     {% if reviewable %}<th style="width:96px">Counts?</th>{% endif %}
-    <th>Booking</th><th>Customer</th><th>Date</th><th>Appointment</th><th>Plan</th>
+    <th>Booking</th><th>Customer</th><th>Date</th>{% if not pick %}<th>Status</th>{% endif %}
+    <th>Appointment</th><th>Plan</th>
     <th style="text-align:right">Revenue</th><th>Rate applied</th><th style="text-align:right">Commission</th>
   </tr>
   </thead>
   <tbody>
-  {% for b in g.rows %}
+  {% for b in shown %}
   <tr id="{{ b.booking_ref }}" {% if b.approved %}style="background:var(--teal-tint)"{% endif %}>
     {% if reviewable %}
     <td>
-      {% if is_draft and can_pay %}
+      {% if b.is_completed %}<span class="tag">Always</span>
+      {% elif is_draft and can_pay %}
       <form method="post" action="/commissions/{{ run.id }}/booking/{{ b.id }}/approve">
         <button class="btn" style="padding:4px 10px;font-size:.78rem;{% if b.approved %}background:var(--teal);color:#fff;border-color:var(--teal){% endif %}">{{ '✓ Yes' if b.approved else 'Include' }}</button>
       </form>
@@ -124,6 +131,7 @@
     <td class="mono">{{ b.booking_ref }}</td>
     <td>{{ b.customer }}</td>
     <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+    {% if not pick %}<td class="small">{{ b.booking_status }}</td>{% endif %}
     <td>{{ b.appointment_name }}</td>
     <td>{% if b.delegator_id %}<span class="tag" style="background:#8a94a1">Delegation · {{ b.delegator.name if b.delegator }}</span>{% else %}{{ b.pricing_plan }}{% endif %}</td>
     <td style="text-align:right" data-money="revenue" data-value="{{ b.revenue or 0 }}">{{ peso(b.revenue) }}</td>
@@ -157,14 +165,17 @@
   </tbody>
   <tfoot>
   <tr style="background:#fafbfc;font-weight:650">
-    <td colspan="{{ 6 if reviewable else 5 }}">{{ g.status }} subtotal
-      {% if reviewable %}<span class="muted small" style="font-weight:400">· {{ g.approved }} of {{ g.rows|length }} counting</span>{% endif %}</td>
-    <td style="text-align:right">{{ peso(g.revenue) }}</td><td></td>
-    <td style="text-align:right">{% if g.commission %}{{ peso(g.commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td colspan="{{ (7 if reviewable else 6) - (0 if not pick else 1) }}">
+      {{ pick or 'All statuses' }} · {{ shown|length }} booking{{ 's' if shown|length != 1 }}
+      <span class="muted small" style="font-weight:400">· {{ shown_counting }} counting</span></td>
+    <td style="text-align:right">{{ peso(shown_revenue) }}</td><td></td>
+    <td style="text-align:right">{% if shown_commission %}{{ peso(shown_commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
   </tr>
   </tfoot>
 </table>
-{% endfor %}
+{% else %}
+<div class="card"><p class="muted" style="margin:0">No {{ pick|lower }} bookings for {{ coach }} in this run.</p></div>
+{% endif %}
 
 <p class="muted small" style="margin-top:18px">Approving a booking runs it through exactly the same rules as a
   Completed one — the same revenue adjustments, the same coach rate — so an approved row is never a special
