@@ -286,6 +286,35 @@ with TestClient(app) as c:
     rid = r.headers.get("location", "").rstrip("/").split("/")[-1]
     check("  re-upload recreates the draft", r.status_code == 303)
 
+    print("\nsearch + columns on the row tables")
+    page = c.get(f"/commissions/{rid}?tab=delegation").text
+    check("  delegation has a search box", 'data-filter="#deleg"' in page)
+    check("    and a Customer column", ">Customer</th>" in page)
+    check("    and a Session column", ">Session</th>" in page)
+    check("    customers are actually rendered",
+          len(re.findall(r"<td>[A-Z][a-z]+ [A-Z]", page)) > 5)
+    check("    money cells carry values for live totals",
+          'data-money="charged"' in page and 'data-value=' in page)
+    check("    subtotals sit in a tfoot so search can hide them",
+          "<tfoot>" in page)
+    for tab, tid in (("adjustments", "adj"), ("dropped", "drop")):
+        p2 = c.get(f"/commissions/{rid}?tab={tab}").text
+        check(f"  {tab} has a search box", ('data-filter="#%s"' % tid) in p2)
+        check("    and a Customer column", ">Customer</th>" in p2)
+    p2 = c.get(f"/commissions/{rid}?tab=statuses&status=Completed").text
+    check("  status detail has a search box", 'data-filter="#stat"' in p2)
+    # every tab that lists rows gets one, not only the ones with an obvious need
+    for tab, tid in (("summary", "pivot"), ("coaches", "coaches")):
+        p3 = c.get(f"/commissions/{rid}?tab={tab}").text
+        check(f"  {tab} has a search box", ('data-filter="#%s"' % tid) in p3)
+    coach0 = re.search(r'/commissions/%s/coach/([^"?#/]+)' % rid,
+                       c.get(f"/commissions/{rid}?tab=coaches").text).group(1)
+    p3 = c.get(f"/commissions/{rid}/coach/{coach0}").text
+    check("  a coach page searches all its status tables at once",
+          'data-filter="table.bktbl"' in p3)
+    check("    every search box names the note it writes into",
+          p3.count('data-note=') == p3.count('class="tsearch"'))
+
     print("\nstatuses tab")
     page = c.get(f"/commissions/{rid}?tab=statuses").text
     check("  tab renders", "Every booking, by status" in page)
