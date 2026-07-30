@@ -618,6 +618,13 @@ COMMISSION_SETTING_DEFAULTS = {
                        "Delegated sessions and memberships are never backfilled."),
     "default_delegator": ("KP", "Default delegator",
                           "Applied to a bare 'Delegation' variant that names no code."),
+    "paid_statuses": ("completed,late cancelled", "Statuses that pay automatically",
+                      "Comma-separated booking statuses that earn commission without "
+                      "review. A late cancel is included because the client was still "
+                      "charged and the coach still lost the hour. Every other status "
+                      "earns nothing until approved on the coach's page. Changing this "
+                      "affects the next import, and any draft you Recalculate — "
+                      "finalized runs never move."),
 }
 
 
@@ -820,6 +827,11 @@ class CommissionBooking(Base):
     rate_manual_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     commission = Column(Numeric(10, 2))
     delegation_charge = Column(Numeric(10, 2))
+    # Whether this row's booking status pays without anyone approving it,
+    # decided against the rules in force when the run was calculated. Stored
+    # rather than re-derived so that changing which statuses pay cannot
+    # restate a run that has already been read, signed off or paid.
+    pays_by_status = Column(Boolean, nullable=False, default=False)
     # --- excluded rows are kept, flagged, and shown ---
     dropped_reason = Column(String)
     # --- reviewer approval for non-Completed bookings ---
@@ -832,13 +844,9 @@ class CommissionBooking(Base):
     approved_by = relationship("Staff", foreign_keys=[approved_by_id])
 
     @property
-    def is_completed(self):
-        return (self.booking_status or "").strip().lower() == "completed"
-
-    @property
     def is_commissionable(self):
-        """Completed by default, or another status a reviewer has approved."""
-        return self.is_completed or bool(self.approved)
+        """Paid by its status, or approved by a reviewer."""
+        return bool(self.pays_by_status) or bool(self.approved)
 
 
 class CommissionSignoff(Base):

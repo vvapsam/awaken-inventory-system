@@ -155,6 +155,10 @@ def build_config(db: Session) -> engine.Config:
         awaken_force_revenue=Decimal(s["awaken_force_revenue"] or 0),
         backfill_scope=s["backfill_scope"],
         default_delegator=(s.get("default_delegator") or None),
+        paid_statuses=frozenset(
+            k for k in (engine.status_key(p)
+                        for p in (s.get("paid_statuses") or "").split(","))
+            if k) or engine.DEFAULT_PAID_STATUSES,
     )
     return engine.Config(coach_rates=rates, delegators=delegators, settings=st)
 
@@ -315,8 +319,9 @@ REVIEWABLE = ("cancelled", "late cancelled", "no show", "booked")
 
 
 def pending(run: CommissionRun):
-    """Non-Completed bookings still awaiting a decision."""
-    return [b for b in _live(run) if not b.is_completed and not b.approved]
+    """Bookings whose status doesn't pay on its own and that nobody has
+    approved — the ones still awaiting a decision."""
+    return [b for b in _live(run) if not b.pays_by_status and not b.approved]
 
 
 def status_groups(run: CommissionRun, pick: str | None = None) -> dict:
@@ -364,7 +369,7 @@ def coach_summary(run: CommissionRun):
             row["commission"] += Decimal(str(b.commission or 0))
             if b.approved:
                 row["approved"] += 1
-        elif not b.is_completed:
+        elif not b.pays_by_status:
             row["pending"] += 1
     return sorted(out.values(), key=lambda r: r["coach"])
 
@@ -405,6 +410,9 @@ def recompute(b: CommissionBooking, config: engine.Config, db: Session,
     if b.rate_manual and b.rate_type:
         manual = (b.rate_type, Decimal(str(b.rate_value or 0)))
     row = engine.recompute_row(_to_engine_row(b, delegator), config)
+    # Re-snapshot which statuses pay: Recalculate exists precisely so a rule
+    # change reaches a draft that was imported under the old one.
+    b.pays_by_status = row.pays_by_status
     b.revenue = row.revenue
     b.adjustment = row.adjustment
     b.adjustment_note = row.adjustment_note
@@ -1488,7 +1496,8 @@ def register(app, deps):
             delegation_total=sum((Decimal(str(b.commission or 0)) for b in dele), Decimal(0)),
             delegation_sessions=len(dele),
             approved_count=len([b for b in rows if b.approved]),
-            pending_count=len([b for b in rows if not b.is_completed and not b.approved]),
+            pending_count=len([b for b in rows
+                               if not b.pays_by_status and not b.approved]),
             shown=shown, chosen=chosen, pick=(chosen["status"] if chosen else ""),
             total_rows=len(rows),
             shown_revenue=sum((Decimal(str(b.revenue or 0)) for b in shown), Decimal(0)),
@@ -1633,8 +1642,9 @@ def register(app, deps):
         if not run or not b or b.run_id != rid:
             return RedirectResponse(back, status_code=303)
         coach = b.coach or b.staff_raw
-        if run.status != RUN_DRAFT or b.is_completed:
-            # Completed rows always count; finalized runs are immutable.
+        if run.status != RUN_DRAFT or b.pays_by_status:
+            # Rows that already pay on their status have nothing to approve;
+            # finalized runs are immutable.
             return RedirectResponse(f"{back}/coach/{coach}", status_code=303)
         b.approved = not b.approved
         b.approved_by_id = staff.id if b.approved else None
@@ -1659,7 +1669,7 @@ def register(app, deps):
         want = (include == "on")
         config = build_config(db)
         for b in _live(run):
-            if (b.coach or b.staff_raw) != coach or b.is_completed:
+            if (b.coach or b.staff_raw) != coach or b.pays_by_status:
                 continue
             if (b.booking_status or "").strip().lower() != status.strip().lower():
                 continue
@@ -1902,4 +1912,5 @@ def _booking(run_id, row, delegator_ids, coach_ids) -> CommissionBooking:
         adjustment_note=row.adjustment_note,
         rule=row.rule, rate_type=row.rate_type, rate_value=row.rate_value,
         commission=row.commission, delegation_charge=row.delegation_charge,
+        pays_by_status=row.pays_by_status,
     )

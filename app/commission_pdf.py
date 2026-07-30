@@ -182,7 +182,7 @@ def statement(run, coach: str, rows, *, signoff=None, generated_by: str = "",
         if b.rate_manual:
             label += " · manual"
             marks.append(i)
-        if not b.is_completed:
+        if not b.pays_by_status:
             label += " · %s, approved" % (b.booking_status or "").lower()
         data.append([
             Paragraph(b.appointment_date.strftime("%d %b") if b.appointment_date else "",

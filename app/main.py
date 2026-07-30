@@ -421,6 +421,22 @@ def startup():
                 "ALTER TABLE commission_statement_links "
                 "  DROP CONSTRAINT IF EXISTS uq_statement_link_coach; "
                 "END IF; END $$;"))
+            # Which statuses pay without review became a setting, and the
+            # answer is snapshotted per booking. Existing rows are back-filled
+            # to Completed-only — the rule they were actually calculated under
+            # — so no run that has already been read, signed off or paid moves
+            # because of this upgrade. The new rule reaches a draft only when
+            # someone imports again or presses Recalculate.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "                WHERE table_name = 'commission_bookings' "
+                "                  AND column_name = 'pays_by_status') THEN "
+                "ALTER TABLE commission_bookings ADD COLUMN "
+                "  pays_by_status BOOLEAN NOT NULL DEFAULT FALSE; "
+                "UPDATE commission_bookings SET pays_by_status = TRUE "
+                " WHERE lower(btrim(booking_status)) = 'completed'; "
+                "END IF; END $$;"))
             # A rate typed by hand on one booking row.
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "

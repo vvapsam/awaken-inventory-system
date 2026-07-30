@@ -72,6 +72,24 @@ MEMBERSHIP_RE = re.compile(r"\b(month|months|year|annual)\b", re.I)
 HYROX_WITH_COACH = "hyrox simulation (with coach)"
 
 
+def status_key(text: str) -> str:
+    """A booking status reduced to something comparable.
+
+    The export writes "Late cancelled"; people writing a settings value reach
+    for "Late Cancelled" or "late-cancelled" just as readily. All three mean
+    the same booking, so they compare equal here.
+    """
+    return " ".join((text or "").replace("-", " ").lower().split())
+
+
+#: Statuses that earn commission without anyone approving them. A late cancel
+#: is on this list because the client was still charged for the slot and the
+#: coach still lost the hour — the money moved, so the commission does too.
+#: Everything else (cancelled, no show, booked) earns nothing until a reviewer
+#: says otherwise, one booking at a time.
+DEFAULT_PAID_STATUSES = frozenset({"completed", "late cancelled"})
+
+
 @dataclass(frozen=True)
 class CoachRate:
     """How one coach is paid.
@@ -170,6 +188,9 @@ class Settings:
     #: Booking statuses to import, lowercased. None means take everything —
     #: filtering happens at import so a run only ever holds rows you chose.
     statuses: frozenset | None = None
+    #: Statuses that pay without review. Compared through `status_key`, so
+    #: spelling and capitalisation in the settings value don't matter.
+    paid_statuses: frozenset = DEFAULT_PAID_STATUSES
     #: Literal reading of the original rule. Matches nothing in practice; see
     #: the module docstring for why it is deliberately not widened.
     excluded_plan_words: tuple = ("free",)
@@ -257,10 +278,15 @@ class Row:
     delegator: Delegator | None = None
     delegator_assumed: bool = False
 
-    #: Set by a reviewer to pay a non-Completed booking (a late cancel that was
-    #: still charged, a no-show the coach turned up for). Completed rows never
-    #: need it.
+    #: Set by a reviewer to pay a booking its status doesn't pay on its own —
+    #: a no-show the coach turned up for, a cancellation that was still
+    #: charged. Rows whose status already pays never need it.
     approved: bool = False
+    #: Whether this row's status pays without review, decided against the
+    #: settings in force when the run was calculated. Snapshotted rather than
+    #: re-derived, so changing the rule tomorrow can't silently restate a run
+    #: someone has already read and signed off.
+    pays_by_status: bool = False
 
     # normalized
     revenue: Decimal = ZERO
@@ -279,13 +305,9 @@ class Row:
         return self.delegator is not None
 
     @property
-    def is_completed(self) -> bool:
-        return self.booking_status.strip().lower() == "completed"
-
-    @property
     def is_commissionable(self) -> bool:
-        """Completed by default, or any other status a reviewer has approved."""
-        return self.is_completed or self.approved
+        """Paid by its status, or approved by a reviewer."""
+        return self.pays_by_status or self.approved
 
 
 @dataclass
@@ -510,6 +532,8 @@ def normalize_row(row: Row, config: Config) -> Row:
     reviewer approves or un-approves a booking.
     """
     s = config.settings
+    # Decide first, because everything below asks whether the row pays.
+    row.pays_by_status = status_key(row.booking_status) in s.paid_statuses
     row.revenue = row.revenue_raw
     row.adjustment = None
     row.adjustment_note = ""
