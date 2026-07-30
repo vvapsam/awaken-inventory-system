@@ -14,6 +14,7 @@ from __future__ import annotations
 import calendar
 import hashlib
 import re
+import secrets
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -31,7 +32,8 @@ from .models import (
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
     CommissionBooking, CommissionCharge, CommissionChargeLine,
     CommissionCoachOverride, CommissionCoachRate, CommissionDelegator, CommissionPayout,
-    CommissionPayoutLine, CommissionRun, CommissionSetting, CommissionSignoff, Staff,
+    CommissionPayoutLine, CommissionRun, CommissionSetting, CommissionSignoff,
+    CommissionStatementLink, STATEMENT_LINK_DAYS, Staff,
 )
 
 MONTHS = ("January February March April May June July August September "
@@ -576,6 +578,7 @@ def coach_groups(run: CommissionRun, coach: str):
 def register(app, deps):
     render = deps["render"]
     require_admin = deps["require_admin"]
+    templates = deps["templates"]
     require = deps["require"]
     tz = deps["tz"]
 
@@ -1015,6 +1018,173 @@ def register(app, deps):
         run.dropped_count = len(run.bookings) - len(live)
         db.commit()
         return RedirectResponse(f"/commissions/{run.id}", status_code=303)
+
+    # ------------------------------------------------- coach statement links
+
+    def _links_for(db: Session, rid: int, coach: str):
+        return (db.query(CommissionStatementLink)
+                .filter_by(run_id=rid, coach=coach)
+                .order_by(CommissionStatementLink.id.desc()).all())
+
+    def _current_link(db: Session, rid: int, coach: str):
+        """The newest link for a coach — older ones are kept, revoked."""
+        rows = _links_for(db, rid, coach)
+        return rows[0] if rows else None
+
+    def _issue_link(db: Session, rid: int, coach: str, staff, now):
+        """Mint a new link and retire any earlier one.
+
+        The old row stays so its URL keeps answering — with "a newer one was
+        sent" rather than a bare not-found, which is what a coach clicking last
+        week's email deserves.
+        """
+        for old in _links_for(db, rid, coach):
+            if not old.revoked_at:
+                old.revoked_at = now
+        link = CommissionStatementLink(
+            run_id=rid, coach=coach, token=secrets.token_urlsafe(24),
+            created_at=now, created_by_id=getattr(staff, "id", None),
+            expires_at=now + timedelta(days=STATEMENT_LINK_DAYS), opens=0)
+        db.add(link)
+        return link
+
+    def _coach_rows(run: CommissionRun, coach: str):
+        """Everything for this coach in this run — paid or not.
+
+        Non-completed sessions are included deliberately: the coach was on the
+        diary for them, and a statement that quietly omits a cancellation looks
+        like a statement that lost one.
+        """
+        return sorted((b for b in _live(run) if (b.coach or b.staff_raw) == coach),
+                      key=lambda b: (b.appointment_date or date.min, b.booking_ref or ""))
+
+    def _statement_context(run: CommissionRun, coach: str, db: Session) -> dict:
+        rows = _coach_rows(run, coach)
+        paid = [b for b in rows if b.is_commissionable]
+        dele = [b for b in paid if b.delegator_id]
+        own = [b for b in paid if not b.delegator_id]
+        order, seen, buckets = list(BOOKING_STATUSES), set(), []
+        for status in order + sorted({(b.booking_status or "—") for b in rows}):
+            key = (status or "—").strip()
+            if key.lower() in seen:
+                continue
+            seen.add(key.lower())
+            items = [b for b in rows
+                     if (b.booking_status or "—").strip().lower() == key.lower()]
+            if items:
+                buckets.append({"status": key, "n": len(items)})
+        return {
+            "run": run, "coach": coach, "rows": rows,
+            "total": sum((Decimal(str(b.commission or 0)) for b in paid), Decimal(0)),
+            "paid_count": len(paid),
+            "own_total": sum((Decimal(str(b.commission or 0)) for b in own), Decimal(0)),
+            "own_count": len(own),
+            "dele_total": sum((Decimal(str(b.commission or 0)) for b in dele), Decimal(0)),
+            "dele_count": len(dele),
+            "delegators": sorted({b.delegator.name for b in dele if b.delegator}),
+            "buckets": buckets,
+            "signoff": signoffs(run, db).get(coach),
+        }
+
+    @app.get("/statement/{token}", response_class=HTMLResponse)
+    def public_statement(request: Request, token: str,
+                         db: Session = Depends(get_db)):
+        """The coach's own statement. No login — the token is the credential.
+
+        Deliberately outside the app's auth: everything it can reach is one
+        coach's one period, and it is read-only.
+        """
+        link = (db.query(CommissionStatementLink)
+                .filter(CommissionStatementLink.token == token).first())
+        if not link:
+            return templates.TemplateResponse(
+                "statement_gone.html",
+                {"request": request, "reason": "unknown"}, status_code=404)
+        if not link.is_live:
+            return templates.TemplateResponse(
+                "statement_gone.html",
+                {"request": request,
+                 "reason": "revoked" if link.revoked_at else "expired",
+                 "days": STATEMENT_LINK_DAYS}, status_code=410)
+        run = link.run
+        link.opens = (link.opens or 0) + 1
+        now = datetime.now(timezone.utc)
+        link.first_opened_at = link.first_opened_at or now
+        link.last_opened_at = now
+        db.commit()
+        ctx = _statement_context(run, link.coach, db)
+        ctx.update({"request": request, "link": link})
+        return templates.TemplateResponse("statement.html", ctx)
+
+    @app.get("/commissions/{rid}/statements", response_class=HTMLResponse)
+    def commission_statements(request: Request, rid: int,
+                              db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        if not run:
+            return RedirectResponse("/commissions", status_code=303)
+        signed = signoffs(run, db)
+        links = {}
+        for ln in (db.query(CommissionStatementLink).filter_by(run_id=rid)
+                   .order_by(CommissionStatementLink.id).all()):
+            links[ln.coach] = ln          # ordered ascending, so newest wins
+        rows = []
+        for c in coach_summary(run):
+            person = (db.query(Staff).filter(Staff.name == c["coach"]).first())
+            rows.append({**c, "signoff": signed.get(c["coach"]),
+                         "link": links.get(c["coach"]),
+                         "email": (person.email if person else None)})
+        return render(request, "commission_statements.html", db, staff,
+                      run=run, rows=rows, days=STATEMENT_LINK_DAYS,
+                      base_url=str(request.base_url).rstrip("/"),
+                      RUN_FINALIZED=RUN_FINALIZED)
+
+    @app.post("/commissions/{rid}/statements/link")
+    def commission_statement_link(request: Request, rid: int,
+                                  coach: str = Form(...), action: str = Form("create"),
+                                  db: Session = Depends(get_db)):
+        """Create, refresh or revoke one coach's link. Admin only — it hands out
+        access to money."""
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        back = f"/commissions/{rid}/statements"
+        if not run:
+            return RedirectResponse("/commissions", status_code=303)
+        now = datetime.now(timezone.utc)
+        if action == "revoke":
+            for link in _links_for(db, rid, coach):
+                if not link.revoked_at:
+                    link.revoked_at = now
+            db.commit()
+            return RedirectResponse(back, status_code=303)
+        if not signoffs(run, db).get(coach):
+            # Sending unapproved figures means the coach finds the mistake.
+            return RedirectResponse(back + "?blocked=" + coach, status_code=303)
+        _issue_link(db, rid, coach, staff, now)
+        db.commit()
+        return RedirectResponse(back, status_code=303)
+
+    @app.post("/commissions/{rid}/statements/link-all")
+    def commission_statement_link_all(request: Request, rid: int,
+                                      db: Session = Depends(get_db)):
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        if not run:
+            return RedirectResponse("/commissions", status_code=303)
+        now = datetime.now(timezone.utc)
+        for coach in signoffs(run, db):
+            current = _current_link(db, rid, coach)
+            if current is not None and current.is_live:
+                continue          # a working link is not worth invalidating
+            _issue_link(db, rid, coach, staff, now)
+        db.commit()
+        return RedirectResponse(f"/commissions/{rid}/statements", status_code=303)
 
     # ---------------------------------------------------------- delegation
 

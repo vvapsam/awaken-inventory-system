@@ -412,6 +412,15 @@ def startup():
                 "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
                 "CREATE INDEX IF NOT EXISTS commission_bookings_ref_idx "
                 "ON commission_bookings (booking_ref); END IF; END $$;"))
+            # Statement links keep their history: replacing a coach's link
+            # revokes the old row rather than overwriting it, so the URL in
+            # last week's email can still say "a newer one was sent".
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_statement_links') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE commission_statement_links "
+                "  DROP CONSTRAINT IF EXISTS uq_statement_link_coach; "
+                "END IF; END $$;"))
             # A rate typed by hand on one booking row.
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
@@ -3164,5 +3173,8 @@ commission_routes.register(app, {
     "render": render,
     "require": require,
     "require_admin": require_admin,
+    # The coach statement page is public — it renders without a logged-in
+    # staff, so it needs the raw template environment rather than render().
+    "templates": templates,
     "tz": _tz,
 })

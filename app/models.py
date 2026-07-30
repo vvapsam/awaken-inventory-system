@@ -865,6 +865,65 @@ class CommissionSignoff(Base):
                                        name="uq_commission_signoff_coach"),)
 
 
+#: How long a coach's statement link stays open, in days.
+STATEMENT_LINK_DAYS = 5
+
+
+class CommissionStatementLink(Base):
+    """A private, expiring URL that shows one coach their own statement.
+
+    A link rather than a login: coaches read these on a phone between clients,
+    and an account they have to remember a password for is an account they
+    won't use. The cost is that whoever holds the URL can read that statement,
+    so the token is long and random, it expires, it can be revoked, and it
+    exposes exactly one coach's one period — no other coach, no way into the
+    app.
+    """
+    __tablename__ = "commission_statement_links"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    coach = Column(String, nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    expires_at = Column(DateTime(timezone=True))
+    revoked_at = Column(DateTime(timezone=True))
+    # delivery + reading, so "did they get it" has an answer
+    sent_to = Column(String)
+    sent_at = Column(DateTime(timezone=True))
+    first_opened_at = Column(DateTime(timezone=True))
+    last_opened_at = Column(DateTime(timezone=True))
+    opens = Column(Integer, nullable=False, default=0)
+
+    run = relationship("CommissionRun")
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+
+    # No unique constraint on (run_id, coach): replacing a link keeps the old
+    # row, revoked. Otherwise a coach clicking yesterday's emailed link gets a
+    # bare "not found" instead of "a newer one was sent".
+
+    @property
+    def is_expired(self):
+        return bool(self.expires_at and self.expires_at < now_utc())
+
+    @property
+    def is_live(self):
+        return not self.revoked_at and not self.is_expired
+
+    @property
+    def state(self):
+        if self.revoked_at:
+            return "revoked"
+        if self.is_expired:
+            return "expired"
+        if self.opens:
+            return "opened"
+        if self.sent_at:
+            return "sent"
+        return "ready"
+
+
 class CommissionPayout(Base):
     """What AWAKEN owes one coach for one run."""
     __tablename__ = "commission_payouts"
