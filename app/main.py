@@ -55,6 +55,26 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 templates.env.globals["peso"] = lambda v: "₱{:,.2f}".format(float(v or 0))
+
+
+def _asset_version() -> str:
+    """A cache-busting stamp for /static, from the newest file's mtime.
+
+    StaticFiles sends no Cache-Control, so browsers apply heuristic caching and
+    can serve a stylesheet from before the last deploy — which renders the app
+    with old rules and new markup. Versioning the URL makes a deploy a new URL.
+    """
+    newest = 0.0
+    static_dir = os.path.join(BASE_DIR, "static")
+    for name in os.listdir(static_dir):
+        try:
+            newest = max(newest, os.path.getmtime(os.path.join(static_dir, name)))
+        except OSError:
+            continue
+    return str(int(newest))
+
+
+templates.env.globals["ASSET_V"] = _asset_version()
 templates.env.globals["can"] = can
 templates.env.globals["can_any"] = can_any
 
