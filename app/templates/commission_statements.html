@@ -7,12 +7,49 @@
       Links open for {{ days }} days, then stop working.</p>
   </div>
   <div style="display:flex;gap:7px">
+    {% set sendable = rows | selectattr('signoff') | selectattr('email') | list %}
+    <form method="post" action="/commissions/{{ run.id }}/statements/send"
+          onsubmit="return confirm('Email {{ sendable|length }} approved coach{{ 'es' if sendable|length != 1 }} their statement?')">
+      <button class="btn primary"
+        {% if not mail_ready %}disabled title="Mail isn't set up on the server yet"
+        {% elif not sendable %}disabled title="Nobody is both approved and has an email address"{% endif %}>
+        ✉ Send statements{% if sendable %} ({{ sendable|length }}){% endif %}</button>
+    </form>
     <form method="post" action="/commissions/{{ run.id }}/statements/link-all">
-      <button class="btn primary">🔗 Create links for approved coaches</button>
+      <button class="btn">🔗 Create links only</button>
     </form>
     <a class="btn" href="/commissions/{{ run.id }}">← Back to run</a>
   </div>
 </div>
+
+{% if not mail_ready %}
+<div class="notice amber" style="margin-top:12px">
+  <b>Mail isn't switched on yet.</b> Links can still be created and copied by hand. To send them from here,
+  set {% for k in mail_missing %}<span class="mono">{{ k }}</span>{{ ', ' if not loop.last }}{% endfor %}
+  on the server — <span class="mono">SMTP_USER</span> is the Workspace address,
+  <span class="mono">SMTP_PASSWORD</span> is a Google <b>app password</b> (not the account password).
+</div>
+{% endif %}
+
+{% if result %}
+  {% if result.setup %}<div class="error" style="margin-top:12px">{{ result.setup }}</div>{% endif %}
+  {% if result.sent %}
+  <div class="notice" style="margin-top:12px"><b>Sent to {{ result.sent|length }}
+    coach{{ 'es' if result.sent|length != 1 }}{% if mail_from %} from {{ mail_from }}{% endif %}.</b>
+    {{ result.sent | map(attribute='coach') | join(', ') }}</div>
+  {% endif %}
+  {% if result.skipped %}
+  <div class="notice amber" style="margin-top:10px"><b>{{ result.skipped|length }} already had this month's statement sent</b>
+    — {{ result.skipped | map(attribute='coach') | join(', ') }}. Use
+    <b>Resend</b> on the row to send again.</div>
+  {% endif %}
+  {% if result.failed %}
+  <div class="error" style="margin-top:10px"><b>{{ result.failed|length }} didn't go out:</b>
+    <ul style="margin:6px 0 0">
+      {% for f in result.failed %}<li>{{ f.coach }} — {{ f.detail }}</li>{% endfor %}
+    </ul></div>
+  {% endif %}
+{% endif %}
 
 {% if request.query_params.get('blocked') %}
 <div class="error"><b>{{ request.query_params.get('blocked') }} isn't approved yet.</b>
@@ -24,7 +61,8 @@
 <table>
   <thead>
   <tr><th>Coach</th><th>Email</th><th style="text-align:right">Sessions</th>
-      <th style="text-align:right">Commission</th><th>Approved</th><th>Link</th><th>Read</th><th></th></tr>
+      <th style="text-align:right">Commission</th><th>Approved</th><th>Link</th><th>Sent</th>
+      <th>Read</th><th></th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -46,6 +84,11 @@
       {% else %}<span class="muted small">—</span>{% endif %}
     </td>
     <td>
+      {% if r.link and r.link.sent_at %}<span class="tag">Emailed</span>
+        <div class="muted small">{{ r.link.sent_at.strftime('%d %b, %H:%M') }}</div>
+      {% else %}<span class="muted small">—</span>{% endif %}
+    </td>
+    <td>
       {% if r.link and r.link.opens %}<span class="tag">Opened</span>
         <div class="muted small">{{ r.link.opens }}× · {{ r.link.last_opened_at.strftime('%d %b, %H:%M') if r.link.last_opened_at }}</div>
       {% elif r.link and r.link.is_live %}<span class="muted small">not opened yet</span>
@@ -53,6 +96,15 @@
     </td>
     <td style="white-space:nowrap">
       {% if r.signoff %}
+      {% if r.email %}
+      <form method="post" action="/commissions/{{ run.id }}/statements/send" style="display:inline">
+        <input type="hidden" name="coach" value="{{ r.coach }}">
+        <input type="hidden" name="force" value="1">
+        <button class="btn primary" style="padding:4px 10px;font-size:.78rem"
+                {% if not mail_ready %}disabled title="Mail isn't set up on the server yet"{% endif %}>
+          {{ 'Resend' if r.link and r.link.sent_at else 'Email' }}</button>
+      </form>
+      {% endif %}
       <form method="post" action="/commissions/{{ run.id }}/statements/link" style="display:inline">
         <input type="hidden" name="coach" value="{{ r.coach }}">
         <button class="btn" style="padding:4px 10px;font-size:.78rem">
@@ -74,6 +126,7 @@
 </table>
 
 <p class="muted small" style="margin-top:10px">A new link replaces the old one — the previous URL stops
-  working immediately, which is what you want if it went to the wrong address. Emailing these automatically
-  is the next piece; for now, copy the link to a coach however you already talk to them.</p>
+  working immediately, which is what you want if it went to the wrong address. <b>Send statements</b> skips
+  anyone already emailed this month; <b>Resend</b> on a row sends again regardless. Coaches without an
+  address need one on their <a href="/admin/staff?type=coach">person record</a>.</p>
 {% endblock %}

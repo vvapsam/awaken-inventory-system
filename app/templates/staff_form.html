@@ -20,6 +20,17 @@
 
   <div class="two-col">
     <div>
+      <label>Email (optional)</label>
+      <input type="email" name="email" value="{{ person.email if person and person.email else '' }}"
+             autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="name@email.com">
+      <p class="muted small" id="email-note" style="margin:4px 0 0">Coaches get their monthly
+        commission statement at this address.</p>
+    </div>
+    <div></div>
+  </div>
+
+  <div class="two-col">
+    <div>
       <label>Type</label>
       <select name="person_type" id="ptype" onchange="toggleType()">
         {% for k, lbl in ENTITY_TYPES %}
