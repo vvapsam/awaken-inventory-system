@@ -246,3 +246,12 @@ tr.needs:hover td{background:#f6ecd6}
 .ov svg{width:13px;height:13px}
 .ov.none{background:var(--bg);border-color:var(--line);color:var(--muted);font-weight:550}
 .tag.amber{background:var(--low-line);color:#4a3a12}
+
+/* Table search bar. Sits directly above the table it filters. */
+.tsearchbar{display:flex;align-items:center;gap:8px;margin:10px 0 8px;flex-wrap:wrap}
+.tsearchbar svg{width:15px;height:15px;color:var(--muted);flex:none}
+.tsearch{border:1px solid var(--line);border-radius:999px;padding:7px 14px;background:var(--bg);
+  font:inherit;font-size:.86rem;color:var(--ink);width:min(340px,100%)}
+.tsearch::placeholder{color:#9aa4b1}
+.tsearch-note{font-size:.8rem;color:var(--muted)}
+.tsearch-note.none{color:var(--danger,#9c2c1e)}
