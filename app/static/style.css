@@ -131,6 +131,12 @@ tr.inactive{opacity:.5}
 .login-card .sub{color:var(--muted);font-size:.85rem;margin:4px 0 18px}
 .login-card label{text-align:left}
 .error{background:#fdecea;border:1px solid #e6a49b;color:#9c2c1e;padding:10px 12px;border-radius:var(--radius-sm);margin:12px 0;font-size:.9rem}
+/* Outcome banners. `.error` is for something that went wrong; these two are for
+   something that went right, or that needs attention but isn't a failure. */
+.notice{background:#eefaf6;border:1px solid #bfe3dc;color:#0b5f55;padding:10px 12px;
+  border-radius:var(--radius-sm);margin:12px 0;font-size:.9rem}
+.notice.amber{background:#fdf6e3;border-color:#e8d49a;color:#7a5a12}
+.notice ul,.error ul{padding-left:20px}
 .periods{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 
 /* ================= SALES WIDGET ================= */
