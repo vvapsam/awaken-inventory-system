@@ -532,6 +532,12 @@ with TestClient(app) as c:
     toks = re.findall(r"/statement/([A-Za-z0-9_\-]{20,})", page)
     check("    one link per approved coach", len(toks) == 7, "%d links" % len(toks))
     check("    tokens are long and random", all(len(t) >= 30 for t in toks))
+    # Railway terminates TLS at its proxy, so the app sees plain http. A coach
+    # pasted an http:// link would only reach us via a redirect.
+    behind = c.get(f"/commissions/{rid}/statements",
+                   headers={"x-forwarded-proto": "https"}).text
+    check("    links are https behind a TLS proxy",
+          "https://" in behind and 'value="http://' not in behind)
     check("    no two coaches share a token", len(set(toks)) == len(toks))
 
     _d = _SL()
