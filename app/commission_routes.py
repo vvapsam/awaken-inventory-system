@@ -1021,6 +1021,17 @@ def register(app, deps):
 
     # ------------------------------------------------- coach statement links
 
+    def _public_base(request: Request) -> str:
+        """The URL a coach should be given. Railway terminates TLS at its proxy,
+        so `request.base_url` reports http:// — pasting that into a message hands
+        the coach a link that only works because of a redirect. Trust the
+        proxy's forwarded proto when it is present."""
+        base = str(request.base_url).rstrip("/")
+        proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+        if proto == "https" and base.startswith("http://"):
+            base = "https://" + base[len("http://"):]
+        return base
+
     def _links_for(db: Session, rid: int, coach: str):
         return (db.query(CommissionStatementLink)
                 .filter_by(run_id=rid, coach=coach)
@@ -1138,7 +1149,7 @@ def register(app, deps):
                          "email": (person.email if person else None)})
         return render(request, "commission_statements.html", db, staff,
                       run=run, rows=rows, days=STATEMENT_LINK_DAYS,
-                      base_url=str(request.base_url).rstrip("/"),
+                      base_url=_public_base(request),
                       RUN_FINALIZED=RUN_FINALIZED)
 
     @app.post("/commissions/{rid}/statements/link")
