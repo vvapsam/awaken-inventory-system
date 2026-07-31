@@ -100,6 +100,11 @@ main.bare{max-width:1040px;margin:0 auto;padding:24px 20px}
 .btn.primary{background:var(--teal);color:#fff;border-color:var(--teal)}
 .btn.primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
 .btn.big{padding:14px 16px;font-size:1rem;font-weight:600}
+/* A button that can't be pressed should look like one — otherwise a click that
+   does nothing reads as a broken page rather than a precondition not met. */
+.btn:disabled,.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn:disabled:hover,.btn[disabled]:hover{border-color:var(--line)}
+.btn.primary:disabled:hover{background:var(--teal);border-color:var(--teal)}
 
 /* ================= FORMS ================= */
 label{display:block;margin:14px 0 5px;color:var(--muted);font-size:.8rem;font-weight:500}
@@ -131,6 +136,12 @@ tr.inactive{opacity:.5}
 .login-card .sub{color:var(--muted);font-size:.85rem;margin:4px 0 18px}
 .login-card label{text-align:left}
 .error{background:#fdecea;border:1px solid #e6a49b;color:#9c2c1e;padding:10px 12px;border-radius:var(--radius-sm);margin:12px 0;font-size:.9rem}
+/* Outcome banners. `.error` is for something that went wrong; these two are for
+   something that went right, or that needs attention but isn't a failure. */
+.notice{background:#eefaf6;border:1px solid #bfe3dc;color:#0b5f55;padding:10px 12px;
+  border-radius:var(--radius-sm);margin:12px 0;font-size:.9rem}
+.notice.amber{background:#fdf6e3;border-color:#e8d49a;color:#7a5a12}
+.notice ul,.error ul{padding-left:20px}
 .periods{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 
 /* ================= SALES WIDGET ================= */
@@ -193,3 +204,100 @@ tr.inactive{opacity:.5}
   .app.collapsed .nav-label{display:block}
   .content{padding:16px 14px 72px}
 }
+
+/* Filter / tab pills — was inline in staff.html; shared so other pages can use it. */
+.tfilter{display:flex;gap:8px;margin:10px 0 4px;flex-wrap:wrap}
+.tfilter a{font-size:.82rem;padding:5px 12px;border:1px solid var(--line);border-radius:999px;
+  color:var(--muted);text-decoration:none;background:var(--bg)}
+.tfilter a:hover{border-color:var(--teal);color:var(--teal-dark)}
+.tfilter a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+/* Whole-row navigation. A row only becomes clickable when it carries a
+   data-href, so editable rows (which hold forms) stay untouched. */
+tr.rowlink{cursor:pointer}
+tr.rowlink:hover td{background:var(--teal-tint)}
+tr.rowlink td:first-child{position:relative}
+
+/* Popup panels. A row carrying data-modal opens the .scrim with that id; the
+   list itself stays read-only, so there is exactly one place a coach is
+   edited and no half-saved state to reconcile. */
+tr[data-modal]{cursor:pointer}
+tr[data-modal]:hover td{background:var(--teal-tint)}
+tr.needs td{background:var(--low)}
+tr.needs:hover td{background:#f6ecd6}
+.scrim{position:fixed;inset:0;background:rgba(10,18,28,.46);display:none;
+  align-items:flex-start;justify-content:center;padding:40px 16px;z-index:60;overflow:auto}
+.scrim.on{display:flex}
+.modal{background:var(--bg);border-radius:11px;width:min(740px,100%);
+  box-shadow:0 18px 50px rgba(8,14,22,.35);overflow:hidden}
+.modal .mhead{display:flex;align-items:center;gap:10px;padding:14px 18px;
+  border-bottom:1px solid var(--line);background:#fbfcfd}
+.modal .mhead h3{margin:0;font-size:1.05rem;font-weight:650}
+.modal .mbody{padding:15px 18px 8px}
+.modal .mfoot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;
+  border-top:1px solid var(--line);background:#fbfcfd;margin-top:14px}
+.modal .x{margin-left:auto;border:0;background:none;font-size:1.15rem;color:var(--muted);
+  cursor:pointer;line-height:1;padding:0 2px}
+.modal h4{font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--muted);margin:16px 0 5px}
+.modal .fieldset{display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap}
+.modal .fld{display:flex;flex-direction:column;gap:3px}
+.modal .fld label{font-size:.67rem;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em;margin:0}
+.modal table{margin:0}
+.modal table td,.modal table th{padding:6px 7px}
+.modal tr.addrow td{border-bottom:0;background:#fbfcfd}
+.warnbox{background:var(--low);border:1px solid var(--low-line);border-radius:6px;
+  padding:10px 13px;font-size:.84rem;margin:0 0 12px}
+
+/* Override count chip — tells you whether a popup is worth opening. */
+.ov{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(0,128,128,.30);
+  background:var(--teal-tint);color:var(--teal-dark);border-radius:999px;
+  padding:2px 9px 2px 7px;font-size:.76rem;font-weight:650}
+.ov svg{width:13px;height:13px}
+.ov.none{background:var(--bg);border-color:var(--line);color:var(--muted);font-weight:550}
+.tag.amber{background:var(--low-line);color:#4a3a12}
+
+/* Table search. Small on purpose — it sits above a table that is the point
+   of the page, so it stays out of the way until you type in it. */
+.tsearchbar{display:flex;align-items:center;gap:7px;margin:8px 0 6px;flex-wrap:wrap}
+.tsearchbar svg{width:13px;height:13px;color:var(--muted);flex:none}
+.tsearch{border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:var(--bg);
+  font:inherit;font-size:.8rem;color:var(--ink);width:210px;max-width:100%}
+.tsearch:focus{width:280px}
+.tsearch::placeholder{color:#9aa4b1}
+.tsearch-note{font-size:.78rem;color:var(--muted)}
+.tsearch-note.none{color:#9c2c1e}
+
+/* ---- delegation schedule matrix ---- */
+.legend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+.legend b{border-radius:5px;padding:2px 7px;font-size:.72rem;font-weight:700}
+.mxwrap{overflow-x:auto;border-radius:var(--radius)}
+.mx{font-size:.78rem;table-layout:fixed;width:auto;min-width:100%;margin:0}
+.mx th,.mx td{padding:0;border-bottom:1px solid var(--line);text-align:center}
+.mx th.cli,.mx td.cli{width:170px;min-width:170px;text-align:left;padding:6px 10px;
+  position:sticky;left:0;background:var(--bg);z-index:2;border-right:1px solid var(--line);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx thead th.cli{background:var(--panel)}
+.mx th.d,.mx td.d{width:31px;min-width:31px}
+.mx th.tot,.mx td.tot{width:66px;min-width:66px;text-align:right;padding-right:11px;
+  border-left:1px solid var(--line)}
+.mx thead th.d{padding:4px 0 5px;line-height:1.1}
+.mx .wd{display:block;font-size:.56rem;color:#9aa4b1;font-weight:600}
+.mx .dn{display:block;font-size:.72rem;color:var(--muted);font-weight:600}
+.mx td.d{height:32px}
+.mx .we{background:#f6f8fa}
+.mx thead th.we{background:#eef1f5}
+.mx td i{color:#d5dbe2;font-style:normal}
+.mx td b{display:inline-block;min-width:24px;padding:2px 4px;border-radius:5px;
+  font-size:.68rem;font-weight:700;cursor:default}
+.mx tbody tr:hover td.cli{background:var(--teal-tint)}
+.mx tfoot td{background:#fbfcfd;font-weight:650;color:var(--muted);font-size:.72rem}
+.c1{background:#dcecff;color:#1c4e8a}
+.c2{background:#e4e0ff;color:#463a9a}
+.c3{background:#ffe4dc;color:#8a3a22}
+.c4{background:#fdeec2;color:#7a5a12}
+.c5{background:#d6f0ea;color:#0b6b60}
+.c6{background:#e9edf1;color:#4a5765}
+.c7{background:#ffe0ef;color:#8a2a5c}
+.c8{background:#e2f5cd;color:#3f6b12}

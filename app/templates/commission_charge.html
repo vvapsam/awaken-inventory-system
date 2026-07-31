@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ charge.number }} — {{ charge.delegator_name }}
+      {% if charge.status == 'paid' %}<span class="tag">Paid</span>
+      {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
+    </h1>
+    <p class="muted small" style="margin:2px 0 0">{{ charge.period_label }} · delegation charge</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a class="btn" href="/commissions/{{ charge.run_id }}?tab=documents">← Run</a>
+    <form method="post" action="/commissions/charges/{{ charge.id }}/paid">
+      <button class="btn primary">{{ 'Mark unpaid' if charge.status == 'paid' else 'Record payment' }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid" style="margin:14px 0">
+  <div class="card stat"><div class="stat-label">Delegated sessions</div><div class="stat-value">{{ charge.sessions }}</div></div>
+  <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Amount due</div><div class="stat-value">{{ peso(charge.total) }}</div></div>
+  <div class="card stat"><div class="stat-label">Paid to coaches</div><div class="stat-value">{{ peso(charge.coach_cost) }}</div></div>
+  <div class="card stat"><div class="stat-label">Our margin</div><div class="stat-value">{{ peso(charge.margin) }}</div></div>
+</div>
+
+<table>
+  <tr><th>#</th><th>Booking</th><th>Date</th><th>Client</th><th>Coach who covered</th><th style="text-align:right">Rate</th></tr>
+  {% for l in charge.lines %}
+  <tr>
+    <td class="muted">{{ loop.index }}</td>
+    <td class="mono">{{ l.booking_ref }}</td>
+    <td>{{ l.occurred_on.strftime('%d %b') if l.occurred_on }}</td>
+    <td>{{ l.description }}</td>
+    <td>{{ l.coach }}</td>
+    <td style="text-align:right">{{ peso(l.amount) }}</td>
+  </tr>
+  {% endfor %}
+  <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
+    <td colspan="5">Total due</td><td style="text-align:right">{{ peso(charge.total) }}</td>
+  </tr>
+</table>
+{% endblock %}

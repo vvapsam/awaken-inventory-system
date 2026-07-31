@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% macro searchbar(target, placeholder, selector='') %}
+<div class="tsearchbar">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <input type="search" class="tsearch" data-filter="{{ selector or '#' ~ target }}"
+         data-note="{{ target }}-note" placeholder="{{ placeholder }}"
+         autocomplete="off" spellcheck="false">
+  <span class="tsearch-note" id="{{ target }}-note"></span>
+</div>
+{% endmacro %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ delegator.name }}
+      {% for code in delegator.code_list() %}<span class="tag">{{ code }}</span> {% endfor %}</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ run.period_label or run.period if run }} ·
+      {{ sessions }} delegated session{{ 's' if sessions != 1 }}
+      {% if delegator.entity_id %}· <a href="/admin/staff/{{ delegator.entity_id }}/edit">person record ↗</a>{% endif %}</p>
+  </div>
+  <div style="display:flex;gap:7px;align-items:center">
+    {% if runs|length > 1 %}
+    <form method="get" style="margin:0">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <select name="run" onchange="this.form.submit()" style="width:auto;padding:7px 11px">
+        {% for r in runs %}
+        <option value="{{ r.id }}" {{ 'selected' if run and r.id == run.id }}>{{ r.period_label or r.period }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+    <a class="btn" href="/commissions/delegation?run={{ run.id if run }}">← All delegators</a>
+  </div>
+</div>
+
+<div class="grid" style="margin:14px 0">
+  <div class="card stat"><div class="stat-label">Sessions</div><div class="stat-value">{{ sessions }}</div>
+    <div class="muted small">{{ clients|length }} client{{ 's' if clients|length != 1 }} ·
+      {{ coaches|length }} coach{{ 'es' if coaches|length != 1 }}</div></div>
+  <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(charged) }}</div>
+    <div class="muted small">{{ counting }} × {{ peso(delegator.rate) }}</div></div>
+  <div class="card stat"><div class="stat-label">Paid to coaches</div><div class="stat-value">{{ peso(cost) }}</div>
+    <div class="muted small">{{ counting }} × {{ peso(delegator.cost) }}</div></div>
+  <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Margin</div>
+    <div class="stat-value">{{ peso(margin) }}</div></div>
+</div>
+
+{% set qs = '&run=' ~ run.id if run else '' %}
+<div class="tfilter">
+  <a href="?tab=sessions{{ qs }}" class="{{ 'on' if tab == 'sessions' }}">Sessions ({{ sessions }})</a>
+  <a href="?tab=schedule{{ qs }}" class="{{ 'on' if tab == 'schedule' }}">Schedule</a>
+  <a href="?tab=clients{{ qs }}" class="{{ 'on' if tab == 'clients' }}">By client ({{ clients|length }})</a>
+  <a href="?tab=coaches{{ qs }}" class="{{ 'on' if tab == 'coaches' }}">By coach ({{ coaches|length }})</a>
+</div>
+
+{% if not rows %}
+<div class="card"><p class="muted" style="margin:0">No delegated sessions for {{ delegator.name }} in this period.</p></div>
+
+{% elif tab == 'schedule' %}
+<p class="muted small">One row per client, one column per day. Each cell is the coach who covered that
+  session — read down a column to see who trained that day, across a row to see whether a client has a
+  regular coach.</p>
+<div class="legend">
+  <span class="muted small">Coaches:</span>
+  {% for name, code in matrix.codes|dictsort %}
+  <b class="{{ matrix.colors[name] }}">{{ code }}</b><span class="muted small">{{ name }}</span>
+  {% endfor %}
+</div>
+<div class="mxwrap">
+<table class="mx">
+  <thead>
+  <tr><th class="cli">Client</th>
+    {% for d in matrix.days %}
+    <th class="d{{ ' we' if d.weekday() >= 5 }}">
+      <span class="wd">{{ 'MTWTFSS'[d.weekday()] }}</span><span class="dn">{{ d.day }}</span></th>
+    {% endfor %}
+    <th class="tot">Sessions</th></tr>
+  </thead>
+  <tbody>
+  {% for c in matrix.clients %}
+  <tr><td class="cli" title="{{ c.client }}">{{ c.client }}</td>
+    {% for cell in c.cells %}
+    <td class="d{{ ' we' if matrix.days[loop.index0].weekday() >= 5 }}">
+      {% if cell.n %}
+      <b class="{{ matrix.colors.get(cell.coach, 'c6') }}"
+         title="{% for b in cell.bookings %}{{ b.coach or b.staff_raw }} · {{ b.booking_ref }}{{ ' · ' if not loop.last }}{% endfor %}">{{ matrix.codes.get(cell.coach, '?') }}{% if cell.n > 1 %}×{{ cell.n }}{% endif %}</b>
+      {% else %}<i>·</i>{% endif %}
+    </td>
+    {% endfor %}
+    <td class="tot">{{ c.total }}</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+  <tr><td class="cli">Sessions</td>
+    {% for d in matrix.days %}
+    <td class="d{{ ' we' if d.weekday() >= 5 }}">{% if matrix.totals[d] %}{{ matrix.totals[d] }}{% else %}<i>·</i>{% endif %}</td>
+    {% endfor %}
+    <td class="tot">{{ sessions }}</td></tr>
+  </tfoot>
+</table>
+</div>
+<p class="muted small" style="margin-top:8px">Weekends are shaded. A cell reading
+  <span class="mono">×2</span> is two sessions that day; hover it for the booking refs.</p>
+
+{% elif tab == 'clients' %}
+{{ searchbar('cl', 'Search client…') }}
+<table id="cl">
+  <thead><tr><th>Client</th><th style="text-align:right">Sessions</th><th>Coaches</th>
+    <th>First</th><th>Last</th><th style="text-align:right">Charged</th>
+    <th style="text-align:right">Coach cost</th><th style="text-align:right">Margin</th></tr></thead>
+  <tbody>
+  {% for c in clients %}
+  <tr><td><b>{{ c.name }}</b></td>
+    <td style="text-align:right">{{ c.sessions }}</td>
+    <td class="small">{{ c.others|sort|join(', ') }}</td>
+    <td>{{ c.first.strftime('%d %b') if c.first }}</td>
+    <td>{{ c.last.strftime('%d %b') if c.last }}</td>
+    <td style="text-align:right" data-money="charged" data-value="{{ c.charged }}">{{ peso(c.charged) }}</td>
+    <td style="text-align:right" data-money="paid" data-value="{{ c.cost }}">{{ peso(c.cost) }}</td>
+    <td style="text-align:right;color:var(--teal-dark);font-weight:650"
+        data-money="margin" data-value="{{ c.charged - c.cost }}">{{ peso(c.charged - c.cost) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% elif tab == 'coaches' %}
+{{ searchbar('co', 'Search coach…') }}
+<table id="co">
+  <thead><tr><th>Coach</th><th style="text-align:right">Sessions</th><th>Clients covered</th>
+    <th style="text-align:right">Paid to coach</th><th style="text-align:right">Charged on</th>
+    <th style="text-align:right">Margin</th></tr></thead>
+  <tbody>
+  {% for c in coaches %}
+  <tr><td><b>{{ c.name }}</b></td>
+    <td style="text-align:right">{{ c.sessions }}</td>
+    <td class="small">{{ c.others|sort|join(', ') }}</td>
+    <td style="text-align:right" data-money="paid" data-value="{{ c.cost }}">{{ peso(c.cost) }}</td>
+    <td style="text-align:right" data-money="charged" data-value="{{ c.charged }}">{{ peso(c.charged) }}</td>
+    <td style="text-align:right;color:var(--teal-dark);font-weight:650"
+        data-money="margin" data-value="{{ c.charged - c.cost }}">{{ peso(c.charged - c.cost) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% else %}
+{{ searchbar('ds', 'Search client, coach, booking ref…') }}
+<table id="ds">
+  <thead><tr><th>Booking</th><th>Date</th><th>Client</th><th>Session</th><th>Coach</th>
+    <th>Counts?</th><th style="text-align:right">Charged</th>
+    <th style="text-align:right">Coach cost</th><th style="text-align:right">Margin</th></tr></thead>
+  <tbody>
+  {% for b in rows %}
+  <tr>
+    <td class="mono">{{ b.booking_ref }}</td>
+    <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+    <td>{{ b.customer }}</td>
+    <td>{{ b.appointment_name }}{% if b.variant %}<div class="muted small">{{ b.variant }}</div>{% endif %}</td>
+    <td><a href="/commissions/{{ run.id }}/coach/{{ b.coach or b.staff_raw }}">{{ b.coach or b.staff_raw }}</a></td>
+    <td>{% if b.pays_by_status %}<span class="tag">Yes</span>
+        {% elif b.approved %}<span class="tag">Approved</span>
+        {% else %}<span class="muted small">{{ b.booking_status|lower }}</span>{% endif %}</td>
+    <td style="text-align:right" data-money="charged" data-value="{{ b.delegation_charge or 0 }}">{{ peso(b.delegation_charge) }}</td>
+    <td style="text-align:right" data-money="paid" data-value="{{ b.commission or 0 }}">{{ peso(b.commission) }}</td>
+    <td style="text-align:right;color:var(--teal-dark);font-weight:650"
+        data-money="margin" data-value="{{ (b.delegation_charge or 0) - (b.commission or 0) }}">{{ peso((b.delegation_charge or 0) - (b.commission or 0)) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+  <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
+    <td colspan="6">{{ sessions }} session{{ 's' if sessions != 1 }}</td>
+    <td style="text-align:right">{{ peso(charged) }}</td>
+    <td style="text-align:right">{{ peso(cost) }}</td>
+    <td style="text-align:right">{{ peso(margin) }}</td>
+  </tr>
+  </tfoot>
+</table>
+{% endif %}
+{% endblock %}

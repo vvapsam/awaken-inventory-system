@@ -46,7 +46,7 @@ def _tz():
     return timezone(timedelta(hours=8))  # Manila fallback
 
 BASE_DIR = os.path.dirname(__file__)
-app = FastAPI(title="AWAKEN Inventory")
+app = FastAPI(title="AWAKEN System")
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SECRET_KEY", "dev-insecure-change-me"),
@@ -55,6 +55,26 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 templates.env.globals["peso"] = lambda v: "₱{:,.2f}".format(float(v or 0))
+
+
+def _asset_version() -> str:
+    """A cache-busting stamp for /static, from the newest file's mtime.
+
+    StaticFiles sends no Cache-Control, so browsers apply heuristic caching and
+    can serve a stylesheet from before the last deploy — which renders the app
+    with old rules and new markup. Versioning the URL makes a deploy a new URL.
+    """
+    newest = 0.0
+    static_dir = os.path.join(BASE_DIR, "static")
+    for name in os.listdir(static_dir):
+        try:
+            newest = max(newest, os.path.getmtime(os.path.join(static_dir, name)))
+        except OSError:
+            continue
+    return str(int(newest))
+
+
+templates.env.globals["ASSET_V"] = _asset_version()
 templates.env.globals["can"] = can
 templates.env.globals["can_any"] = can_any
 
@@ -365,6 +385,93 @@ def startup():
         _migrate_transactions(db)
         # Fold customers and members into the unified entity table.
         _migrate_entities(db)
+        # Reviewer approval for non-Completed bookings. create_all() only makes
+        # new tables, so an existing commission_bookings needs explicit ALTERs.
+        with engine.begin() as conn:
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS approved_by_id INTEGER "
+                "REFERENCES entity(id) ON DELETE SET NULL; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_runs') IS NOT NULL THEN "
+                "ALTER TABLE commission_runs ADD COLUMN IF NOT EXISTS last_import_note TEXT; "
+                "END IF; END $$;"))
+            # Session rates gained a programme and a pack total, so Awaken
+            # Force can sit alongside the Private Coaching packs.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_session_rates') IS NOT NULL THEN "
+                "ALTER TABLE commission_session_rates ADD COLUMN IF NOT EXISTS program VARCHAR; "
+                "ALTER TABLE commission_session_rates ADD COLUMN IF NOT EXISTS package_total NUMERIC(10,2); "
+                "UPDATE commission_session_rates SET program = 'Private Coaching' "
+                "WHERE program IS NULL; END IF; END $$;"))
+            # Booking ref is the natural key for de-duplicating imports.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
+                "CREATE INDEX IF NOT EXISTS commission_bookings_ref_idx "
+                "ON commission_bookings (booking_ref); END IF; END $$;"))
+            # Statement links keep their history: replacing a coach's link
+            # revokes the old row rather than overwriting it, so the URL in
+            # last week's email can still say "a newer one was sent".
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_statement_links') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE commission_statement_links "
+                "  DROP CONSTRAINT IF EXISTS uq_statement_link_coach; "
+                "END IF; END $$;"))
+            # Which statuses pay without review became a setting, and the
+            # answer is snapshotted per booking. Existing rows are back-filled
+            # to Completed-only — the rule they were actually calculated under
+            # — so no run that has already been read, signed off or paid moves
+            # because of this upgrade. The new rule reaches a draft only when
+            # someone imports again or presses Recalculate.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "                WHERE table_name = 'commission_bookings' "
+                "                  AND column_name = 'pays_by_status') THEN "
+                "ALTER TABLE commission_bookings ADD COLUMN "
+                "  pays_by_status BOOLEAN NOT NULL DEFAULT FALSE; "
+                "UPDATE commission_bookings SET pays_by_status = TRUE "
+                " WHERE lower(btrim(booking_status)) = 'completed'; "
+                "END IF; END $$;"))
+            # A rate typed by hand on one booking row.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  rate_manual BOOLEAN NOT NULL DEFAULT FALSE; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  rate_manual_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
+                "END IF; END $$;"))
+            # Coach overrides moved from a comma-separated column with one
+            # shared rate to a row per plan, each with its own basis and rate.
+            # Copy first, then drop the old columns — leaving them would let a
+            # deleted override come back on the next boot.
+            conn.execute(text(
+                "DO $$ BEGIN "
+                "IF to_regclass('public.commission_coach_overrides') IS NOT NULL "
+                "AND EXISTS (SELECT 1 FROM information_schema.columns "
+                "            WHERE table_name = 'commission_coach_rates' "
+                "              AND column_name = 'override_plans') THEN "
+                "  INSERT INTO commission_coach_overrides "
+                "         (rate_id, plan, rate_type, rate_value, is_active) "
+                "  SELECT DISTINCT r.id, initcap(btrim(p)), r.override_rate_type, "
+                "         COALESCE(r.override_rate_value, 0), TRUE "
+                "  FROM commission_coach_rates r, "
+                "       unnest(string_to_array(r.override_plans, ',')) AS p "
+                "  WHERE r.override_rate_type IS NOT NULL AND btrim(p) <> '' "
+                "    AND NOT EXISTS (SELECT 1 FROM commission_coach_overrides x "
+                "                    WHERE x.rate_id = r.id "
+                "                      AND lower(x.plan) = lower(btrim(p))); "
+                "  ALTER TABLE commission_coach_rates DROP COLUMN IF EXISTS override_plans; "
+                "  ALTER TABLE commission_coach_rates DROP COLUMN IF EXISTS override_rate_type; "
+                "  ALTER TABLE commission_coach_rates DROP COLUMN IF EXISTS override_rate_value; "
+                "END IF; END $$;"))
+        # Seed commission rules (coach rates, delegators, settings). Idempotent.
+        from . import commission_routes
+        commission_routes.seed(db)
     finally:
         db.close()
 
@@ -1521,7 +1628,8 @@ async def staff_create(request: Request, db: Session = Depends(get_db)):
         return err("Name is required.")
 
     new = Staff(name=name, has_access=has_access, permissions="", role="staff",
-                phone=(form.get("phone") or "").strip() or None)
+                phone=(form.get("phone") or "").strip() or None,
+                email=(form.get("email") or "").strip() or None)
     r = _apply_type(db, new, person_type, form, err)
     if r:
         return r
@@ -1563,6 +1671,10 @@ async def staff_update(request: Request, sid: int, db: Session = Depends(get_db)
 
     person.name = name or person.name
     person.phone = (form.get("phone") or "").strip() or None
+    # Only touch email when this form carried the field — a form that doesn't
+    # show email shouldn't silently erase one set elsewhere.
+    if "email" in form:
+        person.email = (form.get("email") or "").strip() or None
     person.is_active = form.get("is_active") == "on"
 
     r = _apply_type(db, person, person_type, form, err)
@@ -3071,3 +3183,19 @@ def codes_list(request: Request, db: Session = Depends(get_db)):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+# ================= Coach commissions =================
+# Registered from a separate module so main.py doesn't grow another 400 lines,
+# and so the commission screens can't import main (which would be circular).
+from . import commission_routes  # noqa: E402
+
+commission_routes.register(app, {
+    "render": render,
+    "require": require,
+    "require_admin": require_admin,
+    # The coach statement page is public — it renders without a logged-in
+    # staff, so it needs the raw template environment rather than render().
+    "templates": templates,
+    "tz": _tz,
+})

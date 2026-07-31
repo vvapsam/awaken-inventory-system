@@ -2,7 +2,7 @@ import math
 from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
-    LargeBinary, Numeric, String, Text,
+    LargeBinary, Numeric, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship, backref
 from .db import Base
@@ -42,6 +42,7 @@ ADMIN_AREA_DEFS = [
     ("manage_kiosk", "Kiosk & plans"),
     ("view_waivers", "Signed waivers"),
     ("manage_hyrox", "HYROX event"),
+    ("manage_commissions", "Coach commissions"),
 ]
 
 MODULE_KEYS = [f"{m}.{a}" for m, _ in MODULES for a, _ in ACTIONS]
@@ -561,3 +562,447 @@ KIOSK_HYROX_RATES = {(False, False): 1000, (False, True): 1000,
 
 
 # Legacy `payments` (customer balance payments) folded into transactions; dropped at startup.
+
+
+# ===================== Coach commissions =====================
+# Deliberately NOT part of the `transactions` table: commission payouts move
+# money the other way (AWAKEN -> coach) and mixing them in would make every
+# query that sums transactions without filtering by type overstate revenue.
+
+COMMISSION_FLAT = "flat"
+COMMISSION_PERCENT = "percent"
+COMMISSION_RATE_TYPES = [(COMMISSION_FLAT, "Fixed amount"),
+                         (COMMISSION_PERCENT, "Percent of revenue")]
+
+#: The statuses a Rezerv export can carry, in the order the report shows them.
+BOOKING_STATUSES = ["Completed", "Cancelled", "Late cancelled", "No show", "Booked"]
+
+IMPORT_REPLACE = "replace"
+IMPORT_MERGE = "merge"
+
+RUN_DRAFT = "draft"
+RUN_FINALIZED = "finalized"
+RUN_SUPERSEDED = "superseded"
+
+# Default rules, seeded once on first startup. Rezerv writes "Rick F" for Ric,
+# so the export spelling is stored alongside the coach.
+COMMISSION_RATE_DEFAULTS = [
+    dict(coach="Anjo", staff_raw="Anjo R", rate_type=COMMISSION_FLAT, rate_value=750,
+         overrides=[("Drop-In", COMMISSION_PERCENT, 0.50),
+                    ("Awaken Force", COMMISSION_PERCENT, 0.50)]),
+    dict(coach="JC", staff_raw="JC S", rate_type=COMMISSION_FLAT, rate_value=750,
+         overrides=[("Drop-In", COMMISSION_PERCENT, 0.50),
+                    ("Awaken Force", COMMISSION_PERCENT, 0.50)]),
+    dict(coach="Ric", staff_raw="Rick F", rate_type=COMMISSION_PERCENT, rate_value=0.50),
+    dict(coach="Julio", staff_raw="Julio D", rate_type=COMMISSION_PERCENT, rate_value=0.70),
+    dict(coach="AR", staff_raw="AR M", rate_type=COMMISSION_PERCENT, rate_value=0.40),
+    dict(coach="Joseph", staff_raw="Joseph J", rate_type=COMMISSION_PERCENT, rate_value=0.40),
+    dict(coach="Laurent", staff_raw="Laurent J", rate_type=COMMISSION_PERCENT, rate_value=0.40),
+]
+
+COMMISSION_DELEGATOR_DEFAULTS = [
+    dict(name="Gab Rosario", codes="GR", rate=1000, cost=640),
+    dict(name="Culver Padilla", codes="KP,CP", rate=1000, cost=640),
+]
+
+# key -> (default value, label, help)
+COMMISSION_SETTING_DEFAULTS = {
+    "hyrox_walkin_deduction": ("1000", "Hyrox walk-in deduction",
+                               "Deducted from 'Hyrox Simulation (With Coach)' walk-ins."),
+    "awaken_force_revenue": ("1200", "Awaken Force revenue",
+                             "Per-session revenue; the export shows the package total."),
+    "backfill_scope": ("credit_and_free", "Backfill scope",
+                       "Which ₱0 session rows get the old per-session rate. "
+                       "credit_and_free = prepaid AND comped sessions are backfilled. "
+                       "credit_only = comped (Free) sessions keep ₱0 revenue. "
+                       "Delegated sessions and memberships are never backfilled."),
+    "default_delegator": ("KP", "Default delegator",
+                          "Applied to a bare 'Delegation' variant that names no code."),
+    "paid_statuses": ("completed,late cancelled", "Statuses that pay automatically",
+                      "Comma-separated booking statuses that earn commission without "
+                      "review. A late cancel is included because the client was still "
+                      "charged and the coach still lost the hour. Every other status "
+                      "earns nothing until approved on the coach's page. Changing this "
+                      "affects the next import, and any draft you Recalculate — "
+                      "finalized runs never move."),
+}
+
+
+class CommissionCoachRate(Base):
+    """How one coach is paid. Editable; past runs are unaffected because the
+    rate that fired is snapshotted onto every booking row."""
+    __tablename__ = "commission_coach_rates"
+    id = Column(Integer, primary_key=True)
+    coach = Column(String, nullable=False)                  # display name
+    staff_raw = Column(String, nullable=False)              # Rezerv spelling
+    coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    rate_type = Column(String, nullable=False, default=COMMISSION_PERCENT)
+    rate_value = Column(Numeric(10, 4), nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    entity = relationship("Staff", foreign_keys=[coach_id])
+    overrides = relationship(
+        "CommissionCoachOverride", back_populates="rate",
+        cascade="all, delete-orphan",
+        order_by="CommissionCoachOverride.plan")
+
+    @property
+    def live_overrides(self):
+        return [o for o in self.overrides if o.is_active]
+
+    def plan_list(self):
+        """Lowercased plans this coach is paid differently for."""
+        return [o.plan.strip().lower() for o in self.live_overrides if o.plan]
+
+
+class CommissionCoachOverride(Base):
+    """One plan that pays this coach differently from their default.
+
+    A row per plan rather than a comma-separated column, so each plan carries
+    its own basis and rate — Drop-In at 50% and Awaken Force at 60% is
+    expressible, which the old single-override column could not do.
+    """
+    __tablename__ = "commission_coach_overrides"
+    id = Column(Integer, primary_key=True)
+    rate_id = Column(Integer, ForeignKey("commission_coach_rates.id",
+                                         ondelete="CASCADE"), nullable=False)
+    plan = Column(String, nullable=False)                   # as displayed
+    rate_type = Column(String, nullable=False, default=COMMISSION_PERCENT)
+    rate_value = Column(Numeric(10, 4), nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    rate = relationship("CommissionCoachRate", back_populates="overrides")
+
+    # Deferred to commit time: editing two rows can swap their plans, which is
+    # briefly a duplicate mid-statement even though the end state is valid.
+    __table_args__ = (UniqueConstraint("rate_id", "plan",
+                                       name="uq_coach_override_plan",
+                                       deferrable=True, initially="DEFERRED"),)
+
+
+class CommissionDelegator(Base):
+    """Someone who brings their own clients and delegates sessions to a coach.
+
+    `rate` is charged to them (AWAKEN income); `cost` is paid to the covering
+    coach (AWAKEN expense). The difference is the delegation margin.
+    """
+    __tablename__ = "commission_delegators"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    entity_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    codes = Column(String, nullable=False, default="")      # "KP,CP"
+    rate = Column(Numeric(10, 2), nullable=False, default=0)
+    cost = Column(Numeric(10, 2), nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    entity = relationship("Staff", foreign_keys=[entity_id])
+
+    def code_list(self):
+        return [c.strip().upper() for c in (self.codes or "").split(",") if c.strip()]
+
+    @property
+    def margin(self):
+        return float(self.rate or 0) - float(self.cost or 0)
+
+
+class CommissionSessionRate(Base):
+    """Per-session rate for a pricing plan, used to backfill a ₱0 export row.
+
+    Dated rather than a flat lookup: rates change, and a booking must be valued
+    with the rate that applied on the day it happened, not today's. Leaving
+    effective_from empty means "as far back as there is data".
+    """
+    __tablename__ = "commission_session_rates"
+    id = Column(Integer, primary_key=True)
+    program = Column(String)                       # "Private Coaching" | "Awaken Force"
+    plan = Column(String, nullable=False)          # matches "Pricing plan used"
+    sessions = Column(Integer)                     # 1, 8, 12, 24, 36
+    rate = Column(Numeric(10, 2), nullable=False, default=0)
+    package_total = Column(Numeric(10, 2))         # what the export bills for the pack
+    effective_from = Column(Date)                  # null = no lower bound
+    effective_to = Column(Date)                    # null = still current
+    is_active = Column(Boolean, nullable=False, default=True)
+    note = Column(String)
+
+    def covers(self, on):
+        if on is None:
+            return True
+        if self.effective_from and on < self.effective_from:
+            return False
+        if self.effective_to and on > self.effective_to:
+            return False
+        return True
+
+
+#: Seeded once, from the rates the commission spec has always used.
+PT = "Private Coaching"
+AWAKEN_FORCE = "Awaken Force"
+
+COMMISSION_SESSION_RATE_DEFAULTS = [
+    dict(program=PT, plan="1 Session", sessions=1, rate=1900),
+    dict(program=PT, plan="8 Sessions", sessions=8, rate=1800),
+    dict(program=PT, plan="12 Sessions", sessions=12, rate=1700),
+    dict(program=PT, plan="24 Sessions", sessions=24, rate=1600),
+    dict(program=PT, plan="36 Sessions", sessions=36, rate=1500),
+    # Awaken Force has its own card. Every AF row exports identically
+    # (credit 1, the package total as revenue), so the package_total is what
+    # tells one package from another.
+    dict(program=AWAKEN_FORCE, plan="Awaken Force", sessions=1, rate=1500,
+         package_total=1500),
+    dict(program=AWAKEN_FORCE, plan="Awaken Force", sessions=8, rate=1200,
+         package_total=9600),
+]
+
+
+class CommissionSetting(Base):
+    __tablename__ = "commission_settings"
+    id = Column(Integer, primary_key=True)
+    key = Column(String, nullable=False, unique=True)
+    value = Column(Text, nullable=False, default="")
+
+
+class CommissionRun(Base):
+    __tablename__ = "commission_runs"
+    id = Column(Integer, primary_key=True)
+    period = Column(String, nullable=False)                 # "2026-06"
+    period_label = Column(String)                           # "June 2026"
+    period_start = Column(Date)
+    period_end = Column(Date)
+    source_filename = Column(String)
+    source_sha256 = Column(String)
+    status = Column(String, nullable=False, default=RUN_DRAFT)
+    parsed_count = Column(Integer, nullable=False, default=0)
+    kept_count = Column(Integer, nullable=False, default=0)
+    dropped_count = Column(Integer, nullable=False, default=0)
+    uploaded_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    uploaded_at = Column(DateTime(timezone=True), default=now_utc)
+    finalized_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    finalized_at = Column(DateTime(timezone=True))
+    # Receipt from the last import into this run: what was added, what was
+    # skipped as a duplicate, what was filtered out by status.
+    last_import_note = Column(Text)
+
+    uploaded_by = relationship("Staff", foreign_keys=[uploaded_by_id])
+    finalized_by = relationship("Staff", foreign_keys=[finalized_by_id])
+    bookings = relationship("CommissionBooking", back_populates="run",
+                            cascade="all, delete-orphan")
+    payouts = relationship("CommissionPayout", cascade="all, delete-orphan")
+    charges = relationship("CommissionCharge", cascade="all, delete-orphan")
+
+
+class CommissionBooking(Base):
+    """One row per booking in the export, with the rule and rate that fired."""
+    __tablename__ = "commission_bookings"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    # --- as exported ---
+    booking_ref = Column(String)
+    customer = Column(String)
+    appointment_date = Column(Date)
+    appointment_name = Column(String)
+    variant = Column(String)
+    staff_raw = Column(String)
+    booking_status = Column(String)
+    pricing_plan = Column(String)
+    payment_method = Column(String)
+    revenue_raw = Column(Numeric(10, 2), default=0)
+    # --- resolved ---
+    coach = Column(String)
+    coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    delegator_id = Column(Integer, ForeignKey("commission_delegators.id",
+                                              ondelete="SET NULL"))
+    delegator_assumed = Column(Boolean, nullable=False, default=False)
+    # --- normalized ---
+    revenue = Column(Numeric(10, 2), default=0)
+    adjustment = Column(String)
+    adjustment_note = Column(String)
+    # --- computed (snapshot: never recalculated) ---
+    rule = Column(String)
+    rate_type = Column(String)
+    rate_value = Column(Numeric(10, 4))
+    # A rate typed by hand on this row. Survives Recalculate — otherwise the
+    # correction you just made would be silently undone by the next config edit.
+    rate_manual = Column(Boolean, nullable=False, default=False)
+    rate_manual_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    commission = Column(Numeric(10, 2))
+    delegation_charge = Column(Numeric(10, 2))
+    # Whether this row's booking status pays without anyone approving it,
+    # decided against the rules in force when the run was calculated. Stored
+    # rather than re-derived so that changing which statuses pay cannot
+    # restate a run that has already been read, signed off or paid.
+    pays_by_status = Column(Boolean, nullable=False, default=False)
+    # --- excluded rows are kept, flagged, and shown ---
+    dropped_reason = Column(String)
+    # --- reviewer approval for non-Completed bookings ---
+    approved = Column(Boolean, nullable=False, default=False)
+    approved_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    approved_at = Column(DateTime(timezone=True))
+
+    run = relationship("CommissionRun", back_populates="bookings")
+    delegator = relationship("CommissionDelegator")
+    approved_by = relationship("Staff", foreign_keys=[approved_by_id])
+
+    @property
+    def is_commissionable(self):
+        """Paid by its status, or approved by a reviewer."""
+        return bool(self.pays_by_status) or bool(self.approved)
+
+
+class CommissionSignoff(Base):
+    """One coach's figures on one run, confirmed correct and cleared to pay.
+
+    Separate from the per-booking `approved` flag: that decides whether a row
+    counts, this says the whole sheet has been checked. Finalizing pays only
+    coaches that carry one, so nobody is paid on figures no one has read.
+    """
+    __tablename__ = "commission_signoffs"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    coach = Column(String, nullable=False)
+    sessions = Column(Integer)                     # what was signed off, for audit
+    commission = Column(Numeric(10, 2))
+    approved_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    approved_at = Column(DateTime(timezone=True))
+
+    run = relationship("CommissionRun")
+    approved_by = relationship("Staff", foreign_keys=[approved_by_id])
+
+    __table_args__ = (UniqueConstraint("run_id", "coach",
+                                       name="uq_commission_signoff_coach"),)
+
+
+#: How long a coach's statement link stays open, in days.
+STATEMENT_LINK_DAYS = 5
+
+
+class CommissionStatementLink(Base):
+    """A private, expiring URL that shows one coach their own statement.
+
+    A link rather than a login: coaches read these on a phone between clients,
+    and an account they have to remember a password for is an account they
+    won't use. The cost is that whoever holds the URL can read that statement,
+    so the token is long and random, it expires, it can be revoked, and it
+    exposes exactly one coach's one period — no other coach, no way into the
+    app.
+    """
+    __tablename__ = "commission_statement_links"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    coach = Column(String, nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    expires_at = Column(DateTime(timezone=True))
+    revoked_at = Column(DateTime(timezone=True))
+    # delivery + reading, so "did they get it" has an answer
+    sent_to = Column(String)
+    sent_at = Column(DateTime(timezone=True))
+    first_opened_at = Column(DateTime(timezone=True))
+    last_opened_at = Column(DateTime(timezone=True))
+    opens = Column(Integer, nullable=False, default=0)
+
+    run = relationship("CommissionRun")
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+
+    # No unique constraint on (run_id, coach): replacing a link keeps the old
+    # row, revoked. Otherwise a coach clicking yesterday's emailed link gets a
+    # bare "not found" instead of "a newer one was sent".
+
+    @property
+    def is_expired(self):
+        return bool(self.expires_at and self.expires_at < now_utc())
+
+    @property
+    def is_live(self):
+        return not self.revoked_at and not self.is_expired
+
+    @property
+    def state(self):
+        if self.revoked_at:
+            return "revoked"
+        if self.is_expired:
+            return "expired"
+        if self.opens:
+            return "opened"
+        if self.sent_at:
+            return "sent"
+        return "ready"
+
+
+class CommissionPayout(Base):
+    """What AWAKEN owes one coach for one run."""
+    __tablename__ = "commission_payouts"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    number = Column(String, unique=True)                    # COM-0001
+    coach = Column(String)
+    coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    period_label = Column(String)
+    status = Column(String, nullable=False, default="unpaid")
+    sessions = Column(Integer, nullable=False, default=0)
+    commission_total = Column(Numeric(10, 2), default=0)    # non-delegated
+    delegation_total = Column(Numeric(10, 2), default=0)    # delegated
+    total = Column(Numeric(10, 2), default=0)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    paid_at = Column(DateTime(timezone=True))
+
+    entity = relationship("Staff", foreign_keys=[coach_id])
+    lines = relationship("CommissionPayoutLine", cascade="all, delete-orphan")
+
+
+class CommissionPayoutLine(Base):
+    __tablename__ = "commission_payout_lines"
+    id = Column(Integer, primary_key=True)
+    payout_id = Column(Integer, ForeignKey("commission_payouts.id", ondelete="CASCADE"),
+                       nullable=False)
+    booking_id = Column(Integer, ForeignKey("commission_bookings.id", ondelete="SET NULL"))
+    booking_ref = Column(String)
+    occurred_on = Column(Date)
+    description = Column(String)
+    basis = Column(String)                                  # "70% of ₱1,700.00"
+    amount = Column(Numeric(10, 2), default=0)
+
+    booking = relationship("CommissionBooking")
+
+
+class CommissionCharge(Base):
+    """What a delegator owes AWAKEN for one run."""
+    __tablename__ = "commission_charges"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    number = Column(String, unique=True)                    # DEL-0001
+    delegator_id = Column(Integer, ForeignKey("commission_delegators.id",
+                                              ondelete="SET NULL"))
+    delegator_name = Column(String)
+    period_label = Column(String)
+    status = Column(String, nullable=False, default="unpaid")
+    sessions = Column(Integer, nullable=False, default=0)
+    total = Column(Numeric(10, 2), default=0)               # charged to them
+    coach_cost = Column(Numeric(10, 2), default=0)          # paid out on their sessions
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    paid_at = Column(DateTime(timezone=True))
+
+    delegator = relationship("CommissionDelegator")
+    lines = relationship("CommissionChargeLine", cascade="all, delete-orphan")
+
+    @property
+    def margin(self):
+        return float(self.total or 0) - float(self.coach_cost or 0)
+
+
+class CommissionChargeLine(Base):
+    __tablename__ = "commission_charge_lines"
+    id = Column(Integer, primary_key=True)
+    charge_id = Column(Integer, ForeignKey("commission_charges.id", ondelete="CASCADE"),
+                       nullable=False)
+    booking_id = Column(Integer, ForeignKey("commission_bookings.id", ondelete="SET NULL"))
+    booking_ref = Column(String)
+    occurred_on = Column(Date)
+    description = Column(String)
+    coach = Column(String)
+    amount = Column(Numeric(10, 2), default=0)
