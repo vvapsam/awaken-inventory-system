@@ -107,6 +107,7 @@
   <a href="?tab=delegation" class="{{ 'on' if tab == 'delegation' }}">Delegation ({{ delegated|length }})</a>
   <a href="?tab=statuses" class="{{ 'on' if tab == 'statuses' }}">Statuses ({{ statuses.buckets|length }})</a>
   <a href="?tab=coaches" class="{{ 'on' if tab == 'coaches' }}">By coach</a>
+  <a href="?tab=delegators" class="{{ 'on' if tab == 'delegators' }}">By delegator</a>
   {% if run.status == 'finalized' %}<a href="?tab=documents" class="{{ 'on' if tab == 'documents' }}">Documents</a>{% endif %}
 </div>
 
@@ -303,37 +304,10 @@
 {% endif %}
 
 {% elif tab == 'coaches' %}
-<h2>By coach</h2>
-<p class="muted small">Open a coach to see every booking and approve any that should be paid but don't count on their own.</p>
-{{ searchbar('coaches', 'Search coach…') }}
-<table id="coaches">
-  <thead>
-  <tr><th>Coach</th><th style="text-align:right">Counting</th><th style="text-align:right">Rows approved</th>
-      <th style="text-align:right">Awaiting review</th><th style="text-align:right">Commission</th>
-      <th>Sign-off</th><th></th></tr>
-  </thead>
-  <tbody>
-  {% for c in coaches %}
-  <tr data-href="/commissions/{{ run.id }}/coach/{{ c.coach }}">
-    <td><b>{{ c.coach }}</b></td>
-    <td style="text-align:right">{{ c.counted }}</td>
-    <td style="text-align:right">{% if c.approved %}<span class="tag">{{ c.approved }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-    <td style="text-align:right">
-      {% if c.pending %}<span class="tag" style="background:var(--low-line);color:#4a3a12">{{ c.pending }}</span>
-      {% else %}<span class="muted">—</span>{% endif %}
-    </td>
-    <td style="text-align:right" data-money="commission" data-value="{{ c.commission }}">{{ peso(c.commission) }}</td>
-    <td>
-      {% if c.signoff %}<span class="tag">Approved</span>
-        <div class="muted small">{{ c.signoff.approved_by.name if c.signoff.approved_by }}</div>
-      {% elif c.commission %}<span class="tag" style="background:var(--low-line);color:#4a3a12">Awaiting approval</span>
-      {% else %}<span class="muted">—</span>{% endif %}
-    </td>
-    <td><a class="btn" style="padding:5px 12px" href="/commissions/{{ run.id }}/coach/{{ c.coach }}">Review</a></td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
+{% include "_coaches_tab.html" %}
+
+{% elif tab == 'delegators' %}
+{% include "_delegators_tab.html" %}
 
 {% elif tab == 'documents' %}
 <h2>Coach payouts</h2>
