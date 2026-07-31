@@ -68,7 +68,11 @@ def config_from_env() -> MailConfig:
         host=(env("SMTP_HOST", "smtp.gmail.com") or "").strip(),
         port=port,
         user=user,
-        password=env("SMTP_PASSWORD", "") or "",
+        # Google displays an app password as four groups of four — "abcd efgh
+        # ijkl mnop" — and the obvious thing to do is copy it exactly as shown.
+        # The server wants the sixteen characters, so the spaces come out here
+        # rather than costing someone an evening on an authentication error.
+        password="".join((env("SMTP_PASSWORD", "") or "").split()),
         # Google rewrites the From to the authenticated account anyway unless
         # the address is a verified alias, so defaulting to the login is the
         # honest choice.
