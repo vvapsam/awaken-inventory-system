@@ -59,6 +59,38 @@ def test_unconfigured_mailer_refuses_and_says_what_is_missing():
     assert "SMTP_HOST" in why and "SMTP_PASSWORD" in why
 
 
+def test_an_app_password_pasted_with_spaces_still_works(monkeypatch):
+    """Google shows it as "abcd efgh ijkl mnop"; copying it verbatim is the
+    normal thing to do, and must not fail authentication."""
+    from app.mailer import config_from_env
+    monkeypatch.setenv("SMTP_USER", "admin@awakengym.com")
+    monkeypatch.setenv("MAIL_FROM", "admin@awakengym.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "abcd efgh ijkl mnop")
+    cfg = config_from_env()
+    assert cfg.password == "abcdefghijklmnop"
+    assert cfg.configured
+
+
+def test_a_password_with_stray_newlines_is_cleaned(monkeypatch):
+    from app.mailer import config_from_env
+    monkeypatch.setenv("SMTP_USER", "admin@awakengym.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "  abcdefghijklmnop\n")
+    assert config_from_env().password == "abcdefghijklmnop"
+
+
+def test_a_blank_password_stays_blank(monkeypatch):
+    """Whitespace-only must not read as configured — the screen has to keep
+    saying the credential is missing."""
+    from app.mailer import config_from_env
+    monkeypatch.setenv("SMTP_USER", "admin@awakengym.com")
+    monkeypatch.setenv("MAIL_FROM", "admin@awakengym.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "   ")
+    cfg = config_from_env()
+    assert cfg.password == ""
+    assert not cfg.configured
+    assert cfg.missing == ["SMTP_PASSWORD"]
+
+
 def test_env_defaults_point_at_google():
     from app.mailer import config_from_env
     cfg = config_from_env()
