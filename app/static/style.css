@@ -258,6 +258,68 @@ tr.needs:hover td{background:#f6ecd6}
 .ov.none{background:var(--bg);border-color:var(--line);color:var(--muted);font-weight:550}
 .tag.amber{background:var(--low-line);color:#4a3a12}
 
+/* Bulk selection. The bar only appears once something is ticked, so the table
+   reads normally until you're actually doing a multi-row action. */
+.chk{width:15px;height:15px;accent-color:var(--teal);cursor:pointer;vertical-align:middle}
+.selbar{display:flex;align-items:center;gap:12px;background:var(--ink);color:#fff;
+  border-radius:var(--radius);padding:9px 14px;margin:10px 0;font-size:.88rem}
+.selbar .btn{background:#fff;border-color:#fff}
+.selbar .selamt{opacity:.72;font-variant-numeric:tabular-nums}
+
+/* A summary strip. Four stat cards cost ~180px of height each to show one
+   number; this carries the same figures, plus the action, in one band. */
+.sumbar{display:flex;flex-wrap:wrap;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--radius);overflow:hidden;margin:12px 0}
+.sumbar .s{padding:11px 18px;border-right:1px solid var(--line);min-width:118px}
+.sumbar .s:last-child{border-right:0}
+.sumbar .l{font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.sumbar .v{font-size:1.18rem;font-weight:700;margin-top:1px;white-space:nowrap;letter-spacing:-.01em}
+.sumbar .sub{font-size:.72rem;color:var(--muted)}
+.sumbar .s.hero{background:var(--teal-tint);border-right-color:var(--teal)}
+.sumbar .s.hero .l{color:var(--teal-dark)}
+.sumbar .s.hero .v{color:var(--teal-dark);font-size:1.35rem}
+.sumbar .spacer{flex:1;border-right:0;min-width:0}
+.sumbar .act{display:flex;align-items:center;gap:8px;padding:9px 14px;border-right:0}
+
+/* Two-line table cells: the quiet detail sits under the value it belongs to
+   rather than claiming a column of its own. */
+td .primary{font-weight:600}
+td .sub{font-size:.75rem;color:var(--muted);margin-top:1px}
+td.amt,th.amt{text-align:right}
+td.amt{white-space:nowrap;font-variant-numeric:tabular-nums}
+td.amt .primary{font-weight:650}
+
+/* Booking status chips, shared by the coach screen and the coach's statement. */
+.stp{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.68rem;
+  font-weight:700;white-space:nowrap}
+.st-completed{background:#d6f0ea;color:#0b6b60}
+.st-cancelled{background:#fadedb;color:#9c2c1e}
+.st-latecancelled{background:#fbeecb;color:#7a5a12}
+.st-noshow{background:#e6e1f7;color:#4a3a9a}
+.st-booked{background:#dcecff;color:#1c4e8a}
+.st-other{background:#e9edf1;color:#4a5765}
+
+/* An inline editor that stays out of the way until asked for. */
+details.inline{display:inline-block}
+details.inline>summary{cursor:pointer;list-style:none;color:var(--muted);font-size:.75rem;
+  border-bottom:1px dashed #c3ccd6;display:inline-block}
+details.inline>summary::-webkit-details-marker{display:none}
+details.inline>summary:hover{color:var(--teal-dark);border-bottom-color:var(--teal)}
+details.inline[open]>summary{color:var(--teal-dark)}
+details.inline .body{margin-top:5px}
+
+/* A second level of tabs. Distinct from .tfilter so it never reads as a peer
+   of the tab row above it — this switches within a tab, not between them. */
+.subtabs{display:inline-flex;gap:3px;background:#e9edf1;border-radius:10px;padding:3px;
+  margin:14px 0 4px;flex-wrap:wrap}
+.subtabs a{border:0;background:none;padding:7px 15px;border-radius:8px;font-weight:600;
+  font-size:.86rem;color:var(--muted);text-decoration:none;display:inline-flex;gap:8px;align-items:center}
+.subtabs a:hover{color:var(--ink)}
+.subtabs a.on{background:#fff;color:var(--teal-dark);box-shadow:0 1px 3px rgba(11,26,23,.12)}
+.subtabs .c{font-size:.66rem;font-weight:800;background:#dfe6e4;color:#5c6b66;
+  border-radius:999px;padding:1px 7px}
+.subtabs a.on .c{background:var(--teal-tint);color:var(--teal-dark)}
+
 /* Table search. Small on purpose — it sits above a table that is the point
    of the page, so it stays out of the way until you type in it. */
 .tsearchbar{display:flex;align-items:center;gap:7px;margin:8px 0 6px;flex-wrap:wrap}
