@@ -174,3 +174,63 @@ def test_a_transport_failure_is_passed_back_verbatim():
     ok, why = Mailer(CFG, transport=lambda m: (False, "mailbox full")).send(
         "coach@awakengym.com", "s", "t")
     assert not ok and why == "mailbox full"
+
+
+# --------------------------------------------------------------- inline images
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 40
+JPEG = b"\xff\xd8\xff" + b"0" * 40
+
+
+def _parts(msg):
+    return [(p.get_content_type(), p.get("Content-ID")) for p in msg.walk()]
+
+
+def test_an_inline_image_rides_with_the_html():
+    msg = build_message(CFG, "coach@awakengym.com", "s", "t",
+                        '<p><img src="cid:logo"></p>', inline={"logo": PNG})
+    assert ("image/png", "<logo>") in _parts(msg)
+
+
+def test_the_image_hangs_off_the_html_part_not_the_message():
+    """A plain-text reader should be handed text, and nothing else."""
+    msg = build_message(CFG, "coach@awakengym.com", "s", "t",
+                        "<p>hi</p>", inline={"logo": PNG})
+    alternative = msg.get_payload()
+    assert alternative[0].get_content_type() == "text/plain"
+    assert not alternative[0].is_multipart()
+    assert alternative[1].get_content_type() == "multipart/related"
+
+
+def test_the_image_is_marked_inline_so_it_is_not_offered_as_a_download():
+    msg = build_message(CFG, "coach@awakengym.com", "s", "t",
+                        "<p>hi</p>", inline={"logo": PNG})
+    img = [p for p in msg.walk() if p.get_content_type() == "image/png"][0]
+    assert img.get_content_disposition() == "inline"
+
+
+def test_a_jpeg_is_labelled_a_jpeg():
+    msg = build_message(CFG, "coach@awakengym.com", "s", "t",
+                        "<p>hi</p>", inline={"logo": JPEG})
+    assert "image/jpeg" in [t for t, _ in _parts(msg)]
+
+
+def test_a_missing_image_does_not_stop_the_message():
+    """The asset can go astray; the statement still has to go out."""
+    msg = build_message(CFG, "coach@awakengym.com", "s", "t",
+                        "<p>hi</p>", inline={"logo": b""})
+    assert not [t for t, _ in _parts(msg) if t.startswith("image/")]
+    assert "text/html" in [t for t, _ in _parts(msg)]
+
+
+def test_no_inline_images_leaves_a_plain_alternative():
+    msg = build_message(CFG, "coach@awakengym.com", "s", "t", "<p>hi</p>")
+    assert [t for t, _ in _parts(msg)] == [
+        "multipart/alternative", "text/plain", "text/html"]
+
+
+def test_the_image_reaches_the_transport():
+    seen, transport = collector()
+    Mailer(CFG, transport=transport).send(
+        "coach@awakengym.com", "s", "t", "<p>hi</p>", inline={"logo": PNG})
+    assert ("image/png", "<logo>") in _parts(seen[0])
