@@ -661,10 +661,16 @@ class CommissionCoachRate(Base):
 
     @property
     def kind(self) -> str:
-        """'affiliate', 'employee', or '' — the tag here, else the person's."""
-        if self.coach_type:
-            return self.coach_type
-        return (self.entity.person_type or "") if self.entity else ""
+        """'affiliate', 'employee', or '' — the tag here, else the person's.
+
+        Anything else the person record might be — customer, member, supplier —
+        is not a coach type and reads as untagged. Passing it through produced
+        a chip with no label and no colour.
+        """
+        for value in (self.coach_type, self.entity.person_type if self.entity else ""):
+            if (value or "") in ("affiliate", "employee"):
+                return value
+        return ""
 
 
 # What a coach is to the business. 'employee' is labelled Employee/Coach
