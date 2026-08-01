@@ -161,6 +161,24 @@ with TestClient(app) as c:
     check("  the run records how many rows it parsed", _pc > 0, "parsed_count=%d" % _pc)
     check("    kept and dropped add up", _kc + _dc == _pc,
           "%d + %d vs %d" % (_kc, _dc, _pc))
+
+    # Runs imported before that fix are still sitting on zero. Knock this one
+    # back to zero and re-run the real startup migration — it should rebuild
+    # the counts from the rows that are still on the table.
+    from sqlalchemy import text as _sql
+    from app.main import startup as _startup
+    _db = SessionLocal()
+    _db.execute(_sql("UPDATE commission_runs SET parsed_count = 0, "
+                     "kept_count = 0, dropped_count = 0 WHERE id = :i"), {"i": _r.id})
+    _db.commit(); _db.close()
+    _startup()
+    _db = SessionLocal()
+    _b = _db.get(CommissionRun, _r.id)
+    _got = (_b.parsed_count, _b.kept_count, _b.dropped_count)
+    _db.close()
+    check("  an old run with no count is backfilled on boot", _got == (_pc, _kc, _dc),
+          "%d / %d / %d" % _got)
+
     run_url = r.headers.get("location", "")
     rid = run_url.rstrip("/").split("/")[-1]
 
