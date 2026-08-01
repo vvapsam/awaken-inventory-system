@@ -832,6 +832,19 @@ with TestClient(app) as c:
     check("    the result is only shown once", "Sent to" not in
           c.get(f"/commissions/{rid}/statements").text)
 
+    print("\n  how often the coach opened it")
+    _tok0 = re.search(r"/statement/([A-Za-z0-9_\-]{20,})", _outbox[0]["text"]).group(1)
+    page = c.get(f"/commissions/{rid}?tab=coaches").text
+    check("    an unopened link says so", "Not opened yet" in page)
+    with _TC2(app) as anon:
+        for _ in range(3):
+            anon.get("/statement/" + _tok0)
+    page = c.get(f"/commissions/{rid}?tab=coaches").text
+    check("    the coach row counts the opens", "Opened 4×" in page,
+          "one from the earlier check plus three")
+    check("      counted for that coach only", page.count("Opened 4×") == 1)
+    check("      and the rest are still unopened", "Not opened yet" in page)
+
     _before = len(_outbox)
     r = c.post(f"/commissions/{rid}/statements/send", follow_redirects=False)
     check("  pressing send again doesn't mail anyone twice", len(_outbox) == _before)
