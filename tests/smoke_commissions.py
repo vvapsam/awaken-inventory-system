@@ -6,7 +6,7 @@ Run with a live database:
 """
 import re
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -638,6 +638,114 @@ with TestClient(app) as c:
     check("    legend names every coach",
           all(name in page for name in m["codes"]))
     _d.close()
+
+    print("\nadding a session by hand")
+    _db = SessionLocal()
+    _r0 = _db.get(CommissionRun, int(rid))
+    _p0, _p1 = _r0.period_start, _r0.period_end
+    # A booking whose staff name never matched a coach has coach=None; the
+    # feature is about crediting a real coach, so pick one.
+    _who = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+            .filter(CommissionBooking.coach.isnot(None)).first().coach)
+    _before_n = _db.query(CommissionBooking).filter_by(run_id=int(rid)).count()
+    _db.close()
+    _mid = _p0 + (_p1 - _p0) // 2
+
+    page = c.get(f"/commissions/{rid}/coach/{_who}").text
+    check("the coach page offers it", "Add a session" in page)
+    r = c.post(f"/commissions/{rid}/booking/new",
+               data={"coach": _who, "customer": "Walk-in Wanda", "on": str(_mid),
+                     "plan": "Recovery", "revenue": "2500",
+                     "rate_type": "percent", "rate_value": "70"},
+               follow_redirects=False)
+    check("  it is added", r.status_code == 303, r.headers.get("location", ""))
+    _db = SessionLocal()
+    _new = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+            .order_by(CommissionBooking.id.desc()).first())
+    _got = (str(_new.booking_ref), str(_new.customer), str(_new.pricing_plan),
+            str(_new.commission), bool(_new.rate_manual), bool(_new.pays_by_status))
+    _n_after = _db.query(CommissionBooking).filter_by(run_id=int(rid)).count()
+    _run_after = _db.get(CommissionRun, int(rid))
+    _parsed = _run_after.parsed_count
+    _db.close()
+    check("  it carries a reference of our own", _got[0].startswith("MANUAL-"), _got[0])
+    check("  the client is kept", _got[1] == "Walk-in Wanda")
+    check("  the plan is kept", _got[2] == "Recovery")
+    check("  the typed rate is applied", _got[3] == "1750.00", _got[3])
+    check("    and held as manual, so Recalculate keeps it", _got[4])
+    check("  it pays on its status without approving", _got[5])
+    check("  the run's row count follows", _parsed == _n_after and _n_after == _before_n + 1,
+          "%d parsed, %d rows, was %d" % (_parsed, _n_after, _before_n))
+
+    r = c.post(f"/commissions/{rid}/recalculate", follow_redirects=False)
+    _db = SessionLocal()
+    _still = _db.get(CommissionBooking, _new.id)
+    _after = str(_still.commission)
+    _db.close()
+    check("  Recalculate does not reprice it", _after == "1750.00", _after)
+
+    page = c.get(f"/commissions/{rid}/coach/{_who}").text
+    check("  the row is marked as hand-added", "Added by hand" in page)
+    check("    and the client shows", "Walk-in Wanda" in page)
+
+    # Guards. Each of these would put money in a payout that the report then
+    # disagrees with, so each is refused rather than nudged into range.
+    _db = SessionLocal()
+    _n0 = _db.query(CommissionBooking).filter_by(run_id=int(rid)).count()
+    _db.close()
+    for _label, _data in (
+            ("a date outside the run", {"on": str(_p1 + timedelta(days=1))}),
+            ("no date at all", {"on": ""})):
+        r = c.post(f"/commissions/{rid}/booking/new",
+                   data={"coach": _who, "plan": "Recovery", "revenue": "2500", **_data},
+                   follow_redirects=False)
+        _db = SessionLocal()
+        _n1 = _db.query(CommissionBooking).filter_by(run_id=int(rid)).count()
+        _db.close()
+        check("  %s is refused" % _label, _n1 == _n0, "%d rows" % _n1)
+    check("    and the page says why",
+          "outside this run" in c.get(f"/commissions/{rid}/coach/{_who}?added=outside").text)
+
+    # No rate given means the coach's own rate, exactly like an imported row.
+    r = c.post(f"/commissions/{rid}/booking/new",
+               data={"coach": _who, "on": str(_mid), "plan": "Private Coaching",
+                     "revenue": "2000"},
+               follow_redirects=False)
+    _db = SessionLocal()
+    _auto = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+             .order_by(CommissionBooking.id.desc()).first())
+    _auto_id, _auto_manual, _auto_paid = _auto.id, bool(_auto.rate_manual), _auto.commission
+    _db.close()
+    check("  with no rate given it uses the coach's own", not _auto_manual and _auto_paid)
+
+    r = c.post(f"/commissions/{rid}/booking/{_auto_id}/remove", follow_redirects=False)
+    _db = SessionLocal()
+    _gone = _db.get(CommissionBooking, _auto_id) is None
+    _db.close()
+    check("  a hand-added row can be taken back out", _gone)
+
+    # An imported row came from the export and the export is the record.
+    _db = SessionLocal()
+    _imported = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+                 .filter(~CommissionBooking.booking_ref.like("MANUAL-%")).first())
+    _imp_id = _imported.id
+    _db.close()
+    r = c.post(f"/commissions/{rid}/booking/{_imp_id}/remove", follow_redirects=False)
+    _db = SessionLocal()
+    _survived = _db.get(CommissionBooking, _imp_id) is not None
+    _db.close()
+    check("  an imported row cannot be deleted", _survived)
+
+    _db = SessionLocal()
+    _n0 = _db.query(CommissionBooking).filter_by(run_id=int(rid)).count()
+    _db.close()
+    r = c.post(f"/commissions/{rid}/booking/new",
+               data={"coach": "  ", "on": str(_mid), "plan": "Recovery", "revenue": "2500"},
+               follow_redirects=False)
+    _db = SessionLocal()
+    _n1 = _db.query(CommissionBooking).filter_by(run_id=int(rid)).count()
+    _db.close()
+    check("  a row with no coach on it is refused", _n1 == _n0, "%d rows" % _n1)
 
     print("\nphase 4 — finalize")
     r = c.post(f"/commissions/{rid}/finalize", follow_redirects=False)
