@@ -15,7 +15,7 @@
   {% for r in rates %}
   <tr data-modal="coach-{{ r.id }}"{% if not r.coach_id %} class="needs"{% endif %}>
     <td><b>{{ r.coach }}</b></td>
-    <td>{% if r.kind %}<span class="ktag {{ r.kind }}">{{ type_labels[r.kind] }}</span>
+    <td>{% if r.kind %}<span class="ktag {{ r.kind }}">{{ type_labels.get(r.kind, r.kind) }}</span>
       {% else %}<span class="ktag none">Untagged</span>{% endif %}</td>
     <td class="mono">{{ r.staff_raw }}</td>
     <td>{{ 'Percent of revenue' if r.rate_type == 'percent' else 'Fixed amount' }}</td>
