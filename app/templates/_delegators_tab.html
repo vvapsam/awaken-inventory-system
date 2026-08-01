@@ -143,7 +143,7 @@
   {% for c in d.clients %}
   <tr>
     <td class="primary">{{ c.name }}</td>
-    <td class="amt">{{ c.sessions }}{% if c.voided %}<div class="sub" style="color:#b0392b">{{ c.voided }} struck</div>{% endif %}</td>
+    <td class="amt">{{ c.sessions }}</td>
     <td class="small">{{ c.others|sort|join(', ') }}</td>
     <td>{{ c.first.strftime('%d %b') if c.first }}</td>
     <td>{{ c.last.strftime('%d %b') if c.last }}</td>
@@ -163,7 +163,7 @@
   {% for c in d.coaches %}
   <tr>
     <td class="primary"><a href="/commissions/{{ run.id }}/coach/{{ c.name }}">{{ c.name }}</a></td>
-    <td class="amt">{{ c.sessions }}{% if c.voided %}<div class="sub" style="color:#b0392b">{{ c.voided }} struck</div>{% endif %}</td>
+    <td class="amt">{{ c.sessions }}</td>
     <td class="amt">{{ c.others|length }}</td>
     <td class="amt">{{ peso(c.cost) }}</td>
     <td class="amt">{{ peso(c.charged) }}</td>

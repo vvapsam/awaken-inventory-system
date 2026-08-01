@@ -27,7 +27,8 @@
 <div class="grid" style="margin:14px 0">
   <div class="card stat"><div class="stat-label">Delegated sessions</div>
     <div class="stat-value">{{ totals.sessions }}</div>
-    <div class="muted small">{{ rows|length }} delegator{{ 's' if rows|length != 1 }} · {{ totals.clients }} client{{ 's' if totals.clients != 1 }}</div></div>
+    <div class="muted small">{{ rows|length }} delegator{{ 's' if rows|length != 1 }} · {{ totals.clients }} client{{ 's' if totals.clients != 1 }}</div>
+    {% if totals.voided %}<div class="small" style="color:#b0392b;margin-top:2px">{{ totals.voided }} struck out</div>{% endif %}</div>
   <div class="card stat"><div class="stat-label">Charged</div>
     <div class="stat-value">{{ peso(totals.charged) }}</div></div>
   <div class="card stat"><div class="stat-label">Paid to coaches</div>
