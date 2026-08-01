@@ -29,8 +29,11 @@
 <div class="alert bad"><b>Nothing was sent.</b> <span class="muted">{{ mail.setup }}</span></div>
 {% else %}
 {% if mail.sent %}
-<div class="notice">Emailed {{ mail.sent|length }}
-  {{ 'person' if mail.sent|length == 1 else 'people' }} —
+{# Say which of the two went out. "Emailed 26 people" on its own leaves you
+   wondering whether you just sent the invitation again. #}
+<div class="notice">Sent the
+  <b>{{ 'Reel email' if mail.kind == 'reel' else 'invitation' }}</b>
+  to {{ mail.sent|length }} {{ 'person' if mail.sent|length == 1 else 'people' }} —
   {% for s in mail.sent %}{{ s.name }}{{ ', ' if not loop.last }}{% endfor %}.</div>
 {% endif %}
 {% if mail.skipped %}
@@ -68,17 +71,89 @@
     <div class="sub">{{ ev.reel_deadline.strftime('%d %b, %H:%M') }}</div></div>
   {% endif %}
   <div class="s spacer"></div>
-  <div class="act">
-    <form method="post" action="/events/{{ ev.id }}/send">
-      <input type="hidden" name="kind" value="{{ 'thanks' if c.posted or (ev.status == 'running') else 'invite' }}">
-      <input type="hidden" name="who" value="{{ 'unposted' if ev.status == 'running' else 'pending' }}">
-      <button class="btn primary" {{ 'disabled' if not mail_ready }}
-        title="{% if not mail_ready %}Mail isn't set up on the server yet{% endif %}">
-        {% if ev.status == 'running' %}✉ Nudge the {{ c.to_post }} outstanding
-        {% else %}✉ Send invitations{% endif %}</button>
-    </form>
+</div>
+
+{# Two emails, two buttons. They go out days apart, to different people, and
+   ask for different things — one button that guesses from the event's status
+   hides the second one, and you cannot press a button you cannot see. #}
+<div class="mailbar">
+  <div class="m">
+    <div class="n">1 · The invitation</div>
+    <div class="d">"You're in — confirm your slot." Attendance, Instagram handle,
+      the sponsor note.</div>
+    <div class="st">
+      {% if c.invited %}<span class="tag">Sent to {{ c.invited }}</span>{% endif %}
+      {% if lists.invite %}<span class="tag amber">{{ lists.invite }} not yet emailed</span>
+      {% elif c.invited %}<span class="muted small" style="margin:0">everyone has had it</span>
+      {% else %}<span class="muted small" style="margin:0">nobody emailed yet</span>{% endif %}
+    </div>
+    <div class="go">
+      <form method="post" action="/events/{{ ev.id }}/send">
+        <input type="hidden" name="kind" value="invite">
+        <button class="btn primary" {{ 'disabled' if not mail_ready or not lists.invite }}
+          title="{% if not mail_ready %}Mail isn't set up on the server yet{%
+            elif not lists.invite %}Everyone on the list has already had it{% endif %}">
+          ✉ Send to {{ lists.invite }}</button>
+      </form>
+      {% if c.invited %}
+      <form method="post" action="/events/{{ ev.id }}/send"
+            onsubmit="return confirm('Re-send the invitation to all {{ lists.invite_all }}, including people who already had it?')">
+        <input type="hidden" name="kind" value="invite">
+        <input type="hidden" name="who" value="all">
+        <button class="btn" {{ 'disabled' if not mail_ready }}>Re-send to all</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="m">
+    <div class="n">2 · The Reel email</div>
+    <div class="d">"Thank you — submit your Reel and pick your reward." Send it the
+      evening of the class, while everyone still feels good about it.</div>
+    <div class="st">
+      {% if c.reel_emailed %}<span class="tag">Sent to {{ c.reel_emailed }}</span>{% endif %}
+      {% if lists.reel %}<span class="tag amber">{{ lists.reel }} not yet asked</span>{% endif %}
+      {% if lists.nudge %}<span class="tag amber">{{ lists.nudge }} asked, still to post</span>{% endif %}
+      {% if not lists.reel and not lists.nudge and not c.reel_emailed %}
+      <span class="muted small" style="margin:0">nobody has confirmed yet</span>{% endif %}
+    </div>
+    <div class="go">
+      <form method="post" action="/events/{{ ev.id }}/send">
+        <input type="hidden" name="kind" value="reel">
+        <button class="btn primary" {{ 'disabled' if not mail_ready or not lists.reel }}
+          title="{% if not mail_ready %}Mail isn't set up on the server yet{%
+            elif not lists.reel %}Everyone who confirmed has already been asked{% endif %}">
+          ✉ Send to {{ lists.reel }}</button>
+      </form>
+      {% if lists.nudge %}
+      {# A nudge is its own list. Sending the first ask again to someone who
+         already posted is the fastest way to sour this. #}
+      <form method="post" action="/events/{{ ev.id }}/send">
+        <input type="hidden" name="kind" value="reel">
+        <input type="hidden" name="who" value="nudge">
+        <button class="btn" {{ 'disabled' if not mail_ready }}>
+          Nudge the {{ lists.nudge }} outstanding</button>
+      </form>
+      {% endif %}
+    </div>
   </div>
 </div>
+
+{% if not mail_ready %}
+<div class="alert warn" style="margin-top:10px"><b>Mail isn't set up on this server yet.</b>
+  <span class="muted">Add the SMTP details under Settings and both buttons come alive. Until
+    then you can still copy each person's link from their row and send it yourself.</span></div>
+{% endif %}
+
+{% if lists.no_email %}
+{# Not a failure — a job for you. Their link works fine, it just has to travel
+   by some other route. #}
+<div class="alert warn" style="margin-top:10px">
+  <b>{{ lists.no_email }} {{ 'person has' if lists.no_email == 1 else 'people have' }}
+    no email on record</b>
+  <span class="muted">— they're not in either send. Add an address, or copy their link
+    from the table and DM it to them.</span></div>
+{% endif %}
 
 <div class="tfilter" style="margin-top:14px">
   <a href="?tab=people" class="{{ 'on' if tab != 'reels' }}">Participants · {{ c.total }}</a>
@@ -95,8 +170,9 @@
 {{ searchbar('ppl', 'Search name, email, handle…') }}
 <table id="ppl">
   <thead><tr>
-    <th>Participant</th><th>Instagram</th><th>Confirmed</th><th>Acknowledged</th>
-    <th>Reel</th><th>Reward</th><th>Link</th><th style="width:1%"></th>
+    <th>Participant</th><th>Emails</th><th>Instagram</th><th>Confirmed</th>
+    <th>Acknowledged</th><th>Reel</th><th>Reward</th><th>Link</th>
+    <th style="width:1%"></th>
   </tr></thead>
   <tbody>
   {% for p in people %}
@@ -104,6 +180,15 @@
     <td><div class="primary">{{ p.name }}</div>
       <div class="sub">{{ p.email or 'No email on record' }}</div>
       {% if p.opens %}<div class="sub">Opened {{ p.opens }}×</div>{% endif %}</td>
+    {# Which of the two emails this person has had. Two ticks means they were
+       asked to come and asked to post; one means the second is still owed. #}
+    <td style="white-space:nowrap">
+      {% if p.invited_at %}<span class="tag" title="Invitation sent {{ p.invited_at.strftime('%d %b, %H:%M') }}">1</span>
+      {% else %}<span class="tag grey" title="Invitation not sent">1</span>{% endif %}
+      {% if p.reel_email_at %}<span class="tag" title="Reel email sent {{ p.reel_email_at.strftime('%d %b, %H:%M') }}">2</span>
+      {% elif p.confirmed %}<span class="tag amber" title="Reel email still owed">2</span>
+      {% else %}<span class="tag grey" title="Not confirmed yet">2</span>{% endif %}
+    </td>
     <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>
       {% else %}<span class="muted small">—</span>{% endif %}</td>
     <td>
