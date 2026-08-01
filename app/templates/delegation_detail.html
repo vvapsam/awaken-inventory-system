@@ -103,7 +103,9 @@
 </table>
 </div>
 <p class="muted small" style="margin-top:8px">Weekends are shaded. A cell reading
-  <span class="mono">×2</span> is two sessions that day; hover it for the booking refs.</p>
+  <span class="mono">×2</span> is two sessions that day; hover it for the booking refs.
+  {% if voided %}Session{{ 's' if voided != 1 }} struck out {{ 'are' if voided != 1 else 'is' }}
+  not on this calendar — see the Sessions tab.{% endif %}</p>
 
 {% elif tab == 'clients' %}
 {{ searchbar('cl', 'Search client…') }}
@@ -114,8 +116,7 @@
   <tbody>
   {% for c in clients %}
   <tr><td><b>{{ c.name }}</b></td>
-    <td style="text-align:right">{{ c.sessions }}{% if c.voided %}<div class="small"
-        style="color:#b0392b;font-weight:400">{{ c.voided }} struck</div>{% endif %}</td>
+    <td style="text-align:right">{{ c.sessions }}</td>
     <td class="small">{{ c.others|sort|join(', ') }}</td>
     <td>{{ c.first.strftime('%d %b') if c.first }}</td>
     <td>{{ c.last.strftime('%d %b') if c.last }}</td>
@@ -137,8 +138,7 @@
   <tbody>
   {% for c in coaches %}
   <tr><td><b>{{ c.name }}</b></td>
-    <td style="text-align:right">{{ c.sessions }}{% if c.voided %}<div class="small"
-        style="color:#b0392b;font-weight:400">{{ c.voided }} struck</div>{% endif %}</td>
+    <td style="text-align:right">{{ c.sessions }}</td>
     <td class="small">{{ c.others|sort|join(', ') }}</td>
     <td style="text-align:right" data-money="paid" data-value="{{ c.cost }}">{{ peso(c.cost) }}</td>
     <td style="text-align:right" data-money="charged" data-value="{{ c.charged }}">{{ peso(c.charged) }}</td>

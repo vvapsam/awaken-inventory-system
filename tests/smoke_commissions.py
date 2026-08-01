@@ -852,6 +852,50 @@ with TestClient(app) as c:
         check("    and says it is not billed", "not billed" in page)
         page = c.get(f"/commissions/{rid}?tab=delegators&d={_dg_did}").text
         check("  the run's delegator tab says so too", "struck out" in page)
+
+        # The calendar and the two breakdown tables describe what the
+        # delegator actually sent, so a session that did not happen is not on
+        # them at all. Leaving it there is what made the screen confusing:
+        # a cell you cannot click, in a row whose total no longer matched.
+        def _mx(did):
+            """(days the matrix draws a cell on, footer session total)."""
+            d = SessionLocal()
+            run_ = d.get(CommissionRun, int(rid))
+            rows_ = [b for b in run_.bookings
+                     if not b.dropped_reason and b.delegator_id == did
+                     and not b.voided]
+            out = (len(rows_), sorted({b.appointment_date for b in rows_
+                                       if b.appointment_date}))
+            d.close()
+            return out
+
+        _live_n, _live_days = _mx(_dg_did)
+        page = c.get(f"/commissions/delegation/{_dg_did}?tab=schedule&run={rid}").text
+        _foot = re.search(r'<td class="tot">(\d+)</td></tr>\s*</tfoot>', page)
+        check("  the schedule's total is the live count",
+              bool(_foot) and int(_foot.group(1)) == _live_n,
+              "%s vs %d live" % (_foot.group(1) if _foot else "?", _live_n))
+        check("    and it says the struck one is not on the calendar",
+              "not on this calendar" in page)
+        # Count inside the grid only. The legend above it uses the same coach
+        # chip markup, and counting that too silently added one per coach.
+        _grid = page.split("<tbody>", 1)[-1].split("</tbody>", 1)[0]
+        _cells = sum(int(n or 1) for n in
+                     re.findall(r'<b class="c\d"[^>]*>[A-Z0-9]+(?:×(\d+))?</b>', _grid))
+        check("    the cells add up to the live count too", _cells == _live_n,
+              "%d cells vs %d live" % (_cells, _live_n))
+
+        page = c.get(f"/commissions/delegation/{_dg_did}?tab=clients&run={rid}").text
+        _tbl = page.split("<tbody>", 1)[-1].split("</tbody>", 1)[0]
+        _client_sessions = sum(
+            int(n) for n in re.findall(r'<td style="text-align:right">(\d+)</td>', _tbl))
+        check("  the client rows add up to the live count", _client_sessions == _live_n,
+              "%d vs %d" % (_client_sessions, _live_n))
+        # The headline card still says "1 struck out" — that is the whole
+        # point. What must be clean is the table itself.
+        check("    and no client row mentions a struck session",
+              "struck" not in _tbl.lower())
+
         c.post(f"/commissions/{rid}/booking/{_dgid}/void", follow_redirects=False)
         _dn2, _dch2, _dco2 = _dele_figures(_dg_did)
         check("  and putting it back restores the delegator's figures",

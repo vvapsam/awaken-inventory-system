@@ -497,19 +497,28 @@ def delegator_rollup(run: CommissionRun, db: Session) -> list:
         d = by_id.setdefault(b.delegator_id, {
             "delegator": b.delegator, "rows": [], "clients": set(), "coaches": set()})
         d["rows"].append(b)
+        # Reach counts people this delegator actually brought. A client whose
+        # only session was struck out was never brought.
+        if b.voided:
+            continue
         if b.customer:
             d["clients"].add(b.customer.strip())
         if b.coach or b.staff_raw:
             d["coaches"].add((b.coach or b.staff_raw).strip())
     out = []
     for d in by_id.values():
-        counted = [b for b in d["rows"] if b.is_commissionable]
+        # Struck-out sessions did not happen, so they are not sessions this
+        # delegator sent — same rule as the detail screen, which is what stops
+        # the list and the page you reach from it disagreeing.
+        live = [b for b in d["rows"] if not b.voided]
+        counted = [b for b in live if b.is_commissionable]
         charged = sum((Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
         cost = sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0))
         out.append({
             "delegator": d["delegator"],
-            "sessions": len(d["rows"]),
+            "sessions": len(live),
             "counting": len(counted),
+            "voided": len(d["rows"]) - len(live),
             "clients": len(d["clients"]),
             "coaches": len(d["coaches"]),
             "charged": charged,
@@ -1561,9 +1570,10 @@ def register(app, deps):
                       run=run, runs=runs, rows=rows,
                       totals={
                           "sessions": sum(r["sessions"] for r in rows),
+                          "voided": sum(r["voided"] for r in rows),
                           "clients": len({(b.customer or "").strip()
                                           for b in (delegated_rows(run) if run else [])
-                                          if (b.customer or "").strip()}),
+                                          if not b.voided and (b.customer or "").strip()}),
                           "charged": sum((r["charged"] for r in rows), Decimal(0)),
                           "cost": sum((r["cost"] for r in rows), Decimal(0)),
                           "margin": sum((r["margin"] for r in rows), Decimal(0)),
@@ -1575,9 +1585,11 @@ def register(app, deps):
         Clients and coaches are counted from the bookings rather than summed
         across rows, because one client trained by two delegators is one client.
         """
-        live = delegated_rows(run) if (run and rows) else []
+        live = [b for b in (delegated_rows(run) if (run and rows) else [])
+                if not b.voided]
         return {
             "sessions": sum(r["sessions"] for r in rows),
+            "voided": sum(r.get("voided", 0) for r in rows),
             "clients": len({(b.customer or "").strip() for b in live if (b.customer or "").strip()}),
             "coaches": len({(b.coach or b.staff_raw or "").strip() for b in live
                             if (b.coach or b.staff_raw or "").strip()}),
@@ -1593,42 +1605,48 @@ def register(app, deps):
         run, so the two can never drift into telling different stories.
         """
         rows = [b for b in delegated_rows(run) if b.delegator_id == did] if run else []
-        counted = [b for b in rows if b.is_commissionable]
+        # A session struck out on the coach's page did not happen, so it is not
+        # a session this delegator sent. Everything that describes their month
+        # — the calendar, the client rows, the coach rows, the headline count —
+        # is built from the live ones only. It survives in `rows`, struck
+        # through in the sessions list, which is the one place you go to ask
+        # what was removed and why.
+        live = [b for b in rows if not b.voided]
+        counted = [b for b in live if b.is_commissionable]
         charged = sum((Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
         cost = sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0))
 
         by_client, by_coach = {}, {}
-        for b in rows:
+        for b in live:
             for key, bucket in ((b.customer or "—").strip(), by_client), \
                                ((b.coach or b.staff_raw or "—").strip(), by_coach):
-                d = bucket.setdefault(key, {"name": key, "sessions": 0, "voided": 0,
+                d = bucket.setdefault(key, {"name": key, "sessions": 0,
                                             "charged": Decimal(0), "cost": Decimal(0),
                                             "first": None, "last": None,
                                             "others": set()})
                 d["sessions"] += 1
-                if b.voided:
-                    d["voided"] += 1
                 if b.is_commissionable:
                     d["charged"] += Decimal(str(b.delegation_charge or 0))
                     d["cost"] += Decimal(str(b.commission or 0))
                 if b.appointment_date:
                     d["first"] = min(d["first"] or b.appointment_date, b.appointment_date)
                     d["last"] = max(d["last"] or b.appointment_date, b.appointment_date)
-        for b in rows:
+        for b in live:
             by_client[(b.customer or "—").strip()]["others"].add(
                 (b.coach or b.staff_raw or "—").strip())
             by_coach[(b.coach or b.staff_raw or "—").strip()]["others"].add(
                 (b.customer or "—").strip())
         return dict(
-            rows=rows, sessions=len(rows), counting=len(counted),
-            # Sessions struck out on the coach's page. Surfaced here because
-            # the delegator's invoice drops by exactly this much, and a number
-            # that moved without explanation is a number that gets queried.
-            voided=len([b for b in rows if b.voided]),
+            rows=rows, sessions=len(live), counting=len(counted),
+            # Sessions struck out on the coach's page. Surfaced as a note
+            # rather than folded into the count: the delegator's invoice drops
+            # by exactly this much, and a number that moved without
+            # explanation is a number that gets queried.
+            voided=len(rows) - len(live),
             charged=charged, cost=cost, margin=charged - cost,
             clients=sorted(by_client.values(), key=lambda r: (-r["sessions"], r["name"])),
             coaches=sorted(by_coach.values(), key=lambda r: (-r["sessions"], r["name"])),
-            matrix=schedule_matrix(rows))
+            matrix=schedule_matrix(live))
 
     @app.get("/commissions/delegation/{did}", response_class=HTMLResponse)
     def delegation_detail(request: Request, did: int, tab: str = "sessions",
