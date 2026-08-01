@@ -461,6 +461,14 @@ def startup():
                 "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
                 "  rate_manual_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
                 "END IF; END $$;"))
+            # When the "post your Reel" email went out, kept apart from the
+            # invitation because they are two different asks at two different
+            # moments and each needs its own "who still needs this" list.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  reel_email_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
             # visible and reversible.

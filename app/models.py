@@ -1224,6 +1224,11 @@ class EventParticipant(Base):
 
     # --- before the class ---
     invited_at = Column(DateTime(timezone=True))
+    #: When the "post your Reel" email went out. Separate from `invited_at`
+    #: because they are two different asks sent at two different moments, and
+    #: the only way to know who still needs the second one is to have stamped
+    #: it. Without this the send button can only guess.
+    reel_email_at = Column(DateTime(timezone=True))
     opens = Column(Integer, nullable=False, default=0)
     last_opened_at = Column(DateTime(timezone=True))
     rsvp = Column(String, nullable=False, default=RSVP_NONE)

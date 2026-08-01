@@ -163,6 +163,8 @@ def counts(event: Event) -> dict:
         "waiting": len([p for p in live if p.rsvp == RSVP_NONE]),
         "released": len([p for p in ps if p.released_at]),
         "handles": len([p for p in confirmed if p.handle]),
+        "invited": len([p for p in live if p.invited_at]),
+        "reel_emailed": len([p for p in confirmed if p.reel_email_at]),
         "posted": len(posted),
         "to_post": len(confirmed) - len(posted),
         "to_check": len([p for p in posted if p.tags == TAGS_PENDING]),
@@ -396,6 +398,7 @@ def register(app, deps):
         people = sorted(ev.participants, key=lambda p: (p.name or "").lower())
         return render(request, "event_detail.html", db, staff, active="events",
                       ev=ev, tab=tab, people=people, c=counts(ev),
+                      lists={k: len(v) for k, v in mail_lists(ev).items()},
                       reel_left=left_until(ev.reel_deadline),
                       base=base_url(request), tag_labels=TAG_LABELS,
                       statuses=EVENT_STATUSES,
@@ -595,26 +598,64 @@ def register(app, deps):
                 skipped.append({"name": p.name, "detail": "no email on record"})
                 continue
             url = "%s/e/%s" % (base, p.token)
-            subject, text, html = (_invite_mail(ev, p, url) if kind == "invite"
-                                   else _thanks_mail(ev, p, url))
+            subject, text, html = (_reel_mail(ev, p, url) if kind == "reel"
+                                   else _invite_mail(ev, p, url))
             ok, detail = mailer.send(p.email, subject, text, html=html,
                                      inline={LOGO_CID: logo} if logo else None)
             if ok:
+                now = datetime.now(timezone.utc)
                 if kind == "invite":
-                    p.invited_at = datetime.now(timezone.utc)
+                    p.invited_at = now
+                else:
+                    p.reel_email_at = now
                 sent.append({"name": p.name, "detail": p.email})
             else:
                 failed.append({"name": p.name, "detail": detail})
         db.commit()
         return {"sent": sent, "failed": failed, "skipped": skipped, "kind": kind}
 
+    def mail_lists(ev) -> dict:
+        """Who each email would go to, right now.
+
+        Every send button is labelled with one of these counts, so you can see
+        what a button will do before you press it rather than after.
+        """
+        live = [p for p in ev.participants if not p.released_at]
+        # Somebody with no address on record can never be emailed, so counting
+        # them in "still to send" leaves a button that always offers to send to
+        # one more person and never can. They get their own number instead.
+        mailable = [p for p in live if looks_like_email(p.email or "")]
+        confirmed = [p for p in mailable if p.confirmed]
+        return {
+            # The invitation: everyone who hasn't had one.
+            "invite": [p for p in mailable if not p.invited_at],
+            "invite_all": mailable,
+            # The Reel email: everyone who came and hasn't been asked yet.
+            "reel": [p for p in confirmed if not p.reel_email_at],
+            # The nudge: everyone who was asked and still hasn't posted. A
+            # separate list because sending the first ask again to somebody who
+            # already posted is the fastest way to sour this.
+            "nudge": [p for p in confirmed if p.reel_email_at and not p.posted],
+            "reel_all": confirmed,
+            # Not a send list — a to-do for you. Their link still works; it
+            # just has to reach them some other way.
+            "no_email": [p for p in live if not looks_like_email(p.email or "")],
+        }
+
     @app.post("/events/{eid}/send")
     def event_send(request: Request, eid: int, kind: str = Form("invite"),
-                   who: str = Form("pending"), db: Session = Depends(get_db)):
-        """Send invitations or thank-yous.
+                   who: str = Form(""), db: Session = Depends(get_db)):
+        """Send one of the two emails.
 
-        `who` decides the list, and the default is always the smallest sensible
-        one — nobody wants to email thirty people a second time by accident.
+        They are two separate sends on purpose. The invitation asks somebody to
+        confirm a slot; the Reel email asks them to post and collect a code.
+        They go out days apart, to different people, and folding them into one
+        button that guesses from the event's status hides the second one — you
+        cannot press a button you cannot see.
+
+        `who` picks the audience within a kind, and every default is the
+        smallest sensible list: nobody wants to email thirty people twice by
+        accident.
         """
         staff, redir = guard(request, db)
         if redir:
@@ -622,14 +663,15 @@ def register(app, deps):
         ev = db.get(Event, eid)
         if not ev:
             return RedirectResponse("/events", status_code=303)
-        live = [p for p in ev.participants if not p.released_at]
-        if kind == "thanks":
-            pool = [p for p in live if p.confirmed]
-            if who == "unposted":
-                pool = [p for p in pool if not p.posted]
+        lists = mail_lists(ev)
+        if kind == "reel":
+            pool = lists["nudge"] if who == "nudge" else (
+                lists["reel_all"] if who == "all" else lists["reel"])
         else:
-            pool = live if who == "all" else [p for p in live if not p.invited_at]
-        request.session["event_mail"] = _send(db, ev, pool, kind, base_url(request))
+            pool = lists["invite_all"] if who == "all" else lists["invite"]
+        request.session["event_mail"] = _send(
+            db, ev, pool, "invite" if kind != "reel" else "reel",
+            base_url(request))
         return RedirectResponse(f"/events/{eid}", status_code=303)
 
     def _invite_mail(ev, p, url):
@@ -679,7 +721,7 @@ def register(app, deps):
         ))
         return subject, text, html
 
-    def _thanks_mail(ev, p, url):
+    def _reel_mail(ev, p, url):
         """The 'thank you, here's your reward link' email."""
         first = (p.name or "").split()[0] if p.name else "there"
         by = _fmt_when(ev.reel_deadline)
