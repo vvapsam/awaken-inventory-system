@@ -411,6 +411,31 @@ details.chipalert>.pop ul{margin:4px 0 0;padding-left:20px}
   overflow:hidden;margin-top:5px}
 .barwrap .bar{height:7px;border-radius:999px;background:var(--teal);display:block}
 
+/* Coach type. Affiliate and employee get their own colour so a mixed table
+   can be read without going back to the legend; untagged stays grey because
+   it is a gap to fill, not a category. */
+.ktag{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.02em;
+  border-radius:999px;padding:2px 9px;white-space:nowrap;vertical-align:middle}
+.ktag.affiliate{background:#efe6fb;color:#5b3a91}
+.ktag.employee{background:var(--teal-tint);color:var(--teal-dark)}
+.ktag.none{background:var(--panel);color:var(--muted)}
+
+.splits{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:8px}
+.split{border:1px solid var(--line);border-radius:var(--radius);padding:13px 15px;background:var(--bg)}
+.split .hd{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.split .hd .more{margin-left:auto;font-size:.78rem;color:var(--muted);text-decoration:none}
+.split .hd .more:hover{color:var(--teal-dark)}
+.split .n{font-size:1.7rem;font-weight:700;letter-spacing:-.02em}
+.split .sub{font-size:.79rem;color:var(--muted)}
+.split .barwrap{margin-top:8px}
+.split.affiliate .barwrap .bar{background:#7c5bbf}
+
+/* Group heading and subtotal inside one table, so the split reads without
+   splitting the table itself — the ranking still runs 1..n straight down. */
+tr.grouphd td{background:var(--panel);padding:7px 13px}
+tr.grouphd .muted{margin-left:8px}
+tr.subtot td{background:#fafbfc;font-weight:700;border-top:1px solid var(--line)}
+
 /* Heat shading, five steps against the busiest single month on the grid. */
 table.mx td.h{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 td.h1{background:#eef6f6}td.h2{background:#dcecec}td.h3{background:#c3e0e0}

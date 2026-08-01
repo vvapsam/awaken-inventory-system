@@ -29,6 +29,7 @@ from .models import (
     BOOKING_STATUSES, IMPORT_MERGE, IMPORT_REPLACE,
     COMMISSION_DELEGATOR_DEFAULTS, COMMISSION_FLAT, COMMISSION_PERCENT,
     COMMISSION_RATE_DEFAULTS, COMMISSION_RATE_TYPES, COMMISSION_SETTING_DEFAULTS,
+    COACH_TYPES, COACH_TYPE_LABELS,
     COMMISSION_SESSION_RATE_DEFAULTS, CommissionSessionRate, AWAKEN_FORCE,
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
     CommissionBooking, CommissionCharge, CommissionChargeLine,
@@ -620,6 +621,7 @@ def register(app, deps):
         rates = db.query(CommissionCoachRate).order_by(CommissionCoachRate.coach).all()
         return render(request, "commission_rates.html", db, staff, rates=rates,
                       rate_types=COMMISSION_RATE_TYPES, people=people(db),
+                      coach_types=COACH_TYPES, type_labels=COACH_TYPE_LABELS,
                       plans=plan_choices(db), active="rates")
 
     @app.post("/admin/commission-rates/{rid}")
@@ -628,7 +630,7 @@ def register(app, deps):
             coach: str = Form(...), staff_raw: str = Form(...),
             coach_id: str = Form(""),
             rate_type: str = Form(COMMISSION_PERCENT), rate_value: str = Form("0"),
-            is_active: str = Form(""),
+            is_active: str = Form(""), coach_type: str = Form(""),
             ov_id: list[str] = Form([]), ov_plan: list[str] = Form([]),
             ov_type: list[str] = Form([]), ov_value: list[str] = Form([]),
             ov_active: list[str] = Form([]),
@@ -655,6 +657,7 @@ def register(app, deps):
         r.rate_type = rate_type
         r.rate_value = _num(rate_value, rate_type)
         r.is_active = (is_active == "on")
+        r.coach_type = _coach_type(coach_type, linked)
 
         existing = {o.id: o for o in r.overrides}
         # No autoflush while the rows are half-rewritten: two rows swapping
@@ -722,6 +725,7 @@ def register(app, deps):
                             staff_raw: str = Form(...), coach_id: str = Form(""),
                             rate_type: str = Form(COMMISSION_PERCENT),
                             rate_value: str = Form("0"),
+                            coach_type: str = Form(""),
                             db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
@@ -731,7 +735,8 @@ def register(app, deps):
         db.add(CommissionCoachRate(
             coach=(linked.name if linked else coach.strip()),
             coach_id=cid, staff_raw=staff_raw.strip(), rate_type=rate_type,
-            rate_value=_num(rate_value, rate_type)))
+            rate_value=_num(rate_value, rate_type),
+            coach_type=_coach_type(coach_type, linked)))
         db.commit()
         return RedirectResponse("/admin/commission-rates", status_code=303)
 
@@ -1493,16 +1498,41 @@ def register(app, deps):
             rows = [b for b in rows if b.is_commissionable]
         return rows
 
-    def _conductions(db, start: date, end: date, counting: str) -> dict:
-        """Conductions per coach per month, ranked."""
+    def _coach_kinds(db) -> dict:
+        """Coach display name -> 'affiliate' / 'employee' / ''.
+
+        Keyed on the name because that is what a booking snapshots. Both the
+        display name and the Rezerv spelling are registered, since a booking
+        that never matched a coach falls back to the raw name.
+        """
+        out = {}
+        for r in db.query(CommissionCoachRate).all():
+            for key in (r.coach, r.staff_raw):
+                if key and key.strip():
+                    out[key.strip().lower()] = r.kind
+        return out
+
+    def _conductions(db, start: date, end: date, counting: str,
+                     kind: str = "") -> dict:
+        """Conductions per coach per month, ranked, and split by coach type.
+
+        `kind` narrows the whole report to one type, so the shares and the
+        leaderboard are of that group rather than of everyone.
+        """
         months = _months_between(start, end)
         rows = _conduction_rows(db, start, end, counting)
+        kinds = _coach_kinds(db)
+        if kind in ("affiliate", "employee", "untagged"):
+            want = "" if kind == "untagged" else kind
+            rows = [b for b in rows
+                    if kinds.get((b.coach or b.staff_raw or "—").strip().lower(), "") == want]
 
         by_coach, per_month = {}, {k: 0 for k, _ in months}
         for b in rows:
             name = (b.coach or b.staff_raw or "—").strip() or "—"
             c = by_coach.setdefault(name, {
                 "coach": name, "total": 0, "clients": set(),
+                "kind": kinds.get(name.lower(), ""),
                 "months": {k: 0 for k, _ in months},
                 "first": None, "last": None})
             c["total"] += 1
@@ -1545,13 +1575,42 @@ def register(app, deps):
                              if c["months"][k] and cell_max else "")
                          for k, _ in months}
 
+        for c in ranked:
+            c["kind_label"] = COACH_TYPE_LABELS.get(c["kind"], "Untagged")
+
         busiest = max(months, key=lambda m: per_month[m[0]], default=None)
         return dict(
             months=months, coaches=ranked, per_month=per_month, total=total,
             counted=len(rows), compare_to=labels.get(cmp_prev),
             avg_each=(total / len(ranked)) if ranked else 0,
             busiest=busiest, busiest_n=per_month[busiest[0]] if busiest else 0,
-            heat_max=max(per_month.values()) if per_month else 0)
+            heat_max=max(per_month.values()) if per_month else 0,
+            groups=_group_by_kind(ranked, months, total))
+
+    def _group_by_kind(ranked, months, total) -> list:
+        """The same coaches, split into Affiliate / Employee-Coach / Untagged.
+
+        Only groups that have someone in them are returned, so a gym with no
+        affiliates never sees an empty affiliate panel. Untagged sorts last —
+        it is a prompt to go and tag someone, not a category of its own.
+        """
+        order = {"affiliate": 0, "employee": 1, "": 2}
+        out = {}
+        for c in ranked:
+            g = out.setdefault(c["kind"], {
+                "kind": c["kind"], "label": COACH_TYPE_LABELS.get(c["kind"], "Untagged"),
+                "coaches": [], "total": 0, "clients": 0,
+                "months": {k: 0 for k, _ in months}})
+            g["coaches"].append(c)
+            g["total"] += c["total"]
+            g["clients"] += c["clients"]
+            for k, _ in months:
+                g["months"][k] += c["months"][k]
+        for g in out.values():
+            g["share"] = (g["total"] / total * 100) if total else 0
+            g["avg_each"] = g["total"] / len(g["coaches"]) if g["coaches"] else 0
+            g["top"] = g["coaches"][0] if g["coaches"] else None
+        return sorted(out.values(), key=lambda g: order.get(g["kind"], 3))
 
     def _trend(seq: list) -> dict:
         """Compare the last month with the one before it."""
@@ -1596,7 +1655,8 @@ def register(app, deps):
 
     @app.get("/commissions/conductions", response_class=HTMLResponse)
     def conductions_report(request: Request, start: str = "", end: str = "",
-                           counting: str = "paid", db: Session = Depends(get_db)):
+                           counting: str = "paid", kind: str = "",
+                           db: Session = Depends(get_db)):
         """How many sessions each coach conducted over a period you choose.
 
         Deliberately not tied to a run: the question is about a stretch of the
@@ -1608,14 +1668,16 @@ def register(app, deps):
         today = datetime.now(tz()).date()
         start_d, end_d = _report_range(start, end, today)
         counting = "all" if counting == "all" else "paid"
-        data = _conductions(db, start_d, end_d, counting)
+        data = _conductions(db, start_d, end_d, counting, kind)
         return render(request, "commission_conductions.html", db, staff,
                       active="conductions", start=start_d, end=end_d,
-                      counting=counting, today=today, presets=_presets(today), **data)
+                      counting=counting, kind=kind, today=today,
+                      presets=_presets(today), **data)
 
     @app.get("/commissions/conductions.csv")
     def conductions_csv(request: Request, start: str = "", end: str = "",
-                        counting: str = "paid", db: Session = Depends(get_db)):
+                        counting: str = "paid", kind: str = "",
+                        db: Session = Depends(get_db)):
         """The same table, for a spreadsheet."""
         staff, redir = guard(request, db)
         if redir:
@@ -1623,19 +1685,28 @@ def register(app, deps):
         today = datetime.now(tz()).date()
         start_d, end_d = _report_range(start, end, today)
         counting = "all" if counting == "all" else "paid"
-        d = _conductions(db, start_d, end_d, counting)
+        d = _conductions(db, start_d, end_d, counting, kind)
 
         def cell(v):
             v = str(v)
             return '"%s"' % v.replace('"', '""') if any(c in v for c in ',"\n') else v
 
-        lines = [",".join(["Rank", "Coach"] + [lb for _, lb in d["months"]]
+        lines = [",".join(["Rank", "Coach", "Type"] + [lb for _, lb in d["months"]]
                           + ["Total", "Share %", "Avg per month", "Clients"])]
         for c in d["coaches"]:
             lines.append(",".join(cell(x) for x in (
-                [c["rank"], c["coach"]] + [c["months"][k] for k, _ in d["months"]]
+                [c["rank"], c["coach"], c["kind_label"]]
+                + [c["months"][k] for k, _ in d["months"]]
                 + [c["total"], "%.1f" % c["share"], "%.1f" % c["avg"], c["clients"]])))
-        lines.append(",".join(["", "All coaches"]
+        # Subtotals only earn their place once there is more than one group —
+        # otherwise the subtotal is just the total again.
+        if len(d["groups"]) > 1:
+            for g in d["groups"]:
+                lines.append(",".join(cell(x) for x in (
+                    ["", "Subtotal — %s" % g["label"], g["label"]]
+                    + [g["months"][k] for k, _ in d["months"]]
+                    + [g["total"], "%.1f" % g["share"], "", g["clients"]])))
+        lines.append(",".join(["", "All coaches", ""]
                               + [str(d["per_month"][k]) for k, _ in d["months"]]
                               + [str(d["total"]), "100.0", "", ""]))
         name = "conductions_%s_to_%s.csv" % (start_d, end_d)
@@ -2141,6 +2212,21 @@ def register(app, deps):
 # --------------------------------------------------------------------------
 # helpers
 # --------------------------------------------------------------------------
+
+def _coach_type(picked: str, linked) -> str:
+    """The tag chosen on the form, else the linked person's own type.
+
+    Linking someone who is already an affiliate in Relationships should not
+    require tagging them a second time.
+    """
+    picked = (picked or "").strip().lower()
+    if picked in ("employee", "affiliate"):
+        return picked
+    if picked == "":
+        inherited = (linked.person_type or "") if linked else ""
+        return inherited if inherited in ("employee", "affiliate") else ""
+    return ""
+
 
 def _num(text: str, rate_type: str) -> Decimal:
     """Percent fields are entered as 70, stored as 0.70."""

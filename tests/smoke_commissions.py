@@ -35,8 +35,8 @@ with TestClient(app) as c:
     # design), and leaving one behind would make the double-payment guard skip
     # every booking on the next pass — correct behaviour, wrong for a test.
     from app.db import SessionLocal                 # noqa: E402
-    from app.models import (CommissionBooking, CommissionRun,   # noqa: E402
-                            CommissionSignoff)
+    from app.models import (CommissionBooking, CommissionCoachRate,  # noqa: E402
+                            CommissionRun, CommissionSignoff)
     _db = SessionLocal()
     for _run in _db.query(CommissionRun).all():
         _db.delete(_run)
@@ -924,6 +924,54 @@ with TestClient(app) as c:
     # 100% collapse for everyone.
     r = c.get("/commissions/conductions?start=%s&end=%s" % (_lo, date(_hi.year + 1, 12, 31)))
     check("  an empty trailing month is not a 100% drop", "-100%" not in r.text)
+
+    print("\n  affiliate vs employee")
+    check("    everyone starts untagged", ">Untagged<" in c.get("/commissions/conductions?" + rng).text)
+
+    _db = SessionLocal()
+    _rates = {r_.coach: r_.id for r_ in _db.query(CommissionCoachRate).all()}
+    _db.close()
+    _names = sorted(_by_coach, key=lambda n: -_by_coach[n])
+    _aff, _emp = _names[:2], _names[2:]
+    for _name, _kind in [(n, "affiliate") for n in _aff] + [(n, "employee") for n in _emp]:
+        rr = c.post("/admin/commission-rates/%d" % _rates[_name],
+                    data={"coach": _name, "staff_raw": _name, "coach_id": "",
+                          "rate_type": "percent", "rate_value": "40",
+                          "is_active": "on", "coach_type": _kind},
+                    follow_redirects=False)
+        if rr.status_code != 303:
+            check("    tagging %s failed" % _name, False, str(rr.status_code))
+    _db = SessionLocal()
+    _kinds = {r_.coach: r_.kind for r_ in _db.query(CommissionCoachRate).all()}
+    _db.close()
+    check("    the tag is stored on the coach",
+          all(_kinds.get(n) == "affiliate" for n in _aff)
+          and all(_kinds.get(n) == "employee" for n in _emp))
+    check("    and shows on the Coach rates screen",
+          "Employee/Coach" in c.get("/admin/commission-rates").text)
+
+    _aff_n = sum(_by_coach[n] for n in _aff)
+    _emp_n = sum(_by_coach[n] for n in _emp)
+    r = c.get("/commissions/conductions?" + rng)
+    check("    the report splits into two panels", "Affiliate vs employee" in r.text)
+    check("    with a subtotal per type",
+          "Subtotal — Affiliate" in r.text and "Subtotal — Employee/Coach" in r.text)
+    check("    affiliate subtotal is right", ">%d</td>" % _aff_n in r.text, str(_aff_n))
+    check("    the two sides add up to the whole", _aff_n + _emp_n == sum(_by_coach.values()),
+          "%d + %d vs %d" % (_aff_n, _emp_n, sum(_by_coach.values())))
+
+    r = c.get("/commissions/conductions?%s&kind=affiliate" % rng)
+    check("    filtering to affiliates narrows the report",
+          all(">%s</b>" % n in r.text for n in _aff)
+          and not any(">%s</b>" % n in r.text for n in _emp))
+    check("      and the shares are of that group", ">{:,}<".format(_aff_n) in r.text)
+
+    r = c.get("/commissions/conductions?%s&kind=untagged" % rng)
+    check("    nothing is untagged any more", "No conductions between" in r.text)
+
+    r = c.get("/commissions/conductions.csv?" + rng)
+    check("    CSV carries the type and the subtotals",
+          "Subtotal — Affiliate" in r.text and ",Affiliate," in r.text)
 
     print("\nregression — existing pages still render")
     for url in ("/dashboard", "/sales", "/admin/staff", "/coaches/billing",
