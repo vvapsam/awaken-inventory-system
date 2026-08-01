@@ -17,6 +17,7 @@ import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi import Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -40,6 +41,21 @@ from .models import (
 
 MONTHS = ("January February March April May June July August September "
           "October November December").split()
+
+# The logo rides inside the message under this Content-ID. Read once at import
+# and held in memory — it is 6 KB, and a statement send should not depend on
+# the filesystem being readable at that moment.
+LOGO_CID = "awaken-logo"
+_LOGO_PATH = Path(__file__).with_name("static") / "email-logo.png"
+
+
+def _logo_bytes() -> bytes:
+    """The wordmark, or empty if it is missing — a lost asset must not stop a
+    statement going out; the alt text carries the name on its own."""
+    try:
+        return _LOGO_PATH.read_bytes()
+    except OSError:
+        return b""
 
 
 def _skey(status: str) -> str:
@@ -1114,8 +1130,9 @@ def register(app, deps):
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:12px;overflow:hidden;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
 <tr><td style="background:#132a44;padding:20px 26px">
-  <div style="font-size:11px;letter-spacing:.3em;font-weight:700;color:#a9bcd8">A W A K E N</div>
-  <div style="color:#fff;font-size:19px;font-weight:650;margin-top:6px">Your {period} commission</div>
+  <img src="cid:{LOGO_CID}" alt="AWAKEN" width="142" height="38"
+       style="display:block;border:0;outline:none;text-decoration:none;height:auto;width:142px;max-width:142px">
+  <div style="color:#fff;font-size:19px;font-weight:650;margin-top:12px">Your {period} commission</div>
 </td></tr>
 <tr><td style="padding:24px 26px 6px;color:#22303d;font-size:15px;line-height:1.55">
   <p style="margin:0 0 16px">Hi {first},</p>
@@ -1158,7 +1175,8 @@ def register(app, deps):
         totals = _statement_context(run, coach, db)
         subject, text, html = _statement_email(
             coach, run, url, totals.get("total"), link.expires_at)
-        ok, why = mailer.send(email, subject, text, html)
+        ok, why = mailer.send(email, subject, text, html,
+                              inline={LOGO_CID: _logo_bytes()})
         if not ok:
             return "failed", why
         link.sent_to = email

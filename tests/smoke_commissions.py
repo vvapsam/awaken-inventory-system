@@ -766,10 +766,11 @@ with TestClient(app) as c:
                            password="pw" if _FakeMailer.ready else "",
                            from_addr="pay@awakengym.com")
 
-        def send(self, to, subject, text, html=None):
+        def send(self, to, subject, text, html=None, inline=None):
             if _FakeMailer.refuse:
                 return False, _FakeMailer.refuse
-            _outbox.append({"to": to, "subject": subject, "text": text, "html": html})
+            _outbox.append({"to": to, "subject": subject, "text": text,
+                            "html": html, "inline": inline or {}})
             return True, ""
 
     _real_mailer, _cr.Mailer = _cr.Mailer, _FakeMailer
@@ -808,6 +809,15 @@ with TestClient(app) as c:
         check("    the link is in the body", "/statement/" in m["text"])
         check("    and in the html too", m["html"] and "/statement/" in m["html"])
         check("    the amount is shown", "₱" in m["text"])
+        # The logo travels with the message, so it shows even in a client that
+        # blocks remote images.
+        _cid = list(m["inline"])[0] if m["inline"] else ""
+        check("    the logo is carried with the message",
+              bool(_cid) and len(m["inline"][_cid]) > 1000,
+              "%s, %d bytes" % (_cid or "none", len(m["inline"].get(_cid, b""))))
+        check("      and the html points at it", 'src="cid:%s"' % _cid in m["html"])
+        check("      with the name as fallback text", 'alt="AWAKEN"' in m["html"])
+        check("      replacing the letter-spaced wordmark", "A W A K E N" not in m["html"])
         _tok = re.search(r"/statement/([A-Za-z0-9_\-]{20,})", m["text"]).group(1)
         with _TC2(app) as anon:
             check("    that link opens the statement", anon.get("/statement/" + _tok).status_code == 200)
@@ -821,6 +831,19 @@ with TestClient(app) as c:
     check("    and the rows show as emailed", "Emailed" in page)
     check("    the result is only shown once", "Sent to" not in
           c.get(f"/commissions/{rid}/statements").text)
+
+    print("\n  how often the coach opened it")
+    _tok0 = re.search(r"/statement/([A-Za-z0-9_\-]{20,})", _outbox[0]["text"]).group(1)
+    page = c.get(f"/commissions/{rid}?tab=coaches").text
+    check("    an unopened link says so", "Not opened yet" in page)
+    with _TC2(app) as anon:
+        for _ in range(3):
+            anon.get("/statement/" + _tok0)
+    page = c.get(f"/commissions/{rid}?tab=coaches").text
+    check("    the coach row counts the opens", "Opened 4×" in page,
+          "one from the earlier check plus three")
+    check("      counted for that coach only", page.count("Opened 4×") == 1)
+    check("      and the rest are still unopened", "Not opened yet" in page)
 
     _before = len(_outbox)
     r = c.post(f"/commissions/{rid}/statements/send", follow_redirects=False)

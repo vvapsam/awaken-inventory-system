@@ -100,6 +100,16 @@
           {% if c.email %}<div class="muted small" style="margin:0">{{ c.email }}{%
             if c.link and c.link.sent_at %} · sent {{ c.link.sent_at.strftime('%d %b') }}{% endif %}</div>
           {% else %}<div class="muted small" style="margin:0">No email on record</div>{% endif %}
+          {# Whether the coach actually read it — the question that always
+             follows "did it send". A sent link nobody has opened says so. #}
+          {% if c.link and c.link.sent_at %}
+          {% if c.link.opens %}
+          <div class="small"><span class="tag">Opened {{ c.link.opens }}×</span>
+            <span class="muted">{{ c.link.last_opened_at.strftime('%d %b, %H:%M') if c.link.last_opened_at }}</span></div>
+          {% else %}
+          <div class="muted small">Not opened yet</div>
+          {% endif %}
+          {% endif %}
         </div>
       </div>
     </td>
