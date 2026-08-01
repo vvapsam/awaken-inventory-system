@@ -19,7 +19,8 @@
     </h1>
     <p class="muted small mono" style="margin:2px 0 0">{{ run.source_filename }}
       · uploaded {{ run.uploaded_at.strftime('%d %b %Y') if run.uploaded_at }}
-      {% if run.uploaded_by %}by {{ run.uploaded_by.name }}{% endif %}</p>
+      {% if run.uploaded_by %}by {{ run.uploaded_by.name }}{% endif %}
+      {% if run.last_import_note %}· {{ run.last_import_note }}{% endif %}</p>
   </div>
   <div style="display:flex;gap:8px">
     <a class="btn" href="/commissions">All runs</a>
@@ -27,6 +28,38 @@
     <form method="post" action="/commissions/{{ run.id }}/recalculate">
       <button class="btn" title="Re-apply the current coach rates, delegator amounts and revenue rules">↻ Recalculate</button>
     </form>
+    {% if block.blocking %}
+    {# The blocker is a state of the Finalize button, so it lives next to it as
+       a badge and only unfolds when you ask why. It used to be a full-width
+       card that pushed the coach table off the screen. #}
+    {% set nblock = (block.unmapped|length) + (block.unknown|length) + (block.unsigned|length) %}
+    <details class="chipalert"{{ ' open' if block.unmapped or block.unknown }}>
+      <summary title="Why Finalize is off">⚠<span class="n">{{ nblock }}</span></summary>
+      <div class="pop">
+        <div class="hd"><b>Finalizing is blocked.</b></div>
+        {% set bits = [] %}
+        {% if block.unmapped %}{% set _ = bits.append(block.unmapped|length ~ ' unmatched staff name' ~ ('s' if block.unmapped|length != 1 else '')) %}{% endif %}
+        {% if block.unknown %}{% set _ = bits.append(block.unknown|length ~ ' unknown delegator code' ~ ('s' if block.unknown|length != 1 else '')) %}{% endif %}
+        {% if block.unsigned %}{% set _ = bits.append(block.unsigned|length ~ ' coach' ~ ('es' if block.unsigned|length != 1 else '') ~ ' not approved') %}{% endif %}
+        <div class="muted">{{ bits|join(' · ') }}</div>
+        {% if block.unmapped %}
+        <div style="margin-top:8px">These <b>Staff</b> names don't match any coach — their sessions would be left out of every payout:</div>
+        <ul>{% for name, n in block.unmapped.items() %}<li><span class="mono">{{ name }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}</ul>
+        <div class="small"><a href="/admin/commission-rates">Add the Rezerv name to a coach →</a></div>
+        {% endif %}
+        {% if block.unknown %}
+        <div style="margin-top:8px">These delegation variants name a code that isn't configured:</div>
+        <ul>{% for v, n in block.unknown.items() %}<li><span class="mono">{{ v }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}</ul>
+        <div class="small"><a href="/admin/commission-delegators">Add the code to a delegator →</a></div>
+        {% endif %}
+        {% if block.unsigned %}
+        <div style="margin-top:8px">Not approved yet:
+          {% for c in block.unsigned %}<a href="/commissions/{{ run.id }}/coach/{{ c }}">{{ c }}</a>{{ ', ' if not loop.last }}{% endfor %}</div>
+        <div class="small"><a href="?tab=coaches">Approve them from the coach table →</a></div>
+        {% endif %}
+      </div>
+    </details>
+    {% endif %}
     <form method="post" action="/commissions/{{ run.id }}/finalize">
       <button class="btn primary" {{ 'disabled' if block.blocking }}>Finalize →</button>
     </form>
@@ -54,43 +87,7 @@
   {% endif %}
   <div class="s"><div class="l">Imported</div><div class="v">{{ totals.sessions }}</div>
     <div class="sub">of {{ run.parsed_count }} rows{% if run.dropped_count %} · {{ run.dropped_count }} dropped{% endif %}</div></div>
-  {% if run.last_import_note %}
-  <div class="s"><div class="l">Last import</div>
-    <div class="sub" style="margin-top:5px;max-width:34ch">{{ run.last_import_note }}</div></div>
-  {% endif %}
 </div>
-
-{% if block.blocking and run.status == RUN_DRAFT %}
-{# One line, with the detail behind a disclosure. The list of unapproved
-   coaches is the coach table's job — repeating it full-width here just pushed
-   that table off the screen. #}
-<details class="alert bad"{{ ' open' if block.unmapped or block.unknown }}>
-  <summary><b>Finalizing is blocked.</b>
-    {% set bits = [] %}
-    {% if block.unmapped %}{% set _ = bits.append(block.unmapped|length ~ ' unmatched staff name' ~ ('s' if block.unmapped|length != 1 else '')) %}{% endif %}
-    {% if block.unknown %}{% set _ = bits.append(block.unknown|length ~ ' unknown delegator code' ~ ('s' if block.unknown|length != 1 else '')) %}{% endif %}
-    {% if block.unsigned %}{% set _ = bits.append(block.unsigned|length ~ ' coach' ~ ('es' if block.unsigned|length != 1 else '') ~ ' not approved') %}{% endif %}
-    <span class="muted">{{ bits|join(' · ') }}</span>
-  </summary>
-  <div class="body">
-    {% if block.unmapped %}
-    <div>These <b>Staff</b> names don't match any coach — their sessions would be left out of every payout:</div>
-    <ul>{% for name, n in block.unmapped.items() %}<li><span class="mono">{{ name }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}</ul>
-    <div class="small"><a href="/admin/commission-rates">Add the Rezerv name to a coach →</a></div>
-    {% endif %}
-    {% if block.unknown %}
-    <div style="margin-top:8px">These delegation variants name a code that isn't configured:</div>
-    <ul>{% for v, n in block.unknown.items() %}<li><span class="mono">{{ v }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}</ul>
-    <div class="small"><a href="/admin/commission-delegators">Add the code to a delegator →</a></div>
-    {% endif %}
-    {% if block.unsigned %}
-    <div style="margin-top:8px">Not approved yet:
-      {% for c in block.unsigned %}<a href="/commissions/{{ run.id }}/coach/{{ c }}">{{ c }}</a>{{ ', ' if not loop.last }}{% endfor %}</div>
-    <div class="small"><a href="?tab=coaches">Approve them from the coach table →</a></div>
-    {% endif %}
-  </div>
-</details>
-{% endif %}
 
 {% if pending_count %}
 <div class="alert warn">
