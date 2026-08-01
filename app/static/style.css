@@ -311,6 +311,24 @@ details.inline>summary:hover{color:var(--teal-dark);border-bottom-color:var(--te
 details.inline[open]>summary{color:var(--teal-dark)}
 details.inline .body{margin-top:5px}
 
+/* Striking a session out. Muted until hovered so it never competes with
+   Include — the common action on a row is to count it, not to kill it. */
+details.inline.strike{display:block;margin-top:4px}
+details.inline.strike>summary{color:#b0392b;border-bottom-color:#e6bdb6;font-size:.72rem}
+details.inline.strike>summary:hover{color:#8c2c20;border-bottom-color:#c0392b}
+details.inline.strike[open]>summary{color:#8c2c20}
+details.inline.strike .body{display:flex;gap:4px;align-items:center}
+details.inline.strike input{width:120px;padding:3px 6px;font-size:.75rem}
+
+/* A struck-out session. Still legible — an exclusion you cannot read is an
+   exclusion you cannot explain to the coach who asks about it. */
+tr.struck td{background:#fbf3f2;box-shadow:inset 3px 0 0 #d9a79f;color:var(--muted)}
+tr.struck td form .btn{white-space:nowrap}
+tr.struck td .primary,tr.struck td.amt{text-decoration:line-through;
+  text-decoration-color:#c98d84}
+tr.struck td .sub{text-decoration:none}
+.tag.bad{background:#c0392b}
+
 /* A second level of tabs. Distinct from .tfilter so it never reads as a peer
    of the tab row above it — this switches within a tab, not between them. */
 .subtabs{display:inline-flex;gap:3px;background:#e9edf1;border-radius:10px;padding:3px;
