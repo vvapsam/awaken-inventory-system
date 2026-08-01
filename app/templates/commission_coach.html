@@ -109,8 +109,19 @@
     </td>
     {% endif %}
     <td>
-      <div class="primary">{{ b.customer }}</div>
-      <div class="sub mono">{{ b.booking_ref }}</div>
+      <div class="primary">{{ b.customer or '—' }}</div>
+      {% if b.booking_ref and b.booking_ref.startswith('MANUAL-') %}
+      {# Hand-added, so it can be taken back out. An imported row cannot: it
+         came from the export, and the export is the record. #}
+      <div class="sub"><span class="tag amber">Added by hand</span>
+        {% if is_draft and can_pay %}
+        <form method="post" action="/commissions/{{ run.id }}/booking/{{ b.id }}/remove"
+              style="display:inline;margin:0"
+              onsubmit="return confirm('Remove this hand-added session? {{ coach }}\'s approval clears too.')">
+          <button class="btn" style="padding:1px 7px;font-size:.72rem" title="Remove this session">✕</button>
+        </form>
+        {% endif %}</div>
+      {% else %}<div class="sub mono">{{ b.booking_ref }}</div>{% endif %}
     </td>
     <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
     <td>
@@ -166,6 +177,51 @@
 </table>
 {% else %}
 <div class="card"><p class="muted" style="margin:0">No {{ pick|lower }} bookings for {{ coach }} in this run.</p></div>
+{% endif %}
+
+{% if is_draft and can_pay %}
+{# A session the export never carried — booked over the phone, logged on paper,
+   run for staff. It goes through the same pipeline as an imported row. #}
+<details class="addrow"{{ ' open' if request.query_params.get('added') in ('nodate', 'outside') }}>
+  <summary>+ Add a session {{ coach }} isn't credited for</summary>
+  <div class="body">
+    {% set problem = request.query_params.get('added') %}
+    {% if problem == 'nodate' %}
+    <div class="alert bad" style="margin-top:0"><b>That needs a date.</b></div>
+    {% elif problem == 'outside' %}
+    <div class="alert bad" style="margin-top:0"><b>That date is outside this run.</b>
+      <span class="muted">{{ run.period_label or run.period }} covers
+        {{ run.period_start.strftime('%d %b') if run.period_start }} –
+        {{ run.period_end.strftime('%d %b %Y') if run.period_end }}. A session outside it would be
+        paid here but counted in another month.</span></div>
+    {% elif problem == 'finalized' %}
+    <div class="alert bad" style="margin-top:0"><b>This run is finalized.</b>
+      <span class="muted">Reopen it as a draft first.</span></div>
+    {% endif %}
+    <form method="post" action="/commissions/{{ run.id }}/booking/new" class="addgrid">
+      <input type="hidden" name="coach" value="{{ coach }}">
+      <div class="f"><label>Date</label>
+        <input type="date" name="on" required
+               min="{{ run.period_start }}" max="{{ run.period_end }}"
+               value="{{ request.query_params.get('on', '') }}"></div>
+      <div class="f"><label>Client</label><input name="customer" placeholder="Who it was for"></div>
+      <div class="f"><label>Plan</label><input name="plan" placeholder="Private Coaching" required></div>
+      <div class="f"><label>Worth</label>
+        <input name="revenue" inputmode="decimal" placeholder="0.00" style="text-align:right" required></div>
+      <div class="f"><label>Pays</label>
+        <select name="rate_type">
+          <option value="">{{ coach }}'s usual rate</option>
+          {% for k, label in rate_types %}<option value="{{ k }}">{{ 'Fixed amount' if k == 'flat' else 'Percent' }}</option>{% endfor %}
+        </select></div>
+      <div class="f"><label>Rate</label>
+        <input name="rate_value" style="width:80px;text-align:right" placeholder="—"></div>
+      <button class="btn primary">Add session</button>
+    </form>
+    <p class="muted small" style="margin:8px 0 0">Leave <b>Pays</b> on the usual rate and the row is priced
+      exactly like an imported one. Set it and the figure is held as a hand-typed rate, which survives
+      Recalculate. Either way {{ coach }}'s approval is cleared, because their total just changed.</p>
+  </div>
+</details>
 {% endif %}
 
 <p class="muted small" style="margin-top:18px">Approving a booking runs it through exactly the same rules as
