@@ -84,7 +84,14 @@ def config_from_env() -> MailConfig:
 
 
 def build_message(cfg: MailConfig, to: str, subject: str,
-                  text: str, html: str | None = None) -> EmailMessage:
+                  text: str, html: str | None = None,
+                  inline: dict | None = None) -> EmailMessage:
+    """`inline` maps a Content-ID to raw image bytes, for `<img src="cid:...">`.
+
+    Carried with the message rather than linked, so the logo appears even in a
+    client that blocks remote images — which is most of them, by default, for
+    mail from an address you have not written to before.
+    """
     msg = EmailMessage()
     msg["From"] = formataddr((cfg.from_name, cfg.from_addr)) if cfg.from_name else cfg.from_addr
     msg["To"] = to
@@ -99,7 +106,24 @@ def build_message(cfg: MailConfig, to: str, subject: str,
     msg.set_content(text)
     if html:
         msg.add_alternative(html, subtype="html")
+        for cid, data in (inline or {}).items():
+            if not data:
+                continue
+            # Attach to the HTML part, not the message: a plain-text reader
+            # should not be handed an image it has nowhere to put.
+            msg.get_payload()[-1].add_related(
+                data, maintype="image", subtype=_image_subtype(data),
+                cid="<%s>" % cid, filename="%s.png" % cid,
+                disposition="inline")
     return msg
+
+
+def _image_subtype(data: bytes) -> str:
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    return "png"
 
 
 class Mailer:
@@ -110,7 +134,8 @@ class Mailer:
         self.cfg = cfg or config_from_env()
         self.transport = transport
 
-    def send(self, to: str, subject: str, text: str, html: str | None = None) -> tuple:
+    def send(self, to: str, subject: str, text: str, html: str | None = None,
+             inline: dict | None = None) -> tuple:
         """Returns (ok, detail). `detail` is empty on success and a short,
         human-readable reason otherwise — it ends up on screen, so it should
         read like a sentence rather than a stack trace."""
@@ -119,7 +144,7 @@ class Mailer:
             return False, "Mail is not set up yet (missing %s)" % ", ".join(cfg.missing)
         if not looks_like_email(to):
             return False, "%s is not a valid email address" % (to or "(blank)")
-        msg = build_message(cfg, to.strip(), subject, text, html)
+        msg = build_message(cfg, to.strip(), subject, text, html, inline)
         if self.transport is not None:
             return self.transport(msg)
         try:
