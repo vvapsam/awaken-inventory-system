@@ -13,6 +13,35 @@
   {{ result.names | join(', ') }}.</div>
 {% endif %}
 
+{% if request.query_params.get('blocked') %}
+<div class="alert warn"><b>{{ request.query_params.get('blocked') }} hasn't been approved yet.</b>
+  <span class="muted">A statement goes out once the figures are signed off, so the coach never
+    sees a number that later moves.</span></div>
+{% endif %}
+
+{% if mail %}
+{% if mail.setup %}
+<div class="alert bad"><b>Nothing was sent.</b> <span class="muted">{{ mail.setup }}</span></div>
+{% else %}
+{# A send that failed reads as a failure, not as a green tick with small print
+   under it — the two outcomes get their own banner. #}
+{% if mail.sent or mail.skipped %}
+<div class="notice">
+  {% if mail.sent %}Emailed {{ mail.sent|length }} coach{{ 'es' if mail.sent|length != 1 }} —
+    {% for s in mail.sent %}{{ s.coach }} <span class="muted small">({{ s.detail }})</span>{{ ', ' if not loop.last }}{% endfor %}.
+  {% endif %}
+  {% if mail.skipped %}<div class="small muted">Already sent, so skipped:
+    {% for s in mail.skipped %}{{ s.coach }}{{ ', ' if not loop.last }}{% endfor %}.
+    The button says Resend once a statement has gone out.</div>{% endif %}
+</div>
+{% endif %}
+{% if mail.failed %}
+<div class="alert bad"><b>Not sent.</b>
+  <span class="muted">{% for s in mail.failed %}{{ s.coach }} — {{ s.detail }}{{ '; ' if not loop.last }}{% endfor %}</span></div>
+{% endif %}
+{% endif %}
+{% endif %}
+
 {{ searchbar('coaches', 'Search coach…') }}
 
 {% set pickable = coaches | rejectattr('signoff') | selectattr('commission') | list %}
@@ -52,9 +81,27 @@
       {% endif %}</td>
     {% endif %}
     <td>
-      <a href="/commissions/{{ run.id }}/coach/{{ c.coach }}"><b>{{ c.coach }}</b></a>
-      {% if c.email %}<div class="muted small" style="margin:0">{{ c.email }}</div>
-      {% else %}<div class="muted small" style="margin:0">No email on record</div>{% endif %}
+      <div class="coachcell">
+        {# Send their statement — the page listing every session behind the
+           figure — straight from the row. Only once the figures are approved:
+           a coach should never be emailed a number that can still move. #}
+        {% if can_pay %}
+        {% set sent = c.link and c.link.sent_at %}
+        <button class="iconbtn {{ 'sent' if sent }}" form="mail-{{ loop.index }}"
+                {{ 'disabled' if not (c.signoff and c.email and mail_ready) }}
+                title="{% if not mail_ready %}Mail isn't set up on the server yet{%
+                  elif not c.email %}No email on {{ c.coach }}'s record — add one under Relationships{%
+                  elif not c.signoff %}Approve {{ c.coach }} first, then their statement can go out{%
+                  elif sent %}Resend the {{ run.period_label or run.period }} statement to {{ c.email }}{%
+                  else %}Email {{ c.coach }} their {{ run.period_label or run.period }} sessions{% endif %}">✉</button>
+        {% endif %}
+        <div>
+          <a href="/commissions/{{ run.id }}/coach/{{ c.coach }}"><b>{{ c.coach }}</b></a>
+          {% if c.email %}<div class="muted small" style="margin:0">{{ c.email }}{%
+            if c.link and c.link.sent_at %} · sent {{ c.link.sent_at.strftime('%d %b') }}{% endif %}</div>
+          {% else %}<div class="muted small" style="margin:0">No email on record</div>{% endif %}
+        </div>
+      </div>
     </td>
     <td style="text-align:right">{{ c.counted }}</td>
     <td style="text-align:right" data-money="commission" data-value="{{ c.commission }}">
@@ -96,6 +143,18 @@
   <input type="hidden" name="back" value="coaches">
 </form>
 {% endif %}{% endfor %}
+{% endif %}
+
+{# One send form per row, for the same reason: a form cannot nest. #}
+{% if can_pay %}
+{% for c in coaches %}
+<form method="post" id="mail-{{ loop.index }}"
+      action="/commissions/{{ run.id }}/statements/send" hidden>
+  <input type="hidden" name="coach" value="{{ c.coach }}">
+  <input type="hidden" name="back" value="coaches">
+  {% if c.link and c.link.sent_at %}<input type="hidden" name="force" value="1">{% endif %}
+</form>
+{% endfor %}
 {% endif %}
 
 <script>
