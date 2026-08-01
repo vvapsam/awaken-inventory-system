@@ -847,6 +847,43 @@ with TestClient(app) as c:
     check("    and refuses to pretend it sent", "isn't set up" in
           c.get(f"/commissions/{rid}/statements").text)
     _FakeMailer.ready = True
+
+    print("\n  sending from the coach row")
+    page = c.get(f"/commissions/{rid}?tab=coaches").text
+    check("    the row has a send button", 'id="mail-1"' in page and 'class="iconbtn' in page)
+    check("      pointing at the send route",
+          'action="/commissions/%s/statements/send"' % rid in page)
+    check("      and coming back to the coach table", 'name="back" value="coaches"' in page)
+    if _names:
+        _before = len(_outbox)
+        r = c.post(f"/commissions/{rid}/statements/send",
+                   data={"coach": _names[0], "force": "1", "back": "coaches"},
+                   follow_redirects=False)
+        check("    sending from the row mails the coach", len(_outbox) == _before + 1)
+        check("      and returns to the coach table",
+              r.headers.get("location", "").endswith("?tab=coaches"),
+              r.headers.get("location", ""))
+        page = c.get(f"/commissions/{rid}?tab=coaches").text
+        check("      the coach table reports it", "Emailed 1 coach" in page)
+        check("      once only", "Emailed 1 coach" not in
+              c.get(f"/commissions/{rid}?tab=coaches").text)
+
+    # An unapproved coach must not be emailed figures that can still move.
+    _db = SessionLocal()
+    _victim = _names[0] if _names else None
+    _db.query(CommissionSignoff).filter_by(run_id=int(rid), coach=_victim).delete()
+    _db.commit()
+    _db.close()
+    if _victim:
+        _before = len(_outbox)
+        r = c.post(f"/commissions/{rid}/statements/send",
+                   data={"coach": _victim, "force": "1", "back": "coaches"},
+                   follow_redirects=False)
+        check("    an unapproved coach is not emailed", len(_outbox) == _before)
+        check("      and the table says why",
+              "hasn't been approved yet" in c.get(
+                  f"/commissions/{rid}?tab=coaches&blocked={_victim}").text)
+
     _cr.Mailer = _real_mailer
 
     print("\nemail on the person record")
