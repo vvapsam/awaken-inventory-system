@@ -323,6 +323,22 @@ details.inline .body{margin-top:5px}
   border-radius:999px;padding:1px 7px}
 .subtabs a.on .c{background:var(--teal-tint);color:var(--teal-dark)}
 
+/* One-line banners. A notice should cost a line until you ask for the detail —
+   a full-width card per warning pushes the actual table off the screen. */
+.alert{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 13px;margin:10px 0;
+  border-radius:var(--radius-sm);font-size:.88rem;border:1px solid}
+.alert.warn{background:var(--low);border-color:var(--low-line);color:#4a3a12}
+.alert.bad{background:#fdecea;border-color:#e6a49b;color:#9c2c1e;display:block}
+.alert a{margin-left:auto}
+details.alert>summary{cursor:pointer;list-style:none;display:flex;align-items:center;
+  gap:8px;flex-wrap:wrap}
+details.alert>summary::-webkit-details-marker{display:none}
+details.alert>summary::before{content:"▸";font-size:.8em;opacity:.7}
+details.alert[open]>summary::before{content:"▾"}
+details.alert .body{margin-top:8px;font-size:.86rem}
+details.alert .body ul{margin:4px 0 0;padding-left:20px}
+details.alert .body a{margin-left:0}
+
 /* Table search. Small on purpose — it sits above a table that is the point
    of the page, so it stays out of the way until you type in it. */
 .tsearchbar{display:flex;align-items:center;gap:7px;margin:8px 0 6px;flex-wrap:wrap}
