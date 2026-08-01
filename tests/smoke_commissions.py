@@ -178,7 +178,8 @@ with TestClient(app) as c:
     # we look for is the summary count plus the collapsed body.
     check("  unapproved coaches block on their own",
           "Finalizing is blocked." in r.text and "coaches not approved" in r.text)
-    check("  and the banner stays collapsed", 'details class="alert bad">' in r.text)
+    check("  it is a badge beside Finalize, not a banner",
+          'details class="chipalert">' in r.text and 'class="alert bad"' not in r.text)
     check("  names live inside the disclosure", "Not approved yet:" in r.text)
     for coach in ("Anjo", "Julio", "Laurent"):
         check(f"  coach {coach} in pivot", f">{coach}</b>" in r.text)
@@ -218,7 +219,9 @@ with TestClient(app) as c:
     dup_rid = r.headers.get("location", "").rstrip("/").split("/")[-1]
     page = c.get(f"/commissions/{dup_rid}").text
     check("  first import lands", r.status_code == 303)
-    check("  import receipt shown", "Last import" in page)
+    # The receipt rides along the filename line now — it was a stat card, which
+    # is a lot of screen for a sentence you read once.
+    check("  import receipt shown", "rows read" in page)
     check("  run rows are clickable", 'data-href="/commissions/' in c.get("/commissions").text)
 
     # same file again in merge mode → everything is a duplicate
