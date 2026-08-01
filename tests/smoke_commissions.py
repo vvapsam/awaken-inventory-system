@@ -6,6 +6,7 @@ Run with a live database:
 """
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -865,6 +866,64 @@ with TestClient(app) as c:
         _saved = _db.get(_Staff, _pid).email
         _db.close()
         check("    it is stored trimmed", _saved == "Coach.One@Awakengym.com", str(_saved))
+
+    print("\nconductions report")
+    _db = SessionLocal()
+    _rows = _db.query(CommissionBooking).filter(
+        CommissionBooking.dropped_reason.is_(None)).all()
+    _lo = min(b.appointment_date for b in _rows if b.appointment_date)
+    _hi = max(b.appointment_date for b in _rows if b.appointment_date)
+    # Unique bookings across every run — several runs cover these dates by now,
+    # including a partial re-import, so this is the number the report must show
+    # rather than the raw row count.
+    _uniq = {}
+    for b in _rows:
+        k = (b.booking_ref or "").strip().lower() or ("#row", b.id)
+        if k not in _uniq or b.run_id > _uniq[k].run_id:
+            _uniq[k] = b
+    _paid = [b for b in _uniq.values() if b.is_commissionable]
+    _by_coach = {}
+    for b in _paid:
+        _by_coach[(b.coach or b.staff_raw or "—").strip()] = \
+            _by_coach.get((b.coach or b.staff_raw or "—").strip(), 0) + 1
+    _db.close()
+
+    rng = "start=%s&end=%s" % (_lo, _hi)
+    r = c.get("/commissions/conductions?" + rng)
+    check("the report renders", r.status_code == 200, str(r.status_code))
+    check("  it is reachable from the section tabs",
+          '/commissions/conductions"' in c.get("/commissions").text)
+    check("  the period is echoed back", 'value="%s"' % _lo in r.text)
+
+    _top = sorted(_by_coach.items(), key=lambda kv: (-kv[1], kv[0]))[0]
+    check("  the leader is on the podium", ">%s</a>" % _top[0] in r.text or
+          ">%s<" % _top[0] in r.text, _top[0])
+    check("  and every coach has a row",
+          all(">%s</b>" % name in r.text for name in _by_coach))
+    check("  rows are not double counted across runs",
+          ">{:,}<".format(sum(_by_coach.values())) in r.text,
+          "expected %d" % sum(_by_coach.values()))
+
+    r_all = c.get("/commissions/conductions?%s&counting=all" % rng)
+    check("  counting everything is a bigger number",
+          len(_uniq) >= sum(_by_coach.values()) and r_all.status_code == 200)
+    check("    and it says what it counted", "no-shows and cancellations" in r_all.text)
+
+    r = c.get("/commissions/conductions?start=2019-01-01&end=2019-12-31")
+    check("  a range with nothing in it says so", "No conductions between" in r.text)
+
+    r = c.get("/commissions/conductions.csv?" + rng)
+    check("  CSV export", r.status_code == 200 and "text/csv" in r.headers["content-type"])
+    _lines = [ln for ln in r.text.strip().split("\n") if ln]
+    check("    a header, a row per coach and a total",
+          len(_lines) == len(_by_coach) + 2, "%d lines" % len(_lines))
+    check("    the total line agrees with the table",
+          _lines[-1].split(",")[-4] == str(sum(_by_coach.values())), _lines[-1][:60])
+
+    # A month with no sessions at the end of the range must not read as a
+    # 100% collapse for everyone.
+    r = c.get("/commissions/conductions?start=%s&end=%s" % (_lo, date(_hi.year + 1, 12, 31)))
+    check("  an empty trailing month is not a 100% drop", "-100%" not in r.text)
 
     print("\nregression — existing pages still render")
     for url in ("/dashboard", "/sales", "/admin/staff", "/coaches/billing",
