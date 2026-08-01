@@ -1999,6 +1999,116 @@ def register(app, deps):
         db.commit()
         return RedirectResponse(back, status_code=303)
 
+    @app.post("/commissions/{rid}/booking/new")
+    def commission_booking_new(
+            request: Request, rid: int, coach: str = Form(...),
+            customer: str = Form(""), on: str = Form(""), plan: str = Form(""),
+            revenue: str = Form("0"), rate_type: str = Form(""),
+            rate_value: str = Form(""), status: str = Form("Completed"),
+            db: Session = Depends(get_db)):
+        """Add a session the export never carried.
+
+        Rezerv is the source of truth for what happened, but it is not the only
+        record of it: a session booked over the phone, a recovery slot logged
+        on paper, a staff session — these are real and the coach is owed for
+        them. Adding one here puts it through exactly the same pipeline as an
+        imported row, so it is counted, approved, paid and shown identically.
+
+        The row is marked as hand-added and its rate is held as manual, so
+        Recalculate cannot quietly reprice a figure someone typed on purpose.
+        """
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        if not run:
+            return RedirectResponse("/commissions", status_code=303)
+        coach = (coach or "").strip()
+        back = f"/commissions/{rid}/coach/{coach}"
+        if not coach:
+            # A row with nobody on it would be counted and never paid.
+            return RedirectResponse(f"/commissions/{rid}?tab=coaches", status_code=303)
+        if run.status != RUN_DRAFT:
+            # A finalized run has been paid against; it does not gain sessions.
+            return RedirectResponse(back + "?added=finalized", status_code=303)
+
+        when = _parse_day(on, None) if on else None
+        if when is None:
+            return RedirectResponse(back + "?added=nodate", status_code=303)
+        # Outside the period the row would be paid here but counted in another
+        # month's report — the two must not disagree.
+        if run.period_start and run.period_end and not (
+                run.period_start <= when <= run.period_end):
+            return RedirectResponse(back + "?added=outside", status_code=303)
+
+        rate = db.query(CommissionCoachRate).filter(
+            CommissionCoachRate.coach == coach).first()
+        amount = _num(revenue, COMMISSION_FLAT)
+        plan = plan.strip() or "Private Coaching"
+        b = CommissionBooking(
+            run_id=run.id,
+            # A reference of our own, so it can never collide with a Rezerv one
+            # and a re-import can never think it is a duplicate of anything.
+            booking_ref="MANUAL-%s" % secrets.token_hex(4).upper(),
+            customer=customer.strip() or None,
+            appointment_date=when,
+            appointment_name=plan, pricing_plan=plan,
+            variant=None,
+            staff_raw=(rate.staff_raw if rate else coach),
+            booking_status=(status if status in BOOKING_STATUSES else "Completed"),
+            payment_method="Manual",
+            revenue_raw=amount, revenue=amount,
+            coach=coach, coach_id=(rate.coach_id if rate else None),
+            delegator_assumed=False, rate_manual=False)
+        db.add(b)
+        db.flush()
+        # Through the normal pipeline first, so the revenue rules and the
+        # coach's configured rate apply exactly as they would to an import.
+        recompute(b, build_config(db), db)
+        typed = _num(rate_value, rate_type) if (rate_type and rate_value.strip()) else None
+        if typed is not None:
+            b.rate_type = rate_type
+            b.rate_value = typed
+            b.rate_manual = True
+            b.rate_manual_by_id = staff.id
+            b.rule = "manual"
+            b.commission = engine.money(
+                typed if rate_type == COMMISSION_FLAT
+                else Decimal(str(b.revenue or 0)) * typed)
+        # The coach's total just moved, so anything confirming the old one goes.
+        void_signoff(db, rid, coach)
+        rows = db.query(CommissionBooking).filter_by(run_id=run.id)
+        run.parsed_count = rows.count()
+        run.kept_count = run.parsed_count - rows.filter(
+            CommissionBooking.dropped_reason.isnot(None)).count()
+        db.commit()
+        return RedirectResponse(back + "?added=" + str(b.id), status_code=303)
+
+    @app.post("/commissions/{rid}/booking/{bid}/remove")
+    def commission_booking_remove(request: Request, rid: int, bid: int,
+                                  db: Session = Depends(get_db)):
+        """Delete a hand-added session. Imported rows are never deletable —
+        they came from the export and the export is the record."""
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        b = db.get(CommissionBooking, bid)
+        if not run or not b or b.run_id != run.id:
+            return RedirectResponse(f"/commissions/{rid}", status_code=303)
+        back = f"/commissions/{rid}/coach/{b.coach or b.staff_raw}"
+        if run.status != RUN_DRAFT or not (b.booking_ref or "").startswith("MANUAL-"):
+            return RedirectResponse(back, status_code=303)
+        void_signoff(db, rid, b.coach)
+        db.delete(b)
+        db.flush()
+        rows = db.query(CommissionBooking).filter_by(run_id=run.id)
+        run.parsed_count = rows.count()
+        run.kept_count = run.parsed_count - rows.filter(
+            CommissionBooking.dropped_reason.isnot(None)).count()
+        db.commit()
+        return RedirectResponse(back + "?added=removed", status_code=303)
+
     @app.post("/commissions/{rid}/recalculate")
     def commission_recalculate(request: Request, rid: int,
                                db: Session = Depends(get_db)):
