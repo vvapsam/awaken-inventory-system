@@ -9,7 +9,7 @@
     <p class="muted small" style="margin:2px 0 0">{{ payout.period_label }}
       · generated {{ payout.created_at.strftime('%d %b %Y') if payout.created_at }}</p>
   </div>
-  <div style="display:flex;gap:8px">
+  <div class="hdact">
     <a class="btn" href="/commissions/{{ payout.run_id }}?tab=documents">← Run</a>
     <form method="post" action="/commissions/payouts/{{ payout.id }}/paid">
       <button class="btn primary">{{ 'Mark unpaid' if payout.status == 'paid' else 'Mark paid' }}</button>

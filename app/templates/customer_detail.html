@@ -2,7 +2,7 @@
 {% block body %}
 <div class="row-between">
   <h1>{{ customer.name }}</h1>
-  <div style="display:flex;gap:8px">
+  <div class="hdact">
     <a class="btn" href="/customer/{{ customer.id }}/edit">Edit</a>
     {% if can(staff, 'payments.create') %}
     <a class="btn primary" href="/customer/{{ customer.id }}/pay">Pay</a>

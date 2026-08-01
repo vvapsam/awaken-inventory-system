@@ -22,7 +22,7 @@
       {% if run.uploaded_by %}by {{ run.uploaded_by.name }}{% endif %}
       {% if run.last_import_note %}· {{ run.last_import_note }}{% endif %}</p>
   </div>
-  <div style="display:flex;gap:8px">
+  <div class="hdact">
     <a class="btn" href="/commissions">All runs</a>
     {% if is_draft %}
     <form method="post" action="/commissions/{{ run.id }}/recalculate">
