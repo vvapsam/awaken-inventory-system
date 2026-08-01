@@ -3241,3 +3241,17 @@ commission_routes.register(app, {
     "templates": templates,
     "tz": _tz,
 })
+
+
+# ================= Sponsored events =================
+# A class a sponsor pays for, in exchange for a post from everyone who comes.
+# Same registration pattern, and for the same reason.
+from . import event_routes  # noqa: E402
+
+event_routes.register(app, {
+    "render": render,
+    "require": require,
+    "require_admin": require_admin,
+    # The participant's page is public — no login anywhere in that flow.
+    "templates": templates,
+})

@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
     LargeBinary, Numeric, String, Text, UniqueConstraint,
@@ -1088,3 +1088,200 @@ class CommissionChargeLine(Base):
     description = Column(String)
     coach = Column(String)
     amount = Column(Numeric(10, 2), default=0)
+
+
+# ==========================================================================
+# Sponsored events — a class someone else pays for, in exchange for reach
+# ==========================================================================
+#
+# A sponsor covers a class so it can be free for the community. What they get
+# back is a public post from each participant. That exchange only works if it
+# is stated plainly and made easy to honour, so the whole model here is built
+# around one private link per person that carries them from "you have a slot"
+# through to "here is your discount code" without ever asking them to log in.
+
+#: Statuses an event moves through.
+EVENT_DRAFT = "draft"
+EVENT_OPEN = "open"          # invitations out, slots being confirmed
+EVENT_RUNNING = "running"    # the class has happened, Reel window open
+EVENT_CLOSED = "closed"      # window shut, rewards settled
+EVENT_STATUSES = [
+    (EVENT_DRAFT, "Draft"), (EVENT_OPEN, "Open"),
+    (EVENT_RUNNING, "Running"), (EVENT_CLOSED, "Closed"),
+]
+
+#: How a participant answered the invitation.
+RSVP_NONE = ""
+RSVP_YES = "yes"
+RSVP_NO = "no"
+
+#: Whether a submitted Reel carries the tags we asked for. Deliberately three
+#: states: a Reel nobody has looked at is not the same as one that is fine.
+TAGS_PENDING = "pending"
+TAGS_OK = "ok"
+TAGS_MISSING = "missing"
+TAG_LABELS = {TAGS_PENDING: "To check", TAGS_OK: "All good",
+              TAGS_MISSING: "Needs a word"}
+
+
+class Event(Base):
+    """One sponsored class, with the terms of the sponsorship on it.
+
+    Everything a participant is asked to do is configured here rather than
+    written into a template, so a second sponsor with different terms is a new
+    row and not a new page.
+    """
+    __tablename__ = "events"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    slug = Column(String, unique=True, nullable=False)
+    sponsor = Column(String)
+    status = Column(String, nullable=False, default=EVENT_DRAFT)
+
+    starts_at = Column(DateTime(timezone=True))
+    venue = Column(String)
+    capacity = Column(Integer, nullable=False, default=30)
+    bring = Column(String)                       # "Training gear, towel, water"
+    perk = Column(String)                        # "Kenny Rogers meal on us"
+
+    # --- what we ask for in return ---
+    handles = Column(String)                     # "@awakenfitnessph @kennyrogersph"
+    hashtag = Column(String)                     # "#FuelledByKennyRogers"
+    #: Hours after the class within which a Reel has to be posted.
+    reel_hours = Column(Integer, nullable=False, default=48)
+    #: When a slot nobody has confirmed goes to the waitlist.
+    confirm_by = Column(DateTime(timezone=True))
+
+    # --- what they get for it ---
+    # Two, because a discount on one specific future event is worth nothing to
+    # somebody not attending it, and a worthless reward is no reward at all.
+    reward_a = Column(String)                    # "HYROX PFT"
+    reward_a_detail = Column(String)             # "23 August · use it at checkout"
+    reward_a_value = Column(String)              # "20% off"
+    reward_b = Column(String)
+    reward_b_detail = Column(String)
+    reward_b_value = Column(String)
+    #: Prefix for the codes we hand out, e.g. KR -> KR-4471.
+    code_prefix = Column(String, nullable=False, default="EV")
+
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+    participants = relationship("EventParticipant", back_populates="event",
+                                cascade="all, delete-orphan")
+
+    @property
+    def ends_at(self):
+        """When the class finishes, which is what the Reel window runs from.
+
+        A class has no stored end time — one hour is the shape of every
+        foundation class we run, and being an hour out on a 48-hour window
+        changes nothing that matters.
+        """
+        return self.starts_at + timedelta(hours=1) if self.starts_at else None
+
+    @property
+    def reel_deadline(self):
+        return (self.ends_at + timedelta(hours=self.reel_hours or 48)
+                if self.ends_at else None)
+
+    @property
+    def handle_list(self) -> list:
+        return [h for h in (self.handles or "").replace(",", " ").split() if h]
+
+    @property
+    def rewards(self) -> list:
+        """The reward choices, as (key, name, detail, value). Empty if unset."""
+        out = []
+        for key, name, detail, value in (
+                ("a", self.reward_a, self.reward_a_detail, self.reward_a_value),
+                ("b", self.reward_b, self.reward_b_detail, self.reward_b_value)):
+            if (name or "").strip():
+                out.append({"key": key, "name": name, "detail": detail or "",
+                            "value": value or ""})
+        return out
+
+    def reward(self, key: str):
+        return next((r for r in self.rewards if r["key"] == key), None)
+
+
+class EventParticipant(Base):
+    """One person's slot, and the whole trail of what they did with it.
+
+    The token is the credential — there is no login anywhere in this flow.
+    Participants read these on a phone between clients, and an account they
+    have to remember a password for is an account they won't use. The cost is
+    that whoever holds the URL can act as that person, so the token is long and
+    random and reaches exactly one participant's one event.
+    """
+    __tablename__ = "event_participants"
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    email = Column(String)
+    token = Column(String, unique=True, nullable=False)
+
+    # --- before the class ---
+    invited_at = Column(DateTime(timezone=True))
+    opens = Column(Integer, nullable=False, default=0)
+    last_opened_at = Column(DateTime(timezone=True))
+    rsvp = Column(String, nullable=False, default=RSVP_NONE)
+    rsvp_at = Column(DateTime(timezone=True))
+    instagram = Column(String)
+    acknowledged_at = Column(DateTime(timezone=True))
+    #: Set when the confirmation window lapsed and the slot went elsewhere.
+    released_at = Column(DateTime(timezone=True))
+
+    # --- after the class ---
+    reel_url = Column(String)
+    reel_at = Column(DateTime(timezone=True))
+    tags = Column(String, nullable=False, default=TAGS_PENDING)
+    tags_note = Column(String)
+    reshared_at = Column(DateTime(timezone=True))
+
+    # --- what they got ---
+    reward_key = Column(String)                  # 'a' or 'b'
+    reward_code = Column(String)
+    reward_at = Column(DateTime(timezone=True))
+    redeemed_at = Column(DateTime(timezone=True))
+
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    event = relationship("Event", back_populates="participants")
+
+    __table_args__ = (UniqueConstraint("event_id", "reward_code",
+                                       name="uq_event_reward_code"),)
+
+    @property
+    def confirmed(self) -> bool:
+        return self.rsvp == RSVP_YES
+
+    @property
+    def declined(self) -> bool:
+        return self.rsvp == RSVP_NO
+
+    @property
+    def handle(self) -> str:
+        """The Instagram handle with exactly one leading @, or ''."""
+        h = (self.instagram or "").strip().lstrip("@")
+        return "@" + h if h else ""
+
+    @property
+    def posted(self) -> bool:
+        return bool(self.reel_url)
+
+    @property
+    def qualified(self) -> bool:
+        """Earned the reward: confirmed, showed up in the list, posted a Reel.
+
+        Deliberately not gated on the tag check. Taking a reward back from
+        somebody who made a Reel and forgot one tag costs far more goodwill
+        than the discount is worth — a missing tag gets a friendly message,
+        not a clawback.
+        """
+        return self.confirmed and self.posted
+
+
+#: An Instagram handle longer than this is not a handle.
+HANDLE_MAX = 30
