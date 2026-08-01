@@ -342,9 +342,21 @@ details.alert .body a{margin-left:0}
 /* A blocker is a property of the Finalize button, not an announcement. It sits
    beside that button as a badge and unfolds over the page rather than pushing
    it — the full-width version cost most of a screen on every draft run. */
-details.chipalert{position:relative}
+/* Every child of the action row is a different element — a link, two forms, a
+   <details> — so they only line up if the row centres them and the forms stop
+   being block boxes that stretch. */
+.hdact{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* `form .btn` adds a 16px top margin for buttons under a stack of fields. In a
+   header row that margin is what knocked these out of line with each other. */
+.hdact form{display:flex;margin:0}
+.hdact form .btn{margin:0}
+/* A <button> defaults to line-height:normal and a link to 1.5, so side by side
+   they come out different heights. Pin both. */
+.hdact .btn,.hdact details.chipalert>summary{line-height:1.5}
+
+details.chipalert{position:relative;display:flex}
 details.chipalert>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;
-  gap:5px;height:34px;padding:0 11px;border-radius:var(--radius-sm);font-size:.95rem;
+  gap:6px;padding:9px 13px;border-radius:var(--radius-sm);font-size:.92rem;font-weight:500;
   border:1px solid #e6a49b;background:#fdecea;color:#9c2c1e}
 details.chipalert>summary::-webkit-details-marker{display:none}
 details.chipalert>summary:hover{background:#fbdbd6}
