@@ -19,14 +19,47 @@
     </h1>
     <p class="muted small mono" style="margin:2px 0 0">{{ run.source_filename }}
       · uploaded {{ run.uploaded_at.strftime('%d %b %Y') if run.uploaded_at }}
-      {% if run.uploaded_by %}by {{ run.uploaded_by.name }}{% endif %}</p>
+      {% if run.uploaded_by %}by {{ run.uploaded_by.name }}{% endif %}
+      {% if run.last_import_note %}· {{ run.last_import_note }}{% endif %}</p>
   </div>
-  <div style="display:flex;gap:8px">
+  <div class="hdact">
     <a class="btn" href="/commissions">All runs</a>
     {% if is_draft %}
     <form method="post" action="/commissions/{{ run.id }}/recalculate">
       <button class="btn" title="Re-apply the current coach rates, delegator amounts and revenue rules">↻ Recalculate</button>
     </form>
+    {% if block.blocking %}
+    {# The blocker is a state of the Finalize button, so it lives next to it as
+       a badge and only unfolds when you ask why. It used to be a full-width
+       card that pushed the coach table off the screen. #}
+    {% set nblock = (block.unmapped|length) + (block.unknown|length) + (block.unsigned|length) %}
+    <details class="chipalert"{{ ' open' if block.unmapped or block.unknown }}>
+      <summary title="Why Finalize is off">⚠<span class="n">{{ nblock }}</span></summary>
+      <div class="pop">
+        <div class="hd"><b>Finalizing is blocked.</b></div>
+        {% set bits = [] %}
+        {% if block.unmapped %}{% set _ = bits.append(block.unmapped|length ~ ' unmatched staff name' ~ ('s' if block.unmapped|length != 1 else '')) %}{% endif %}
+        {% if block.unknown %}{% set _ = bits.append(block.unknown|length ~ ' unknown delegator code' ~ ('s' if block.unknown|length != 1 else '')) %}{% endif %}
+        {% if block.unsigned %}{% set _ = bits.append(block.unsigned|length ~ ' coach' ~ ('es' if block.unsigned|length != 1 else '') ~ ' not approved') %}{% endif %}
+        <div class="muted">{{ bits|join(' · ') }}</div>
+        {% if block.unmapped %}
+        <div style="margin-top:8px">These <b>Staff</b> names don't match any coach — their sessions would be left out of every payout:</div>
+        <ul>{% for name, n in block.unmapped.items() %}<li><span class="mono">{{ name }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}</ul>
+        <div class="small"><a href="/admin/commission-rates">Add the Rezerv name to a coach →</a></div>
+        {% endif %}
+        {% if block.unknown %}
+        <div style="margin-top:8px">These delegation variants name a code that isn't configured:</div>
+        <ul>{% for v, n in block.unknown.items() %}<li><span class="mono">{{ v }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}</ul>
+        <div class="small"><a href="/admin/commission-delegators">Add the code to a delegator →</a></div>
+        {% endif %}
+        {% if block.unsigned %}
+        <div style="margin-top:8px">Not approved yet:
+          {% for c in block.unsigned %}<a href="/commissions/{{ run.id }}/coach/{{ c }}">{{ c }}</a>{{ ', ' if not loop.last }}{% endfor %}</div>
+        <div class="small"><a href="?tab=coaches">Approve them from the coach table →</a></div>
+        {% endif %}
+      </div>
+    </details>
+    {% endif %}
     <form method="post" action="/commissions/{{ run.id }}/finalize">
       <button class="btn primary" {{ 'disabled' if block.blocking }}>Finalize →</button>
     </form>
@@ -42,77 +75,42 @@
   </div>
 </div>
 
-{% if run.last_import_note %}
-<div class="card" style="border-left:3px solid var(--teal);background:var(--teal-tint)">
-  <b class="small">Last import</b>
-  <div class="small" style="margin-top:2px">{{ run.last_import_note }}</div>
-</div>
-{% endif %}
-
-{% if block.blocking and run.status == RUN_DRAFT %}
-<div class="error">
-  <b>Finalizing is blocked.</b>
-  {% if block.unmapped %}
-  <div style="margin-top:6px">These <b>Staff</b> names don't match any coach — their sessions would be left out of every payout:</div>
-  <ul style="margin:4px 0 0">
-    {% for name, n in block.unmapped.items() %}<li><span class="mono">{{ name }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}
-  </ul>
-  <div class="small" style="margin-top:6px"><a href="/admin/commission-rates">Add the Rezerv name to a coach →</a></div>
+{# Everything above the tabs earns its height or folds away. Five stat cards,
+   two full-width notices and an import banner used to push the actual work
+   most of a screen down the page. #}
+<div class="sumbar">
+  <div class="s hero"><div class="l">Commission</div><div class="v">{{ peso(totals.commission) }}</div>
+    <div class="sub">{{ totals.sessions }} session{{ 's' if totals.sessions != 1 }} counting</div></div>
+  {% if totals.delegation_sessions %}
+  <div class="s"><div class="l">Delegation margin</div><div class="v">{{ peso(totals.delegation_margin) }}</div>
+    <div class="sub">{{ peso(totals.delegation_charged) }} in · {{ peso(totals.delegation_cost) }} out</div></div>
   {% endif %}
-  {% if block.unknown %}
-  <div style="margin-top:8px">These delegation variants name a code that isn't configured:</div>
-  <ul style="margin:4px 0 0">
-    {% for v, n in block.unknown.items() %}<li><span class="mono">{{ v }}</span> — {{ n }} session{{ 's' if n != 1 }}</li>{% endfor %}
-  </ul>
-  <div class="small" style="margin-top:6px"><a href="/admin/commission-delegators">Add the code to a delegator →</a></div>
-  {% endif %}
-  {% if block.unsigned %}
-  <div style="margin-top:8px">These coaches haven't been approved yet — nobody has confirmed their figures:</div>
-  <ul style="margin:4px 0 0">
-    {% for c in block.unsigned %}<li><a href="/commissions/{{ run.id }}/coach/{{ c }}">{{ c }}</a></li>{% endfor %}
-  </ul>
-  <div class="small" style="margin-top:6px"><a href="?tab=coaches">Review and approve by coach →</a></div>
-  {% endif %}
-</div>
-{% endif %}
-
-<div class="grid" style="margin:14px 0">
-  <div class="card stat"><div class="stat-label">Sessions</div><div class="stat-value">{{ totals.sessions }}</div>
-    <div class="muted small">of {{ run.parsed_count }} rows · {{ run.dropped_count }} dropped</div></div>
-  <div class="card stat"><div class="stat-label">Commission</div><div class="stat-value">{{ peso(totals.commission) }}</div></div>
-  <div class="card stat"><div class="stat-label">Delegation cost</div><div class="stat-value">{{ peso(totals.delegation_cost) }}</div>
-    <div class="muted small">{{ totals.delegation_sessions }} sessions</div></div>
-  <div class="card stat"><div class="stat-label">Delegation charged</div><div class="stat-value">{{ peso(totals.delegation_charged) }}</div></div>
-  <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Delegation margin</div>
-    <div class="stat-value">{{ peso(totals.delegation_margin) }}</div><div class="muted small">charged − cost</div></div>
+  <div class="s"><div class="l">Imported</div><div class="v">{{ totals.sessions }}</div>
+    <div class="sub">of {{ run.parsed_count }} rows{% if run.dropped_count %} · {{ run.dropped_count }} dropped{% endif %}</div></div>
 </div>
 
 {% if pending_count %}
-<div class="card" style="background:var(--low);border-color:var(--low-line)">
-  <div class="row-between">
-    <div>
-      <b>{{ pending_count }} booking{{ 's' if pending_count != 1 }} awaiting review.</b>
-      <div class="muted small" style="margin-top:2px">Cancelled, no-show and booked sessions earn nothing
-        unless you approve them. Open a coach to decide.</div>
-    </div>
-    <a class="btn" href="?tab=coaches">Review by coach →</a>
-  </div>
+<div class="alert warn">
+  <b>{{ pending_count }} booking{{ 's' if pending_count != 1 }} awaiting review.</b>
+  <span class="muted">Cancelled, no-show and booked sessions earn nothing unless approved.</span>
+  <a href="?tab=coaches" style="margin-left:auto">Review by coach →</a>
 </div>
 {% endif %}
 
 <div class="tfilter">
-  <a href="?tab=summary" class="{{ 'on' if tab == 'summary' }}">Summary</a>
-  <a href="?tab=adjustments" class="{{ 'on' if tab == 'adjustments' }}">Adjustments ({{ adjusted|length }})</a>
-  <a href="?tab=dropped" class="{{ 'on' if tab == 'dropped' }}">Dropped ({{ dropped|length }})</a>
-  <a href="?tab=delegation" class="{{ 'on' if tab == 'delegation' }}">Delegation ({{ delegated|length }})</a>
+  <a href="?tab=coaches" class="{{ 'on' if tab == 'coaches' }}">Coaches ({{ coaches|length }})</a>
+  <a href="?tab=delegators" class="{{ 'on' if tab == 'delegators' }}">Delegators ({{ dg_count }})</a>
+  <a href="?tab=summary" class="{{ 'on' if tab == 'summary' }}">By plan</a>
   <a href="?tab=statuses" class="{{ 'on' if tab == 'statuses' }}">Statuses ({{ statuses.buckets|length }})</a>
-  <a href="?tab=coaches" class="{{ 'on' if tab == 'coaches' }}">By coach</a>
-  <a href="?tab=delegators" class="{{ 'on' if tab == 'delegators' }}">By delegator</a>
+  <a href="?tab=adjustments" class="{{ 'on' if tab == 'adjustments' }}">Adjustments ({{ adjusted|length }})</a>
+  <a href="?tab=delegation" class="{{ 'on' if tab == 'delegation' }}">Delegated rows ({{ delegated|length }})</a>
+  <a href="?tab=dropped" class="{{ 'on' if tab == 'dropped' }}">Dropped ({{ dropped|length }})</a>
   {% if run.status == 'finalized' %}<a href="?tab=documents" class="{{ 'on' if tab == 'documents' }}">Documents</a>{% endif %}
 </div>
 
 {% if tab == 'summary' %}
-<h2>Sessions by coach and plan</h2>
+<h2>Sessions by plan</h2>
+<p class="muted small">How each coach's month splits across pricing plans. Approving happens on the <a href="?tab=coaches">Coaches</a> tab.</p>
 {{ searchbar('pivot', 'Search coach…') }}
 <table id="pivot">
   <thead>

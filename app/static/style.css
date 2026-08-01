@@ -323,6 +323,52 @@ details.inline .body{margin-top:5px}
   border-radius:999px;padding:1px 7px}
 .subtabs a.on .c{background:var(--teal-tint);color:var(--teal-dark)}
 
+/* One-line banners. A notice should cost a line until you ask for the detail —
+   a full-width card per warning pushes the actual table off the screen. */
+.alert{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 13px;margin:10px 0;
+  border-radius:var(--radius-sm);font-size:.88rem;border:1px solid}
+.alert.warn{background:var(--low);border-color:var(--low-line);color:#4a3a12}
+.alert.bad{background:#fdecea;border-color:#e6a49b;color:#9c2c1e;display:block}
+.alert a{margin-left:auto}
+details.alert>summary{cursor:pointer;list-style:none;display:flex;align-items:center;
+  gap:8px;flex-wrap:wrap}
+details.alert>summary::-webkit-details-marker{display:none}
+details.alert>summary::before{content:"▸";font-size:.8em;opacity:.7}
+details.alert[open]>summary::before{content:"▾"}
+details.alert .body{margin-top:8px;font-size:.86rem}
+details.alert .body ul{margin:4px 0 0;padding-left:20px}
+details.alert .body a{margin-left:0}
+
+/* A blocker is a property of the Finalize button, not an announcement. It sits
+   beside that button as a badge and unfolds over the page rather than pushing
+   it — the full-width version cost most of a screen on every draft run. */
+/* Every child of the action row is a different element — a link, two forms, a
+   <details> — so they only line up if the row centres them and the forms stop
+   being block boxes that stretch. */
+.hdact{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* `form .btn` adds a 16px top margin for buttons under a stack of fields. In a
+   header row that margin is what knocked these out of line with each other. */
+.hdact form{display:flex;margin:0}
+.hdact form .btn{margin:0}
+/* A <button> defaults to line-height:normal and a link to 1.5, so side by side
+   they come out different heights. Pin both. */
+.hdact .btn,.hdact details.chipalert>summary{line-height:1.5}
+
+details.chipalert{position:relative;display:flex}
+details.chipalert>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;
+  gap:6px;padding:9px 13px;border-radius:var(--radius-sm);font-size:.92rem;font-weight:500;
+  border:1px solid #e6a49b;background:#fdecea;color:#9c2c1e}
+details.chipalert>summary::-webkit-details-marker{display:none}
+details.chipalert>summary:hover{background:#fbdbd6}
+details.chipalert>summary .n{font-size:.8rem;font-weight:700;line-height:1;
+  background:#9c2c1e;color:#fff;border-radius:999px;padding:2px 6px}
+details.chipalert>.pop{position:absolute;right:0;top:calc(100% + 6px);z-index:40;
+  width:min(430px,86vw);background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--radius);padding:12px 14px;font-size:.86rem;text-align:left;
+  box-shadow:0 14px 34px rgba(15,32,45,.18)}
+details.chipalert>.pop .hd{color:#9c2c1e}
+details.chipalert>.pop ul{margin:4px 0 0;padding-left:20px}
+
 /* Table search. Small on purpose — it sits above a table that is the point
    of the page, so it stays out of the way until you type in it. */
 .tsearchbar{display:flex;align-items:center;gap:7px;margin:8px 0 6px;flex-wrap:wrap}

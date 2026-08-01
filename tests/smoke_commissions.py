@@ -152,6 +152,15 @@ with TestClient(app) as c:
         r = c.post("/commissions/new", files={"file": ("export.csv", fh, "text/csv")},
                    follow_redirects=False)
     check("upload redirects to run", r.status_code == 303, r.headers.get("location", ""))
+    _db = SessionLocal()
+    _r = _db.query(CommissionRun).order_by(CommissionRun.id.desc()).first()
+    _pc, _kc, _dc = _r.parsed_count, _r.kept_count, _r.dropped_count
+    _db.close()
+    # These are written at import from the rows just inserted; they were saving
+    # as zero because the run's relationship hadn't been refreshed.
+    check("  the run records how many rows it parsed", _pc > 0, "parsed_count=%d" % _pc)
+    check("    kept and dropped add up", _kc + _dc == _pc,
+          "%d + %d vs %d" % (_kc, _dc, _pc))
     run_url = r.headers.get("location", "")
     rid = run_url.rstrip("/").split("/")[-1]
 
@@ -165,7 +174,13 @@ with TestClient(app) as c:
     # What must not appear is an unmapped-staff or unknown-delegator blocker.
     check("  no unmapped-staff blocker", "don't match any coach" not in r.text)
     check("  no unknown-delegator blocker", "isn't configured" not in r.text)
-    check("  unapproved coaches block on their own", "haven't been approved yet" in r.text)
+    # The blocker is now one line with the names behind a disclosure, so what
+    # we look for is the summary count plus the collapsed body.
+    check("  unapproved coaches block on their own",
+          "Finalizing is blocked." in r.text and "coaches not approved" in r.text)
+    check("  it is a badge beside Finalize, not a banner",
+          'details class="chipalert">' in r.text and 'class="alert bad"' not in r.text)
+    check("  names live inside the disclosure", "Not approved yet:" in r.text)
     for coach in ("Anjo", "Julio", "Laurent"):
         check(f"  coach {coach} in pivot", f">{coach}</b>" in r.text)
         r2 = c.get(f"/commissions/{rid}/coach/{coach}")
@@ -204,7 +219,9 @@ with TestClient(app) as c:
     dup_rid = r.headers.get("location", "").rstrip("/").split("/")[-1]
     page = c.get(f"/commissions/{dup_rid}").text
     check("  first import lands", r.status_code == 303)
-    check("  import receipt shown", "Last import" in page)
+    # The receipt rides along the filename line now — it was a stat card, which
+    # is a lot of screen for a sentence you read once.
+    check("  import receipt shown", "rows read" in page)
     check("  run rows are clickable", 'data-href="/commissions/' in c.get("/commissions").text)
 
     # same file again in merge mode → everything is a duplicate
@@ -608,7 +625,8 @@ with TestClient(app) as c:
     check("finalize is blocked until coaches are approved",
           c.get(f"/commissions/{rid}?tab=documents").text.count("/commissions/payouts/") == 0)
     page = c.get(f"/commissions/{rid}").text
-    check("  and says who is waiting", "haven't been approved yet" in page)
+    check("  and says who is waiting",
+          "Finalizing is blocked." in page and "Not approved yet:" in page)
 
     for coach in re.findall(r'href="/commissions/%s/coach/([^"?#]+)"' % rid, page) or []:
         pass

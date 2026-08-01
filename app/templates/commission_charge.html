@@ -8,7 +8,7 @@
     </h1>
     <p class="muted small" style="margin:2px 0 0">{{ charge.period_label }} · delegation charge</p>
   </div>
-  <div style="display:flex;gap:8px">
+  <div class="hdact">
     <a class="btn" href="/commissions/{{ charge.run_id }}?tab=documents">← Run</a>
     <form method="post" action="/commissions/charges/{{ charge.id }}/paid">
       <button class="btn primary">{{ 'Mark unpaid' if charge.status == 'paid' else 'Record payment' }}</button>
