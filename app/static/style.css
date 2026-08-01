@@ -411,6 +411,16 @@ details.chipalert>.pop ul{margin:4px 0 0;padding-left:20px}
   overflow:hidden;margin-top:5px}
 .barwrap .bar{height:7px;border-radius:999px;background:var(--teal);display:block}
 
+/* Send-from-the-row. A square icon button beside the coach's name, quiet
+   until you hover it, and visibly filled once a statement has gone out. */
+.coachcell{display:flex;align-items:flex-start;gap:10px}
+.iconbtn{flex:none;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:var(--radius-sm);
+  font-size:15px;line-height:1;cursor:pointer;transition:border-color .12s,background .12s,color .12s}
+.iconbtn:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark);background:var(--teal-tint)}
+.iconbtn.sent{border-color:var(--teal);color:var(--teal-dark);background:var(--teal-tint)}
+.iconbtn:disabled{opacity:.4;cursor:not-allowed}
+
 /* Coach type. Affiliate and employee get their own colour so a mixed table
    can be read without going back to the legend; untagged stays grey because
    it is a gap to fill, not a category. */
