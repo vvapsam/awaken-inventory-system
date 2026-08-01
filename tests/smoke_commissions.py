@@ -7,6 +7,7 @@ Run with a live database:
 import re
 import sys
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -18,9 +19,12 @@ CSV = sys.argv[1] if len(sys.argv) > 1 else "/home/claude/sample.csv"
 fails = []
 
 
-def _total(page):
+def _headline(page):
     """The run's headline commission figure, for before/after comparisons."""
-    m = re.search(r'Commission</div><div class="stat-value">\u20b1([\d,]+\.\d\d)', page)
+    # The header was rebuilt as a summary bar; the old `.stat-value` markup
+    # went with it, and this quietly returned None for every caller until a
+    # test compared two real figures and noticed.
+    m = re.search(r'>Commission</div><div class="v">\u20b1([\d,]+\.\d\d)', page)
     return m.group(1) if m else None
 
 
@@ -334,8 +338,8 @@ with TestClient(app) as c:
     check("  restoring it pays again (spelling ignored)",
           ">Yes<" in status_page("Late cancelled"))
     check("    and the run total is back where it started",
-          _total(c.get(f"/commissions/{mid}").text) == _total(money_before),
-          "%s vs %s" % (_total(c.get(f"/commissions/{mid}").text), _total(money_before)))
+          _headline(c.get(f"/commissions/{mid}").text) == _headline(money_before),
+          "%s vs %s" % (_headline(c.get(f"/commissions/{mid}").text), _headline(money_before)))
     check("  the rule is written on the Rules screen",
           "paid_statuses" in c.get("/admin/commission-settings").text)
 
@@ -746,6 +750,167 @@ with TestClient(app) as c:
     _n1 = _db.query(CommissionBooking).filter_by(run_id=int(rid)).count()
     _db.close()
     check("  a row with no coach on it is refused", _n1 == _n0, "%d rows" % _n1)
+
+    print("\nstriking a session out")
+    # A session the export says happened but which didn't. Beats the status,
+    # so the case that matters is a Completed row — the one every other
+    # control on the page leaves alone.
+    _db = SessionLocal()
+    _vb = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+           .filter(CommissionBooking.coach.isnot(None),
+                   CommissionBooking.delegator_id.is_(None),
+                   CommissionBooking.pays_by_status.is_(True),
+                   CommissionBooking.commission > 0).first())
+    _vid, _vcoach, _vamt = _vb.id, _vb.coach, Decimal(str(_vb.commission))
+    _db.close()
+
+    def _coach_figures(who):
+        """(counting, commission) for one coach, straight off the database."""
+        d = SessionLocal()
+        rows = [b for b in d.get(CommissionRun, int(rid)).bookings
+                if not b.dropped_reason and (b.coach or b.staff_raw) == who
+                and b.is_commissionable]
+        out = (len(rows), sum((Decimal(str(b.commission or 0)) for b in rows), Decimal(0)))
+        d.close()
+        return out
+
+    _n0, _c0 = _coach_figures(_vcoach)
+    _run0 = _headline(c.get(f"/commissions/{rid}").text)
+    page = c.get(f"/commissions/{rid}/coach/{_vcoach}").text
+    check("the coach page offers it on a Completed row",
+          f"/booking/{_vid}/void" in page)
+
+    r = c.post(f"/commissions/{rid}/booking/{_vid}/void",
+               data={"reason": "Double booked"}, follow_redirects=False)
+    check("  striking it out redirects back to the coach", r.status_code == 303,
+          r.headers.get("location", ""))
+    _n1, _c1 = _coach_figures(_vcoach)
+    check("  the coach stops counting it", _n1 == _n0 - 1, "%d then %d" % (_n0, _n1))
+    check("    and the commission drops by exactly that row",
+          _c1 == _c0 - _vamt, "%s then %s, row was %s" % (_c0, _c1, _vamt))
+    _run1 = _headline(c.get(f"/commissions/{rid}").text)
+    check("  the run total follows", _run1 != _run0, "%s then %s" % (_run0, _run1))
+
+    page = c.get(f"/commissions/{rid}/coach/{_vcoach}").text
+    check("  the row reads as invalid", "Invalid" in page)
+    check("    and says why", "Double booked" in page)
+    check("    and offers to put it back", "Put back" in page)
+
+    # The statement is what the coach reads. A struck session must be visible
+    # and explained there, not silently missing.
+    _db = SessionLocal()
+    _vrow = _db.get(CommissionBooking, _vid)
+    _vpays = bool(_vrow.pays_by_status)
+    _vcounts = _vrow.is_commissionable
+    _db.close()
+    check("  it still pays on its status underneath", _vpays)
+    check("    but no longer counts", not _vcounts)
+
+    r = c.post(f"/commissions/{rid}/booking/{_vid}/void", follow_redirects=False)
+    _n2, _c2 = _coach_figures(_vcoach)
+    check("  putting it back restores the figures", _n2 == _n0 and _c2 == _c0,
+          "%d/%s vs %d/%s" % (_n2, _c2, _n0, _c0))
+    _db = SessionLocal()
+    _back = _db.get(CommissionBooking, _vid)
+    _clean = (_back.void_reason, _back.voided_at, _back.voided_by_id)
+    _db.close()
+    check("    and clears the reason with it", _clean == (None, None, None), str(_clean))
+
+    # The delegator's side. A session that did not happen is not billed to
+    # them either — anything else invoices for undelivered work.
+    _db = SessionLocal()
+    _dg = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+           .filter(CommissionBooking.delegator_id.isnot(None),
+                   CommissionBooking.pays_by_status.is_(True)).first())
+    _dgid, _dg_did = (_dg.id, _dg.delegator_id) if _dg else (None, None)
+    _db.close()
+    if _dgid:
+        def _dele_figures(did):
+            d = SessionLocal()
+            rows = [b for b in d.get(CommissionRun, int(rid)).bookings
+                    if not b.dropped_reason and b.delegator_id == did
+                    and b.is_commissionable]
+            out = (len(rows),
+                   sum((Decimal(str(b.delegation_charge or 0)) for b in rows), Decimal(0)),
+                   sum((Decimal(str(b.commission or 0)) for b in rows), Decimal(0)))
+            d.close()
+            return out
+
+        _dn0, _dch0, _dco0 = _dele_figures(_dg_did)
+        c.post(f"/commissions/{rid}/booking/{_dgid}/void",
+               data={"reason": "Client never showed, logged twice"},
+               follow_redirects=False)
+        _dn1, _dch1, _dco1 = _dele_figures(_dg_did)
+        check("  a delegated session drops off the delegator too",
+              _dn1 == _dn0 - 1, "%d then %d" % (_dn0, _dn1))
+        check("    the delegator is no longer charged for it", _dch1 < _dch0,
+              "%s then %s" % (_dch0, _dch1))
+        check("    and we no longer pay the coach for it", _dco1 < _dco0,
+              "%s then %s" % (_dco0, _dco1))
+        page = c.get(f"/commissions/delegation/{_dg_did}?run={rid}").text
+        check("  the delegation screen marks it", "Invalid" in page)
+        check("    and says it is not billed", "not billed" in page)
+        page = c.get(f"/commissions/{rid}?tab=delegators&d={_dg_did}").text
+        check("  the run's delegator tab says so too", "struck out" in page)
+        c.post(f"/commissions/{rid}/booking/{_dgid}/void", follow_redirects=False)
+        _dn2, _dch2, _dco2 = _dele_figures(_dg_did)
+        check("  and putting it back restores the delegator's figures",
+              (_dn2, _dch2, _dco2) == (_dn0, _dch0, _dco0))
+
+    # Striking a row is a change to the money, so a sign-off cannot survive it.
+    c.post(f"/commissions/{rid}/coach/{_vcoach}/signoff",
+           data={"confirm": "on"}, follow_redirects=False)
+    _db = SessionLocal()
+    _signed = _db.query(CommissionSignoff).filter_by(
+        run_id=int(rid), coach=_vcoach).count()
+    _db.close()
+    c.post(f"/commissions/{rid}/booking/{_vid}/void", follow_redirects=False)
+    _db = SessionLocal()
+    _still = _db.query(CommissionSignoff).filter_by(
+        run_id=int(rid), coach=_vcoach).count()
+    _db.close()
+    check("  striking one out clears the coach's approval",
+          _signed == 1 and _still == 0, "%d then %d" % (_signed, _still))
+
+    # "Approve all no-shows" must not resurrect the row you just struck out.
+    # Every live row in this export is Completed, so the reviewable case is
+    # made rather than found: one row is put back to needing a tick, which is
+    # the only state where the bulk button applies at all.
+    _db = SessionLocal()
+    _ns = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+           # Not the row already struck out above — toggling it here would
+           # put it back and the test would read its own side effect.
+           .filter(CommissionBooking.id != _vid,
+                   CommissionBooking.coach.isnot(None),
+                   CommissionBooking.dropped_reason.is_(None)).first())
+    _nsid, _nscoach, _nsst = _ns.id, _ns.coach, _ns.booking_status
+    _was = (_ns.pays_by_status, _ns.approved)
+    _ns.pays_by_status, _ns.approved = False, False
+    _db.commit()
+    _db.close()
+
+    c.post(f"/commissions/{rid}/booking/{_nsid}/void", follow_redirects=False)
+    c.post(f"/commissions/{rid}/coach/{_nscoach}/approve-status",
+           data={"status": _nsst, "include": "on"}, follow_redirects=False)
+    _db = SessionLocal()
+    _row = _db.get(CommissionBooking, _nsid)
+    _skipped = bool(_row.voided) and not _row.approved and not _row.is_commissionable
+    _db.close()
+    check("  approving a whole status skips the struck-out row", _skipped,
+          "voided=%s approved=%s" % (_row.voided, _row.approved))
+
+    c.post(f"/commissions/{rid}/booking/{_nsid}/void", follow_redirects=False)
+    _db = SessionLocal()
+    _row = _db.get(CommissionBooking, _nsid)
+    _row.pays_by_status, _row.approved = _was
+    _db.commit()
+    _db.close()
+
+    # Leave the run exactly as it was found, so finalize below is unaffected.
+    c.post(f"/commissions/{rid}/booking/{_vid}/void", follow_redirects=False)
+    _n3, _c3 = _coach_figures(_vcoach)
+    check("  the run is left as it was found", _n3 == _n0 and _c3 == _c0,
+          "%d/%s vs %d/%s" % (_n3, _c3, _n0, _c0))
 
     print("\nphase 4 — finalize")
     r = c.post(f"/commissions/{rid}/finalize", follow_redirects=False)
