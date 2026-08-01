@@ -131,7 +131,7 @@ tr.notpaid td{background:#fcfcfd}
   <div class="scroller">
   <table>
     <thead><tr><th>Date</th><th>Client</th><th>Session</th><th>Plan</th><th>Status</th>
-      <th class="amt">Commission</th></tr></thead>
+      <th class="amt">Commission</th>{% if link.is_live %}<th></th>{% endif %}</tr></thead>
     <tbody id="tb">
     {% for b in rows %}
     {% set st = (b.booking_status or '—').strip() %}
@@ -143,14 +143,28 @@ tr.notpaid td{background:#fcfcfd}
       <td class="stc"><span class="stp st-{{ st|lower|replace(' ', '')|replace('-', '') or 'other' }}">{{ st }}</span></td>
       <td class="amt">{% if b.is_commissionable and b.commission is not none %}{{ peso(b.commission) }}
         {% else %}<span class="zero">—</span>{% endif %}</td>
+      {% if link.is_live %}
+      <td style="width:1%"><button type="button" class="askrow" title="Ask about this session"
+        data-ask="{{ b.id }}"
+        data-asklabel="{{ b.pricing_plan or b.appointment_name }}{% if b.appointment_date %} · {{ b.appointment_date.strftime('%d %b') }}{% endif %}">💬</button></td>
+      {% endif %}
     </tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
 
-  <p class="sub" style="margin:14px 0 0">Something look wrong? Reply to the email this link came from and
-    we'll check it before payout.</p>
+  <div style="height:16px"></div>
+  {% set mine = False %}
+  {% set title = 'Questions about this?' %}
+  {% set subtitle = '' %}
+  {% set empty = 'Nothing here yet. Spot something wrong? Tell us before payout.' %}
+  {% set can_post = link.is_live %}
+  {% set post_to = '/statement/' ~ link.token ~ '/comment' %}
+  {% set placeholder = 'Ask about your ' ~ (run.period_label or run.period) ~ ' sessions…' %}
+  {% include "_thread.html" with context %}
+  <p class="sub" style="margin:10px 0 0">We read these before payout. You can also reply to the email
+    this link came from.</p>
 </div>
 
 <div class="foot">

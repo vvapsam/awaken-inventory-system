@@ -1,0 +1,76 @@
+{# The conversation about one coach's period. Used twice — beside the sessions
+   on the admin page, and under the statement on the coach's own link — so the
+   two can never drift into showing different things.
+
+   `mine` decides which side of the thread is "us": True on the admin page,
+   False on the coach's. #}
+<div class="thread" id="thread">
+  <div class="hd">💬 {{ title }}
+    {% set unread = msgs | selectattr('from_coach', 'equalto', mine) | rejectattr('seen_at') | list %}
+    {% if unread %}<span class="tag" style="background:#c0392b">{{ unread|length }} new</span>{% endif %}
+  </div>
+  {% if subtitle %}<div class="who">{{ subtitle }}</div>{% endif %}
+
+  {% if not msgs %}
+  <div class="empty">{{ empty }}</div>
+  {% else %}
+  <div class="msgs" id="msgs">
+    {% set ns = namespace(day=None) %}
+    {% for m in msgs %}
+    {% if m.created_at and m.created_at.date() != ns.day %}
+    {% set ns.day = m.created_at.date() %}
+    <div class="day">{{ m.created_at.strftime('%d %b') }}</div>
+    {% endif %}
+    <div class="m {{ 'us' if m.from_coach != mine else 'them' }}">
+      {# The body keeps its own line breaks; everything around it must not, or
+         the template's indentation lands in the bubble. #}
+      <div class="bub">{% if m.booking %}<span class="ref">↩ {{ m.booking.pricing_plan or m.booking.appointment_name }}{% if m.booking.appointment_date %} · {{ m.booking.appointment_date.strftime('%d %b') }}{% endif %}{% if m.booking.commission is not none %} · {{ peso(m.booking.commission) }}{% endif %}</span>{% endif %}<span class="txt">{{ m.body }}</span></div>
+      <div class="meta">{{ (m.author.name if m.author else 'AWAKEN') if not m.from_coach else coach }}
+        {% if m.created_at %}· {{ m.created_at.strftime('%H:%M') }}{% endif %}
+        {% if m.from_coach != mine and m.seen_at %}· seen{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if can_post %}
+  <form method="post" action="{{ post_to }}">
+    <div class="quoted" id="quoted" hidden>
+      ↩ <span id="quotedtext"></span>
+      <button type="button" class="x" id="unquote" title="Don't quote a session">✕</button>
+    </div>
+    <input type="hidden" name="booking_id" id="booking_id" value="">
+    <div class="composer">
+      <textarea name="body" maxlength="2000" required placeholder="{{ placeholder }}"></textarea>
+      <button class="btn primary" style="padding:7px 14px">Send</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+<script>
+(function(){
+  // Keep the newest message in view — a thread you have to scroll to read
+  // the end of is a thread nobody reads the end of.
+  var box = document.getElementById('msgs');
+  if(box) box.scrollTop = box.scrollHeight;
+
+  // "Ask about this one" on a session row fills the quote strip.
+  var hidden = document.getElementById('booking_id'),
+      strip = document.getElementById('quoted'),
+      label = document.getElementById('quotedtext'),
+      drop = document.getElementById('unquote');
+  if(!hidden || !strip) return;
+  function clear(){ hidden.value = ''; strip.hidden = true; }
+  drop.addEventListener('click', clear);
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-ask]');
+    if(!b) return;
+    hidden.value = b.getAttribute('data-ask');
+    label.textContent = b.getAttribute('data-asklabel') || 'this session';
+    strip.hidden = false;
+    var t = document.querySelector('#thread textarea');
+    if(t){ t.focus(); t.scrollIntoView({block: 'center'}); }
+  });
+})();
+</script>
