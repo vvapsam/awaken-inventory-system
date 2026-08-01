@@ -437,6 +437,22 @@ def startup():
                 "UPDATE commission_bookings SET pays_by_status = TRUE "
                 " WHERE lower(btrim(booking_status)) = 'completed'; "
                 "END IF; END $$;"))
+            # Runs imported before the parsed_count fix stored zero, so their
+            # header reads "438 of 0 rows". Every parsed row is still on the
+            # table — dropped ones carry a reason — so the counts can be
+            # rebuilt from it. Only touch runs that never got a count.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL "
+                "AND to_regclass('public.commission_runs') IS NOT NULL THEN "
+                "UPDATE commission_runs r SET "
+                "  parsed_count = c.total, "
+                "  kept_count = c.total - c.dropped, "
+                "  dropped_count = c.dropped "
+                "FROM (SELECT run_id, count(*) AS total, "
+                "             count(dropped_reason) AS dropped "
+                "        FROM commission_bookings GROUP BY run_id) c "
+                "WHERE c.run_id = r.id AND coalesce(r.parsed_count, 0) = 0; "
+                "END IF; END $$;"))
             # A rate typed by hand on one booking row.
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
