@@ -1155,6 +1155,93 @@ with TestClient(app) as c:
     check("    CSV carries the type and the subtotals",
           "Subtotal — Affiliate" in r.text and ",Affiliate," in r.text)
 
+    print("\ncomments on a coach's period")
+    from app.models import CommissionComment as _Cmt                # noqa: E402
+    _db = SessionLocal()
+    _cc = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+           .filter(CommissionBooking.coach.isnot(None)).first())
+    _who2, _bid2 = _cc.coach, _cc.id
+    _db.close()
+
+    page = c.get(f"/commissions/{rid}/coach/{_who2}").text
+    check("the coach page carries a thread", 'id="thread"' in page)
+    check("  and says it is empty", "No comments yet" in page)
+
+    r = c.post(f"/commissions/{rid}/coach/{_who2}/comment",
+               data={"body": "Checked the 11 Jul one — the rate is right."},
+               follow_redirects=False)
+    check("  you can write in it", r.status_code == 303)
+    page = c.get(f"/commissions/{rid}/coach/{_who2}").text
+    check("    it shows on your side", "the rate is right" in page)
+
+    _db = SessionLocal()
+    _tok2 = _db.query(_Link).filter_by(run_id=int(rid), coach=_who2).order_by(
+        _Link.id.desc()).first()
+    _tok2 = _tok2.token if _tok2 else None
+    _db.close()
+    if _tok2:
+        with _TC2(app) as anon:
+            page = anon.get("/statement/" + _tok2).text
+            check("  the coach sees it on their link", "the rate is right" in page)
+            check("    with a box to reply in", 'name="body"' in page)
+            check("    and a way to ask about one session", 'data-ask="%d"' % _bid2 in page)
+            rr = anon.post("/statement/%s/comment" % _tok2,
+                           data={"body": "Thanks! And the 07 Jul one?",
+                                 "booking_id": str(_bid2)},
+                           follow_redirects=False)
+            check("  the coach can reply", rr.status_code == 303)
+            # A coach must not be able to quote someone else's session.
+            _db = SessionLocal()
+            _other = (_db.query(CommissionBooking).filter_by(run_id=int(rid))
+                      .filter(CommissionBooking.coach.isnot(None),
+                              CommissionBooking.coach != _who2).first())
+            _other_id = _other.id if _other else None
+            _db.close()
+            if _other_id:
+                anon.post("/statement/%s/comment" % _tok2,
+                          data={"body": "whose is this", "booking_id": str(_other_id)},
+                          follow_redirects=False)
+
+    _db = SessionLocal()
+    _msgs = _db.query(_Cmt).filter_by(run_id=int(rid), coach=_who2).order_by(_Cmt.id).all()
+    _shape = [(m.from_coach, m.booking_id, m.seen_at is not None) for m in _msgs]
+    _db.close()
+    check("  the thread holds both sides", len(_msgs) >= 2, str(len(_msgs)))
+    check("    yours is marked read once they open the link", _shape[0][2])
+    check("    theirs quotes the session they asked about", _shape[1][1] == _bid2)
+    if len(_shape) > 2:
+        check("    but never another coach's session", _shape[2][1] is None)
+    check("    and starts unread for you", not _shape[1][2])
+
+    _unread = len([1 for f, _, seen in _shape if f and not seen])
+    page = c.get(f"/commissions/{rid}?tab=coaches").text
+    check("  the coach table flags it as new", "%d new" % _unread in page,
+          "%d unread from the coach" % _unread)
+    page = c.get(f"/commissions/{rid}/coach/{_who2}").text
+    check("  opening the thread marks it read", "And the 07 Jul one?" in page)
+    check("    so the table stops flagging it",
+          "%d new" % _unread not in c.get(f"/commissions/{rid}?tab=coaches").text)
+
+    _before = len(_outbox)
+    _cr.Mailer, _real2 = _FakeMailer, _cr.Mailer
+    c.post(f"/commissions/{rid}/coach/{_who2}/comment",
+           data={"body": "One row, it was a single slot."}, follow_redirects=False)
+    _cr.Mailer = _real2
+    check("  replying emails the coach", len(_outbox) == _before + 1)
+    if len(_outbox) > _before:
+        _m = _outbox[-1]
+        check("    the subject says it is a reply", "reply" in _m["subject"].lower())
+        check("    it carries the link, not the figures",
+              "/statement/" in _m["text"] and "₱" not in _m["text"])
+
+    r = c.post(f"/commissions/{rid}/coach/{_who2}/comment", data={"body": "   "},
+               follow_redirects=False)
+    _db = SessionLocal()
+    _n = _db.query(_Cmt).filter_by(run_id=int(rid), coach=_who2).count()
+    _db.close()
+    # _msgs, plus the one reply above — the blank one adds nothing.
+    check("  an empty comment is not saved", _n == len(_msgs) + 1, "%d messages" % _n)
+
     print("\nregression — existing pages still render")
     for url in ("/dashboard", "/sales", "/admin/staff", "/coaches/billing",
                 "/invoices", "/customers", "/stock", "/admin/reports"):
