@@ -1499,18 +1499,28 @@ def register(app, deps):
         return rows
 
     def _coach_kinds(db) -> dict:
-        """Coach display name -> 'affiliate' / 'employee' / ''.
+        """Name -> 'affiliate' / 'employee' / '', under every spelling.
 
-        Keyed on the name because that is what a booking snapshots. Both the
-        display name and the Rezerv spelling are registered, since a booking
-        that never matched a coach falls back to the raw name.
+        A booking snapshots the coach's display name as it was at import, so
+        renaming a coach — which happens the moment you link them to a person
+        record — leaves old bookings under the old name. The Rezerv spelling
+        does not move, which is why it is the reliable key; the display name is
+        registered too, for bookings that never matched a coach at all.
         """
         out = {}
         for r in db.query(CommissionCoachRate).all():
-            for key in (r.coach, r.staff_raw):
+            for key in (r.staff_raw, r.coach):
                 if key and key.strip():
-                    out[key.strip().lower()] = r.kind
+                    out.setdefault(key.strip().lower(), r.kind)
         return out
+
+    def _kind_of(b, kinds: dict) -> str:
+        """This booking's coach type. Rezerv spelling first — see above."""
+        for key in (b.staff_raw, b.coach):
+            hit = kinds.get((key or "").strip().lower())
+            if hit:
+                return hit
+        return ""
 
     def _conductions(db, start: date, end: date, counting: str,
                      kind: str = "") -> dict:
@@ -1524,17 +1534,20 @@ def register(app, deps):
         kinds = _coach_kinds(db)
         if kind in ("affiliate", "employee", "untagged"):
             want = "" if kind == "untagged" else kind
-            rows = [b for b in rows
-                    if kinds.get((b.coach or b.staff_raw or "—").strip().lower(), "") == want]
+            rows = [b for b in rows if _kind_of(b, kinds) == want]
 
         by_coach, per_month = {}, {k: 0 for k, _ in months}
         for b in rows:
             name = (b.coach or b.staff_raw or "—").strip() or "—"
             c = by_coach.setdefault(name, {
                 "coach": name, "total": 0, "clients": set(),
-                "kind": kinds.get(name.lower(), ""),
+                "kind": _kind_of(b, kinds),
                 "months": {k: 0 for k, _ in months},
                 "first": None, "last": None})
+            # One coach can appear under two spellings; the first tagged row
+            # settles it rather than whichever row happened to arrive first.
+            if not c["kind"]:
+                c["kind"] = _kind_of(b, kinds)
             c["total"] += 1
             if b.customer and b.customer.strip():
                 c["clients"].add(b.customer.strip().lower())

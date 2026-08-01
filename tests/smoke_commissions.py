@@ -929,13 +929,16 @@ with TestClient(app) as c:
     check("    everyone starts untagged", ">Untagged<" in c.get("/commissions/conductions?" + rng).text)
 
     _db = SessionLocal()
-    _rates = {r_.coach: r_.id for r_ in _db.query(CommissionCoachRate).all()}
+    # Keep each coach's real Rezerv spelling — it is the join the report uses,
+    # and overwriting it with the display name would hide that.
+    _rates = {r_.coach: (r_.id, r_.staff_raw)
+              for r_ in _db.query(CommissionCoachRate).all()}
     _db.close()
     _names = sorted(_by_coach, key=lambda n: -_by_coach[n])
     _aff, _emp = _names[:2], _names[2:]
     for _name, _kind in [(n, "affiliate") for n in _aff] + [(n, "employee") for n in _emp]:
-        rr = c.post("/admin/commission-rates/%d" % _rates[_name],
-                    data={"coach": _name, "staff_raw": _name, "coach_id": "",
+        rr = c.post("/admin/commission-rates/%d" % _rates[_name][0],
+                    data={"coach": _name, "staff_raw": _rates[_name][1], "coach_id": "",
                           "rate_type": "percent", "rate_value": "40",
                           "is_active": "on", "coach_type": _kind},
                     follow_redirects=False)
@@ -943,6 +946,12 @@ with TestClient(app) as c:
             check("    tagging %s failed" % _name, False, str(rr.status_code))
     _db = SessionLocal()
     _kinds = {r_.coach: r_.kind for r_ in _db.query(CommissionCoachRate).all()}
+    # Renaming a coach is what linking them to a person record does, and the
+    # bookings keep the old name. The report has to follow the Rezerv spelling
+    # or the whole run reads as untagged.
+    _ren = _db.query(CommissionCoachRate).filter_by(coach=_aff[0]).first()
+    _ren.coach = _aff[0] + " Delacruz"
+    _db.commit()
     _db.close()
     check("    the tag is stored on the coach",
           all(_kinds.get(n) == "affiliate" for n in _aff)
@@ -968,6 +977,11 @@ with TestClient(app) as c:
 
     r = c.get("/commissions/conductions?%s&kind=untagged" % rng)
     check("    nothing is untagged any more", "No conductions between" in r.text)
+    # One coach was renamed above, which is what linking to a person record
+    # does. Their bookings still carry the old name, so if the report matched
+    # on the display name alone they would fall back into Untagged here.
+    check("    a renamed coach keeps their tag",
+          'ktag none">Untagged' not in c.get("/commissions/conductions?" + rng).text)
 
     r = c.get("/commissions/conductions.csv?" + rng)
     check("    CSV carries the type and the subtotals",
