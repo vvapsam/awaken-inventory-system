@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import Depends, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from . import commissions as engine
@@ -1453,6 +1453,194 @@ def register(app, deps):
         d = _delegator_detail(run, did)
         return render(request, "delegation_detail.html", db, staff, active="delegation",
                       run=run, runs=runs, delegator=delegator, tab=tab, **d)
+
+    # ------------------------------------------------- conductions report ----
+
+    def _month_key(d: date) -> str:
+        return "%04d-%02d" % (d.year, d.month)
+
+    def _months_between(start: date, end: date) -> list:
+        """Every month the range touches, oldest first, as (key, label)."""
+        out, y, m = [], start.year, start.month
+        while (y, m) <= (end.year, end.month):
+            out.append(("%04d-%02d" % (y, m), "%s %d" % (MONTHS[m - 1][:3], y)))
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        return out
+
+    def _conduction_rows(db, start: date, end: date, counting: str):
+        """Bookings in a date range, one per booking, newest run wins.
+
+        Runs overlap all the time — a re-imported June sits beside the original,
+        and a superseded run keeps its rows. Counting straight off the table
+        would show a coach twice for the same session, so rows are keyed by
+        booking reference and the highest run id wins. A row with no reference
+        falls back to its own identity, which is the safest thing to do with a
+        booking that cannot be matched to anything else.
+        """
+        q = (db.query(CommissionBooking)
+               .join(CommissionRun, CommissionBooking.run_id == CommissionRun.id)
+               .filter(CommissionBooking.dropped_reason.is_(None),
+                       CommissionBooking.appointment_date >= start,
+                       CommissionBooking.appointment_date <= end))
+        best = {}
+        for b in q.all():
+            key = (b.booking_ref or "").strip().lower() or ("#row", b.id)
+            held = best.get(key)
+            if held is None or b.run_id > held.run_id:
+                best[key] = b
+        rows = list(best.values())
+        if counting == "paid":
+            rows = [b for b in rows if b.is_commissionable]
+        return rows
+
+    def _conductions(db, start: date, end: date, counting: str) -> dict:
+        """Conductions per coach per month, ranked."""
+        months = _months_between(start, end)
+        rows = _conduction_rows(db, start, end, counting)
+
+        by_coach, per_month = {}, {k: 0 for k, _ in months}
+        for b in rows:
+            name = (b.coach or b.staff_raw or "—").strip() or "—"
+            c = by_coach.setdefault(name, {
+                "coach": name, "total": 0, "clients": set(),
+                "months": {k: 0 for k, _ in months},
+                "first": None, "last": None})
+            c["total"] += 1
+            if b.customer and b.customer.strip():
+                c["clients"].add(b.customer.strip().lower())
+            d = b.appointment_date
+            if d:
+                key = _month_key(d)
+                if key in c["months"]:
+                    c["months"][key] += 1
+                    per_month[key] += 1
+                c["first"] = min(c["first"] or d, d)
+                c["last"] = max(c["last"] or d, d)
+
+        total = sum(c["total"] for c in by_coach.values())
+        ranked = sorted(by_coach.values(), key=lambda c: (-c["total"], c["coach"]))
+        top = ranked[0]["total"] if ranked else 0
+        # Trend compares the last two months that actually have sessions in
+        # them. Comparing against an empty month — a range ending before the
+        # next import, or starting before the gym used the system — would tell
+        # every coach they had collapsed by 100%.
+        active = [k for k, _ in months if per_month[k]]
+        cmp_prev, cmp_last = (active[-2], active[-1]) if len(active) > 1 else (None, None)
+        labels = dict(months)
+        # Shading is graded against the busiest single cell, so the darkest
+        # square on the grid is always someone's best month.
+        cell_max = max((n for c in by_coach.values() for n in c["months"].values()),
+                       default=0)
+        for i, c in enumerate(ranked, 1):
+            c["rank"] = i
+            c["clients"] = len(c["clients"])
+            c["share"] = (c["total"] / total * 100) if total else 0
+            # Bar width is relative to the leader, not to the total — with seven
+            # coaches every bar would otherwise be a stub.
+            c["width"] = (c["total"] / top * 100) if top else 0
+            c["avg"] = c["total"] / len(months) if months else 0
+            c["trend"] = (_trend([c["months"][cmp_prev], c["months"][cmp_last]])
+                          if cmp_prev else {"dir": "flat", "text": "—", "pct": 0})
+            c["heat"] = {k: ("h%d" % min(5, (c["months"][k] * 5 + cell_max - 1) // cell_max)
+                             if c["months"][k] and cell_max else "")
+                         for k, _ in months}
+
+        busiest = max(months, key=lambda m: per_month[m[0]], default=None)
+        return dict(
+            months=months, coaches=ranked, per_month=per_month, total=total,
+            counted=len(rows), compare_to=labels.get(cmp_prev),
+            avg_each=(total / len(ranked)) if ranked else 0,
+            busiest=busiest, busiest_n=per_month[busiest[0]] if busiest else 0,
+            heat_max=max(per_month.values()) if per_month else 0)
+
+    def _trend(seq: list) -> dict:
+        """Compare the last month with the one before it."""
+        if len(seq) < 2 or not seq[-2]:
+            return {"dir": "flat", "text": "—", "pct": 0}
+        change = (seq[-1] - seq[-2]) / seq[-2] * 100
+        if abs(change) < 5:
+            return {"dir": "flat", "text": "steady", "pct": change}
+        return {"dir": "up" if change > 0 else "down",
+                "text": "%+d%%" % round(change), "pct": change}
+
+    def _parse_day(text: str, fallback: date) -> date:
+        try:
+            return datetime.strptime((text or "").strip(), "%Y-%m-%d").date()
+        except ValueError:
+            return fallback
+
+    def _month_start(d: date, back: int = 0) -> date:
+        """First of the month, optionally N months earlier."""
+        y, m = d.year, d.month - back
+        while m < 1:
+            y, m = y - 1, m + 12
+        return date(y, m, 1)
+
+    def _presets(today: date) -> list:
+        """The ranges anyone actually asks for, as ready-made links."""
+        this_start = _month_start(today)
+        last_end = this_start - timedelta(days=1)
+        return [
+            {"label": "This month", "start": this_start, "end": today},
+            {"label": "Last month", "start": _month_start(last_end), "end": last_end},
+            {"label": "Last 3 months", "start": _month_start(last_end, 2), "end": last_end},
+            {"label": "Year to date", "start": date(today.year, 1, 1), "end": today},
+        ]
+
+    def _report_range(start: str, end: str, today: date):
+        """Whatever was asked for, else the last three whole months."""
+        default = _presets(today)[2]
+        start_d = _parse_day(start, default["start"])
+        end_d = _parse_day(end, default["end"])
+        return (end_d, start_d) if end_d < start_d else (start_d, end_d)
+
+    @app.get("/commissions/conductions", response_class=HTMLResponse)
+    def conductions_report(request: Request, start: str = "", end: str = "",
+                           counting: str = "paid", db: Session = Depends(get_db)):
+        """How many sessions each coach conducted over a period you choose.
+
+        Deliberately not tied to a run: the question is about a stretch of the
+        calendar, and a stretch of the calendar can span several runs.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        today = datetime.now(tz()).date()
+        start_d, end_d = _report_range(start, end, today)
+        counting = "all" if counting == "all" else "paid"
+        data = _conductions(db, start_d, end_d, counting)
+        return render(request, "commission_conductions.html", db, staff,
+                      active="conductions", start=start_d, end=end_d,
+                      counting=counting, today=today, presets=_presets(today), **data)
+
+    @app.get("/commissions/conductions.csv")
+    def conductions_csv(request: Request, start: str = "", end: str = "",
+                        counting: str = "paid", db: Session = Depends(get_db)):
+        """The same table, for a spreadsheet."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        today = datetime.now(tz()).date()
+        start_d, end_d = _report_range(start, end, today)
+        counting = "all" if counting == "all" else "paid"
+        d = _conductions(db, start_d, end_d, counting)
+
+        def cell(v):
+            v = str(v)
+            return '"%s"' % v.replace('"', '""') if any(c in v for c in ',"\n') else v
+
+        lines = [",".join(["Rank", "Coach"] + [lb for _, lb in d["months"]]
+                          + ["Total", "Share %", "Avg per month", "Clients"])]
+        for c in d["coaches"]:
+            lines.append(",".join(cell(x) for x in (
+                [c["rank"], c["coach"]] + [c["months"][k] for k, _ in d["months"]]
+                + [c["total"], "%.1f" % c["share"], "%.1f" % c["avg"], c["clients"]])))
+        lines.append(",".join(["", "All coaches"]
+                              + [str(d["per_month"][k]) for k, _ in d["months"]]
+                              + [str(d["total"]), "100.0", "", ""]))
+        name = "conductions_%s_to_%s.csv" % (start_d, end_d)
+        return Response("\n".join(lines) + "\n", media_type="text/csv",
+                        headers={"content-disposition": 'attachment; filename="%s"' % name})
 
     @app.get("/commissions/{rid}", response_class=HTMLResponse)
     def commission_run_view(request: Request, rid: int, tab: str = "coaches",

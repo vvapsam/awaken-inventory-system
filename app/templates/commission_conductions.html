@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block body %}
+{# Conductions over a stretch of the calendar rather than one run. The ranking
+   answers "who is carrying the floor", the grid underneath answers "and is that
+   changing" — so both are on the page, ranking first. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Conductions by coach</h1>
+    <p class="muted small" style="margin:2px 0 0">Every session a coach actually conducted, counted
+      across whatever runs cover the period. A re-imported month is counted once.</p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/commissions/conductions.csv?start={{ start }}&end={{ end }}&counting={{ counting }}">⭳ Export CSV</a>
+  </div>
+</div>
+{% include "_commission_tabs.html" %}
+
+<form method="get" class="period">
+  <div class="f"><label>From</label><input type="date" name="start" value="{{ start }}"></div>
+  <div class="f"><label>To</label><input type="date" name="end" value="{{ end }}"></div>
+  <div class="f"><label>Count</label>
+    <select name="counting">
+      <option value="paid" {{ 'selected' if counting == 'paid' }}>Paid conductions only</option>
+      <option value="all" {{ 'selected' if counting == 'all' }}>All imported sessions</option>
+    </select></div>
+  <button class="btn primary">Run report</button>
+  <div class="presets">
+    {% for p in presets %}
+    <a href="?start={{ p.start }}&end={{ p.end }}&counting={{ counting }}"
+       class="{{ 'on' if p.start == start|string and p.end == end|string }}">{{ p.label }}</a>
+    {% endfor %}
+  </div>
+</form>
+
+{% if not coaches %}
+<div class="card"><p class="muted" style="margin:0">No conductions between
+  {{ start.strftime('%d %b %Y') }} and {{ end.strftime('%d %b %Y') }}. Either no run covers those
+  dates yet, or every booking in them was dropped on import.</p></div>
+{% else %}
+
+<div class="sumbar">
+  <div class="s hero"><div class="l">Conductions</div><div class="v">{{ '{:,}'.format(total) }}</div>
+    <div class="sub">{{ start.strftime('%d %b') }} – {{ end.strftime('%d %b %Y') }}</div></div>
+  <div class="s"><div class="l">Coaches</div><div class="v">{{ coaches|length }}</div>
+    <div class="sub">{{ '%.0f'|format(avg_each) }} each on average</div></div>
+  {% if busiest %}
+  <div class="s"><div class="l">Busiest month</div><div class="v">{{ busiest[1] }}</div>
+    <div class="sub">{{ busiest_n }} conduction{{ 's' if busiest_n != 1 }}</div></div>
+  {% endif %}
+  <div class="s"><div class="l">Top coach</div><div class="v">{{ coaches[0].coach }}</div>
+    <div class="sub">{{ coaches[0].total }} · {{ '%.0f'|format(coaches[0].share) }}% of all</div></div>
+  <div class="s"><div class="l">Counting</div>
+    <div class="sub" style="margin-top:6px;max-width:26ch">{{ 'Completed and late-cancelled, plus anything approved by hand.' if counting == 'paid' else 'Everything imported, including no-shows and cancellations.' }}</div></div>
+</div>
+
+<h2>Top performers</h2>
+<div class="podium">
+  {% for c in coaches[:3] %}
+  <div class="pod {{ 'first' if loop.first }}">
+    <div class="rank">{{ loop.index }}</div>
+    <div class="who"><a href="/commissions/conductions?start={{ start }}&end={{ end }}&counting={{ counting }}#c-{{ loop.index }}">{{ c.coach }}</a></div>
+    <div class="n">{{ c.total }}</div>
+    <div class="sub">{{ '%.1f'|format(c.share) }}% of all · {{ c.clients }} client{{ 's' if c.clients != 1 }}</div>
+    {% if compare_to %}
+    <div class="delta {{ c.trend.dir }}">{{ '▲' if c.trend.dir == 'up' else ('▼' if c.trend.dir == 'down' else '–') }}
+      {{ c.trend.text }} on {{ compare_to }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<h2>Every coach</h2>
+<table>
+  <thead>
+  <tr><th style="width:30%">Coach</th>
+    {% for k, label in months %}<th class="amt">{{ label }}</th>{% endfor %}
+    <th class="amt">Total</th><th class="amt">Share</th><th class="amt">Avg / month</th></tr>
+  </thead>
+  <tbody>
+  {% for c in coaches %}
+  <tr id="c-{{ c.rank }}">
+    <td>
+      <span class="rk {{ 'top' if c.rank <= 3 }}">{{ c.rank }}</span><b>{{ c.coach }}</b>
+      <div class="barwrap"><span class="bar" style="width:{{ '%.1f'|format(c.width) }}%"></span></div>
+    </td>
+    {% for k, label in months %}<td class="amt">{{ c.months[k] or '·' }}</td>{% endfor %}
+    <td class="amt primary">{{ c.total }}</td>
+    <td class="amt">{{ '%.1f'|format(c.share) }}%</td>
+    <td class="amt">{{ '%.1f'|format(c.avg) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+  <tr><td>All coaches</td>
+    {% for k, label in months %}<td class="amt">{{ per_month[k] }}</td>{% endfor %}
+    <td class="amt">{{ '{:,}'.format(total) }}</td><td class="amt">100%</td>
+    <td class="amt">{{ '%.1f'|format(total / months|length) }}</td></tr>
+  </tfoot>
+</table>
+
+{% if months|length > 1 %}
+<h2>Coach × month</h2>
+<p class="muted small" style="margin:0 0 4px">Darker is busier, read across a row to see the shape of
+  someone's quarter.</p>
+<table class="mx">
+  <thead>
+  <tr><th style="width:26%">Coach</th>
+    {% for k, label in months %}<th class="amt">{{ label }}</th>{% endfor %}
+    <th class="amt">Total</th>
+    <th class="amt">{{ 'vs ' ~ compare_to if compare_to else 'Trend' }}</th></tr>
+  </thead>
+  <tbody>
+  {% for c in coaches %}
+  <tr>
+    <td><span class="rk {{ 'top' if c.rank <= 3 }}">{{ c.rank }}</span><b>{{ c.coach }}</b>
+      <div class="sub">{{ c.clients }} client{{ 's' if c.clients != 1 }}{% if c.first %} ·
+        {{ c.first.strftime('%d %b') }} – {{ c.last.strftime('%d %b') }}{% endif %}</div></td>
+    {% for k, label in months %}
+    <td class="h {{ c.heat[k] }}">{{ c.months[k] or '·' }}</td>
+    {% endfor %}
+    <td class="amt primary">{{ c.total }}</td>
+    <td class="amt">{% if compare_to %}<span class="delta {{ c.trend.dir }}">{{ '▲' if c.trend.dir == 'up' else ('▼' if c.trend.dir == 'down' else '–') }} {{ c.trend.text }}</span>{% else %}<span class="muted small">—</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+  <tr><td>Per month</td>
+    {% for k, label in months %}<td class="amt">{{ per_month[k] }}</td>{% endfor %}
+    <td class="amt">{{ '{:,}'.format(total) }}</td><td></td></tr>
+  </tfoot>
+</table>
+{% endif %}
+
+<div class="alert warn" style="margin-top:16px">
+  <b>Counted once.</b>
+  <span class="muted">Where two runs cover the same dates — a month and its re-import — each booking
+    is counted from the newest run holding it, so re-uploading never doubles anyone.</span>
+</div>
+{% endif %}
+{% endblock %}
