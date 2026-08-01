@@ -1295,6 +1295,7 @@ def register(app, deps):
     @app.post("/commissions/{rid}/statements/send")
     def commission_statements_send(request: Request, rid: int,
                                    coach: str = Form(""), force: str = Form(""),
+                                   back: str = Form(""),
                                    db: Session = Depends(get_db)):
         """Email approved coaches their statement. With no `coach`, everyone
         approved who hasn't already had this month's link sent."""
@@ -1304,19 +1305,23 @@ def register(app, deps):
         run = db.get(CommissionRun, rid)
         if not run:
             return RedirectResponse("/commissions", status_code=303)
-        back = f"/commissions/{rid}/statements"
+        # Sending is offered from two places — the Statements screen and the
+        # coach row on the run — and each returns you to where you pressed it.
+        dest = (f"/commissions/{rid}?tab=coaches" if back == "coaches"
+                else f"/commissions/{rid}/statements")
         mailer = Mailer()
         if not mailer.cfg.configured:
             request.session["mail_result"] = {
                 "sent": [], "skipped": [], "failed": [],
                 "setup": "Mail isn't set up yet — %s missing on the server."
                          % ", ".join(mailer.cfg.missing)}
-            return RedirectResponse(back, status_code=303)
+            return RedirectResponse(dest, status_code=303)
         approved = list(signoffs(run, db))
         targets = [coach] if coach else [c["coach"] for c in coach_summary(run)
                                          if c["coach"] in approved]
         if coach and coach not in approved:
-            return RedirectResponse(back + "?blocked=" + coach, status_code=303)
+            sep = "&" if "?" in dest else "?"
+            return RedirectResponse(dest + sep + "blocked=" + coach, status_code=303)
         now = datetime.now(timezone.utc)
         base = _public_base(request)
         out = {"sent": [], "skipped": [], "failed": [], "setup": ""}
@@ -1331,7 +1336,7 @@ def register(app, deps):
                 out["failed"].append({"coach": name, "detail": detail})
             db.commit()          # one coach's failure shouldn't undo the rest
         request.session["mail_result"] = out
-        return RedirectResponse(back, status_code=303)
+        return RedirectResponse(dest, status_code=303)
 
     @app.post("/commissions/{rid}/statements/link-all")
     def commission_statement_link_all(request: Request, rid: int,
@@ -1768,9 +1773,16 @@ def register(app, deps):
                     dg_detail = _delegator_detail(run, dg_pick["delegator"].id)
         summary = coach_summary(run)
         emails = {p.name: p.email for p in db.query(Staff).all() if p.email}
+        # Newest link per coach — the coach table offers Send or Resend from
+        # the row, so it needs to know whether one has gone out already.
+        links = {}
+        for ln in (db.query(CommissionStatementLink).filter_by(run_id=run.id)
+                   .order_by(CommissionStatementLink.id).all()):
+            links[ln.coach] = ln
         for row in summary:
             row["signoff"] = signed.get(row["coach"])
             row["email"] = emails.get(row["coach"])
+            row["link"] = links.get(row["coach"])
         return render(request, "commission_run.html", db, staff, run=run, tab=tab,
                       plans=plans, prows=prows, ptotals=ptotals,
                       totals=run_totals(run), block=blockers(run, db),
@@ -1781,6 +1793,8 @@ def register(app, deps):
                       pending=waiting, pending_count=len(waiting),
                       can_pay=(getattr(staff, "role", "") == "admin"),
                       result=request.session.pop("signoff_result", None),
+                      mail=request.session.pop("mail_result", None),
+                      mail_ready=Mailer().cfg.configured,
                       dg_rows=dg_rows, dg_pick=dg_pick, dg_detail=dg_detail, dg_count=dg_count,
                       dg_totals=_rollup_totals(run, dg_rows),
                       RUN_DRAFT=RUN_DRAFT, RUN_FINALIZED=RUN_FINALIZED)
