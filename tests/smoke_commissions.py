@@ -343,6 +343,7 @@ with TestClient(app) as c:
     page = c.get(f"/commissions/{drid}?tab=coaches").text
     check("  the tab offers a tick box per coach", page.count('name="coach"') >= 2)
     check("    and a select-all", 'id="selall"' in page)
+    check("    the selection bar starts hidden", 'class="selbar" id="selbar" hidden' in page)
     check("    and an Approve button per row", page.count("✓ Approve") >= 2)
     r = c.post(f"/commissions/{drid}/coach/{_names[0]}/signoff",
                data={"confirm": "on", "back": "coaches"}, follow_redirects=False)
