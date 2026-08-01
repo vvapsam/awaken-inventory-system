@@ -614,3 +614,38 @@ def test_delegation_still_beats_a_plan_override():
               revenue="₱3000.00", cfg=cfg)
     assert row.rule == "delegation"
     assert row.commission == D("640.00")
+
+
+# ---------------------------------------------------------------- coach type
+
+
+def _rate_row(coach_type="", person_type=None):
+    """A CommissionCoachRate, optionally linked to a person."""
+    from app.models import CommissionCoachRate, Staff
+    r = CommissionCoachRate(coach="AR", staff_raw="AR M", coach_type=coach_type)
+    if person_type is not None:
+        r.entity = Staff(name="AR", person_type=person_type)
+    return r
+
+
+def test_the_tag_on_the_coach_wins():
+    assert _rate_row("affiliate", "employee").kind == "affiliate"
+
+
+def test_an_untagged_coach_inherits_the_person_type():
+    assert _rate_row("", "affiliate").kind == "affiliate"
+
+
+def test_a_coach_with_no_tag_and_no_person_is_untagged():
+    assert _rate_row("").kind == ""
+    assert _rate_row("", None).kind == ""
+
+
+def test_a_person_type_that_is_not_a_coach_type_reads_as_untagged():
+    """A coach linked to a customer or member record is not an affiliate.
+
+    Passing the raw person_type through produced a chip with no label and no
+    colour on the Coach rates screen.
+    """
+    for other in ("customer", "member", "supplier", "coach"):
+        assert _rate_row("", other).kind == "", other
