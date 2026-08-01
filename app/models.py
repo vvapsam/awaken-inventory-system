@@ -636,6 +636,11 @@ class CommissionCoachRate(Base):
     coach = Column(String, nullable=False)                  # display name
     staff_raw = Column(String, nullable=False)              # Rezerv spelling
     coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    # Affiliate or employee, for reporting. Held here as well as on the person
+    # record because a coach can be paid commission long before anyone links
+    # them to a record in Relationships — and until they are linked there is
+    # nowhere else for the tag to live.
+    coach_type = Column(String, nullable=False, default="")
     rate_type = Column(String, nullable=False, default=COMMISSION_PERCENT)
     rate_value = Column(Numeric(10, 4), nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
@@ -653,6 +658,21 @@ class CommissionCoachRate(Base):
     def plan_list(self):
         """Lowercased plans this coach is paid differently for."""
         return [o.plan.strip().lower() for o in self.live_overrides if o.plan]
+
+    @property
+    def kind(self) -> str:
+        """'affiliate', 'employee', or '' — the tag here, else the person's."""
+        if self.coach_type:
+            return self.coach_type
+        return (self.entity.person_type or "") if self.entity else ""
+
+
+# What a coach is to the business. 'employee' is labelled Employee/Coach
+# because internally they are both — on payroll, and taking sessions.
+COACH_TYPES = [("", "— untagged —"), ("employee", "Employee/Coach"),
+               ("affiliate", "Affiliate")]
+COACH_TYPE_LABELS = {"employee": "Employee/Coach", "affiliate": "Affiliate",
+                     "": "Untagged"}
 
 
 class CommissionCoachOverride(Base):

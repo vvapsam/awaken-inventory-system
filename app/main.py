@@ -461,6 +461,18 @@ def startup():
                 "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
                 "  rate_manual_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
                 "END IF; END $$;"))
+            # Affiliate or employee, tagged on the coach for reporting. Seeded
+            # from the linked person record where there is one; on this database
+            # no coach is linked yet, so it starts empty and gets filled in on
+            # the Coach rates screen.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_coach_rates') IS NOT NULL THEN "
+                "ALTER TABLE commission_coach_rates ADD COLUMN IF NOT EXISTS "
+                "  coach_type VARCHAR NOT NULL DEFAULT ''; "
+                "UPDATE commission_coach_rates r SET coach_type = e.person_type "
+                "  FROM entity e WHERE e.id = r.coach_id AND r.coach_type = '' "
+                "    AND e.person_type IN ('employee', 'affiliate'); "
+                "END IF; END $$;"))
             # Coach overrides moved from a comma-separated column with one
             # shared rate to a row per plan, each with its own basis and rate.
             # Copy first, then drop the old columns — leaving them would let a
