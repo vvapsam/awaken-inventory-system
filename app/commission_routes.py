@@ -33,7 +33,8 @@ from .models import (
     COACH_TYPES, COACH_TYPE_LABELS,
     COMMISSION_SESSION_RATE_DEFAULTS, CommissionSessionRate, AWAKEN_FORCE,
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
-    CommissionBooking, CommissionCharge, CommissionChargeLine,
+    CommissionBooking, CommissionCharge, CommissionChargeLine, CommissionComment,
+    COMMENT_MAX,
     CommissionCoachOverride, CommissionCoachRate, CommissionDelegator, CommissionPayout,
     CommissionPayoutLine, CommissionRun, CommissionSetting, CommissionSignoff,
     CommissionStatementLink, STATEMENT_LINK_DAYS, Staff,
@@ -1247,9 +1248,160 @@ def register(app, deps):
         link.first_opened_at = link.first_opened_at or now
         link.last_opened_at = now
         db.commit()
+        msgs = _thread(db, run.id, link.coach)
+        _mark_seen(db, msgs, from_coach=False, now=now)
+        db.commit()
         ctx = _statement_context(run, link.coach, db)
-        ctx.update({"request": request, "link": link})
+        ctx.update({"request": request, "link": link, "msgs": msgs})
         return templates.TemplateResponse("statement.html", ctx)
+
+    # ------------------------------------------------------- comments ----
+
+    def _thread(db, rid: int, coach: str):
+        """Every message about this coach's period, oldest first."""
+        return (db.query(CommissionComment)
+                .filter_by(run_id=rid, coach=coach)
+                .order_by(CommissionComment.id).all())
+
+    def _mark_seen(db, msgs, from_coach: bool, now):
+        """Mark the other side's unread messages as read.
+
+        Reading is what marks them, not a button: if you have the thread open
+        you have seen it, and a badge that needs dismissing is a badge people
+        learn to ignore.
+        """
+        n = 0
+        for m in msgs:
+            if m.from_coach == from_coach and m.seen_at is None:
+                m.seen_at = now
+                n += 1
+        return n
+
+    def _unread_by_coach(db, rid: int) -> dict:
+        """Coach -> how many of their messages you haven't read."""
+        out = {}
+        for m in (db.query(CommissionComment)
+                  .filter_by(run_id=rid, from_coach=True)
+                  .filter(CommissionComment.seen_at.is_(None)).all()):
+            out[m.coach] = out.get(m.coach, 0) + 1
+        return out
+
+    def _comment_counts(db, rid: int) -> dict:
+        """Coach -> (total messages, newest at, who wrote it)."""
+        out = {}
+        for m in db.query(CommissionComment).filter_by(run_id=rid).order_by(
+                CommissionComment.id).all():
+            n, _, _ = out.get(m.coach, (0, None, False))
+            out[m.coach] = (n + 1, m.created_at, m.from_coach)
+        return out
+
+    def _reply_email(coach: str, run: CommissionRun, url: str, body: str):
+        """Told there is a reply, not given the reply.
+
+        The message itself stays behind the private link: mail gets forwarded,
+        and a coach's figures are their own.
+        """
+        period = run.period_label or run.period
+        first = (coach or "").split()[0] if coach else "there"
+        subject = f"A reply about your {period} commission — AWAKEN"
+        snippet = (body or "").strip().replace("\r", "")
+        if len(snippet) > 140:
+            snippet = snippet[:140].rsplit(" ", 1)[0] + "…"
+        text = (f"Hi {first},\n\n"
+                f"We've replied about your {period} sessions:\n\n"
+                f"  \"{snippet}\"\n\n"
+                f"Read it and reply here:\n{url}\n\n"
+                "— AWAKEN Fitness Center\n")
+        html = f"""\
+<!DOCTYPE html><html><body style="margin:0;padding:0;background:#eef1f4">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f4;padding:26px 12px">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:12px;overflow:hidden;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<tr><td style="background:#132a44;padding:20px 26px">
+  <img src="cid:{LOGO_CID}" alt="AWAKEN" width="142" height="38"
+       style="display:block;border:0;outline:none;text-decoration:none;height:auto;width:142px;max-width:142px">
+  <div style="color:#fff;font-size:19px;font-weight:650;margin-top:12px">A reply about {period}</div>
+</td></tr>
+<tr><td style="padding:24px 26px 6px;color:#22303d;font-size:15px;line-height:1.55">
+  <p style="margin:0 0 16px">Hi {first},</p>
+  <p style="margin:0 0 14px">We've replied about your {period} sessions:</p>
+  <div style="border-left:3px solid #bfe3dc;background:#f7fbfa;padding:11px 14px;color:#3d4a57;font-size:14.5px">
+    {snippet}</div>
+  <p style="margin:20px 0 0;text-align:center">
+    <a href="{url}" style="display:inline-block;background:#132a44;color:#fff;text-decoration:none;
+       font-weight:650;font-size:15px;padding:13px 30px;border-radius:9px">Read and reply &rarr;</a>
+  </p>
+</td></tr>
+<tr><td style="padding:20px 26px 24px;color:#96a0ab;font-size:11.5px">
+  AWAKEN Fitness Center · This link is private to you — please don't forward it.
+</td></tr>
+</table></td></tr></table></body></html>"""
+        return subject, text, html
+
+    def _notify_reply(db, run, coach, staff, body, base):
+        """Email the coach that there is something to read. Best effort: a
+        failed send must not lose the comment that is already saved."""
+        email = _coach_email(db, coach)
+        mailer = Mailer()
+        if not email or not mailer.cfg.configured:
+            return
+        now = datetime.now(timezone.utc)
+        link = _current_link(db, run.id, coach)
+        if link is None or not link.is_live:
+            link = _issue_link(db, run.id, coach, staff, now)
+            db.flush()
+        url = f"{base}/statement/{link.token}"
+        subject, text, html = _reply_email(coach, run, url, body)
+        mailer.send(email, subject, text, html, inline={LOGO_CID: _logo_bytes()})
+
+    @app.post("/commissions/{rid}/coach/{coach}/comment")
+    def commission_comment_add(request: Request, rid: int, coach: str,
+                               body: str = Form(""), booking_id: str = Form(""),
+                               db: Session = Depends(get_db)):
+        """Your side of the thread."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        back = f"/commissions/{rid}/coach/{coach}#thread"
+        text_ = (body or "").strip()[:COMMENT_MAX]
+        if not run or not text_:
+            return RedirectResponse(back, status_code=303)
+        bid = int(booking_id) if booking_id.strip().isdigit() else None
+        db.add(CommissionComment(run_id=rid, coach=coach, body=text_,
+                                 from_coach=False, author_id=staff.id,
+                                 booking_id=bid))
+        db.commit()
+        _notify_reply(db, run, coach, staff, text_, _public_base(request))
+        db.commit()
+        return RedirectResponse(back, status_code=303)
+
+    @app.post("/statement/{token}/comment")
+    def public_statement_comment(request: Request, token: str,
+                                 body: str = Form(""), booking_id: str = Form(""),
+                                 db: Session = Depends(get_db)):
+        """The coach's side. Same credential as reading: the token.
+
+        A comment is the one thing a coach may write, and it cannot reach a
+        figure — so the surface this opens up is a row of text on their own
+        thread, nothing more.
+        """
+        link = (db.query(CommissionStatementLink)
+                .filter(CommissionStatementLink.token == token).first())
+        if not link or not link.is_live:
+            return RedirectResponse(f"/statement/{token}", status_code=303)
+        text_ = (body or "").strip()[:COMMENT_MAX]
+        if text_:
+            bid = int(booking_id) if booking_id.strip().isdigit() else None
+            # Only a session on this coach's own run can be quoted.
+            if bid is not None:
+                b = db.get(CommissionBooking, bid)
+                if not b or b.run_id != link.run_id or (b.coach or b.staff_raw) != link.coach:
+                    bid = None
+            db.add(CommissionComment(run_id=link.run_id, coach=link.coach,
+                                     body=text_, from_coach=True, booking_id=bid))
+            db.commit()
+        return RedirectResponse(f"/statement/{token}#thread", status_code=303)
 
     @app.get("/commissions/{rid}/statements", response_class=HTMLResponse)
     def commission_statements(request: Request, rid: int,
@@ -1797,10 +1949,16 @@ def register(app, deps):
         for ln in (db.query(CommissionStatementLink).filter_by(run_id=run.id)
                    .order_by(CommissionStatementLink.id).all()):
             links[ln.coach] = ln
+        counts, unread = _comment_counts(db, run.id), _unread_by_coach(db, run.id)
         for row in summary:
             row["signoff"] = signed.get(row["coach"])
             row["email"] = emails.get(row["coach"])
             row["link"] = links.get(row["coach"])
+            n, last, from_coach = counts.get(row["coach"], (0, None, False))
+            row["comments"] = n
+            row["last_comment_at"] = last
+            row["last_from_coach"] = from_coach
+            row["unread"] = unread.get(row["coach"], 0)
         return render(request, "commission_run.html", db, staff, run=run, tab=tab,
                       plans=plans, prows=prows, ptotals=ptotals,
                       totals=run_totals(run), block=blockers(run, db),
@@ -1838,8 +1996,12 @@ def register(app, deps):
                                              b.booking_ref or "")))
         counted = [b for b in rows if b.is_commissionable]
         dele = [b for b in counted if b.delegator_id]
+        msgs = _thread(db, run.id, coach)
+        if _mark_seen(db, msgs, from_coach=True, now=datetime.now(timezone.utc)):
+            db.commit()
         return render(
             request, "commission_coach.html", db, staff, run=run, coach=coach,
+            msgs=msgs,
             groups=groups,
             # `completed` is only still passed so the previous template keeps
             # rendering during a rolling deploy; harmless once both have landed.
