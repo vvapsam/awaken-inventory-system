@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ ev.name }} · settings</h1>
+    <p class="muted small" style="margin:2px 0 0">Everything the participant's page and the
+      emails say comes from here, so a different sponsor with different terms is a new event
+      rather than a new page.</p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}">← Back to the event</a>
+  </div>
+</div>
+
+{% if request.query_params.get('saved') %}
+<div class="notice">Saved.</div>
+{% endif %}
+
+<form method="post" action="/events/{{ ev.id }}/settings">
+
+<h2>The class</h2>
+<div class="card">
+  <div class="grid2">
+    <div><label class="small" style="font-weight:600">Name</label>
+      <input name="name" value="{{ ev.name }}" required></div>
+    <div><label class="small" style="font-weight:600">Sponsor</label>
+      <input name="sponsor" value="{{ ev.sponsor or '' }}" placeholder="Kenny Rogers Roasters"></div>
+    <div><label class="small" style="font-weight:600">Starts</label>
+      <input type="datetime-local" name="starts_at"
+        value="{{ ev.starts_at.strftime('%Y-%m-%dT%H:%M') if ev.starts_at }}"></div>
+    <div><label class="small" style="font-weight:600">Venue</label>
+      <input name="venue" value="{{ ev.venue or '' }}" placeholder="AWAKEN Fitness Center, BGC"></div>
+    <div><label class="small" style="font-weight:600">Slots</label>
+      <input name="capacity" value="{{ ev.capacity }}" style="width:90px"></div>
+    <div><label class="small" style="font-weight:600">Status</label>
+      <select name="status">
+        {% for k, label in statuses %}
+        <option value="{{ k }}" {{ 'selected' if ev.status == k }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <div class="muted small" style="margin:3px 0 0">Set to <b>Running</b> after the class —
+        it switches the send button to nudging people who haven't posted.</div></div>
+    <div><label class="small" style="font-weight:600">Bring</label>
+      <input name="bring" value="{{ ev.bring or '' }}" placeholder="Training gear, towel, water"></div>
+    <div><label class="small" style="font-weight:600">The perk</label>
+      <input name="perk" value="{{ ev.perk or '' }}" placeholder="Kenny Rogers meal on us 🍗"></div>
+  </div>
+</div>
+
+<h2>What we ask for in return</h2>
+<div class="card">
+  <div class="grid2">
+    <div><label class="small" style="font-weight:600">Accounts to tag</label>
+      <input name="handles" value="{{ ev.handles or '' }}"
+             placeholder="@awakenfitnessph @kennyrogersph">
+      <div class="muted small" style="margin:3px 0 0">Space or comma separated. These appear as
+        tap-to-copy on the participant's page.</div></div>
+    <div><label class="small" style="font-weight:600">Hashtag</label>
+      <input name="hashtag" value="{{ ev.hashtag or '' }}" placeholder="#FuelledByKennyRogers"></div>
+    <div><label class="small" style="font-weight:600">Reel window (hours after the class)</label>
+      <input name="reel_hours" value="{{ ev.reel_hours }}" style="width:90px"></div>
+    <div><label class="small" style="font-weight:600">Confirm by</label>
+      <input type="datetime-local" name="confirm_by"
+        value="{{ ev.confirm_by.strftime('%Y-%m-%dT%H:%M') if ev.confirm_by }}">
+      <div class="muted small" style="margin:3px 0 0">Slots nobody confirms by then are released
+        to the waitlist. Leave it several days before the class so you have time to re-fill.</div></div>
+  </div>
+</div>
+
+<h2>What they get for it</h2>
+<div class="card">
+  <p class="muted small" style="margin:0 0 12px">Two, because a discount on one specific future
+    event is worth nothing to somebody who isn't going to it — and a worthless reward is the same
+    as no reward. Leave the second blank if you only want one.</p>
+  <div class="grid2">
+    <div><label class="small" style="font-weight:600">Reward A</label>
+      <input name="reward_a" value="{{ ev.reward_a or '' }}" placeholder="HYROX PFT"></div>
+    <div><label class="small" style="font-weight:600">A · value</label>
+      <input name="reward_a_value" value="{{ ev.reward_a_value or '' }}" placeholder="20% off"></div>
+    <div style="grid-column:1/-1"><label class="small" style="font-weight:600">A · detail</label>
+      <input name="reward_a_detail" value="{{ ev.reward_a_detail or '' }}"
+             placeholder="23 August · use it at checkout"></div>
+    <div><label class="small" style="font-weight:600">Reward B</label>
+      <input name="reward_b" value="{{ ev.reward_b or '' }}" placeholder="First month of membership"></div>
+    <div><label class="small" style="font-weight:600">B · value</label>
+      <input name="reward_b_value" value="{{ ev.reward_b_value or '' }}" placeholder="20% off"></div>
+    <div style="grid-column:1/-1"><label class="small" style="font-weight:600">B · detail</label>
+      <input name="reward_b_detail" value="{{ ev.reward_b_detail or '' }}"
+             placeholder="Any plan · valid for 60 days"></div>
+    <div><label class="small" style="font-weight:600">Code prefix</label>
+      <input name="code_prefix" value="{{ ev.code_prefix }}" style="width:110px" maxlength="4">
+      <div class="muted small" style="margin:3px 0 0">Codes read
+        <span class="mono">{{ ev.code_prefix }}-4471</span> — short enough to read off a phone
+        at the door.</div></div>
+  </div>
+</div>
+
+<div class="hdact" style="margin-top:16px">
+  <button class="btn primary">Save settings</button>
+  <a class="btn" href="/events/{{ ev.id }}">Cancel</a>
+</div>
+</form>
+{% endblock %}
