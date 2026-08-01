@@ -78,7 +78,8 @@
     {% if d.charged %}<div class="sub">{{ '%d'|format(d.margin / d.charged * 100) }}% of charged</div>{% endif %}</div>
   <div class="s"><div class="l">Sessions</div><div class="v">{{ d.sessions }}</div>
     <div class="sub">{{ d.clients|length }} client{{ 's' if d.clients|length != 1 }} ·
-      {{ d.coaches|length }} coach{{ 'es' if d.coaches|length != 1 }}</div></div>
+      {{ d.coaches|length }} coach{{ 'es' if d.coaches|length != 1 }}{%
+      if d.voided %} · {{ d.voided }} struck out{% endif %}</div></div>
   <div class="s"><div class="l">Charged</div><div class="v">{{ peso(d.charged) }}</div>
     <div class="sub">{{ peso(dg_pick.delegator.rate) }} each</div></div>
   <div class="s"><div class="l">Paid to coaches</div><div class="v">{{ peso(d.cost) }}</div>
@@ -142,7 +143,7 @@
   {% for c in d.clients %}
   <tr>
     <td class="primary">{{ c.name }}</td>
-    <td class="amt">{{ c.sessions }}</td>
+    <td class="amt">{{ c.sessions }}{% if c.voided %}<div class="sub" style="color:#b0392b">{{ c.voided }} struck</div>{% endif %}</td>
     <td class="small">{{ c.others|sort|join(', ') }}</td>
     <td>{{ c.first.strftime('%d %b') if c.first }}</td>
     <td>{{ c.last.strftime('%d %b') if c.last }}</td>
@@ -162,7 +163,7 @@
   {% for c in d.coaches %}
   <tr>
     <td class="primary"><a href="/commissions/{{ run.id }}/coach/{{ c.name }}">{{ c.name }}</a></td>
-    <td class="amt">{{ c.sessions }}</td>
+    <td class="amt">{{ c.sessions }}{% if c.voided %}<div class="sub" style="color:#b0392b">{{ c.voided }} struck</div>{% endif %}</td>
     <td class="amt">{{ c.others|length }}</td>
     <td class="amt">{{ peso(c.cost) }}</td>
     <td class="amt">{{ peso(c.charged) }}</td>
