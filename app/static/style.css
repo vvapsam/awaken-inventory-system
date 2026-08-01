@@ -411,6 +411,21 @@ details.chipalert>.pop ul{margin:4px 0 0;padding-left:20px}
   overflow:hidden;margin-top:5px}
 .barwrap .bar{height:7px;border-radius:999px;background:var(--teal);display:block}
 
+/* Add a session. Folded away by default — it is the exception, not the work. */
+details.addrow{margin-top:16px;border:1px dashed var(--line);border-radius:var(--radius);
+  background:var(--bg)}
+details.addrow>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:.88rem;
+  font-weight:600;color:var(--teal-dark)}
+details.addrow>summary::-webkit-details-marker{display:none}
+details.addrow>summary:hover{background:var(--teal-tint)}
+details.addrow>.body{padding:4px 14px 14px;border-top:1px solid var(--line)}
+.addgrid{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px}
+.addgrid .f{display:flex;flex-direction:column;gap:4px}
+.addgrid label{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+  font-weight:600;margin:0}
+.addgrid input,.addgrid select{width:auto;padding:7px 10px;font-size:.88rem}
+.addgrid .btn{margin-bottom:1px}
+
 /* Send-from-the-row. A square icon button beside the coach's name, quiet
    until you hover it, and visibly filled once a statement has gone out. */
 .coachcell{display:flex;align-items:flex-start;gap:10px}
