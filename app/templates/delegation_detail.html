@@ -35,7 +35,11 @@
 <div class="grid" style="margin:14px 0">
   <div class="card stat"><div class="stat-label">Sessions</div><div class="stat-value">{{ sessions }}</div>
     <div class="muted small">{{ clients|length }} client{{ 's' if clients|length != 1 }} ·
-      {{ coaches|length }} coach{{ 'es' if coaches|length != 1 }}</div></div>
+      {{ coaches|length }} coach{{ 'es' if coaches|length != 1 }}</div>
+    {# The three cards beside this one are built from `counting`, not
+       `sessions`. When they differ, say why here rather than leaving the
+       reader to work out which number the money used. #}
+    {% if voided %}<div class="small" style="color:#b0392b;margin-top:2px">{{ voided }} struck out</div>{% endif %}</div>
   <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(charged) }}</div>
     <div class="muted small">{{ counting }} × {{ peso(delegator.rate) }}</div></div>
   <div class="card stat"><div class="stat-label">Paid to coaches</div><div class="stat-value">{{ peso(cost) }}</div>
@@ -110,7 +114,8 @@
   <tbody>
   {% for c in clients %}
   <tr><td><b>{{ c.name }}</b></td>
-    <td style="text-align:right">{{ c.sessions }}</td>
+    <td style="text-align:right">{{ c.sessions }}{% if c.voided %}<div class="small"
+        style="color:#b0392b;font-weight:400">{{ c.voided }} struck</div>{% endif %}</td>
     <td class="small">{{ c.others|sort|join(', ') }}</td>
     <td>{{ c.first.strftime('%d %b') if c.first }}</td>
     <td>{{ c.last.strftime('%d %b') if c.last }}</td>
@@ -132,7 +137,8 @@
   <tbody>
   {% for c in coaches %}
   <tr><td><b>{{ c.name }}</b></td>
-    <td style="text-align:right">{{ c.sessions }}</td>
+    <td style="text-align:right">{{ c.sessions }}{% if c.voided %}<div class="small"
+        style="color:#b0392b;font-weight:400">{{ c.voided }} struck</div>{% endif %}</td>
     <td class="small">{{ c.others|sort|join(', ') }}</td>
     <td style="text-align:right" data-money="paid" data-value="{{ c.cost }}">{{ peso(c.cost) }}</td>
     <td style="text-align:right" data-money="charged" data-value="{{ c.charged }}">{{ peso(c.charged) }}</td>
@@ -151,25 +157,39 @@
     <th style="text-align:right">Coach cost</th><th style="text-align:right">Margin</th></tr></thead>
   <tbody>
   {% for b in rows %}
-  <tr>
+  {# A session struck out on the coach's page is not billed to the delegator
+     either, so it carries nothing into the three money columns. Showing the
+     figures it *would* have had would make the column not add up to the
+     total underneath it. #}
+  <tr {% if b.voided %}class="struck"{% endif %}>
     <td class="mono">{{ b.booking_ref }}</td>
     <td>{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
     <td>{{ b.customer }}</td>
     <td>{{ b.appointment_name }}{% if b.variant %}<div class="muted small">{{ b.variant }}</div>{% endif %}</td>
     <td><a href="/commissions/{{ run.id }}/coach/{{ b.coach or b.staff_raw }}">{{ b.coach or b.staff_raw }}</a></td>
-    <td>{% if b.pays_by_status %}<span class="tag">Yes</span>
+    <td>{% if b.voided %}<span class="tag bad">Invalid</span>
+        {% if b.void_reason %}<div class="muted small" style="margin:0">{{ b.void_reason }}</div>{% endif %}
+        {% elif b.pays_by_status %}<span class="tag">Yes</span>
         {% elif b.approved %}<span class="tag">Approved</span>
         {% else %}<span class="muted small">{{ b.booking_status|lower }}</span>{% endif %}</td>
+    {% if b.voided %}
+    <td style="text-align:right" class="muted">—</td>
+    <td style="text-align:right" class="muted">—</td>
+    <td style="text-align:right" class="muted">—</td>
+    {% else %}
     <td style="text-align:right" data-money="charged" data-value="{{ b.delegation_charge or 0 }}">{{ peso(b.delegation_charge) }}</td>
     <td style="text-align:right" data-money="paid" data-value="{{ b.commission or 0 }}">{{ peso(b.commission) }}</td>
     <td style="text-align:right;color:var(--teal-dark);font-weight:650"
         data-money="margin" data-value="{{ (b.delegation_charge or 0) - (b.commission or 0) }}">{{ peso((b.delegation_charge or 0) - (b.commission or 0)) }}</td>
+    {% endif %}
   </tr>
   {% endfor %}
   </tbody>
   <tfoot>
   <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
-    <td colspan="6">{{ sessions }} session{{ 's' if sessions != 1 }}</td>
+    <td colspan="6">{{ sessions }} session{{ 's' if sessions != 1 }}{%
+      if voided %} <span class="muted small" style="font-weight:400">·
+        {{ voided }} struck out, not billed</span>{% endif %}</td>
     <td style="text-align:right">{{ peso(charged) }}</td>
     <td style="text-align:right">{{ peso(cost) }}</td>
     <td style="text-align:right">{{ peso(margin) }}</td>

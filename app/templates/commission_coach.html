@@ -30,7 +30,8 @@
   <div class="s hero"><div class="l">Commission</div><div class="v">{{ peso(commission) }}</div>
     {% if signoff %}<div class="sub">approved{% if signoff.approved_by %} by {{ signoff.approved_by.name }}{% endif %}</div>{% endif %}</div>
   <div class="s"><div class="l">Counting</div><div class="v">{{ sessions }}</div>
-    <div class="sub">of {{ total_rows }} booking{{ 's' if total_rows != 1 }}</div></div>
+    <div class="sub">of {{ total_rows }} booking{{ 's' if total_rows != 1 }}{%
+      if voided_rows %} · {{ voided_rows }} invalid{% endif %}</div></div>
   <div class="s"><div class="l">Revenue</div><div class="v">{{ peso(revenue) }}</div></div>
   {% if delegation_sessions %}
   <div class="s"><div class="l">Delegation</div><div class="v">{{ peso(delegation_total) }}</div>
@@ -57,10 +58,11 @@
 <div class="tfilter" style="margin-top:14px">
   <a href="?" class="{{ 'on' if not pick }}">All · {{ total_rows }}</a>
   {% for g in groups %}
-  {% set waiting = g.rows|length - g.approved if not g.pays_alone else 0 %}
+  {% set waiting = g.rows|length - g.approved - g.voided if not g.pays_alone else 0 %}
   <a href="?status={{ g.status|urlencode }}" class="{{ 'on' if pick == g.status }}"
      {% if waiting and pick != g.status %}style="border-color:var(--low-line);background:var(--low);color:#4a3a12"{% endif %}>
-    {{ g.status }} · {{ g.rows|length }}{% if waiting %} · {{ waiting }} to review{% endif %}</a>
+    {{ g.status }} · {{ g.rows|length }}{% if waiting %} · {{ waiting }} to review{% endif %}{%
+      if g.voided %} · {{ g.voided }} invalid{% endif %}</a>
   {% endfor %}
 </div>
 
@@ -68,13 +70,18 @@
 <div>
 {{ searchbar('bk', 'Search customer, booking ref, plan…', selector='table.bktbl') }}
 
-{% set reviewable = (not pick) or pick|lower != 'completed' %}
+{# The Counts? column used to hide itself when you filtered to Completed,
+   because a Completed row had no decision to make. Striking a session out is a
+   decision on every row, Completed most of all — a double booking is Completed
+   in the export — so the column now always shows. #}
 {% if chosen and pick|lower != 'completed' and is_draft and can_pay %}
 <form method="post" action="/commissions/{{ run.id }}/coach/{{ coach }}/approve-status" style="margin:0 0 8px">
   <input type="hidden" name="status" value="{{ chosen.status }}">
-  {% if chosen.approved < chosen.rows|length %}
+  {# Struck-out rows are out of scope for the bulk button, so they must come
+     out of the comparison too, or it reads "not all approved" forever. #}
+  {% if chosen.approved < chosen.rows|length - chosen.voided %}
     <input type="hidden" name="include" value="on">
-    <button class="btn" style="padding:5px 12px">✓ Approve all {{ chosen.rows|length }} {{ chosen.status|lower }}</button>
+    <button class="btn" style="padding:5px 12px">✓ Approve all {{ chosen.rows|length - chosen.voided }} {{ chosen.status|lower }}</button>
   {% else %}
     <input type="hidden" name="include" value="off">
     <button class="btn" style="padding:5px 12px">Remove all {{ chosen.status|lower }}</button>
@@ -86,7 +93,7 @@
 <table class="bktbl">
   <thead>
   <tr>
-    {% if reviewable %}<th style="width:88px">Counts?</th>{% endif %}
+    <th style="width:104px">Counts?</th>
     <th>Client</th>
     <th style="width:84px">Date</th>
     <th>Plan</th>
@@ -97,10 +104,20 @@
   <tbody>
   {% for b in shown %}
   {% set st = (b.booking_status or '—').strip() %}
-  <tr id="{{ b.booking_ref }}" {% if b.approved %}style="background:var(--teal-tint)"
+  <tr id="{{ b.booking_ref }}" {% if b.voided %}class="struck"
+      {% elif b.approved %}style="background:var(--teal-tint)"
       {% elif not b.is_commissionable %}class="low"{% endif %}>
-    {% if reviewable %}
     <td>
+      {% if b.voided %}
+      {# Struck out. The only thing to offer here is putting it back. #}
+      <span class="tag bad">Invalid</span>
+      {% if is_draft and can_pay %}
+      <form method="post" action="/commissions/{{ run.id }}/booking/{{ b.id }}/void" style="margin:3px 0 0">
+        <button class="btn" style="padding:2px 8px;font-size:.72rem"
+                title="Count this session again">↺ Put back</button>
+      </form>
+      {% endif %}
+      {% else %}
       {% if b.pays_by_status %}<span class="muted small" style="margin:0">Always</span>
       {% elif is_draft and can_pay %}
       <form method="post" action="/commissions/{{ run.id }}/booking/{{ b.id }}/approve">
@@ -108,10 +125,27 @@
       </form>
       {% elif b.approved %}<span class="tag">Approved</span>
       {% else %}<span class="muted small" style="margin:0">—</span>{% endif %}
+      {# Strike out a session that did not happen — a double booking, a row
+         against the wrong coach. Beats the status, so it is offered on
+         Completed rows too. The reason is optional; asking for one before the
+         click would slow down the common case of an obvious duplicate. #}
+      {% if is_draft and can_pay %}
+      <details class="inline strike">
+        <summary title="This session didn't happen — don't count it">✕ Invalid</summary>
+        <form method="post" action="/commissions/{{ run.id }}/booking/{{ b.id }}/void" class="body">
+          <input name="reason" maxlength="200" placeholder="Why? (optional)">
+          <button class="btn" style="padding:3px 9px;font-size:.75rem">Mark invalid</button>
+        </form>
+      </details>
+      {% endif %}
+      {% endif %}
     </td>
-    {% endif %}
     <td>
       <div class="primary">{{ b.customer or '—' }}</div>
+      {% if b.voided %}
+      <div class="sub">Struck out{% if b.voided_by %} by {{ b.voided_by.name }}{% endif %}{%
+        if b.void_reason %} · {{ b.void_reason }}{% endif %}</div>
+      {% endif %}
       {% if b.booking_ref and b.booking_ref.startswith('MANUAL-') %}
       {# Hand-added, so it can be taken back out. An imported row cannot: it
          came from the export, and the export is the record. #}
@@ -169,9 +203,11 @@
   </tbody>
   <tfoot>
   <tr style="background:#fafbfc;font-weight:650">
-    <td colspan="{{ 4 if reviewable else 3 }}">
+    <td colspan="4">
       {{ pick or 'All statuses' }} · {{ shown|length }} booking{{ 's' if shown|length != 1 }}
-      <span class="muted small" style="font-weight:400">· {{ shown_counting }} counting</span></td>
+      <span class="muted small" style="font-weight:400">· {{ shown_counting }} counting{%
+        set struck = shown | selectattr('voided') | list | length %}{%
+        if struck %} · {{ struck }} invalid{% endif %}</span></td>
     <td class="amt">{{ peso(shown_revenue) }}</td>
     <td class="amt">{% if shown_commission %}{{ peso(shown_commission) }}{% else %}<span class="muted">—</span>{% endif %}</td>
   </tr>

@@ -649,3 +649,50 @@ def test_a_person_type_that_is_not_a_coach_type_reads_as_untagged():
     """
     for other in ("customer", "member", "supplier", "coach"):
         assert _rate_row("", other).kind == "", other
+
+
+# --------------------------------------------------------------------------
+# striking a session out
+# --------------------------------------------------------------------------
+
+def _booking(**kw):
+    from app.models import CommissionBooking
+    b = CommissionBooking()
+    for k, v in kw.items():
+        setattr(b, k, v)
+    return b
+
+
+def test_a_completed_session_counts():
+    assert _booking(pays_by_status=True, approved=False, voided=False).is_commissionable
+
+
+def test_striking_out_beats_the_status():
+    """The whole point: a Completed row is exactly the one you need to remove.
+
+    Approve can't touch a row that pays on its status, so without this there
+    is no way to take a double booking out of a coach's month.
+    """
+    assert not _booking(pays_by_status=True, voided=True).is_commissionable
+
+
+def test_striking_out_beats_an_approval():
+    """A no-show someone ticked, then found never happened at all."""
+    assert not _booking(pays_by_status=False, approved=True,
+                        voided=True).is_commissionable
+
+
+def test_putting_it_back_makes_it_count_again():
+    b = _booking(pays_by_status=True, voided=True)
+    b.voided = False
+    assert b.is_commissionable
+
+
+def test_striking_out_does_not_invent_a_payable_row():
+    """Un-voiding restores what the row was, it does not promote it.
+
+    A cancelled booking nobody approved earns nothing whether or not it has
+    ever been struck out.
+    """
+    assert not _booking(pays_by_status=False, approved=False,
+                        voided=False).is_commissionable

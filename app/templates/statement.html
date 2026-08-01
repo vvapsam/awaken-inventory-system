@@ -140,7 +140,12 @@ tr.notpaid td{background:#fcfcfd}
       <td class="cl">{{ b.customer }}</td>
       <td class="se">{{ b.appointment_name }}</td>
       <td class="pl">{% if b.delegator_id %}<span class="pill">Delegation</span>{% else %}{{ b.pricing_plan }}{% endif %}</td>
-      <td class="stc"><span class="stp st-{{ st|lower|replace(' ', '')|replace('-', '') or 'other' }}">{{ st }}</span></td>
+      <td class="stc"><span class="stp st-{{ st|lower|replace(' ', '')|replace('-', '') or 'other' }}">{{ st }}</span>
+        {# A session struck out at our end. The coach sees it, sees why, and
+           has the ask button next to it — a session that simply vanished from
+           the list is the one they'd have written in about anyway. #}
+        {% if b.voided %}<div class="zero" style="font-size:.72rem;margin-top:2px">Not counted{%
+          if b.void_reason %} · {{ b.void_reason }}{% endif %}</div>{% endif %}</td>
       <td class="amt">{% if b.is_commissionable and b.commission is not none %}{{ peso(b.commission) }}
         {% else %}<span class="zero">—</span>{% endif %}</td>
       {% if link.is_live %}

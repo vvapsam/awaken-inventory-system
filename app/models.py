@@ -864,14 +864,33 @@ class CommissionBooking(Base):
     approved = Column(Boolean, nullable=False, default=False)
     approved_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     approved_at = Column(DateTime(timezone=True))
+    # --- struck out by hand ---
+    # A session the export says happened but which did not: a double booking,
+    # a client who was billed twice, a row typed against the wrong coach. The
+    # row is kept and shown struck through rather than deleted, because a
+    # session that quietly vanishes between one reading of a statement and the
+    # next is how a coach loses trust in the figures.
+    voided = Column(Boolean, nullable=False, default=False)
+    void_reason = Column(String)
+    voided_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    voided_at = Column(DateTime(timezone=True))
 
     run = relationship("CommissionRun", back_populates="bookings")
     delegator = relationship("CommissionDelegator")
     approved_by = relationship("Staff", foreign_keys=[approved_by_id])
+    voided_by = relationship("Staff", foreign_keys=[voided_by_id])
 
     @property
     def is_commissionable(self):
-        """Paid by its status, or approved by a reviewer."""
+        """Paid by its status, or approved by a reviewer — unless struck out.
+
+        Voiding wins over both. Everything that counts sessions or sums money
+        already asks this question, so one flag here reaches the coach's page,
+        the run totals, the delegator's margin, the statement and the payout
+        without any of them having to know the concept exists.
+        """
+        if self.voided:
+            return False
         return bool(self.pays_by_status) or bool(self.approved)
 
 
