@@ -596,6 +596,10 @@ def coach_groups(run: CommissionRun, coach: str):
             # How many of this group actually count — all of them when Completed,
             # otherwise however many the reviewer approved.
             "approved": len([b for b in items if b.is_commissionable]),
+            # Struck out by hand. Counted separately from "to review" because
+            # the two mean opposite things: one is a decision still owed, the
+            # other is a decision already taken.
+            "voided": len([b for b in items if b.voided]),
             "revenue": sum((Decimal(str(b.revenue or 0)) for b in items), Decimal(0)),
             "commission": sum((Decimal(str(b.commission or 0)) for b in items), Decimal(0)),
         })
@@ -1597,11 +1601,13 @@ def register(app, deps):
         for b in rows:
             for key, bucket in ((b.customer or "—").strip(), by_client), \
                                ((b.coach or b.staff_raw or "—").strip(), by_coach):
-                d = bucket.setdefault(key, {"name": key, "sessions": 0,
+                d = bucket.setdefault(key, {"name": key, "sessions": 0, "voided": 0,
                                             "charged": Decimal(0), "cost": Decimal(0),
                                             "first": None, "last": None,
                                             "others": set()})
                 d["sessions"] += 1
+                if b.voided:
+                    d["voided"] += 1
                 if b.is_commissionable:
                     d["charged"] += Decimal(str(b.delegation_charge or 0))
                     d["cost"] += Decimal(str(b.commission or 0))
@@ -1615,6 +1621,10 @@ def register(app, deps):
                 (b.customer or "—").strip())
         return dict(
             rows=rows, sessions=len(rows), counting=len(counted),
+            # Sessions struck out on the coach's page. Surfaced here because
+            # the delegator's invoice drops by exactly this much, and a number
+            # that moved without explanation is a number that gets queried.
+            voided=len([b for b in rows if b.voided]),
             charged=charged, cost=cost, margin=charged - cost,
             clients=sorted(by_client.values(), key=lambda r: (-r["sessions"], r["name"])),
             coaches=sorted(by_coach.values(), key=lambda r: (-r["sessions"], r["name"])),
@@ -2021,6 +2031,7 @@ def register(app, deps):
                                   for b in shown if b.is_commissionable), Decimal(0)),
             shown_counting=len([b for b in shown if b.is_commissionable]),
             manual_count=len([b for b in rows if b.rate_manual]),
+            voided_rows=len([b for b in rows if b.voided]),
             signoff=signoffs(run, db).get(coach),
             rate_types=COMMISSION_RATE_TYPES,
             # Approving and repricing are admin-only; everyone else reads.
@@ -2271,6 +2282,53 @@ def register(app, deps):
         db.commit()
         return RedirectResponse(back + "?added=removed", status_code=303)
 
+    @app.post("/commissions/{rid}/booking/{bid}/void")
+    def commission_booking_void(request: Request, rid: int, bid: int,
+                                reason: str = Form(""),
+                                db: Session = Depends(get_db)):
+        """Strike out one session, or put it back.
+
+        Separate from Approve, which answers "should this non-Completed row
+        count". This answers "did this session happen at all", and it beats
+        both the status and the approval — a double booking is not payable
+        however Rezerv marked it.
+
+        Delegation follows: `is_commissionable` gates the delegator's charge
+        as well as the coach's commission, so a session that didn't happen
+        stops being billed to the delegator in the same movement. Anything
+        else would leave AWAKEN invoicing for a session it just agreed was
+        never delivered.
+        """
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        b = db.get(CommissionBooking, bid)
+        if not run or not b or b.run_id != run.id:
+            return RedirectResponse(f"/commissions/{rid}", status_code=303)
+        coach = b.coach or b.staff_raw
+        back = f"/commissions/{rid}/coach/{coach}"
+        if run.status != RUN_DRAFT:
+            # Finalized runs are the record of what was paid. Reopen first.
+            return RedirectResponse(back, status_code=303)
+        b.voided = not b.voided
+        if b.voided:
+            b.void_reason = (reason or "").strip()[:200] or None
+            b.voided_by_id = staff.id
+            b.voided_at = datetime.now(timezone.utc)
+        else:
+            b.void_reason = None
+            b.voided_by_id = None
+            b.voided_at = None
+        # The commission and the delegation charge are still computed and kept
+        # on the row — they are what it *would* have earned. Every screen sums
+        # only commissionable rows, so a voided row contributes nothing while
+        # staying readable if you put it back.
+        recompute(b, build_config(db), db)
+        void_signoff(db, rid, coach)
+        db.commit()
+        return RedirectResponse(f"{back}#{b.booking_ref or ''}", status_code=303)
+
     @app.post("/commissions/{rid}/recalculate")
     def commission_recalculate(request: Request, rid: int,
                                db: Session = Depends(get_db)):
@@ -2334,7 +2392,10 @@ def register(app, deps):
         want = (include == "on")
         config = build_config(db)
         for b in _live(run):
-            if (b.coach or b.staff_raw) != coach or b.pays_by_status:
+            # A struck-out session is skipped rather than approved: "approve
+            # all no-shows" should not quietly resurrect the one you just said
+            # never happened.
+            if (b.coach or b.staff_raw) != coach or b.pays_by_status or b.voided:
                 continue
             if (b.booking_status or "").strip().lower() != status.strip().lower():
                 continue

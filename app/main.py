@@ -461,6 +461,20 @@ def startup():
                 "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
                 "  rate_manual_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
                 "END IF; END $$;"))
+            # Sessions struck out by hand: the export said they happened, they
+            # didn't. Kept on the row rather than deleted so the exclusion is
+            # visible and reversible.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  voided BOOLEAN NOT NULL DEFAULT FALSE; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  void_reason VARCHAR; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  voided_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  voided_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
             # Affiliate or employee, tagged on the coach for reporting. Seeded
             # from the linked person record where there is one; on this database
             # no coach is linked yet, so it starts empty and gets filled in on
