@@ -903,6 +903,43 @@ class CommissionSignoff(Base):
 STATEMENT_LINK_DAYS = 5
 
 
+class CommissionComment(Base):
+    """One message in the conversation about a coach's period.
+
+    Kept per coach per run so a question stays attached to the figures it is
+    about: finalizing July does not bury the thread, and a query about July
+    never lands next to one about October. Nothing here changes a number — the
+    thread sits alongside the money, it does not move it.
+    """
+    __tablename__ = "commission_comments"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    coach = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    # Who wrote it. A coach writes through their statement link and has no
+    # login, so they are identified by the thread rather than by an account.
+    from_coach = Column(Boolean, nullable=False, default=False)
+    author_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    # The session being asked about, when the coach quoted one. SET NULL rather
+    # than CASCADE: deleting a hand-added row should not delete the question
+    # someone asked about it.
+    booking_id = Column(Integer, ForeignKey("commission_bookings.id",
+                                            ondelete="SET NULL"))
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    # When the other side read it — the coach opening their link marks yours,
+    # opening the coach page marks theirs.
+    seen_at = Column(DateTime(timezone=True))
+
+    run = relationship("CommissionRun")
+    author = relationship("Staff", foreign_keys=[author_id])
+    booking = relationship("CommissionBooking", foreign_keys=[booking_id])
+
+
+#: A comment longer than this is a document, not a question.
+COMMENT_MAX = 2000
+
+
 class CommissionStatementLink(Base):
     """A private, expiring URL that shows one coach their own statement.
 

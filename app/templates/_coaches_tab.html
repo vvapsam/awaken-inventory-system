@@ -66,6 +66,7 @@
     <th style="text-align:right">Sessions</th>
     <th style="text-align:right">Commission</th>
     <th>Needs a look</th>
+    <th>Comments</th>
     <th>Sign-off</th>
     <th style="width:1%"></th>
   </tr>
@@ -73,7 +74,8 @@
   <tbody>
   {% for c in coaches %}
   {% set can_tick = is_draft and can_pay and not c.signoff and c.commission %}
-  <tr {% if c.signoff %}style="background:var(--teal-tint)"{% endif %}>
+  {# An unread comment tints the row, the way "needs a look" already does. #}
+  <tr {% if c.unread %}style="background:#fff8f7"{% elif c.signoff %}style="background:var(--teal-tint)"{% endif %}>
     {% if is_draft and can_pay and pickable %}
     <td>{% if can_tick %}
       <input type="checkbox" class="chk pick" name="coach" value="{{ c.coach }}"
@@ -118,6 +120,17 @@
       <b>{{ peso(c.commission) }}</b></td>
     <td>
       {% if c.pending %}<span class="tag amber">{{ c.pending }} to review</span>
+      {% else %}<span class="muted small">—</span>{% endif %}
+    </td>
+    <td>
+      {% if c.unread %}
+      <a class="tag" style="background:#c0392b;text-decoration:none"
+         href="/commissions/{{ run.id }}/coach/{{ c.coach }}#thread">{{ c.unread }} new</a>
+      <div class="muted small" style="margin:0">{{ c.coach }},
+        {{ c.last_comment_at.strftime('%d %b') if c.last_comment_at }}</div>
+      {% elif c.comments %}
+      <a class="muted small" style="text-decoration:none"
+         href="/commissions/{{ run.id }}/coach/{{ c.coach }}#thread">💬 {{ c.comments }}</a>
       {% else %}<span class="muted small">—</span>{% endif %}
     </td>
     <td>

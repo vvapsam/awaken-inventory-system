@@ -64,6 +64,8 @@
   {% endfor %}
 </div>
 
+<div class="withthread">
+<div>
 {{ searchbar('bk', 'Search customer, booking ref, plan…', selector='table.bktbl') }}
 
 {% set reviewable = (not pick) or pick|lower != 'completed' %}
@@ -223,6 +225,19 @@
   </div>
 </details>
 {% endif %}
+
+</div>
+
+{# The conversation about this coach's month, beside the figures it is about. #}
+{% set mine = True %}
+{% set title = 'Comments' %}
+{% set subtitle = 'Between you and ' ~ coach ~ ' · only about ' ~ (run.period_label or run.period) %}
+{% set empty = 'No comments yet. Anything you write here reaches ' ~ coach ~ ' on their statement link.' %}
+{% set can_post = True %}
+{% set post_to = '/commissions/' ~ run.id ~ '/coach/' ~ coach ~ '/comment' %}
+{% set placeholder = 'Reply to ' ~ coach ~ '…' %}
+{% include "_thread.html" with context %}
+</div>
 
 <p class="muted small" style="margin-top:18px">Approving a booking runs it through exactly the same rules as
   one that pays on its status — the same revenue adjustments, the same coach rate — so an approved row is never
