@@ -263,6 +263,22 @@ tr.needs:hover td{background:#f6ecd6}
 .ov svg{width:13px;height:13px}
 .ov.none{background:var(--bg);border-color:var(--line);color:var(--muted);font-weight:550}
 .tag.amber{background:var(--low-line);color:#4a3a12}
+.tag.grey{background:#e3e8ed;color:#7a8593}
+
+/* The two emails, side by side. Each panel says what it is, who it would go
+   to, and carries its own button — the whole point is that neither send can
+   hide behind the other. */
+.mailbar{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0 0}
+.mailbar .m{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 16px;display:flex;flex-direction:column}
+.mailbar .n{font-size:.7rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--muted)}
+.mailbar .d{font-size:.85rem;color:#2b3642;margin:5px 0 9px}
+.mailbar .st{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:11px}
+.mailbar .go{display:flex;gap:7px;flex-wrap:wrap;margin-top:auto}
+.mailbar .go form{margin:0}
+.mailbar .go .btn{margin:0;padding:7px 13px;font-size:.85rem}
+@media(max-width:760px){.mailbar{grid-template-columns:1fr}}
 
 /* Bulk selection. The bar only appears once something is ticked, so the table
    reads normally until you're actually doing a multi-row action. */
