@@ -10,11 +10,13 @@
 {% include "_commission_tabs.html" %}
 
 <table>
-  <tr><th>Coach</th><th>Rezerv name</th><th>Default basis</th><th style="text-align:right">Default rate</th>
+  <tr><th>Coach</th><th>Type</th><th>Rezerv name</th><th>Default basis</th><th style="text-align:right">Default rate</th>
       <th>Overrides</th><th>Status</th></tr>
   {% for r in rates %}
   <tr data-modal="coach-{{ r.id }}"{% if not r.coach_id %} class="needs"{% endif %}>
     <td><b>{{ r.coach }}</b></td>
+    <td>{% if r.kind %}<span class="ktag {{ r.kind }}">{{ type_labels[r.kind] }}</span>
+      {% else %}<span class="ktag none">Untagged</span>{% endif %}</td>
     <td class="mono">{{ r.staff_raw }}</td>
     <td>{{ 'Percent of revenue' if r.rate_type == 'percent' else 'Fixed amount' }}</td>
     <td style="text-align:right;color:var(--teal-dark);font-weight:650">{{ money(r) }}</td>
@@ -45,6 +47,7 @@
         <option value="">— choose a person —</option>
         {% for person in people %}<option value="{{ person.id }}">{{ person.name }}</option>{% endfor %}
       </select></label></div>
+    <div style="flex:1"><label>Type<select name="coach_type">{% for k, label in coach_types %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label></div>
     <div style="flex:1"><label>Rezerv name<input name="staff_raw" required class="mono"></label></div>
     <div style="flex:1"><label>Basis<select name="rate_type">{% for k, label in rate_types %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label></div>
     <div style="flex:1"><label>Rate<input name="rate_value" value="40"></label></div>
@@ -79,6 +82,13 @@
           </select>
           <input type="hidden" name="coach" value="{{ r.coach }}">
         </div>
+        <div class="fld"><label>Type</label>
+          <select name="coach_type" style="width:150px"
+                  title="Affiliate or employee. Used to split the conductions report.">
+            {% for k, label in coach_types %}
+            <option value="{{ k }}" {{ 'selected' if r.coach_type == k }}>{{ label }}</option>
+            {% endfor %}
+          </select></div>
         <div class="fld"><label>Rezerv name</label>
           <input name="staff_raw" value="{{ r.staff_raw }}" style="width:120px" class="mono"></div>
         <div class="fld"><label>Basis</label>
