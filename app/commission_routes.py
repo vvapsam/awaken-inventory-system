@@ -571,6 +571,10 @@ def coach_groups(run: CommissionRun, coach: str):
         groups.append({
             "status": status,
             "rows": items,
+            # Whether this status pays without review, so the screen can say
+            # "3 to review" on the statuses that need it and stay quiet on the
+            # ones that don't.
+            "pays_alone": all(b.pays_by_status for b in items),
             # How many of this group actually count — all of them when Completed,
             # otherwise however many the reviewer approved.
             "approved": len([b for b in items if b.is_commissionable]),
@@ -1375,16 +1379,29 @@ def register(app, deps):
                           "margin": sum((r["margin"] for r in rows), Decimal(0)),
                       })
 
-    @app.get("/commissions/delegation/{did}", response_class=HTMLResponse)
-    def delegation_detail(request: Request, did: int, tab: str = "sessions",
-                          db: Session = Depends(get_db)):
-        staff, redir = guard(request, db)
-        if redir:
-            return redir
-        delegator = db.get(CommissionDelegator, did)
-        run, runs = _pick_run(db, request)
-        if not delegator:
-            return RedirectResponse("/commissions/delegation", status_code=303)
+    def _rollup_totals(run, rows) -> dict:
+        """Footer figures for a delegator rollup.
+
+        Clients and coaches are counted from the bookings rather than summed
+        across rows, because one client trained by two delegators is one client.
+        """
+        live = delegated_rows(run) if (run and rows) else []
+        return {
+            "sessions": sum(r["sessions"] for r in rows),
+            "clients": len({(b.customer or "").strip() for b in live if (b.customer or "").strip()}),
+            "coaches": len({(b.coach or b.staff_raw or "").strip() for b in live
+                            if (b.coach or b.staff_raw or "").strip()}),
+            "charged": sum((r["charged"] for r in rows), Decimal(0)),
+            "cost": sum((r["cost"] for r in rows), Decimal(0)),
+            "margin": sum((r["margin"] for r in rows), Decimal(0)),
+        }
+
+    def _delegator_detail(run, did: int) -> dict:
+        """One delegator's month: who they sent, who covered, what it earned.
+
+        Shared by the standalone Delegation screen and the By delegator tab on a
+        run, so the two can never drift into telling different stories.
+        """
         rows = [b for b in delegated_rows(run) if b.delegator_id == did] if run else []
         counted = [b for b in rows if b.is_commissionable]
         charged = sum((Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
@@ -1410,16 +1427,26 @@ def register(app, deps):
                 (b.coach or b.staff_raw or "—").strip())
             by_coach[(b.coach or b.staff_raw or "—").strip()]["others"].add(
                 (b.customer or "—").strip())
+        return dict(
+            rows=rows, sessions=len(rows), counting=len(counted),
+            charged=charged, cost=cost, margin=charged - cost,
+            clients=sorted(by_client.values(), key=lambda r: (-r["sessions"], r["name"])),
+            coaches=sorted(by_coach.values(), key=lambda r: (-r["sessions"], r["name"])),
+            matrix=schedule_matrix(rows))
 
+    @app.get("/commissions/delegation/{did}", response_class=HTMLResponse)
+    def delegation_detail(request: Request, did: int, tab: str = "sessions",
+                          db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        delegator = db.get(CommissionDelegator, did)
+        run, runs = _pick_run(db, request)
+        if not delegator:
+            return RedirectResponse("/commissions/delegation", status_code=303)
+        d = _delegator_detail(run, did)
         return render(request, "delegation_detail.html", db, staff, active="delegation",
-                      run=run, runs=runs, delegator=delegator, tab=tab,
-                      rows=rows, sessions=len(rows), counting=len(counted),
-                      charged=charged, cost=cost, margin=charged - cost,
-                      clients=sorted(by_client.values(),
-                                     key=lambda r: (-r["sessions"], r["name"])),
-                      coaches=sorted(by_coach.values(),
-                                     key=lambda r: (-r["sessions"], r["name"])),
-                      matrix=schedule_matrix(rows))
+                      run=run, runs=runs, delegator=delegator, tab=tab, **d)
 
     @app.get("/commissions/{rid}", response_class=HTMLResponse)
     def commission_run_view(request: Request, rid: int, tab: str = "summary",
@@ -1449,9 +1476,22 @@ def register(app, deps):
             d["margin"] = d["charged"] - d["cost"]
         waiting = pending(run)
         signed = signoffs(run, db)
+        # By delegator: the rollup always, plus one delegator opened if the
+        # name strip has a selection.
+        dg_rows = delegator_rollup(run, db) if tab == "delegators" else []
+        dg_pick, dg_detail = None, None
+        if tab == "delegators":
+            want = request.query_params.get("d")
+            if want and want.isdigit():
+                dg_pick = next((r for r in dg_rows
+                                if r["delegator"].id == int(want)), None)
+                if dg_pick:
+                    dg_detail = _delegator_detail(run, dg_pick["delegator"].id)
         summary = coach_summary(run)
+        emails = {p.name: p.email for p in db.query(Staff).all() if p.email}
         for row in summary:
             row["signoff"] = signed.get(row["coach"])
+            row["email"] = emails.get(row["coach"])
         return render(request, "commission_run.html", db, staff, run=run, tab=tab,
                       plans=plans, prows=prows, ptotals=ptotals,
                       totals=run_totals(run), block=blockers(run, db),
@@ -1461,6 +1501,9 @@ def register(app, deps):
                       status_pick=request.query_params.get("status") or "",
                       pending=waiting, pending_count=len(waiting),
                       can_pay=(getattr(staff, "role", "") == "admin"),
+                      result=request.session.pop("signoff_result", None),
+                      dg_rows=dg_rows, dg_pick=dg_pick, dg_detail=dg_detail,
+                      dg_totals=_rollup_totals(run, dg_rows),
                       RUN_DRAFT=RUN_DRAFT, RUN_FINALIZED=RUN_FINALIZED)
 
     @app.get("/commissions/{rid}/coach/{coach}", response_class=HTMLResponse)
@@ -1545,32 +1588,71 @@ def register(app, deps):
 
     @app.post("/commissions/{rid}/coach/{coach}/signoff")
     def commission_signoff(request: Request, rid: int, coach: str,
-                           confirm: str = Form("on"),
+                           confirm: str = Form("on"), back: str = Form(""),
                            db: Session = Depends(get_db)):
-        """Confirm one coach's figures are correct and clear them for payout."""
+        """Confirm one coach's figures are correct and clear them for payout.
+
+        `back` lets the same route serve the coach's own screen and the row
+        button on the By coach tab, returning you to whichever you came from.
+        """
         staff, redir = guard_money(request, db)
         if redir:
             return redir
         run = db.get(CommissionRun, rid)
-        back = f"/commissions/{rid}/coach/{coach}"
+        where = (f"/commissions/{rid}?tab=coaches" if back == "coaches"
+                 else f"/commissions/{rid}/coach/{coach}")
         if not run or run.status != RUN_DRAFT:
-            return RedirectResponse(back, status_code=303)
+            return RedirectResponse(where, status_code=303)
         existing = (db.query(CommissionSignoff)
                     .filter_by(run_id=rid, coach=coach).first())
         if confirm != "on":
             if existing:
                 db.delete(existing)
                 db.commit()
-            return RedirectResponse(back, status_code=303)
+            return RedirectResponse(where, status_code=303)
+        _signoff_one(db, run, coach, staff, datetime.now(timezone.utc))
+        db.commit()
+        return RedirectResponse(where, status_code=303)
+
+    def _signoff_one(db: Session, run: CommissionRun, coach: str, staff, now):
+        """Record that one coach's figures have been confirmed."""
         rows = [b for b in _live(run)
                 if (b.coach or b.staff_raw) == coach and b.is_commissionable]
-        row = existing or CommissionSignoff(run_id=rid, coach=coach)
+        row = (db.query(CommissionSignoff).filter_by(run_id=run.id, coach=coach).first()
+               or CommissionSignoff(run_id=run.id, coach=coach))
         row.sessions = len(rows)
         row.commission = sum((Decimal(str(b.commission or 0)) for b in rows), Decimal(0))
-        row.approved_by_id = staff.id
-        row.approved_at = datetime.now(timezone.utc)
+        row.approved_by_id = getattr(staff, "id", None)
+        row.approved_at = now
         db.add(row)
+        return row
+
+    @app.post("/commissions/{rid}/signoff-many")
+    async def commission_signoff_many(request: Request, rid: int,
+                                      db: Session = Depends(get_db)):
+        """Approve several coaches from the By coach tab in one go.
+
+        Ticking rows and pressing once is the whole point, so this takes a list
+        rather than making the admin open seven screens to do the same thing.
+        """
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        back = f"/commissions/{rid}?tab=coaches"
+        if not run or run.status != RUN_DRAFT:
+            return RedirectResponse(back, status_code=303)
+        form = await request.form()
+        wanted = [c for c in form.getlist("coach") if c]
+        # Only coaches actually in this run — a name posted by hand shouldn't
+        # mint a sign-off for someone who isn't on the sheet.
+        live = {c["coach"] for c in coach_summary(run)}
+        now = datetime.now(timezone.utc)
+        done = [c for c in wanted if c in live]
+        for coach in done:
+            _signoff_one(db, run, coach, staff, now)
         db.commit()
+        request.session["signoff_result"] = {"n": len(done), "names": done[:12]}
         return RedirectResponse(back, status_code=303)
 
     @app.post("/commissions/{rid}/booking/{bid}/rate")

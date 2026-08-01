@@ -1,0 +1,175 @@
+{# By delegator — a peer of By coach, so both halves of the business sit on the
+   same run. The name strip persists once a delegator is open, because the
+   question is almost always "how does this one compare to that one". #}
+<h2>By delegator</h2>
+<p class="muted small">Everyone who brings their own clients and hands the sessions to an AWAKEN coach.
+  What you charge them, what you pay the coach, what's left.</p>
+
+{% if not dg_rows %}
+<div class="card"><p class="muted" style="margin:0">No delegated sessions in this run. A booking joins this
+  tab when its variant names a delegator code — see <a href="/admin/commission-delegators">Delegators</a>.</p></div>
+{% else %}
+
+<div class="subtabs">
+  <a href="?tab=delegators" class="{{ 'on' if not dg_pick }}">All delegators</a>
+  {% for r in dg_rows %}
+  <a href="?tab=delegators&d={{ r.delegator.id }}"
+     class="{{ 'on' if dg_pick and dg_pick.delegator.id == r.delegator.id }}">
+    {{ r.delegator.name }} <span class="c">{{ r.sessions }}</span></a>
+  {% endfor %}
+</div>
+
+{% if not dg_pick %}
+{# ---------------------------------------------------------- the rollup ---- #}
+<div class="sumbar">
+  <div class="s hero"><div class="l">Margin</div><div class="v">{{ peso(dg_totals.margin) }}</div>
+    {% if dg_totals.charged %}<div class="sub">{{ '%d'|format(dg_totals.margin / dg_totals.charged * 100) }}% of charged</div>{% endif %}</div>
+  <div class="s"><div class="l">Delegated</div><div class="v">{{ dg_totals.sessions }}</div>
+    <div class="sub">{{ dg_rows|length }} delegator{{ 's' if dg_rows|length != 1 }} ·
+      {{ dg_totals.clients }} client{{ 's' if dg_totals.clients != 1 }}</div></div>
+  <div class="s"><div class="l">Charged</div><div class="v">{{ peso(dg_totals.charged) }}</div></div>
+  <div class="s"><div class="l">Paid to coaches</div><div class="v">{{ peso(dg_totals.cost) }}</div></div>
+</div>
+
+{{ searchbar('dgtab', 'Search delegator…') }}
+<table id="dgtab">
+  <thead>
+  <tr><th>Delegator</th><th>Codes</th><th class="amt">Sessions</th><th class="amt">Clients</th>
+      <th class="amt">Coaches</th><th class="amt">Charged</th><th class="amt">Paid out</th>
+      <th class="amt">Margin</th><th style="width:1%"></th></tr>
+  </thead>
+  <tbody>
+  {% for r in dg_rows %}
+  <tr>
+    <td><div class="primary">{{ r.delegator.name }}</div>
+      {% if r.delegator.entity_id %}<div class="sub"><a href="/admin/staff/{{ r.delegator.entity_id }}/edit">Person record ↗</a></div>{% endif %}</td>
+    <td class="mono">{{ r.delegator.codes }}</td>
+    <td class="amt">{{ r.sessions }}{% if r.counting != r.sessions %}<div class="sub">{{ r.counting }} counting</div>{% endif %}</td>
+    <td class="amt">{{ r.clients }}</td>
+    <td class="amt">{{ r.coaches }}</td>
+    <td class="amt" data-money="charged" data-value="{{ r.charged }}">{{ peso(r.charged) }}</td>
+    <td class="amt" data-money="cost" data-value="{{ r.cost }}">{{ peso(r.cost) }}</td>
+    <td class="amt" data-money="margin" data-value="{{ r.margin }}">
+      <div class="primary" style="color:var(--teal-dark)">{{ peso(r.margin) }}</div>
+      {% if r.charged %}<div class="sub">{{ '%d'|format(r.margin / r.charged * 100) }}%</div>{% endif %}</td>
+    <td><a class="btn" style="padding:5px 12px" href="?tab=delegators&d={{ r.delegator.id }}">Open →</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+  <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
+    <td>Total</td><td></td>
+    <td class="amt">{{ dg_totals.sessions }}</td>
+    <td class="amt">{{ dg_totals.clients }}</td>
+    <td class="amt">{{ dg_totals.coaches }}</td>
+    <td class="amt">{{ peso(dg_totals.charged) }}</td>
+    <td class="amt">{{ peso(dg_totals.cost) }}</td>
+    <td class="amt" style="color:var(--teal-dark)">{{ peso(dg_totals.margin) }}</td>
+    <td></td>
+  </tr>
+  </tfoot>
+</table>
+
+{% else %}
+{# ------------------------------------------------- one delegator opened ---- #}
+{% set d = dg_detail %}
+<div class="sumbar">
+  <div class="s hero"><div class="l">Margin</div><div class="v">{{ peso(d.margin) }}</div>
+    {% if d.charged %}<div class="sub">{{ '%d'|format(d.margin / d.charged * 100) }}% of charged</div>{% endif %}</div>
+  <div class="s"><div class="l">Sessions</div><div class="v">{{ d.sessions }}</div>
+    <div class="sub">{{ d.clients|length }} client{{ 's' if d.clients|length != 1 }} ·
+      {{ d.coaches|length }} coach{{ 'es' if d.coaches|length != 1 }}</div></div>
+  <div class="s"><div class="l">Charged</div><div class="v">{{ peso(d.charged) }}</div>
+    <div class="sub">{{ peso(dg_pick.delegator.rate) }} each</div></div>
+  <div class="s"><div class="l">Paid to coaches</div><div class="v">{{ peso(d.cost) }}</div>
+    <div class="sub">{{ peso(dg_pick.delegator.cost) }} each</div></div>
+  <div class="s spacer"></div>
+  <div class="act">
+    <a class="btn" style="padding:5px 12px"
+       href="/commissions/delegation/{{ dg_pick.delegator.id }}?run={{ run.id }}">Full screen ↗</a>
+  </div>
+</div>
+
+{% if d.matrix.days %}
+<h2>Who covered what</h2>
+<div class="legend">
+  {% for name, code in d.matrix.codes|dictsort %}
+  <span><b class="{{ d.matrix.colors[name] }}">{{ code }}</b><span class="muted small">{{ name }}</span></span>
+  {% endfor %}
+</div>
+<div class="mxwrap">
+<table class="mx">
+  <thead>
+  <tr><th class="cli">Client</th>
+    {% for day in d.matrix.days %}
+    <th class="d{{ ' we' if day.weekday() >= 5 }}">
+      <span class="wd">{{ 'MTWTFSS'[day.weekday()] }}</span><span class="dn">{{ day.day }}</span></th>
+    {% endfor %}
+    <th class="tot">Sessions</th></tr>
+  </thead>
+  <tbody>
+  {% for c in d.matrix.clients %}
+  <tr>
+    <td class="cli" title="{{ c.client }}">{{ c.client }}</td>
+    {% for cell in c.cells %}
+    <td class="d{{ ' we' if d.matrix.days[loop.index0].weekday() >= 5 }}">
+      {% if cell.n %}
+      <b class="{{ d.matrix.colors.get(cell.coach, 'c6') }}"
+         title="{% for b in cell.bookings %}{{ b.coach or b.staff_raw }} · {{ b.booking_ref }}{{ ' · ' if not loop.last }}{% endfor %}">{{ d.matrix.codes.get(cell.coach, '?') }}{% if cell.n > 1 %}×{{ cell.n }}{% endif %}</b>
+      {% else %}<i>·</i>{% endif %}
+    </td>
+    {% endfor %}
+    <td class="tot">{{ c.total }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+  <tr><td class="cli">Per day</td>
+    {% for day in d.matrix.days %}
+    <td class="d{{ ' we' if day.weekday() >= 5 }}">{% if d.matrix.totals[day] %}{{ d.matrix.totals[day] }}{% else %}<i>·</i>{% endif %}</td>
+    {% endfor %}
+    <td class="tot">{{ d.sessions }}</td></tr>
+  </tfoot>
+</table>
+</div>
+{% endif %}
+
+<h2>Clients</h2>
+<table>
+  <thead><tr><th>Client</th><th class="amt">Sessions</th><th>Coaches</th><th>First</th><th>Last</th>
+    <th class="amt">Charged</th><th class="amt">Coach cost</th><th class="amt">Margin</th></tr></thead>
+  <tbody>
+  {% for c in d.clients %}
+  <tr>
+    <td class="primary">{{ c.name }}</td>
+    <td class="amt">{{ c.sessions }}</td>
+    <td class="small">{{ c.others|sort|join(', ') }}</td>
+    <td>{{ c.first.strftime('%d %b') if c.first }}</td>
+    <td>{{ c.last.strftime('%d %b') if c.last }}</td>
+    <td class="amt">{{ peso(c.charged) }}</td>
+    <td class="amt">{{ peso(c.cost) }}</td>
+    <td class="amt" style="color:var(--teal-dark)">{{ peso(c.charged - c.cost) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Coaches who covered</h2>
+<table>
+  <thead><tr><th>Coach</th><th class="amt">Sessions</th><th class="amt">Clients covered</th>
+    <th class="amt">Paid to coach</th><th class="amt">Charged on</th><th class="amt">Margin</th></tr></thead>
+  <tbody>
+  {% for c in d.coaches %}
+  <tr>
+    <td class="primary"><a href="/commissions/{{ run.id }}/coach/{{ c.name }}">{{ c.name }}</a></td>
+    <td class="amt">{{ c.sessions }}</td>
+    <td class="amt">{{ c.others|length }}</td>
+    <td class="amt">{{ peso(c.cost) }}</td>
+    <td class="amt">{{ peso(c.charged) }}</td>
+    <td class="amt" style="color:var(--teal-dark)">{{ peso(c.charged - c.cost) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}

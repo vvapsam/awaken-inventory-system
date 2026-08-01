@@ -252,7 +252,9 @@ with TestClient(app) as c:
                follow_redirects=False)
     mid = r.headers.get("location", "").rstrip("/").split("/")[-1]
     page = c.get(f"/commissions/{mid}?tab=coaches").text
-    check("  coach table lists awaiting-review counts", "Awaiting review" in page)
+    check("  coach table lists awaiting-review counts", "to review" in page)
+    check("    and offers approval from the row", "/signoff" in page)
+    check("    with tick boxes for approving several", 'name="coach"' in page)
     r = c.get(f"/commissions/{mid}?tab=summary")
     check("  preview flags rows awaiting review", "awaiting review" in r.text)
 
@@ -327,6 +329,84 @@ with TestClient(app) as c:
         approved_any = True
         break
     check("  found a coach with reviewable rows", approved_any)
+    print("\napproving from the coach row")
+    # Uses the mixed-status draft above: a finalized run has nothing to
+    # approve, and re-uploading after finalize is caught by the double-payment
+    # guard, so this has to happen while a real draft is on the table.
+    drid = mid
+    from app.commission_routes import coach_summary as _cs        # noqa: E402
+    _db = SessionLocal()
+    _names = [x["coach"] for x in _cs(_db.get(CommissionRun, int(drid)))]
+    _db.close()
+    check("  a draft to work on", len(_names) >= 4, "%d coaches" % len(_names))
+
+    page = c.get(f"/commissions/{drid}?tab=coaches").text
+    check("  the tab offers a tick box per coach", page.count('name="coach"') >= 2)
+    check("    and a select-all", 'id="selall"' in page)
+    check("    the selection bar starts hidden", 'class="selbar" id="selbar" hidden' in page)
+    check("    and an Approve button per row", page.count("✓ Approve") >= 2)
+    r = c.post(f"/commissions/{drid}/coach/{_names[0]}/signoff",
+               data={"confirm": "on", "back": "coaches"}, follow_redirects=False)
+    check("  approving from a row", r.status_code == 303)
+    check("    returns to the coaches tab",
+          r.headers.get("location", "").endswith("?tab=coaches"))
+    page = c.get(f"/commissions/{drid}?tab=coaches").text
+    check("    the row now reads Approved", ">Approved<" in page)
+    check("    and offers Withdraw instead", "Withdraw" in page)
+
+    r = c.post(f"/commissions/{drid}/signoff-many",
+               data={"coach": _names[1:4]}, follow_redirects=False)
+    check("  approving several at once", r.status_code == 303)
+    page = c.get(f"/commissions/{drid}?tab=coaches").text
+    check("    it says how many went through", "Approved 3 coaches" in page)
+    _db = SessionLocal()
+    _n = _db.query(CommissionSignoff).filter_by(run_id=int(drid)).count()
+    _db.close()
+    check("    four coaches are signed off now", _n == 4, "%d" % _n)
+    check("    the banner shows once only",
+          "Approved 3 coaches" not in c.get(f"/commissions/{drid}?tab=coaches").text)
+    r = c.post(f"/commissions/{drid}/signoff-many",
+               data={"coach": ["Someone Not On This Run"]}, follow_redirects=False)
+    _db = SessionLocal()
+    _n2 = _db.query(CommissionSignoff).filter_by(run_id=int(drid)).count()
+    _db.close()
+    check("  a coach who isn't on the run is ignored", _n2 == 4, "%d" % _n2)
+    # Withdrawing must put the row back into the queue.
+    r = c.post(f"/commissions/{drid}/coach/{_names[0]}/signoff",
+               data={"confirm": "off", "back": "coaches"}, follow_redirects=False)
+    _db = SessionLocal()
+    _n3 = _db.query(CommissionSignoff).filter_by(run_id=int(drid)).count()
+    _db.close()
+    check("  withdrawing removes the sign-off", _n3 == 3, "%d" % _n3)
+
+    print("\nby delegator tab")
+    page = c.get(f"/commissions/{drid}?tab=delegators").text
+    check("  the tab renders", "By delegator" in page)
+    check("    it is reachable from the tab row", "?tab=delegators" in
+          c.get(f"/commissions/{drid}").text)
+    check("    the name strip lists each delegator", 'class="subtabs"' in page)
+    _dids = re.findall(r"tab=delegators&(?:amp;)?d=(\d+)", page)
+    check("    with a link per delegator", len(set(_dids)) >= 1, str(set(_dids)))
+    check("    and a totals row", "Total" in page)
+    if _dids:
+        one = c.get(f"/commissions/{drid}?tab=delegators&d={_dids[0]}").text
+        check("  opening one keeps the strip", 'class="subtabs"' in one)
+        check("    shows the schedule matrix", 'class="mx"' in one)
+        check("    names the clients", ">Clients<" in one)
+        check("    and the coaches who covered", "Coaches who covered" in one)
+        check("    links out to the full screen", "/commissions/delegation/" in one)
+        # The tab and the standalone screen share one helper, so they must
+        # report the same margin for the same delegator. Read the strip's own
+        # hero figure, not the first peso on the page — that one belongs to the
+        # run header above it.
+        full = c.get(f"/commissions/delegation/{_dids[0]}?run={drid}").text
+        _m = re.search(r'hero"><div class="l">Margin</div><div class="v">(₱[\d,]+\.\d\d)', one)
+        check("    and agrees with the full screen on the margin",
+              bool(_m) and _m.group(1) in full,
+              _m.group(1) if _m else "no margin found")
+    back = c.get(f"/commissions/{drid}?tab=delegators&d=999999").text
+    check("  an unknown delegator falls back to the summary", 'class="subtabs"' in back)
+
     c.post(f"/commissions/{mid}/delete", follow_redirects=False)
 
     # Re-uploading a period supersedes the earlier draft, so rebuild it before
@@ -371,11 +451,10 @@ with TestClient(app) as c:
     check("  filter pills are present", 'href="?status=' in page)
     check("    All is selected by default", '<a href="?" class="on">All' in page)
     check("    one table, not one per status", page.count('class="bktbl"') == 1)
-    check("    the flat view names each row's status", ">Status</th>" in page)
+    check("    every row still shows its status", 'class="stp' in page)
     p2 = c.get(f"/commissions/{rid}/coach/{coach0}?status=Completed").text
     check("  picking a status filters the table", "Completed · " in p2)
-    check("    and drops the Status column, since every row shares it",
-          ">Status</th>" not in p2)
+    check("    and shows only that status", p2.count('class="stp') == p2.count('<tr id='))
     n_all = page.count('<tr id=')
     n_one = p2.count('<tr id=')
     check("    fewer rows than All", 0 < n_one <= n_all, "%d of %d" % (n_one, n_all))
@@ -406,11 +485,11 @@ with TestClient(app) as c:
                follow_redirects=False)
     check("  set a rate on one row", r.status_code == 303)
     page = c.get(f"/commissions/{rid}/coach/{coach0}").text
-    check("    row is marked manual", "Manual" in page)
+    check("    row is marked manual", "manual" in page)
     check("    row now pays the typed amount", "1,234.00" in page)
     r = c.post(f"/commissions/{rid}/recalculate", follow_redirects=False)
     page = c.get(f"/commissions/{rid}/coach/{coach0}").text
-    check("    survives Recalculate", "1,234.00" in page and "Manual" in page)
+    check("    survives Recalculate", "1,234.00" in page and "manual" in page)
     r = c.post(f"/commissions/{rid}/booking/{bid}/rate",
                data={"reset": "on"}, follow_redirects=False)
     page = c.get(f"/commissions/{rid}/coach/{coach0}").text

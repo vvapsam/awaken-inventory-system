@@ -1,0 +1,142 @@
+{# By coach — approve from the row, or tick several and approve together.
+
+   The whole tab sits inside one form so the select-all bar and the tick boxes
+   post as a single list. Per-row Approve is its own form nested outside that
+   one (HTML forbids nesting), so those buttons use the `form` attribute to
+   point at their own hidden form further down. #}
+<h2>By coach</h2>
+<p class="muted small">Approve a coach from their row, or tick several and approve them together.
+  Approving says the figures are correct and clears them for payout.</p>
+
+{% if result %}
+<div class="notice">Approved {{ result.n }} coach{{ 'es' if result.n != 1 }} —
+  {{ result.names | join(', ') }}.</div>
+{% endif %}
+
+{{ searchbar('coaches', 'Search coach…') }}
+
+{% set pickable = coaches | rejectattr('signoff') | selectattr('commission') | list %}
+<form method="post" action="/commissions/{{ run.id }}/signoff-many" id="manyform">
+{% if is_draft and can_pay and pickable %}
+<div class="selbar" id="selbar" hidden>
+  <b><span id="seln">0</span> coach<span id="selp">es</span> selected</b>
+  <span class="selamt" id="selamt"></span>
+  <span style="flex:1"></span>
+  <button class="btn" style="padding:5px 12px">✓ Approve selected</button>
+</div>
+{% endif %}
+
+<table id="coaches">
+  <thead>
+  <tr>
+    {% if is_draft and can_pay and pickable %}
+    <th style="width:34px"><input type="checkbox" class="chk" id="selall"
+        title="Select every coach still awaiting approval"></th>
+    {% endif %}
+    <th>Coach</th>
+    <th style="text-align:right">Sessions</th>
+    <th style="text-align:right">Commission</th>
+    <th>Needs a look</th>
+    <th>Sign-off</th>
+    <th style="width:1%"></th>
+  </tr>
+  </thead>
+  <tbody>
+  {% for c in coaches %}
+  {% set can_tick = is_draft and can_pay and not c.signoff and c.commission %}
+  <tr {% if c.signoff %}style="background:var(--teal-tint)"{% endif %}>
+    {% if is_draft and can_pay and pickable %}
+    <td>{% if can_tick %}
+      <input type="checkbox" class="chk pick" name="coach" value="{{ c.coach }}"
+             data-amount="{{ c.commission }}">
+      {% endif %}</td>
+    {% endif %}
+    <td>
+      <a href="/commissions/{{ run.id }}/coach/{{ c.coach }}"><b>{{ c.coach }}</b></a>
+      {% if c.email %}<div class="muted small" style="margin:0">{{ c.email }}</div>
+      {% else %}<div class="muted small" style="margin:0">No email on record</div>{% endif %}
+    </td>
+    <td style="text-align:right">{{ c.counted }}</td>
+    <td style="text-align:right" data-money="commission" data-value="{{ c.commission }}">
+      <b>{{ peso(c.commission) }}</b></td>
+    <td>
+      {% if c.pending %}<span class="tag amber">{{ c.pending }} to review</span>
+      {% else %}<span class="muted small">—</span>{% endif %}
+    </td>
+    <td>
+      {% if c.signoff %}<span class="tag">Approved</span>
+        <div class="muted small" style="margin:0">{{ c.signoff.approved_by.name if c.signoff.approved_by }}{%
+          if c.signoff.approved_at %} · {{ c.signoff.approved_at.strftime('%d %b') }}{% endif %}</div>
+      {% elif c.commission %}<span class="tag amber">Awaiting approval</span>
+      {% else %}<span class="muted small">—</span>{% endif %}
+    </td>
+    <td style="white-space:nowrap">
+      {% if is_draft and can_pay and c.commission %}
+        {% if c.signoff %}
+        <button class="btn" style="padding:5px 12px" form="off-{{ loop.index }}">Withdraw</button>
+        {% else %}
+        <button class="btn primary" style="padding:5px 12px" form="on-{{ loop.index }}">✓ Approve</button>
+        {% endif %}
+      {% endif %}
+      <a class="btn" style="padding:5px 12px" href="/commissions/{{ run.id }}/coach/{{ c.coach }}">Review</a>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</form>
+
+{# One hidden form per row button. Kept outside the bulk form because a form
+   cannot contain another form. #}
+{% if is_draft and can_pay %}
+{% for c in coaches %}{% if c.commission %}
+<form method="post" id="{{ 'off' if c.signoff else 'on' }}-{{ loop.index }}"
+      action="/commissions/{{ run.id }}/coach/{{ c.coach }}/signoff" hidden>
+  <input type="hidden" name="confirm" value="{{ 'off' if c.signoff else 'on' }}">
+  <input type="hidden" name="back" value="coaches">
+</form>
+{% endif %}{% endfor %}
+{% endif %}
+
+<script>
+(function(){
+  var all = document.getElementById('selall');
+  if(!all) return;
+  var bar = document.getElementById('selbar'),
+      n = document.getElementById('seln'), p = document.getElementById('selp'),
+      amt = document.getElementById('selamt');
+  function boxes(){
+    // Only rows the search has left visible — approving something you have
+    // filtered out of sight would be a nasty surprise.
+    return Array.prototype.filter.call(
+      document.querySelectorAll('#coaches .pick'),
+      function(b){ return b.closest('tr').style.display !== 'none'; });
+  }
+  function peso(v){
+    return '₱' + v.toLocaleString(undefined,
+      {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function sync(){
+    var on = boxes().filter(function(b){ return b.checked; });
+    n.textContent = on.length;
+    p.hidden = on.length === 1;
+    amt.textContent = on.length ? peso(on.reduce(function(t,b){
+      return t + parseFloat(b.getAttribute('data-amount') || 0); }, 0)) : '';
+    bar.hidden = on.length === 0;
+    var every = boxes().length, checked = on.length;
+    all.checked = every > 0 && checked === every;
+    all.indeterminate = checked > 0 && checked < every;
+  }
+  all.addEventListener('change', function(){
+    boxes().forEach(function(b){ b.checked = all.checked; });
+    sync();
+  });
+  document.getElementById('coaches').addEventListener('change', function(e){
+    if(e.target.classList.contains('pick')) sync();
+  });
+  // The search box hides rows; re-count when it does.
+  var search = document.querySelector('input[data-filter="#coaches"]');
+  if(search) search.addEventListener('input', function(){ setTimeout(sync, 0); });
+  sync();
+})();
+</script>
