@@ -1025,10 +1025,16 @@ def register(app, deps):
                 "%s %d" % (k, v) for k, v in sorted(by_status.items())))
         run.last_import_note = " · ".join(note)
 
-        live = [b for b in run.bookings if not b.dropped_reason]
-        run.parsed_count = len(run.bookings)
-        run.kept_count = len(live)
-        run.dropped_count = len(run.bookings) - len(live)
+        # Count from the table, not from `run.bookings`. The rows were added by
+        # run_id rather than appended to the relationship, so that collection is
+        # still empty here — which is why every run has been saving "of 0 rows".
+        db.flush()
+        rows = db.query(CommissionBooking).filter_by(run_id=run.id)
+        total = rows.count()
+        dropped_n = rows.filter(CommissionBooking.dropped_reason.isnot(None)).count()
+        run.parsed_count = total
+        run.kept_count = total - dropped_n
+        run.dropped_count = dropped_n
         db.commit()
         return RedirectResponse(f"/commissions/{run.id}", status_code=303)
 
@@ -1449,7 +1455,7 @@ def register(app, deps):
                       run=run, runs=runs, delegator=delegator, tab=tab, **d)
 
     @app.get("/commissions/{rid}", response_class=HTMLResponse)
-    def commission_run_view(request: Request, rid: int, tab: str = "summary",
+    def commission_run_view(request: Request, rid: int, tab: str = "coaches",
                             db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
@@ -1479,6 +1485,7 @@ def register(app, deps):
         # By delegator: the rollup always, plus one delegator opened if the
         # name strip has a selection.
         dg_rows = delegator_rollup(run, db) if tab == "delegators" else []
+        dg_count = len({b.delegator_id for b in delegated if b.delegator_id})
         dg_pick, dg_detail = None, None
         if tab == "delegators":
             want = request.query_params.get("d")
@@ -1502,7 +1509,7 @@ def register(app, deps):
                       pending=waiting, pending_count=len(waiting),
                       can_pay=(getattr(staff, "role", "") == "admin"),
                       result=request.session.pop("signoff_result", None),
-                      dg_rows=dg_rows, dg_pick=dg_pick, dg_detail=dg_detail,
+                      dg_rows=dg_rows, dg_pick=dg_pick, dg_detail=dg_detail, dg_count=dg_count,
                       dg_totals=_rollup_totals(run, dg_rows),
                       RUN_DRAFT=RUN_DRAFT, RUN_FINALIZED=RUN_FINALIZED)
 
