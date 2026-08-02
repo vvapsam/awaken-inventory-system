@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block body %}
+{# `who`, not `p` — base.html already binds `p` to the request path.
+
+   Where a scanned QR lands. Built for one hand in a doorway: the name is the
+   biggest thing on the screen, the button is the width of the card, and the
+   answer to "is this person on the list" is readable before you focus. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Check in</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }}{% if ev.sponsor %}
+      · {{ ev.sponsor }}{% endif %}</p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}?tab=door">← The door list</a>
+  </div>
+</div>
+
+<div class="card ckcard">
+  {% if who.arrived_at %}
+  <div class="ckstate in">✓ Checked in</div>
+  <div class="ckname">{{ who.name }}</div>
+  <div class="ckwhen">{{ who.arrived_at.strftime('%I:%M %p')|replace(' 0',' ')|trim }}{%
+    if done %} · just now{% endif %}</div>
+  {% elif stage == 'ready' or stage in ('submit', 'late', 'rewarded') %}
+  <div class="ckstate ok">On the list</div>
+  <div class="ckname">{{ who.name }}</div>
+  <div class="ckwhen">Confirmed{% if who.rsvp_at %}
+    {{ who.rsvp_at.strftime('%d %b') }}{% endif %}{% if who.handle %} · {{ who.handle }}{% endif %}</div>
+  {% elif stage == 'confirm' %}
+  {# Not a refusal. They have a slot, they just never answered — and the door
+     is not the place to hold that against somebody who turned up. #}
+  <div class="ckstate warn">Never confirmed</div>
+  <div class="ckname">{{ who.name }}</div>
+  <div class="ckwhen">They have a slot but didn't answer. Let them in if there's
+    room — checking in counts as their yes.</div>
+  {% elif who.waitlist %}
+  <div class="ckstate warn">On the waitlist</div>
+  <div class="ckname">{{ who.name }}</div>
+  <div class="ckwhen">{{ c.seats_left }}
+    {{ 'slot' if c.seats_left == 1 else 'slots' }} free. Give them one from the
+    waitlist tab first if you want them counted properly.</div>
+  {% else %}
+  <div class="ckstate bad">Not in the room</div>
+  <div class="ckname">{{ who.name }}</div>
+  <div class="ckwhen">{% if who.declined %}They said they couldn't make it.{%
+    else %}Their slot lapsed and went to the waitlist.{% endif %}
+    You can still check them in if you're happy to.</div>
+  {% endif %}
+
+  <form method="post" action="/i/{{ who.token }}" style="margin-top:18px">
+    {% if who.arrived_at %}
+    <input type="hidden" name="undo" value="1">
+    <button class="btn ckbtn">Undo — they're not here</button>
+    {% else %}
+    <button class="btn primary ckbtn">Check {{ who.name.split()[0] }} in</button>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <div class="row-between" style="align-items:center">
+    <div>
+      <div class="small" style="font-weight:600">{{ c.arrived }} of {{ c.confirmed }} in</div>
+      <div class="muted small">{{ c.to_arrive }} still to arrive</div>
+    </div>
+    <a class="btn" href="/events/{{ ev.id }}?tab=door">See who's missing</a>
+  </div>
+</div>
+{% endblock %}

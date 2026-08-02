@@ -168,6 +168,14 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
 /* What happens next, said before they have to wonder about it. */
 .ack .after{border-top:1px solid var(--wash-line);padding:11px 15px;font-size:.83rem;
   color:#4b535b}
+/* The pass. White plate, black code, nothing else on it — a QR fights with
+   anything busy behind it, and a code that will not scan first time in a
+   doorway is worse than no code at all. */
+.pass{margin:4px 0 20px;padding:16px 16px 13px;border:1px solid var(--line);
+  border-radius:12px;background:#fff;text-align:center}
+.pass img{display:block;margin:0 auto;width:200px;height:200px;image-rendering:pixelated}
+.pass .nm{margin-top:10px;font-weight:650;font-size:.95rem}
+.pass .sub{font-size:.78rem;color:var(--muted)}
 .reward .pickhint{font-size:.79rem;color:#4d6f6f;margin:-2px 0 10px}
 /* One or the other, never both — so they are drawn as separate cards with the
    word between them, rather than as two lines of one list. */
@@ -329,7 +337,18 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
   <div class="done">
     <div class="ring"><i></i></div>
     <h2>You're confirmed 🎉</h2>
-    <p>See you there. Screenshot this if you like.</p>
+    {% if p.arrived_at %}
+    <p>You're checked in — enjoy the class.</p>
+    {% else %}
+    <p>Show this at the door. Screenshot it now, in case the signal is bad.</p>
+    {# The pass. It is only drawn once they are confirmed, because a pass is
+       proof of a slot and until they answer they do not have one. #}
+    <div class="pass{{ ' used' if p.arrived_at }}">
+      <img src="/e/{{ p.token }}/qr.png" alt="Your check-in code" width="200" height="200">
+      <div class="nm">{{ p.name }}</div>
+      <div class="sub">{{ ev.name }}</div>
+    </div>
+    {% endif %}
     {{ detail_card(p, ev) }}
     {{ reel_howto(ev) }}
   </div>
