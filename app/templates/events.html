@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Sponsored events</h1>
+    <p class="muted small" style="margin:2px 0 0">A class someone else pays for, in exchange for
+      a post from everyone who comes. One private link per participant carries them from
+      "you have a slot" to "here's your code".</p>
+  </div>
+  <details class="addrow" style="margin:0">
+    <summary class="btn primary" style="padding:7px 14px;list-style:none">+ New event</summary>
+    <div class="body" style="min-width:280px">
+      <form method="post" action="/events/new">
+        <label class="small" style="font-weight:600">Name</label>
+        <input name="name" required placeholder="HYROX Foundation Class">
+        <label class="small" style="font-weight:600;margin-top:8px;display:block">Sponsor</label>
+        <input name="sponsor" placeholder="Kenny Rogers Roasters">
+        <button class="btn primary" style="margin-top:10px">Create</button>
+      </form>
+    </div>
+  </details>
+</div>
+
+{% if not events %}
+<div class="card" style="margin-top:16px"><p class="muted" style="margin:0">
+  No events yet. Create one, set the sponsor's terms, paste in your list of participants,
+  and send the invitations.</p></div>
+{% else %}
+<table style="margin-top:16px">
+  <thead><tr>
+    <th>Event</th><th>When</th>
+    <th style="text-align:right">Confirmed</th>
+    <th style="text-align:right">Reels</th>
+    <th style="text-align:right">Qualified</th>
+    <th>Status</th><th style="width:1%"></th>
+  </tr></thead>
+  <tbody>
+  {% for row in events %}
+  {% set ev = row.ev %}{% set c = row.c %}
+  <tr>
+    <td><a href="/events/{{ ev.id }}"><b>{{ ev.name }}</b></a>
+      {% if ev.sponsor %}<div class="muted small" style="margin:0">{{ ev.sponsor }}</div>{% endif %}</td>
+    <td>{% if ev.starts_at %}{{ ev.starts_at.strftime('%d %b %Y, %H:%M') }}
+      {% else %}<span class="muted small">Not set</span>{% endif %}</td>
+    <td style="text-align:right">{{ c.confirmed }} <span class="muted">/ {{ ev.capacity }}</span>
+      {% if c.waiting %}<div class="muted small" style="margin:0">{{ c.waiting }} to hear from</div>{% endif %}</td>
+    <td style="text-align:right">{{ c.posted }}
+      {% if c.to_post %}<div class="muted small" style="margin:0">{{ c.to_post }} to post</div>{% endif %}</td>
+    <td style="text-align:right">{{ c.qualified }}
+      {% if c.redeemed %}<div class="muted small" style="margin:0">{{ c.redeemed }} redeemed</div>{% endif %}</td>
+    <td><span class="tag {{ 'amber' if ev.status in ('draft', 'running') }}">{{ ev.status|title }}</span></td>
+    <td><a class="btn" style="padding:5px 12px" href="/events/{{ ev.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

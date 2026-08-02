@@ -85,6 +85,12 @@ main.bare{max-width:1040px;margin:0 auto;padding:24px 20px}
 /* ================= CARDS / LAYOUT ================= */
 .card{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin:14px 0;box-shadow:0 1px 2px rgba(16,24,32,.03)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+/* A two-column settings form. Collapses to one column on a phone, because a
+   40-character input in a half-width column is unusable there. */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.grid2 input,.grid2 select{width:100%}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}
+  .grid2 > div[style*="grid-column"]{grid-column:auto !important}}
 .row-between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .stat{text-align:left}
 .stat-label{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
@@ -257,6 +263,22 @@ tr.needs:hover td{background:#f6ecd6}
 .ov svg{width:13px;height:13px}
 .ov.none{background:var(--bg);border-color:var(--line);color:var(--muted);font-weight:550}
 .tag.amber{background:var(--low-line);color:#4a3a12}
+.tag.grey{background:#e3e8ed;color:#7a8593}
+
+/* The two emails, side by side. Each panel says what it is, who it would go
+   to, and carries its own button — the whole point is that neither send can
+   hide behind the other. */
+.mailbar{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0 0}
+.mailbar .m{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 16px;display:flex;flex-direction:column}
+.mailbar .n{font-size:.7rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--muted)}
+.mailbar .d{font-size:.85rem;color:#2b3642;margin:5px 0 9px}
+.mailbar .st{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:11px}
+.mailbar .go{display:flex;gap:7px;flex-wrap:wrap;margin-top:auto}
+.mailbar .go form{margin:0}
+.mailbar .go .btn{margin:0;padding:7px 13px;font-size:.85rem}
+@media(max-width:760px){.mailbar{grid-template-columns:1fr}}
 
 /* Bulk selection. The bar only appears once something is ticked, so the table
    reads normally until you're actually doing a multi-row action. */
@@ -268,6 +290,16 @@ tr.needs:hover td{background:#f6ecd6}
 .selbar[hidden]{display:none}
 .selbar .btn{background:#fff;border-color:#fff}
 .selbar .selamt{opacity:.72;font-variant-numeric:tabular-nums}
+
+/* Editing one participant, in a row of its own under theirs. Full table width
+   so a long email address is readable rather than truncated in a popover. */
+tr.editrow[hidden]{display:none}
+tr.editrow > td{background:var(--panel);box-shadow:inset 3px 0 0 var(--teal)}
+.editgrid{display:grid;grid-template-columns:1.1fr 1.4fr 1fr auto;gap:10px 14px;align-items:end}
+.editgrid input{width:100%;margin:0}
+.editgrid label{margin:0 0 4px}
+.editgrid .acts{display:flex;gap:7px;flex-wrap:wrap}
+@media(max-width:820px){.editgrid{grid-template-columns:1fr}}
 
 /* A summary strip. Four stat cards cost ~180px of height each to show one
    number; this carries the same figures, plus the action, in one band. */

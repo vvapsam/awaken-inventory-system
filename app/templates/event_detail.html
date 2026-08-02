@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+{% macro searchbar(target, placeholder) %}
+<div class="tsearchbar">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  <input type="search" class="tsearch" data-filter="#{{ target }}" data-note="{{ target }}-note"
+         placeholder="{{ placeholder }}" autocomplete="off" spellcheck="false">
+  <span class="tsearch-note" id="{{ target }}-note"></span>
+</div>
+{% endmacro %}
+{% block body %}
+
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ ev.name }}
+      {% if ev.sponsor %}<span class="muted" style="font-weight:400">× {{ ev.sponsor }}</span>{% endif %}</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      {% if ev.starts_at %}{{ ev.starts_at.strftime('%a %d %b %Y, %H:%M') }} · {% endif %}
+      {{ ev.capacity }} slots{% if ev.hashtag %} · {{ ev.hashtag }}{% endif %}</p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}/report.csv">⤓ Sponsor report</a>
+    <a class="btn" href="/events/{{ ev.id }}/settings">⚙ Settings</a>
+    <a class="btn" href="/events">← All events</a>
+  </div>
+</div>
+
+{% if mail %}
+{% if mail.setup %}
+<div class="alert bad"><b>Nothing was sent.</b> <span class="muted">{{ mail.setup }}</span></div>
+{% else %}
+{% if mail.sent %}
+{# Say which of the two went out. "Emailed 26 people" on its own leaves you
+   wondering whether you just sent the invitation again. #}
+<div class="notice">Sent the
+  <b>{{ 'Reel email' if mail.kind == 'reel' else 'invitation' }}</b>
+  to {{ mail.sent|length }} {{ 'person' if mail.sent|length == 1 else 'people' }} —
+  {% for s in mail.sent %}{{ s.name }}{{ ', ' if not loop.last }}{% endfor %}.</div>
+{% endif %}
+{% if mail.skipped %}
+<div class="alert warn"><b>{{ mail.skipped|length }} skipped.</b>
+  <span class="muted">{% for s in mail.skipped %}{{ s.name }} ({{ s.detail }}){{ '; ' if not loop.last }}{% endfor %}</span></div>
+{% endif %}
+{% if mail.failed %}
+<div class="alert bad"><b>Not sent.</b>
+  <span class="muted">{% for s in mail.failed %}{{ s.name }} — {{ s.detail }}{{ '; ' if not loop.last }}{% endfor %}</span></div>
+{% endif %}
+{% endif %}
+{% endif %}
+
+{% if request.query_params.get('added') %}
+<div class="notice">Added {{ request.query_params.get('added') }}
+  {{ 'person' if request.query_params.get('added') == '1' else 'people' }}.
+  <span class="muted small">Each has their own link — send the invitations when you're ready.</span></div>
+{% endif %}
+
+{# One strip, so the numbers you came for are on screen without scrolling. #}
+<div class="sumbar">
+  <div class="s hero"><div class="l">Confirmed</div>
+    <div class="v">{{ c.confirmed }} of {{ ev.capacity }}</div>
+    <div class="sub">{% if c.waiting %}{{ c.waiting }} still to hear from{%
+      else %}everyone has answered{% endif %}</div></div>
+  <div class="s"><div class="l">Handles in</div><div class="v">{{ c.handles }}</div>
+    <div class="sub">of {{ c.confirmed }} confirmed</div></div>
+  <div class="s"><div class="l">Reels posted</div><div class="v">{{ c.posted }}</div>
+    <div class="sub">{% if c.to_post %}{{ c.to_post }} still to post{% else %}all in{% endif %}</div></div>
+  <div class="s"><div class="l">Qualified</div><div class="v">{{ c.qualified }}</div>
+    <div class="sub">{{ c.redeemed }} redeemed</div></div>
+  {% if ev.reel_deadline %}
+  <div class="s"><div class="l">Reel window</div>
+    <div class="v">{{ reel_left or 'closed' }}</div>
+    <div class="sub">{{ ev.reel_deadline.strftime('%d %b, %H:%M') }}</div></div>
+  {% endif %}
+  <div class="s spacer"></div>
+</div>
+
+{# Two emails, two buttons. They go out days apart, to different people, and
+   ask for different things — one button that guesses from the event's status
+   hides the second one, and you cannot press a button you cannot see. #}
+<div class="mailbar">
+  <div class="m">
+    <div class="n">1 · The invitation</div>
+    <div class="d">"You're in — confirm your slot." Attendance, Instagram handle,
+      the sponsor note.</div>
+    <div class="st">
+      {% if c.invited %}<span class="tag">Sent to {{ c.invited }}</span>{% endif %}
+      {% if lists.invite %}<span class="tag amber">{{ lists.invite }} not yet emailed</span>
+      {% elif c.invited %}<span class="muted small" style="margin:0">everyone has had it</span>
+      {% else %}<span class="muted small" style="margin:0">nobody emailed yet</span>{% endif %}
+    </div>
+    <div class="go">
+      <form method="post" action="/events/{{ ev.id }}/send">
+        <input type="hidden" name="kind" value="invite">
+        <button class="btn primary" {{ 'disabled' if not mail_ready or not lists.invite }}
+          title="{% if not mail_ready %}Mail isn't set up on the server yet{%
+            elif not lists.invite %}Everyone on the list has already had it{% endif %}">
+          ✉ Send to {{ lists.invite }}</button>
+      </form>
+      {% if c.invited %}
+      <form method="post" action="/events/{{ ev.id }}/send"
+            onsubmit="return confirm('Re-send the invitation to all {{ lists.invite_all }}, including people who already had it?')">
+        <input type="hidden" name="kind" value="invite">
+        <input type="hidden" name="who" value="all">
+        <button class="btn" {{ 'disabled' if not mail_ready }}>Re-send to all</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="m">
+    <div class="n">2 · The Reel email</div>
+    <div class="d">"Thank you — submit your Reel and pick your reward." Send it the
+      evening of the class, while everyone still feels good about it.</div>
+    <div class="st">
+      {% if c.reel_emailed %}<span class="tag">Sent to {{ c.reel_emailed }}</span>{% endif %}
+      {% if lists.reel %}<span class="tag amber">{{ lists.reel }} not yet asked</span>{% endif %}
+      {% if lists.nudge %}<span class="tag amber">{{ lists.nudge }} asked, still to post</span>{% endif %}
+      {% if not lists.reel and not lists.nudge and not c.reel_emailed %}
+      <span class="muted small" style="margin:0">nobody has confirmed yet</span>{% endif %}
+    </div>
+    <div class="go">
+      <form method="post" action="/events/{{ ev.id }}/send">
+        <input type="hidden" name="kind" value="reel">
+        <button class="btn primary" {{ 'disabled' if not mail_ready or not lists.reel }}
+          title="{% if not mail_ready %}Mail isn't set up on the server yet{%
+            elif not lists.reel %}Everyone who confirmed has already been asked{% endif %}">
+          ✉ Send to {{ lists.reel }}</button>
+      </form>
+      {% if lists.nudge %}
+      {# A nudge is its own list. Sending the first ask again to someone who
+         already posted is the fastest way to sour this. #}
+      <form method="post" action="/events/{{ ev.id }}/send">
+        <input type="hidden" name="kind" value="reel">
+        <input type="hidden" name="who" value="nudge">
+        <button class="btn" {{ 'disabled' if not mail_ready }}>
+          Nudge the {{ lists.nudge }} outstanding</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if not mail_ready %}
+<div class="alert warn" style="margin-top:10px"><b>Mail isn't set up on this server yet.</b>
+  <span class="muted">Add the SMTP details under Settings and both buttons come alive. Until
+    then you can still copy each person's link from their row and send it yourself.</span></div>
+{% endif %}
+
+{% if lists.no_email %}
+{# Not a failure — a job for you. Their link works fine, it just has to travel
+   by some other route. #}
+<div class="alert warn" style="margin-top:10px">
+  <b>{{ lists.no_email }} {{ 'person has' if lists.no_email == 1 else 'people have' }}
+    no email on record</b>
+  <span class="muted">— they're not in either send. Add an address, or copy their link
+    from the table and DM it to them.</span></div>
+{% endif %}
+
+<div class="tfilter" style="margin-top:14px">
+  <a href="?tab=people" class="{{ 'on' if tab not in ('reels','waitlist','gone') }}">Participants · {{ c.inplay }}</a>
+  <a href="?tab=reels" class="{{ 'on' if tab == 'reels' }}">Reels · {{ c.posted }}</a>
+  {% if c.waitlist %}
+  <a href="?tab=waitlist" class="{{ 'on' if tab == 'waitlist' }}">Waitlist · {{ c.waitlist }}</a>
+  {% endif %}
+  {% if c.gone %}
+  <a href="?tab=gone" class="{{ 'on' if tab == 'gone' }}">Can't make it · {{ c.gone }}</a>
+  {% endif %}
+</div>
+
+{% if upload and upload.error %}
+<div class="alert bad" style="margin-top:12px"><b>That file couldn't be read.</b>
+  <span class="muted">There was {{ upload.error|safe }}. Nothing was added.</span></div>
+{% elif upload %}
+<div class="notice">Added {{ upload.added }}
+  {{ 'person' if upload.added == 1 else 'people' }}{% if upload.waiting %} —
+  {{ upload.waiting }} of them on the waitlist{% endif %}{% if upload.dupes %},
+  and skipped {{ upload.dupes }} already on the list{% endif %}.</div>
+{% endif %}
+
+{# ============================================================ PARTICIPANTS #}
+{% if tab not in ('reels', 'waitlist', 'gone') %}
+
+{% if not people %}
+<div class="card"><p class="muted" style="margin:0 0 10px">Nobody on the list yet. Paste your
+  participants below — one per line, <span class="mono">Name, email</span> or just a name.</p></div>
+{% else %}
+{% if request.query_params.get('edit') == 'ok' %}
+<div class="notice">Details updated.</div>
+{% elif request.query_params.get('edit') == 'bademail' %}
+<div class="alert bad"><b>That email doesn't look right.</b>
+  <span class="muted">Nothing was changed. Leave it blank if you don't have one yet.</span></div>
+{% elif request.query_params.get('edit') == 'noname' %}
+<div class="alert bad"><b>A name is needed.</b>
+  <span class="muted">It's how you'll find them on the day.</span></div>
+{% endif %}
+
+{{ searchbar('ppl', 'Search name, email, handle…') }}
+
+{# Tick names and email exactly those people. Every other send is filtered for
+   you — this is the escape hatch for the cases the tidy lists don't cover. #}
+<form method="post" action="/events/{{ ev.id }}/send" id="pickform">
+<input type="hidden" name="who" value="selected">
+<div class="selbar" id="selbar" hidden>
+  <b><span id="seln">0</span> selected</b>
+  <span class="selamt" id="selnote"></span>
+  <span style="flex:1"></span>
+  <button class="btn" name="kind" value="invite" {{ 'disabled' if not mail_ready }}>
+    ✉ Send the invitation</button>
+  <button class="btn" name="kind" value="reel" {{ 'disabled' if not mail_ready }}>
+    ✉ Send the Reel email</button>
+</div>
+
+<table id="ppl">
+  <thead><tr>
+    <th style="width:34px"><input type="checkbox" class="chk" id="selall"
+        title="Select everyone"></th>
+    <th>Participant</th><th>Emails</th><th>Instagram</th><th>Confirmed</th>
+    <th>Acknowledged</th><th>Reel</th><th>Reward</th><th>Link</th>
+    <th style="width:1%"></th>
+  </tr></thead>
+  <tbody>
+  {% for p in people %}
+  <tr {% if p.qualified %}style="background:var(--teal-tint)"{% endif %}>
+    <td><input type="checkbox" class="chk pick" name="pick" value="{{ p.id }}"
+               data-mail="{{ 1 if p.email else 0 }}"></td>
+    <td><div class="primary">{{ p.name }}</div>
+      <div class="sub">{{ p.email or 'No email on record' }}</div>
+      {% if p.opens %}<div class="sub">Opened {{ p.opens }}×</div>{% endif %}</td>
+    {# Which of the two emails this person has had. Two ticks means they were
+       asked to come and asked to post; one means the second is still owed. #}
+    <td style="white-space:nowrap">
+      {% if p.invited_at %}<span class="tag" title="Invitation sent {{ p.invited_at.strftime('%d %b, %H:%M') }}">1</span>
+      {% else %}<span class="tag grey" title="Invitation not sent">1</span>{% endif %}
+      {% if p.reel_email_at %}<span class="tag" title="Reel email sent {{ p.reel_email_at.strftime('%d %b, %H:%M') }}">2</span>
+      {% elif p.confirmed %}<span class="tag amber" title="Reel email still owed">2</span>
+      {% else %}<span class="tag grey" title="Not confirmed yet">2</span>{% endif %}
+    </td>
+    <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    <td>
+      {% if p.released_at %}<span class="tag bad">Window closed</span>
+        <div class="muted small" style="margin:0">Slot released</div>
+      {% elif p.confirmed %}<span class="tag">Yes</span>
+        <div class="muted small" style="margin:0">{{ p.rsvp_at.strftime('%d %b, %H:%M') if p.rsvp_at }}</div>
+      {% elif p.declined %}<span class="tag grey">Can't make it</span>
+      {% elif p.invited_at %}<span class="tag amber">Not yet</span>
+        <div class="muted small" style="margin:0">Invited {{ p.invited_at.strftime('%d %b') }}</div>
+      {% else %}<span class="muted small">Not invited</span>{% endif %}
+    </td>
+    <td>{% if p.acknowledged_at %}<span class="tag">Agreed</span>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    <td>{% if p.posted %}<a class="tag" style="text-decoration:none" href="{{ p.reel_url }}"
+        target="_blank" rel="noopener">Posted ↗</a>
+      {% elif p.confirmed %}<span class="tag amber">Not yet</span>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    <td>{% if p.reward_code %}<span class="mono">{{ p.reward_code }}</span>
+        <div class="muted small" style="margin:0">{{ (ev.reward(p.reward_key) or {}).get('name', '') }}</div>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    <td><button class="btn" style="padding:4px 10px;font-size:.76rem"
+        data-copy="{{ base }}/e/{{ p.token }}">Copy</button></td>
+    <td style="white-space:nowrap">
+      <button type="button" class="btn" style="padding:5px 9px" data-edit="{{ p.id }}"
+              title="Edit their details">✎</button>
+      <a class="btn" style="padding:5px 10px" href="/e/{{ p.token }}" target="_blank">View</a>
+    </td>
+  </tr>
+  {# The edit row. Its own <tr> rather than a popover, so the fields get the
+     full width of the table and a long email address is readable. Kept out of
+     the picking form above — a form cannot nest. #}
+  <tr class="editrow" id="edit-{{ p.id }}" hidden>
+    <td colspan="10">
+      <div class="editgrid">
+        <div>
+          <label class="small" style="font-weight:600;margin:0 0 4px">Name</label>
+          <input form="ed-{{ p.id }}" name="name" value="{{ p.name }}" required></div>
+        <div>
+          <label class="small" style="font-weight:600;margin:0 0 4px">Email</label>
+          <input form="ed-{{ p.id }}" name="email" type="email" value="{{ p.email or '' }}"
+                 placeholder="them@example.com"></div>
+        <div>
+          <label class="small" style="font-weight:600;margin:0 0 4px">Instagram</label>
+          <input form="ed-{{ p.id }}" name="instagram" value="{{ p.instagram or '' }}"
+                 placeholder="handle" autocapitalize="none" spellcheck="false"></div>
+        <div class="acts">
+          <button class="btn primary" form="ed-{{ p.id }}" style="margin:0">Save</button>
+          <button type="button" class="btn" style="margin:0" data-edit="{{ p.id }}">Cancel</button>
+          {% if not p.posted %}
+          <button class="btn" form="rm-{{ p.id }}" style="margin:0;color:#b0392b"
+                  title="Remove from this event">✕ Remove</button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="muted small" style="margin:7px 0 0">A pasted profile URL or a leading @ is
+        fine — we tidy the handle up. Their link, confirmation and Reel are untouched.</div>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</form>
+
+{# One form per row, outside the picking form because forms cannot nest. The
+   inputs above point at these by id. #}
+{% for p in people %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/edit" id="ed-{{ p.id }}" hidden></form>
+{% if not p.posted %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/remove" id="rm-{{ p.id }}" hidden
+      onsubmit="return confirm('Remove {{ p.name }} from this event? Their link stops working.')"></form>
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{# Thirty people arrive as a list, not as thirty form submissions. #}
+<details class="addrow" {{ 'open' if not people }}>
+  <summary>+ Add participants</summary>
+  <div class="body">
+    <p class="muted small" style="margin:0 0 8px">One per line. <span class="mono">Name, email</span>
+      — or just a name if you don't have their address yet. Duplicated emails are skipped.</p>
+    <form method="post" action="/events/{{ ev.id }}/people">
+      <textarea name="bulk" rows="7" style="width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.86rem"
+        placeholder="Marc Damil, marc@example.com&#10;Adrian Lim, adrian@example.com&#10;Viel Naval"></textarea>
+      <button class="btn primary" style="margin-top:9px">Add them</button>
+    </form>
+
+    {# The waitlist has to arrive with everybody else. Its whole purpose is that
+       the replacement is already on file the moment somebody drops out. #}
+    <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px">
+      <div class="small" style="font-weight:600;margin-bottom:4px">Or upload a file</div>
+      <p class="muted small" style="margin:0 0 9px">CSV, first row the headings.
+        <span class="mono">name</span> is the only one we need;
+        <span class="mono">email</span>, <span class="mono">instagram</span> and
+        <span class="mono">waitlist</span> are used if they're there. Put
+        <span class="mono">yes</span> in the waitlist column for anybody who is a
+        reserve — they stay out of every count and every send until you give them
+        a slot.</p>
+      <form method="post" action="/events/{{ ev.id }}/people/upload"
+            enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv,text/csv" required
+               style="padding:7px 9px">
+        <button class="btn primary" style="margin-top:9px">Upload the list</button>
+      </form>
+    </div>
+  </div>
+</details>
+
+{# ========================================================== CAN'T MAKE IT #}
+{% elif tab == 'gone' %}
+
+{% if request.query_params.get('back') %}
+<div class="notice">Back on the list, with a fresh window to answer in.</div>
+{% endif %}
+
+<div class="card" style="margin-top:12px">
+  <p class="muted small" style="margin:0">These {{ c.gone }}
+    {{ 'slot is' if c.gone == 1 else 'slots are' }} free. They're out of every
+    count and every send{% if c.waitlist %} — fill them from the
+    <a href="?tab=waitlist">waitlist</a>{% endif %}. Put somebody back if they
+    tapped the wrong thing or their plans changed again.</p>
+</div>
+
+{{ searchbar('gn', 'Search name, email, handle…') }}
+<table id="gn">
+  <thead><tr><th>Not coming</th><th>What happened</th><th>Instagram</th>
+    <th style="width:1%"></th></tr></thead>
+  <tbody>
+  {% for p in gone %}
+  <tr class="low">
+    <td><div class="primary">{{ p.name }}</div>
+      <div class="sub">{{ p.email or 'No email on record' }}</div></td>
+    <td>{% if p.declined %}<span class="tag grey">Said they can't make it</span>
+        {% if p.rsvp_at %}<div class="sub">{{ p.rsvp_at.strftime('%d %b, %H:%M') }}</div>{% endif %}
+      {% else %}<span class="tag grey">Didn't answer in time</span>
+        {% if p.released_at %}<div class="sub">{{ p.released_at.strftime('%d %b, %H:%M') }}</div>{% endif %}
+      {% endif %}</td>
+    <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>{% else %}—{% endif %}</td>
+    <td style="white-space:nowrap">
+      <button class="btn" form="ud-{{ p.id }}" style="margin:0">Put them back</button></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% for p in gone %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/undecline" id="ud-{{ p.id }}" hidden
+      onsubmit="return confirm('Put {{ p.name }} back on the list? They get a fresh window to answer in.')"></form>
+{% endfor %}
+
+{# =============================================================== WAITLIST #}
+{% elif tab == 'waitlist' %}
+
+<div class="card" style="margin-top:12px">
+  <p class="muted small" style="margin:0">
+    {% if c.seats_left %}<b>{{ c.seats_left }}
+      {{ 'slot is' if c.seats_left == 1 else 'slots are' }} free.</b>
+    {% else %}<b>The room is full.</b>{% endif %}
+    Giving somebody a slot moves them onto the list and{% if mail_ready %} emails them
+    their invitation in the same step — a slot handed to somebody who hasn't been told
+    about it is a slot nobody turns up for.{% else %} gives them a day to answer. Mail
+    isn't set up, so you'll need to copy their link across yourself.{% endif %}</p>
+</div>
+
+{{ searchbar('wl', 'Search name, email, handle…') }}
+<table id="wl">
+  <thead><tr><th>On the waitlist</th><th>Instagram</th><th style="width:1%"></th></tr></thead>
+  <tbody>
+  {% for p in waiting %}
+  <tr>
+    <td><div class="primary">{{ p.name }}</div>
+      <div class="sub">{{ p.email or 'No email on record' }}</div></td>
+    <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>{% else %}—{% endif %}</td>
+    <td style="white-space:nowrap">
+      <button class="btn primary" form="pr-{{ p.id }}" style="margin:0">
+        Give them a slot</button></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% for p in waiting %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/promote" id="pr-{{ p.id }}" hidden
+      onsubmit="return confirm('Give {{ p.name }} a slot and email them the invitation?')"></form>
+{% endfor %}
+
+{# ================================================================== REELS #}
+{% elif tab == 'reels' %}
+
+{% set posted = people | selectattr('posted') | list %}
+{% if not posted %}
+<div class="card"><p class="muted" style="margin:0">No Reels in yet. They'll appear here as
+  people submit them — the reward code goes out automatically, so this list is for watching,
+  re-sharing and waving through rather than approving.</p></div>
+{% else %}
+<div class="sumbar" style="margin-top:2px">
+  <div class="s"><div class="l">To check</div><div class="v">{{ c.to_check }}</div>
+    <div class="sub">waiting on you</div></div>
+  <div class="s"><div class="l">Needs a word</div><div class="v">{{ c.missing }}</div>
+    <div class="sub">missing a tag</div></div>
+  <div class="s"><div class="l">Re-shared</div><div class="v">{{ c.reshared }}</div>
+    <div class="sub">of {{ c.posted }}</div></div>
+  <div class="s"><div class="l">Redeemed</div><div class="v">{{ c.redeemed }}</div>
+    <div class="sub">of {{ c.qualified }} issued</div></div>
+</div>
+
+{{ searchbar('rls', 'Search name or handle…') }}
+<table id="rls">
+  <thead><tr>
+    <th>Participant</th><th>Reel</th><th>Posted</th><th style="width:24%">Tags</th>
+    <th>Reward</th><th>Re-shared</th><th>Redeemed</th>
+  </tr></thead>
+  <tbody>
+  {% for p in posted %}
+  <tr {% if p.tags == 'missing' %}class="low"{% endif %}>
+    <td><div class="primary">{{ p.name }}</div><div class="sub mono">{{ p.handle }}</div></td>
+    <td><a class="tag" style="text-decoration:none" href="{{ p.reel_url }}" target="_blank"
+      rel="noopener">Watch ↗</a></td>
+    <td>{{ p.reel_at.strftime('%d %b, %H:%M') if p.reel_at }}</td>
+    <td>
+      {# Three states on purpose: a Reel nobody has looked at is not the same
+         as one that is fine. Marking it missing never touches the reward. #}
+      <form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/tags"
+            style="display:flex;gap:4px;align-items:center;margin:0">
+        <select name="state" style="width:auto;padding:3px 6px;font-size:.78rem">
+          {% for k, label in tag_labels.items() %}
+          <option value="{{ k }}" {{ 'selected' if p.tags == k }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <input name="note" value="{{ p.tags_note or '' }}" placeholder="note"
+               style="width:96px;padding:3px 6px;font-size:.78rem">
+        <button class="btn" style="padding:3px 8px;font-size:.75rem">Save</button>
+      </form>
+    </td>
+    <td>{% if p.reward_code %}<span class="mono">{{ p.reward_code }}</span>
+      <div class="muted small" style="margin:0">{{ (ev.reward(p.reward_key) or {}).get('name', '') }}</div>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    <td><form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/flag" style="margin:0">
+      <input type="hidden" name="what" value="reshared">
+      <button class="btn {{ 'primary' if p.reshared_at }}" style="padding:3px 10px;font-size:.75rem">
+        {{ '✓ Done' if p.reshared_at else 'Mark' }}</button></form></td>
+    <td><form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/flag" style="margin:0">
+      <input type="hidden" name="what" value="redeemed">
+      <button class="btn {{ 'primary' if p.redeemed_at }}" style="padding:3px 10px;font-size:.75rem">
+        {{ '✓ Used' if p.redeemed_at else 'Mark' }}</button></form></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted small">A missing tag keeps its reward — send a friendly DM instead. Clawing a
+  discount back from someone who made a Reel and forgot one tag costs more than the discount
+  is worth.</p>
+{% endif %}
+{% endif %}
+
+<script>
+document.addEventListener('click', function(e){
+  var c = e.target.closest('[data-copy]');
+  if(c){
+    e.preventDefault();
+    var was = c.textContent;
+    navigator.clipboard.writeText(c.getAttribute('data-copy')).then(function(){
+      c.textContent = 'Copied'; setTimeout(function(){ c.textContent = was; }, 1300);
+    });
+    return;
+  }
+  var ed = e.target.closest('[data-edit]');
+  if(ed){
+    var row = document.getElementById('edit-' + ed.getAttribute('data-edit'));
+    if(row){
+      row.hidden = !row.hidden;
+      if(!row.hidden){ var f = row.querySelector('input'); if(f) f.focus(); }
+    }
+  }
+});
+
+// Ticking names to email exactly those people.
+(function(){
+  var all = document.getElementById('selall');
+  if(!all) return;
+  var bar = document.getElementById('selbar'),
+      n = document.getElementById('seln'),
+      note = document.getElementById('selnote');
+  function boxes(){
+    // Only rows the search has left visible — emailing somebody you have
+    // filtered out of sight would be a nasty surprise.
+    return Array.prototype.filter.call(
+      document.querySelectorAll('#ppl .pick'),
+      function(b){ return b.closest('tr').style.display !== 'none'; });
+  }
+  function sync(){
+    var on = boxes().filter(function(b){ return b.checked; });
+    n.textContent = on.length;
+    // Say up front how many of them can actually be reached.
+    var no = on.filter(function(b){ return b.getAttribute('data-mail') === '0'; }).length;
+    note.textContent = no ? ('· ' + no + ' with no email will be skipped') : '';
+    bar.hidden = on.length === 0;
+    var every = boxes().length;
+    all.checked = every > 0 && on.length === every;
+    all.indeterminate = on.length > 0 && on.length < every;
+  }
+  all.addEventListener('change', function(){
+    boxes().forEach(function(b){ b.checked = all.checked; });
+    sync();
+  });
+  document.getElementById('ppl').addEventListener('change', function(e){
+    if(e.target.classList.contains('pick')) sync();
+  });
+  var search = document.querySelector('input[data-filter="#ppl"]');
+  if(search) search.addEventListener('input', function(){ setTimeout(sync, 0); });
+  sync();
+})();
+</script>
+{% endblock %}

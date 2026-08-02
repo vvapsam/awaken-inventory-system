@@ -1,0 +1,579 @@
+{# ------------------------------------------------------------- macros ---- #}
+{% macro detail_card(p, ev) %}
+<div class="card">
+  <div class="r"><span class="k">Name</span><span class="v">{{ p.name }}</span></div>
+  {% if ev.starts_at %}<div class="r"><span class="k">When</span>
+    <span class="v">{{ ev.starts_at.strftime('%a %d %b, %I:%M %p')|replace(' 0',' ') }}</span></div>{% endif %}
+  {% if ev.venue %}<div class="r"><span class="k">Where</span><span class="v">{{ ev.venue }}</span></div>{% endif %}
+  {% if ev.bring %}<div class="r"><span class="k">Bring</span><span class="v">{{ ev.bring }}</span></div>{% endif %}
+  {% if p.handle %}<div class="r"><span class="k">Instagram</span><span class="v">{{ p.handle }}</span></div>{% endif %}
+  {% if p.acknowledged_at %}<div class="r"><span class="k">Sponsor note</span>
+    <span class="v"><span class="pill">AGREED</span></span></div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro reel_howto(ev) %}
+{% if ev.handle_list or ev.hashtag %}
+<div class="next">
+  <div class="h">Your Reel, when the time comes</div>
+  <div class="step"><div class="n">1</div>
+    <div>Post within <b>{{ ev.reel_hours }} hours</b> of the class finishing</div></div>
+  <div class="step"><div class="n">2</div>
+    <div>Share the event happenings{% if ev.sponsor %} — including the
+      {{ ev.sponsor }} setup or food{% endif %}</div></div>
+  <div class="step"><div class="n">3</div>
+    <div>Tag us{% if ev.hashtag %} and use the hashtag{% endif %} — tap to copy:</div></div>
+  {% if ev.handle_list %}
+  <div class="copyrow"><span class="m">{{ ev.handle_list|join(' ') }}</span>
+    <button type="button" data-copy="{{ ev.handle_list|join(' ') }}">COPY</button></div>
+  {% endif %}
+  {% if ev.hashtag %}
+  <div class="copyrow"><span class="m">{{ ev.hashtag }}</span>
+    <button type="button" data-copy="{{ ev.hashtag }}">COPY</button></div>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{# The reward, or the choice of rewards.
+
+   A ticket against every line reads as a list of things you are getting.
+   There is only ever one, so with more than one on offer they are drawn as
+   alternatives with an "or" between them. Priority access sits below the
+   rule because that one really is on top, for everybody, whichever they
+   pick — and running the two together is what made this read as "and". #}
+{% macro rewards_panel(ev, title) %}
+{% if ev.rewards %}
+<div class="reward">
+  <div class="h">{{ title }}</div>
+  {% if ev.rewards|length > 1 %}
+  <div class="pickhint">Pick one when you send your Reel.</div>
+  {% endif %}
+  {# "A discount code for X", not "20% off X" — the number isn't settled until
+     the sponsor signs it off, and a figure we print is a figure we're held to. #}
+  {% for r in ev.rewards %}
+  {% if not loop.first %}<div class="orbar">or</div>{% endif %}
+  <div class="rcard">{% if ev.rewards|length == 1 %}🎟️ {% endif %}A discount code for
+    <b>{{ r.name }}</b>{% if r.detail %} · {{ r.detail }}{% endif %}</div>
+  {% endfor %}
+  <div class="item plus"><span>⭐</span><span>Priority access to future sponsored
+    classes — yours either way</span></div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{# One participant's page, from "you have a slot" through to "here's your code".
+
+   Deliberately outside base.html: this is the only page in the app a member of
+   the public sees, and it must not carry the app's navigation, its sidebar or
+   anything else that implies there is a system behind it to log into.
+
+   `stage` decides which of the six states renders. It is computed in one place
+   server-side so this template never has to work out what someone is allowed
+   to do — see _stage() in event_routes.py. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ ev.name }}{% if ev.sponsor %} · {{ ev.sponsor }}{% endif %}</title>
+<link rel="icon" href="/static/logo.svg">
+<style>
+:root{--ink:#1a232e;--muted:#6b7683;--line:#e4e8ed;--panel:#f3f5f7;
+  --teal:#008080;--teal-dark:#006a6a;--teal-tint:#e6f2f2;
+  /* Black, not navy: it is the colour of the brandmark itself, and it lets a
+     sponsor's logo sit on the header without two brand colours fighting. */
+  --black:#14171a;--black-soft:#9aa3ab;
+  /* A neutral wash for the things that belong to the sponsor side of the deal.
+     This used to be the sponsor's own red, which meant the page carried a
+     second brand's palette and stopped reading as ours. */
+  --wash:#f1f2f4;--wash-line:#dfe2e6}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:var(--ink);background:#eef1f4;line-height:1.5;-webkit-font-smoothing:antialiased}
+.sheet{max-width:430px;margin:0 auto;background:#fff;min-height:100vh}
+@media(min-width:480px){.sheet{margin:22px auto;min-height:0;border-radius:12px;
+  overflow:hidden;box-shadow:0 6px 30px rgba(16,24,32,.10)}}
+.top{background:var(--black);color:#fff;padding:22px 24px 20px;text-align:center}
+.top svg{width:28px;height:34px;display:block;margin:0 auto 6px}
+.top .wm{letter-spacing:.34em;font-size:.7rem;color:#b6bdc4;padding-left:.34em}
+.top .ev{margin-top:12px;font-size:1.06rem;font-weight:650;letter-spacing:-.01em}
+.top .prt{margin-top:4px;font-size:.72rem;color:var(--black-soft);letter-spacing:.08em;
+  text-transform:uppercase}
+/* The sponsor's mark, under a hairline. Their logo where we have one, their
+   name where we don't — either way they are named where the reader looks. */
+.top .rule{border-top:1px solid #2b3138;width:70%;margin:16px auto 0}
+.top .prt.with-rule{margin-top:13px}
+.top .splogo{display:block;margin:8px auto 0;max-width:170px;max-height:56px;
+  width:auto;height:auto}
+/* A countdown, not a warning. Amber said "something is wrong"; this says
+   "here is the time you have", which is what it means. */
+.clock{display:flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--wash);border-bottom:1px solid var(--wash-line);
+  padding:11px 18px;font-size:.83rem;color:#4b535b;text-align:center}
+.clock b{color:var(--black);font-variant-numeric:tabular-nums}
+.body{padding:22px 24px 26px}
+.hi{font-size:1.14rem;font-weight:650;margin:0 0 3px}
+.hi + p{color:var(--muted);font-size:.88rem;margin:0 0 20px}
+.grp{margin-bottom:22px}
+.grp > .lbl{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:9px}
+.opt{display:flex;gap:11px;border:1px solid var(--line);border-radius:8px;padding:13px 15px;
+  margin-bottom:8px;cursor:pointer;background:#fff}
+.opt:has(input:checked){border-color:var(--teal);background:var(--teal-tint);
+  box-shadow:inset 0 0 0 1px var(--teal)}
+.opt input{margin:3px 0 0;accent-color:var(--teal);width:17px;height:17px;flex:none}
+/* The label and its sub-line are spans inside one <span>, so they need to be
+   told to stack — inline they run together into one long sentence. */
+.opt .t{font-weight:600;font-size:.93rem;display:block}
+.opt .d{color:var(--muted);font-size:.83rem;margin-top:1px;display:block}
+.opt > span:not(.amt){min-width:0}
+.opt .amt{margin-left:auto;font-weight:650;font-size:.92rem;color:var(--teal-dark);white-space:nowrap}
+label.fl{display:block;font-size:.83rem;font-weight:600;margin-bottom:5px}
+.ig{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.ig:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
+.ig .at{padding:11px 3px 11px 13px;color:var(--muted);font-size:.97rem}
+.ig input{border:0;outline:0;padding:11px 13px 11px 2px;font-size:.97rem;flex:1;
+  font-family:inherit;color:var(--ink);min-width:0;background:none}
+input.url{width:100%;border:1px solid var(--line);border-radius:8px;padding:11px 13px;
+  font-size:.9rem;font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--ink);outline:0}
+input.url:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
+.hint{font-size:.79rem;color:var(--muted);margin-top:6px}
+.ack{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.ack .head{background:var(--wash);border-bottom:1px solid var(--wash-line);
+  padding:13px 16px}
+.ack .head .t{font-size:.83rem;font-weight:700;color:var(--black)}
+.ack .head .d{font-size:.81rem;color:#4b535b;margin-top:2px}
+.ack ul{margin:0;padding:14px 16px 14px 32px}
+.ack li{font-size:.87rem;margin-bottom:8px;color:#2b3642}
+.ack li:last-child{margin-bottom:0}
+.chip{display:inline-block;background:var(--panel);color:var(--ink);border-radius:4px;
+  padding:1px 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.84em}
+.check{display:flex;gap:11px;align-items:flex-start;border-top:1px solid var(--line);
+  padding:14px 16px;background:#fafbfc;cursor:pointer}
+.check input{margin:1px 0 0;accent-color:var(--teal);width:18px;height:18px;flex:none}
+.check .t{font-size:.89rem;font-weight:600}
+button.go{width:100%;background:var(--teal);color:#fff;border:0;border-radius:8px;padding:15px;
+  font-size:1rem;font-weight:650;font-family:inherit;cursor:pointer}
+button.go:hover{background:var(--teal-dark)}
+button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.tiny{font-size:.77rem;color:var(--muted);text-align:center;margin-top:9px}
+.reward{background:var(--teal-tint);border-radius:8px;padding:15px 17px;margin-top:22px}
+.reward .h{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--teal-dark);margin-bottom:9px}
+.reward .item{display:flex;gap:9px;font-size:.86rem;color:#2b4a4a;margin-bottom:7px}
+.reward .item:last-child{margin-bottom:0}
+/* What happens next, said before they have to wonder about it. */
+.ack .after{border-top:1px solid var(--wash-line);padding:11px 15px;font-size:.83rem;
+  color:#4b535b}
+.reward .pickhint{font-size:.79rem;color:#4d6f6f;margin:-2px 0 10px}
+/* One or the other, never both — so they are drawn as separate cards with the
+   word between them, rather than as two lines of one list. */
+.reward .rcard{background:#fff;border:1px solid #cfe4e4;border-radius:7px;
+  padding:9px 12px;font-size:.86rem;color:#2b4a4a}
+.reward .orbar{font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:#7fa3a3;text-align:center;margin:6px 0}
+/* Priority access is on top of whichever they picked, so it sits under a rule
+   rather than in the same run as the two alternatives. */
+.reward .item.plus{border-top:1px solid #cfe4e4;margin-top:13px;padding-top:12px}
+.foot{border-top:1px solid var(--line);padding:15px 24px;text-align:center;
+  font-size:.77rem;color:var(--muted)}
+.alert{border-radius:8px;padding:12px 15px;font-size:.86rem;margin:0 0 18px}
+/* One red in the whole page, and only for "that didn't work". A form error
+   has to be unmistakable; everything else is black or teal. */
+.alert.bad{background:#fdf2f2;border:1px solid #f4dcdc;color:#8c2c20}
+.alert.warn{background:var(--wash);border:1px solid var(--wash-line);color:#4b535b}
+/* confirmed / rewarded */
+.done{padding:34px 24px 26px;text-align:center}
+.ring{width:60px;height:60px;border-radius:50%;background:var(--teal-tint);display:flex;
+  align-items:center;justify-content:center;margin:0 auto 15px}
+.ring i{display:block;width:18px;height:32px;border:solid var(--teal);border-width:0 4px 4px 0;
+  transform:rotate(42deg);margin-top:-7px}
+.done h2{font-size:1.22rem;font-weight:650;margin:0 0 5px}
+.done > p{color:var(--muted);font-size:.89rem;margin:0 0 20px}
+.card{border:1px solid var(--line);border-radius:8px;text-align:left;overflow:hidden;margin-bottom:16px}
+.card .r{display:flex;justify-content:space-between;gap:12px;padding:11px 14px;
+  border-bottom:1px solid var(--line);font-size:.86rem}
+.card .r:last-child{border-bottom:none}
+.card .k{color:var(--muted)}
+.card .v{font-weight:600;text-align:right;word-break:break-word}
+.pill{display:inline-block;background:var(--teal);color:#fff;border-radius:999px;padding:2px 9px;
+  font-size:.66rem;font-weight:700;letter-spacing:.05em}
+.pill.amber{background:var(--black-soft);color:#fff}
+.next{background:var(--panel);border-radius:8px;padding:15px;text-align:left}
+.next .h{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:10px}
+.next .step{display:flex;gap:10px;font-size:.86rem;margin-bottom:9px;color:#2b3642}
+.next .n{width:19px;height:19px;border-radius:50%;background:#fff;border:1px solid var(--line);
+  font-size:.68rem;font-weight:700;color:var(--muted);display:flex;align-items:center;
+  justify-content:center;flex:none;margin-top:1px}
+.copyrow{display:flex;gap:7px;align-items:center;background:#fff;border:1px solid var(--line);
+  border-radius:6px;padding:8px 11px;margin-top:8px;font-size:.82rem}
+.copyrow .m{font-family:ui-monospace,Menlo,Consolas,monospace;flex:1;color:var(--ink);
+  word-break:break-all}
+.copyrow button{border:0;background:none;color:var(--teal-dark);font-weight:650;font-size:.76rem;
+  cursor:pointer;font-family:inherit;white-space:nowrap;padding:2px 4px}
+.codecard{border:2px dashed var(--teal);border-radius:12px;background:var(--teal-tint);
+  padding:20px 18px;margin-bottom:8px}
+.codecard .for{font-size:.68rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--teal-dark)}
+.codecard .code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1.55rem;
+  font-weight:700;letter-spacing:.09em;margin:9px 0 3px}
+.codecard .val{font-size:.85rem;color:var(--teal-dark);font-weight:600}
+.swap{font-size:.78rem;color:var(--muted);margin-top:14px}
+.swap button{border:0;background:none;color:var(--teal-dark);font-weight:650;cursor:pointer;
+  font-family:inherit;font-size:.78rem;text-decoration:underline;padding:0}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="top">
+    <svg viewBox="0 0 200 250" fill="#fff">
+      <path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/>
+      <path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
+    <div class="wm">AWAKEN</div>
+    <div class="ev">{{ ev.name }}</div>
+    {% if ev.sponsor %}
+    <div class="rule"></div>
+    <div class="prt with-rule">In partnership with</div>
+    {% if ev.sponsor_logo %}
+    <img class="splogo" src="/events/{{ ev.id }}/sponsor-logo" alt="{{ ev.sponsor }}">
+    {% else %}
+    <div style="font-size:.86rem;font-weight:650;margin-top:3px">{{ ev.sponsor }}</div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  {# ---------------------------------------------------------- confirm ---- #}
+  {% if stage == 'confirm' %}
+  {% if confirm_left %}
+  <div class="clock">⏳ Your slot is held for <b>{{ confirm_left }}</b></div>
+  {% endif %}
+  <div class="body">
+    <div class="hi">Hey {{ p.name.split()[0] }} 👋</div>
+    <p>Three quick things and you're set.{% if confirm_by %} Let us know by
+      {{ confirm_by }} — after that your slot goes to the next person.{% endif %}</p>
+
+    {% if request.query_params.get('missing') %}
+    <div class="alert bad">We need all three — pick yes, add your handle, and tick the box.
+      Or choose "I can't make it" if plans changed.</div>
+    {% endif %}
+
+    <form method="post" action="/e/{{ p.token }}/confirm">
+      <div class="grp">
+        <div class="lbl">1 · Are you coming?</div>
+        <label class="opt">
+          <input type="radio" name="rsvp" value="yes" checked>
+          <span><span class="t">Yes, I'll be there</span>
+            {% if ev.starts_at %}<span class="d">{{ ev.starts_at.strftime('%a %d %b, %I:%M %p')|replace(' 0',' ') }}</span>{% endif %}</span>
+        </label>
+        {# A real button, not small print. Making it easy to decline is how the
+           slot comes back in time to fill it. #}
+        <label class="opt">
+          <input type="radio" name="rsvp" value="no" id="rsvpno">
+          <span><span class="t">Sorry, I can't make it</span>
+            <span class="d">We'll pass your slot on — no problem at all</span></span>
+        </label>
+      </div>
+
+      <div class="grp">
+        <div class="lbl">2 · Your Instagram</div>
+        <label class="fl" for="ig">So we can find your Reel and re-share it</label>
+        <div class="ig"><span class="at">@</span>
+          <input id="ig" name="instagram" value="{{ p.instagram or '' }}"
+                 autocapitalize="none" autocorrect="off" spellcheck="false"
+                 required placeholder="yourhandle"></div>
+        <div class="hint">Public account, please — we can't see or re-share a private one.</div>
+      </div>
+
+      {% if ev.handle_list or ev.hashtag %}
+      <div class="grp">
+        <div class="lbl">3 · The sponsor bit</div>
+        <div class="ack">
+          <div class="head">
+            <div class="t">{{ ev.sponsor or 'Our sponsor' }} is fuelling us after the class</div>
+            <div class="d">Here's how we say thanks.</div>
+          </div>
+          <ul>
+            <li>Post <b>one public Reel</b> within <b>{{ ev.reel_hours }} hours</b> of the class</li>
+            <li>Share the event happenings{% if ev.sponsor %} — including the
+              {{ ev.sponsor }} setup or food{% endif %}</li>
+            {% if ev.handle_list %}
+            <li>Tag {% for h in ev.handle_list %}<span class="chip">{{ h }}</span>{{ ' and ' if not loop.last }}{% endfor %}</li>
+            {% endif %}
+            {% if ev.hashtag %}<li>Use <span class="chip">{{ ev.hashtag }}</span></li>{% endif %}
+          </ul>
+          <div class="after">We'll email you a form after the class where you can submit
+            your Reel.</div>
+          <label class="check">
+            <input type="checkbox" name="ack" value="on" required>
+            <span class="t">Got it — I'll post my Reel within {{ ev.reel_hours }} hours</span>
+          </label>
+        </div>
+      </div>
+      {% else %}
+      <input type="hidden" name="ack" value="on">
+      {% endif %}
+
+      <button class="go">Confirm my slot</button>
+    </form>
+
+    {{ rewards_panel(ev, 'Once you\'ve posted') }}
+  </div>
+
+  {# ------------------------------------------------- confirmed, waiting -- #}
+  {% elif stage == 'ready' %}
+  <div class="done">
+    <div class="ring"><i></i></div>
+    <h2>You're confirmed 🎉</h2>
+    <p>See you there. Screenshot this if you like.</p>
+    {{ detail_card(p, ev) }}
+    {{ reel_howto(ev) }}
+  </div>
+
+  {# ---------------------------------------------------------- submit ----- #}
+  {% elif stage == 'submit' %}
+  {% if reel_left %}
+  <div class="clock">⏳ Window closes in <b>{{ reel_left }}</b></div>
+  {% endif %}
+  <div class="body">
+    <div class="hi">Nice one, {{ p.name.split()[0] }} 🎬</div>
+    <p>Paste the link and pick what you'd like.</p>
+
+    {% if request.query_params.get('bad') %}
+    <div class="alert bad">That didn't look like an Instagram Reel link. Open your Reel,
+      tap Share → Copy link, and paste it here.</div>
+    {% endif %}
+
+    <form method="post" action="/e/{{ p.token }}/reel">
+      <div class="grp">
+        <div class="lbl">1 · Your Reel link</div>
+        <input class="url" name="url" id="url" inputmode="url"
+               autocapitalize="none" autocorrect="off" spellcheck="false"
+               placeholder="instagram.com/reel/…">
+        <div class="hint">Tap Share → Copy link on your Reel, then paste it here.</div>
+        {% if ev.handle_list or ev.hashtag %}
+        <div class="reward" style="margin-top:11px">
+          <div class="h">Before you submit</div>
+          <div style="font-size:.83rem;color:#2b4a4a">Make sure you've tagged
+            {% for h in ev.handle_list %}<b>{{ h }}</b>{{ ' and ' if not loop.last }}{% endfor %}{%
+            if ev.hashtag %} and used <b>{{ ev.hashtag }}</b>{% endif %} — we'll have a look
+            shortly and give you a shout if anything's missing.</div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if ev.rewards %}
+      <div class="grp">
+        <div class="lbl">2 · Pick your reward</div>
+        {% for r in ev.rewards %}
+        <label class="opt">
+          <input type="radio" name="reward" value="{{ r.key }}" {{ 'checked' if loop.first }}>
+          <span><span class="t">{{ r.name }}</span>
+            {% if r.detail %}<span class="d">{{ r.detail }}</span>{% endif %}</span>
+          {% if r.value %}<span class="amt">{{ r.value }}</span>{% endif %}
+        </label>
+        {% endfor %}
+        {# Nobody abandons a form over a decision they're told is reversible. #}
+        <div class="hint">One reward per person. Not sure yet? Pick either — you can swap it
+          on this page afterwards.</div>
+      </div>
+      {% endif %}
+
+      <button class="go">Get my code</button>
+      <div class="tiny">You'll see it on the next screen straight away</div>
+    </form>
+  </div>
+
+  {# --------------------------------------------------------- rewarded ---- #}
+  {% elif stage == 'rewarded' %}
+  <div class="done">
+    <div style="font-size:2rem;line-height:1">🎉</div>
+    <h2 style="margin-top:12px">
+      {% if p.reward_code %}Here's your code{% else %}Reel received{% endif %}</h2>
+    <p>Thanks for repping {{ ev.sponsor or 'our sponsor' }}.</p>
+
+    {% if p.reward_code and reward %}
+    <div class="codecard">
+      <div class="for">{{ reward.name }}{% if reward.detail %} · {{ reward.detail }}{% endif %}</div>
+      <div class="code">{{ p.reward_code }}</div>
+      {% if reward.value %}<div class="val">{{ reward.value }}</div>{% endif %}
+      {% if p.redeemed_at %}<div class="hint" style="margin-top:7px">Redeemed
+        {{ p.redeemed_at.strftime('%d %b') }}</div>{% endif %}
+    </div>
+    <div class="copyrow"><span class="m">{{ p.reward_code }}</span>
+      <button type="button" data-copy="{{ p.reward_code }}">COPY</button></div>
+
+    {% if ev.rewards|length > 1 and not p.redeemed_at %}
+    <div class="swap">Picked the wrong one?
+      <form method="post" action="/e/{{ p.token }}/reward" style="display:inline">
+        {% for r in ev.rewards %}{% if r.key != p.reward_key %}
+        <input type="hidden" name="reward" value="{{ r.key }}">
+        <button type="submit">Switch to {{ r.name }}</button>
+        {% endif %}{% endfor %}
+      </form>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <div class="card" style="margin-top:18px">
+      <div class="r"><span class="k">Your Reel</span>
+        <span class="v"><a href="{{ p.reel_url }}" target="_blank" rel="noopener"
+          style="color:#006a6a">View ↗</a></span></div>
+      {% if p.reel_at %}
+      <div class="r"><span class="k">Submitted</span>
+        <span class="v">{{ p.reel_at.strftime('%d %b, %H:%M') }}</span></div>
+      {% endif %}
+      <div class="r"><span class="k">Tag check</span><span class="v">
+        {% if p.tags == 'ok' %}<span class="pill">ALL GOOD</span>
+        {% elif p.tags == 'missing' %}<span class="pill amber">WE'LL BE IN TOUCH</span>
+        {% else %}<span class="pill amber">WE'LL LOOK SHORTLY</span>{% endif %}</span></div>
+      <div class="r"><span class="k">Priority access</span>
+        <span class="v"><span class="pill">UNLOCKED</span></span></div>
+    </div>
+
+    <div class="next">
+      <div class="h">One last thing</div>
+      <p style="font-size:.85rem;margin:0;color:#2b3642">We're re-sharing every Reel to our
+        stories — keep an eye out for yours. And you're on the list for the next sponsored
+        class before it goes public 👀</p>
+    </div>
+  </div>
+
+  {# --------------------------------------------------------- declined ---- #}
+  {% elif stage == 'declined' %}
+  <div class="done">
+    <h2 style="margin-top:8px">No problem at all 🙌</h2>
+    <p>We've passed your slot to someone on the waitlist. Thanks for letting us know —
+      it genuinely helps.</p>
+    <div class="next">
+      <div class="h">Next time</div>
+      <p style="font-size:.85rem;margin:0;color:#2b3642">You're still on our list for the next
+        one. Follow <b>{{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }}</b>
+        so you catch it when it opens.</p>
+    </div>
+    {# No way back from here. The slot has already been offered to somebody
+       else by the time they read this, and a button that takes it back would
+       hand the same place to two people. If they do change their mind, they
+       message you and you decide — the tracker knows what is actually free. #}
+  </div>
+
+  {# ------------------------------------------------- lapsed / released --- #}
+  {# --------------------------------------------------------- waitlist ---- #}
+  {# They should not normally have this link yet — nothing emails a waitlisted
+     person. But links get forwarded, and a page that said "confirm your slot"
+     to somebody who has not been given one would be a promise we cannot keep. #}
+  {% elif stage == 'waiting' %}
+  <div class="done">
+    <h2 style="margin-top:8px">You're on the waiting list</h2>
+    <p>The class is full at the moment, {{ p.name.split()[0] }} — you're on the list for
+      the first slot that opens up.</p>
+    <div class="alert warn">Nothing to do for now. If a place comes free we'll email you
+      here, and this same link will turn into your confirmation.</div>
+  </div>
+
+  {# Two different facts, so two different sentences. "You've just missed the
+     cut-off" is still fixable and reads as one. "It has gone to somebody else"
+     is not, and saying the first when the second is true sets somebody up to
+     be disappointed twice. #}
+  {% elif stage in ('lapsed', 'released') %}
+  <div class="done">
+    {% if stage == 'released' %}
+    <h2 style="margin-top:8px">Oh no — this one's gone 😔</h2>
+    <p>We didn't hear back{% if confirm_by %} by {{ confirm_by }}{% endif %}, so your slot
+      went to someone on the waiting list. Sorry — a full class is the only way these
+      stay free.</p>
+    {% else %}
+    <h2 style="margin-top:8px">Oh no — you've just missed it 😔</h2>
+    <p>We needed to hear back{% if confirm_by %} by {{ confirm_by }}{% endif %}, and slots
+      are going out to the waiting list now.</p>
+    {% endif %}
+    {# No button. "Still want in?" quietly put the slot back and told nobody,
+       which meant a seat could come back to somebody at the same moment it was
+       being handed to the waitlist. Filling a free slot is a decision made on
+       the tracker, where you can see what is actually free. #}
+    <div class="tiny">If a place opens up we'll be in touch — people drop out more
+      often than you'd think.</div>
+  </div>
+
+  {# ------------------------------------------------------------- late ---- #}
+  {% elif stage == 'late' %}
+  <div class="body">
+    <div class="hi">The window has closed</div>
+    <p>Your {{ ev.reel_hours }} hours are up — but honestly, post it anyway.</p>
+    <div class="alert warn">Put it up whenever suits and send us the link. We'll still count
+      you for priority access on the next sponsored class, and {{ ev.sponsor or 'our sponsor' }}
+      will still see it.</div>
+    <form method="post" action="/e/{{ p.token }}/reel">
+      <div class="grp">
+        <div class="lbl">Your Reel link</div>
+        <input class="url" name="url" inputmode="url" autocapitalize="none"
+               autocorrect="off" spellcheck="false" placeholder="instagram.com/reel/…">
+      </div>
+      {% if ev.rewards %}
+      <div class="grp">
+        <div class="lbl">Pick your reward</div>
+        {% for r in ev.rewards %}
+        <label class="opt"><input type="radio" name="reward" value="{{ r.key }}"
+          {{ 'checked' if loop.first }}>
+          <span><span class="t">{{ r.name }}</span>
+            {% if r.detail %}<span class="d">{{ r.detail }}</span>{% endif %}</span>
+          {% if r.value %}<span class="amt">{{ r.value }}</span>{% endif %}</label>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <button class="go">Submit it anyway</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="foot">
+    {% if stage in ('confirm', 'submit', 'late') %}Something not working?{% else %}
+    Change of plans?{% endif %} DM <b>{{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }}</b> — we reply fast.
+  </div>
+</div>
+
+<script>
+// Tap-to-copy. The most common reason a Reel misses the requirement isn't
+// refusal — it's a handle typed from memory and got slightly wrong.
+document.addEventListener('click', function(e){
+  var b = e.target.closest('[data-copy]');
+  if(!b) return;
+  var text = b.getAttribute('data-copy'), old = b.textContent;
+  function done(){ b.textContent = 'COPIED'; setTimeout(function(){ b.textContent = old; }, 1400); }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } else { fallback(); }
+  function fallback(){
+    var t = document.createElement('textarea');
+    t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); done(); } catch(err) {}
+    document.body.removeChild(t);
+  }
+});
+
+// The handle and the tick are required — but only of somebody who is coming.
+// Declining has to stay a one-tap answer, or the easiest way out of the form
+// becomes silence, and silence is the one reply we cannot act on.
+(function(){
+  var no = document.getElementById('rsvpno');
+  if(!no) return;
+  var conditional = [document.getElementById('ig'),
+                     document.querySelector('.ack input[type=checkbox]')]
+                    .filter(Boolean);
+  function sync(){
+    var coming = !no.checked;
+    conditional.forEach(function(el){ el.required = coming; });
+  }
+  document.querySelectorAll('input[name=rsvp]').forEach(function(r){
+    r.addEventListener('change', sync);
+  });
+  sync();
+})();
+</script>
+</body>
+</html>

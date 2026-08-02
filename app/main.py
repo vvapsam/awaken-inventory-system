@@ -461,6 +461,33 @@ def startup():
                 "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
                 "  rate_manual_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
                 "END IF; END $$;"))
+            # The sponsor's logo, on the event rather than in the static
+            # folder — a sponsor belongs to one event, and the next one should
+            # be an upload rather than a deploy.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS sponsor_logo BYTEA; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS sponsor_logo_mime VARCHAR; "
+                "END IF; END $$;"))
+            # The confirmation clock, counted from each person's own invitation
+            # rather than from one fixed date shared by everybody.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  confirm_hours INTEGER NOT NULL DEFAULT 48; "
+                "END IF; END $$;"))
+            # When the "post your Reel" email went out, kept apart from the
+            # invitation because they are two different asks at two different
+            # moments and each needs its own "who still needs this" list.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  reel_email_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  waitlist BOOLEAN NOT NULL DEFAULT FALSE; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  confirm_due TIMESTAMPTZ; "
+                "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
             # visible and reversible.
@@ -3240,4 +3267,18 @@ commission_routes.register(app, {
     # staff, so it needs the raw template environment rather than render().
     "templates": templates,
     "tz": _tz,
+})
+
+
+# ================= Sponsored events =================
+# A class a sponsor pays for, in exchange for a post from everyone who comes.
+# Same registration pattern, and for the same reason.
+from . import event_routes  # noqa: E402
+
+event_routes.register(app, {
+    "render": render,
+    "require": require,
+    "require_admin": require_admin,
+    # The participant's page is public — no login anywhere in that flow.
+    "templates": templates,
 })
