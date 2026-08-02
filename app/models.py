@@ -1163,6 +1163,14 @@ class Event(Base):
     reward_b_value = Column(String)
     #: Prefix for the codes we hand out, e.g. KR -> KR-4471.
     code_prefix = Column(String, nullable=False, default="EV")
+    #: The sponsor's own logo, stored on the row rather than dropped in the
+    #: static folder. A sponsor is a property of one event, not of the app, and
+    #: the next one should be an upload rather than a deploy. It rides inside
+    #: the email by Content-ID for the same reason the AWAKEN mark does —
+    #: remote images are blocked by default in most mail clients, and a
+    #: sponsor logo nobody sees is the one thing the sponsor will notice.
+    sponsor_logo = Column(LargeBinary)
+    sponsor_logo_mime = Column(String)
 
     created_at = Column(DateTime(timezone=True), default=now_utc)
     created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))

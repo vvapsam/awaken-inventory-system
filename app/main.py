@@ -461,6 +461,14 @@ def startup():
                 "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
                 "  rate_manual_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
                 "END IF; END $$;"))
+            # The sponsor's logo, on the event rather than in the static
+            # folder — a sponsor belongs to one event, and the next one should
+            # be an upload rather than a deploy.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS sponsor_logo BYTEA; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS sponsor_logo_mime VARCHAR; "
+                "END IF; END $$;"))
             # When the "post your Reel" email went out, kept apart from the
             # invitation because they are two different asks at two different
             # moments and each needs its own "who still needs this" list.

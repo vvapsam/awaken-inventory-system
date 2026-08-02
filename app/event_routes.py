@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import Depends, Form, Request
+from fastapi import Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
@@ -46,6 +46,25 @@ from .models import (
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
     Event, EventParticipant,
 )
+
+#: AWAKEN's palette, and nothing else. Emails are the one place a third
+#: party's brand tends to creep in — a sponsor's red here, a warning amber
+#: there — and the result stops looking like it came from us at all.
+#:
+#: The header is black rather than the app's navy: it is the colour of the
+#: brandmark itself, it lets a sponsor's logo sit on it without fighting, and
+#: it reads as the brand rather than as a piece of software.
+BLACK = "#14171a"
+BLACK_SOFT = "#9aa3ab"
+TEAL = "#008080"
+TEAL_TINT = "#e6f2f2"
+INK = "#1a232e"
+MUTED = "#6b7683"
+LINE = "#e4e8ed"
+PANEL = "#f3f5f7"
+
+#: The sponsor's logo rides under this Content-ID when the event has one.
+SPONSOR_CID = "sponsor-logo"
 
 #: The logo rides inside the message under this Content-ID, so it renders
 #: without the reader having to allow remote images.
@@ -449,6 +468,7 @@ def register(app, deps):
             reward_a_value: str = Form(""),
             reward_b: str = Form(""), reward_b_detail: str = Form(""),
             reward_b_value: str = Form(""),
+            sponsor_logo: UploadFile = None, drop_logo: str = Form(""),
             db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
@@ -493,6 +513,16 @@ def register(app, deps):
         ev.reward_a_value = reward_a_value.strip()
         ev.reward_b, ev.reward_b_detail = reward_b.strip(), reward_b_detail.strip()
         ev.reward_b_value = reward_b_value.strip()
+
+        if drop_logo == "on":
+            ev.sponsor_logo, ev.sponsor_logo_mime = None, None
+        elif sponsor_logo is not None and getattr(sponsor_logo, "filename", ""):
+            raw = sponsor_logo.file.read()
+            # A logo bigger than this is a print asset somebody grabbed by
+            # mistake, and mail servers reject large messages outright.
+            if raw and len(raw) <= 2 * 1024 * 1024:
+                ev.sponsor_logo = raw
+                ev.sponsor_logo_mime = (sponsor_logo.content_type or "image/png")
         db.commit()
         return RedirectResponse(f"/events/{eid}/settings?saved=1", status_code=303)
 
@@ -592,7 +622,15 @@ def register(app, deps):
             return {"setup": "Mail isn't set up on the server yet — "
                              "add SMTP details under Settings."}
         sent, failed, skipped = [], [], []
+        # Both marks travel inside the message. Most mail clients block remote
+        # images until the reader asks for them, and a sponsor logo nobody sees
+        # is the one thing the sponsor will notice.
+        inline = {}
         logo = _logo_bytes()
+        if logo:
+            inline[LOGO_CID] = logo
+        if ev.sponsor_logo:
+            inline[SPONSOR_CID] = ev.sponsor_logo
         for p in people:
             if not looks_like_email(p.email or ""):
                 skipped.append({"name": p.name, "detail": "no email on record"})
@@ -601,7 +639,7 @@ def register(app, deps):
             subject, text, html = (_reel_mail(ev, p, url) if kind == "reel"
                                    else _invite_mail(ev, p, url))
             ok, detail = mailer.send(p.email, subject, text, html=html,
-                                     inline={LOGO_CID: logo} if logo else None)
+                                     inline=inline or None)
             if ok:
                 now = datetime.now(timezone.utc)
                 if kind == "invite":
@@ -763,6 +801,20 @@ def register(app, deps):
 
     # ------------------------------------------------------------ export ----
 
+    @app.get("/events/{eid}/sponsor-logo")
+    def event_sponsor_logo(eid: int, db: Session = Depends(get_db)):
+        """The sponsor's mark, for the participant's page.
+
+        Public on purpose: it sits on a page that has no login, and it is a
+        logo the sponsor publishes everywhere anyway.
+        """
+        ev = db.get(Event, eid)
+        if not ev or not ev.sponsor_logo:
+            return Response(status_code=404)
+        return Response(content=ev.sponsor_logo,
+                        media_type=ev.sponsor_logo_mime or "image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/events/{eid}/report.csv")
     def event_report(request: Request, eid: int, db: Session = Depends(get_db)):
         """The sheet the sponsor asks for. One row per participant.
@@ -837,9 +889,19 @@ def _button(url, label, sub="") -> str:
 
 
 def _window_note(html) -> str:
-    return ('<div style="background:#fbf4e6;border:1px solid #eddfbe;border-radius:8px;'
-            'padding:13px 16px;margin:20px 0 0;font-size:13px;color:#6a5518">%s</div>'
-            % html)
+    """A deadline, stated calmly.
+
+    It used to be amber, which reads as a warning — the wrong note entirely for
+    "we're holding your slot". Neutral panel with a navy rule says the same
+    thing in AWAKEN's own colours, and stops the email carrying a palette the
+    rest of the brand never uses.
+    """
+    return ('<table width="100%%" cellpadding="0" cellspacing="0" '
+            'style="margin:20px 0 0"><tr>'
+            '<td width="3" style="background:%s;border-radius:2px 0 0 2px"></td>'
+            '<td style="background:%s;padding:13px 16px;font-size:13px;color:#3d4753;'
+            'border-radius:0 8px 8px 0">%s</td></tr></table>'
+            % (BLACK, PANEL, html))
 
 
 def _rewards_block(ev, title) -> str:
@@ -860,11 +922,30 @@ def _rewards_block(ev, title) -> str:
 
 
 def _shell(ev, body) -> str:
-    """The AWAKEN wrapper every event email sits inside."""
-    sponsor_bar = (
-        '<div style="background:#b3121b;color:#fff;text-align:center;padding:7px 20px;'
-        'font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase">'
-        'Powered by %s</div>' % _esc(ev.sponsor)) if ev.sponsor else ""
+    """The AWAKEN wrapper every event email sits inside.
+
+    Navy, teal and neutrals — nothing else. The sponsor used to get their own
+    coloured bar under the header, which meant every email carried a third
+    brand's palette and stopped looking like it came from AWAKEN. Naming them
+    inside the header says the same thing and reads as a partnership rather
+    than an advert.
+    """
+    if not ev.sponsor:
+        sponsor_bar = ""
+    else:
+        # Their logo if we have one, their name if we don't — either way the
+        # sponsor is named in the header, where the reader will actually see
+        # it, rather than in a coloured bar that belongs to somebody else.
+        mark = ('<img src="cid:%s" alt="%s" width="150" style="display:block;'
+                'margin:9px auto 0;width:150px;height:auto">'
+                % (SPONSOR_CID, _esc(ev.sponsor))) if ev.sponsor_logo else (
+            '<div style="color:#ffffff;font-size:13px;font-weight:650;'
+            'letter-spacing:.4px;margin-top:3px">%s</div>' % _esc(ev.sponsor))
+        sponsor_bar = (
+            '<div style="border-top:1px solid #2b3138;margin:18px auto 0;width:70%%"></div>'
+            '<div style="color:%s;font-size:10px;font-weight:600;letter-spacing:2.2px;'
+            'text-transform:uppercase;margin-top:14px">in partnership with</div>%s'
+            % (BLACK_SOFT, mark))
     return """<!DOCTYPE html><html><body style="margin:0;background:#f3f5f7;
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   color:#1a232e;line-height:1.5">
@@ -872,11 +953,11 @@ def _shell(ev, body) -> str:
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;
   border-radius:10px;overflow:hidden">
-  <tr><td style="background:#03224e;padding:26px 30px 22px;text-align:center">
+  <tr><td style="background:#14171a;padding:26px 30px 24px;text-align:center">
     <img src="cid:%s" alt="AWAKEN" width="142" style="display:block;margin:0 auto;
       width:142px;height:auto">
+    %s
   </td></tr>
-  %s
   <tr><td style="padding:28px 30px 30px">%s</td></tr>
   <tr><td style="background:#f3f5f7;padding:18px 30px;text-align:center;font-size:12px;
     color:#6b7683">Questions? Just reply to this email.<br>AWAKEN Fitness Center</td></tr>
