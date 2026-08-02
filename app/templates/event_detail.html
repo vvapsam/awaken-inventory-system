@@ -352,9 +352,14 @@
 {% elif tab == 'door' %}
 
 <div class="card" style="margin-top:12px">
-  <p class="muted small" style="margin:0"><b>{{ c.arrived }} of {{ c.confirmed }} in.</b>
-    Scan the QR on their page with any phone camera — it opens the check-in
-    screen. Tap a row here instead if their phone is flat.</p>
+  <div class="row-between" style="align-items:center;gap:14px;flex-wrap:wrap">
+    <p class="muted small" style="margin:0;flex:1;min-width:240px">
+      <b>{{ c.arrived }} of {{ c.confirmed }} in.</b> Open the scanner and hold
+      their code up to it. Their own phone camera works too. Tap a row here
+      instead if their phone is flat.</p>
+    <a class="btn primary" href="/events/{{ ev.id }}/scan"
+       style="white-space:nowrap">📷 Open the scanner</a>
+  </div>
 </div>
 
 {{ searchbar('dr', 'Search name, email, handle…') }}

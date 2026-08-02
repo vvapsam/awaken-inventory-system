@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block body %}
+{# The camera, inside the app.
+
+   Their phone camera works too — the QR carries a URL for exactly that
+   reason — but that is one person, one scan, one app switch. This keeps the
+   camera open and the count on screen, which is what you want with a queue
+   in front of you.
+
+   Decoding happens on the device. BarcodeDetector where the browser has it
+   (Android Chrome), jsQR otherwise (every iPhone), so nobody has to care
+   which phone they picked up. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Scan</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }}</p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}?tab=door">The door list</a>
+  </div>
+</div>
+
+<div class="scanwrap">
+  <div class="scanhead">
+    <b id="cin">{{ c.arrived }}</b> of <b id="cof">{{ c.confirmed }}</b> in
+  </div>
+
+  <div class="scanbox" id="box">
+    <video id="cam" playsinline muted></video>
+    <div class="reticle"></div>
+    <div class="scanstart" id="start">
+      <button class="btn primary" id="go" type="button">Start the camera</button>
+      <div class="muted small" style="margin-top:9px">Your browser will ask for
+        permission. Point it at the code in their email.</div>
+    </div>
+  </div>
+
+  <div class="scanout" id="out" hidden>
+    <div class="s" id="state"></div>
+    <div class="n" id="name"></div>
+    <div class="d" id="note"></div>
+  </div>
+
+  <p class="muted small" id="hint" style="text-align:center;margin:14px 0 0">
+    Nothing leaves the phone until a code is read.</p>
+</div>
+
+<script src="/static/jsqr.js"></script>
+<script>
+(function(){
+  var video = document.getElementById('cam'),
+      box = document.getElementById('box'),
+      start = document.getElementById('start'),
+      out = document.getElementById('out'),
+      elState = document.getElementById('state'),
+      elName = document.getElementById('name'),
+      elNote = document.getElementById('note'),
+      hint = document.getElementById('hint'),
+      cin = document.getElementById('cin'), cof = document.getElementById('cof'),
+      canvas = document.createElement('canvas'),
+      ctx = canvas.getContext('2d', {willReadFrequently: true}),
+      detector = null, running = false,
+      // The same code stays in front of the lens for a second or two after a
+      // scan. Without this it would re-post twenty times while somebody puts
+      // their phone away.
+      lastCode = '', lastAt = 0, busy = false;
+
+  function show(kind, name, note){
+    out.hidden = false;
+    out.className = 'scanout ' + kind;
+    elState.textContent = kind === 'in' ? '✓ Checked in'
+      : kind === 'again' ? 'Already in' : 'Not recognised';
+    elName.textContent = name || '';
+    elNote.textContent = note || '';
+    if (navigator.vibrate) navigator.vibrate(kind === 'bad' ? [40,60,40] : 30);
+  }
+
+  function send(code){
+    if (busy) return;
+    busy = true;
+    var body = new URLSearchParams(); body.append('code', code);
+    fetch('/events/{{ ev.id }}/scan', {method: 'POST', body: body,
+                                       credentials: 'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.counts) { cin.textContent = d.counts.in; cof.textContent = d.counts.of; }
+        if (!d.ok) show('bad', '', d.why || 'That code did not match anybody.');
+        else show(d.fresh ? 'in' : 'again', d.name, d.note);
+      })
+      .catch(function(){ show('bad', '', 'Lost the connection — try that one again.'); })
+      .then(function(){ busy = false; });
+  }
+
+  function hit(code){
+    var now = Date.now();
+    if (code === lastCode && now - lastAt < 2500) return;
+    lastCode = code; lastAt = now;
+    send(code);
+  }
+
+  function tick(){
+    if (!running) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      if (detector) {
+        detector.detect(video).then(function(codes){
+          if (codes && codes.length) hit(codes[0].rawValue);
+        }).catch(function(){});
+      } else if (window.jsQR) {
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        if (canvas.width && canvas.height) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          var got = window.jsQR(img.data, img.width, img.height,
+                                {inversionAttempts: 'dontInvert'});
+          if (got && got.data) hit(got.data);
+        }
+      }
+    }
+    setTimeout(tick, 220);
+  }
+
+  document.getElementById('go').addEventListener('click', function(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      hint.textContent = "This browser won't open a camera. Use your phone's " +
+        "own camera app on the code instead — it opens the same check-in.";
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal: 'environment'}}, audio: false
+    }).then(function(stream){
+      video.srcObject = stream;
+      video.setAttribute('playsinline', '');
+      return video.play();
+    }).then(function(){
+      start.hidden = true;
+      box.classList.add('live');
+      hint.textContent = 'Hold the code inside the frame. Keep scanning — ' +
+        'it stays on for the next one.';
+      if ('BarcodeDetector' in window) {
+        try { detector = new window.BarcodeDetector({formats: ['qr_code']}); }
+        catch (e) { detector = null; }
+      }
+      running = true;
+      tick();
+    }).catch(function(){
+      hint.textContent = "Couldn't open the camera — check the permission, or " +
+        "use your phone's own camera app on the code instead.";
+    });
+  });
+
+  window.addEventListener('pagehide', function(){
+    running = false;
+    if (video.srcObject) video.srcObject.getTracks().forEach(function(t){ t.stop(); });
+  });
+})();
+</script>
+{% endblock %}
