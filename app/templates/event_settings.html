@@ -16,7 +16,7 @@
 <div class="notice">Saved.</div>
 {% endif %}
 
-<form method="post" action="/events/{{ ev.id }}/settings">
+<form method="post" action="/events/{{ ev.id }}/settings" enctype="multipart/form-data">
 
 <h2>The class</h2>
 <div class="card">
@@ -25,6 +25,28 @@
       <input name="name" value="{{ ev.name }}" required></div>
     <div><label class="small" style="font-weight:600">Sponsor</label>
       <input name="sponsor" value="{{ ev.sponsor or '' }}" placeholder="Kenny Rogers Roasters"></div>
+    <div style="grid-column:1/-1">
+      <label class="small" style="font-weight:600">Sponsor logo</label>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        {% if ev.sponsor_logo %}
+        {# On black, because that is where it will actually appear. #}
+        <div style="background:#14171a;border-radius:8px;padding:12px 16px;flex:none">
+          <img src="/events/{{ ev.id }}/sponsor-logo" alt="{{ ev.sponsor }}"
+               style="display:block;max-width:190px;max-height:64px;width:auto;height:auto"></div>
+        {% endif %}
+        <div style="flex:1;min-width:220px">
+          <input type="file" name="sponsor_logo" accept="image/png,image/jpeg"
+                 style="padding:7px 9px">
+          <div class="muted small" style="margin:4px 0 0">PNG with a transparent background
+            works best — it sits on the black header of the email and the participant's page.
+            Under 2 MB.</div>
+          {% if ev.sponsor_logo %}
+          <label class="check small" style="margin-top:7px">
+            <input type="checkbox" name="drop_logo" value="on"> Remove the current logo</label>
+          {% endif %}
+        </div>
+      </div>
+    </div>
     <div><label class="small" style="font-weight:600">Starts</label>
       <input type="datetime-local" name="starts_at"
         value="{{ ev.starts_at.strftime('%Y-%m-%dT%H:%M') if ev.starts_at }}"></div>

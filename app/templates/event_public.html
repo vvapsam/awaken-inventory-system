@@ -67,7 +67,13 @@
 <style>
 :root{--ink:#1a232e;--muted:#6b7683;--line:#e4e8ed;--panel:#f3f5f7;
   --teal:#008080;--teal-dark:#006a6a;--teal-tint:#e6f2f2;
-  --low:#fbf4e6;--low-line:#d9b45a;--navy:#03224e;--kr:#b3121b;--kr-tint:#fdf2f2}
+  /* Black, not navy: it is the colour of the brandmark itself, and it lets a
+     sponsor's logo sit on the header without two brand colours fighting. */
+  --black:#14171a;--black-soft:#9aa3ab;
+  /* A neutral wash for the things that belong to the sponsor side of the deal.
+     This used to be the sponsor's own red, which meant the page carried a
+     second brand's palette and stopped reading as ours. */
+  --wash:#f1f2f4;--wash-line:#dfe2e6}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -75,14 +81,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 .sheet{max-width:430px;margin:0 auto;background:#fff;min-height:100vh}
 @media(min-width:480px){.sheet{margin:22px auto;min-height:0;border-radius:12px;
   overflow:hidden;box-shadow:0 6px 30px rgba(16,24,32,.10)}}
-.top{background:var(--navy);color:#fff;padding:22px 24px 20px;text-align:center}
+.top{background:var(--black);color:#fff;padding:22px 24px 20px;text-align:center}
 .top svg{width:28px;height:34px;display:block;margin:0 auto 6px}
-.top .wm{letter-spacing:.34em;font-size:.7rem;color:#c3d1e6;padding-left:.34em}
+.top .wm{letter-spacing:.34em;font-size:.7rem;color:#b6bdc4;padding-left:.34em}
 .top .ev{margin-top:12px;font-size:1.06rem;font-weight:650;letter-spacing:-.01em}
-.top .prt{margin-top:4px;font-size:.72rem;color:#8fa6c4;letter-spacing:.08em;text-transform:uppercase}
-.clock{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--low);
-  border-bottom:1px solid #eddfbe;padding:11px 18px;font-size:.83rem;color:#6a5518;text-align:center}
-.clock b{color:#4a3a12;font-variant-numeric:tabular-nums}
+.top .prt{margin-top:4px;font-size:.72rem;color:var(--black-soft);letter-spacing:.08em;
+  text-transform:uppercase}
+/* The sponsor's mark, under a hairline. Their logo where we have one, their
+   name where we don't — either way they are named where the reader looks. */
+.top .rule{border-top:1px solid #2b3138;width:70%;margin:16px auto 0}
+.top .prt.with-rule{margin-top:13px}
+.top .splogo{display:block;margin:8px auto 0;max-width:170px;max-height:56px;
+  width:auto;height:auto}
+/* A countdown, not a warning. Amber said "something is wrong"; this says
+   "here is the time you have", which is what it means. */
+.clock{display:flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--wash);border-bottom:1px solid var(--wash-line);
+  padding:11px 18px;font-size:.83rem;color:#4b535b;text-align:center}
+.clock b{color:var(--black);font-variant-numeric:tabular-nums}
 .body{padding:22px 24px 26px}
 .hi{font-size:1.14rem;font-weight:650;margin:0 0 3px}
 .hi + p{color:var(--muted);font-size:.88rem;margin:0 0 20px}
@@ -111,9 +127,10 @@ input.url{width:100%;border:1px solid var(--line);border-radius:8px;padding:11px
 input.url:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
 .hint{font-size:.79rem;color:var(--muted);margin-top:6px}
 .ack{border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.ack .head{background:var(--kr-tint);border-bottom:1px solid #f4dcdc;padding:13px 16px}
-.ack .head .t{font-size:.83rem;font-weight:700;color:var(--kr)}
-.ack .head .d{font-size:.81rem;color:#7a4a4a;margin-top:2px}
+.ack .head{background:var(--wash);border-bottom:1px solid var(--wash-line);
+  padding:13px 16px}
+.ack .head .t{font-size:.83rem;font-weight:700;color:var(--black)}
+.ack .head .d{font-size:.81rem;color:#4b535b;margin-top:2px}
 .ack ul{margin:0;padding:14px 16px 14px 32px}
 .ack li{font-size:.87rem;margin-bottom:8px;color:#2b3642}
 .ack li:last-child{margin-bottom:0}
@@ -136,8 +153,10 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
 .foot{border-top:1px solid var(--line);padding:15px 24px;text-align:center;
   font-size:.77rem;color:var(--muted)}
 .alert{border-radius:8px;padding:12px 15px;font-size:.86rem;margin:0 0 18px}
+/* One red in the whole page, and only for "that didn't work". A form error
+   has to be unmistakable; everything else is black or teal. */
 .alert.bad{background:#fdf2f2;border:1px solid #f4dcdc;color:#8c2c20}
-.alert.warn{background:var(--low);border:1px solid #eddfbe;color:#6a5518}
+.alert.warn{background:var(--wash);border:1px solid var(--wash-line);color:#4b535b}
 /* confirmed / rewarded */
 .done{padding:34px 24px 26px;text-align:center}
 .ring{width:60px;height:60px;border-radius:50%;background:var(--teal-tint);display:flex;
@@ -154,7 +173,7 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
 .card .v{font-weight:600;text-align:right;word-break:break-word}
 .pill{display:inline-block;background:var(--teal);color:#fff;border-radius:999px;padding:2px 9px;
   font-size:.66rem;font-weight:700;letter-spacing:.05em}
-.pill.amber{background:var(--low-line);color:#4a3a12}
+.pill.amber{background:var(--black-soft);color:#fff}
 .next{background:var(--panel);border-radius:8px;padding:15px;text-align:left}
 .next .h{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
   color:var(--muted);margin-bottom:10px}
@@ -189,7 +208,15 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
       <path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
     <div class="wm">AWAKEN</div>
     <div class="ev">{{ ev.name }}</div>
-    {% if ev.sponsor %}<div class="prt">Presented by {{ ev.sponsor }}</div>{% endif %}
+    {% if ev.sponsor %}
+    <div class="rule"></div>
+    <div class="prt with-rule">In partnership with</div>
+    {% if ev.sponsor_logo %}
+    <img class="splogo" src="/events/{{ ev.id }}/sponsor-logo" alt="{{ ev.sponsor }}">
+    {% else %}
+    <div style="font-size:.86rem;font-weight:650;margin-top:3px">{{ ev.sponsor }}</div>
+    {% endif %}
+    {% endif %}
   </div>
 
   {# ---------------------------------------------------------- confirm ---- #}
