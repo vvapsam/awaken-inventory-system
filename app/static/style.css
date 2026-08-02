@@ -291,6 +291,16 @@ tr.needs:hover td{background:#f6ecd6}
 .selbar .btn{background:#fff;border-color:#fff}
 .selbar .selamt{opacity:.72;font-variant-numeric:tabular-nums}
 
+/* Editing one participant, in a row of its own under theirs. Full table width
+   so a long email address is readable rather than truncated in a popover. */
+tr.editrow[hidden]{display:none}
+tr.editrow > td{background:var(--panel);box-shadow:inset 3px 0 0 var(--teal)}
+.editgrid{display:grid;grid-template-columns:1.1fr 1.4fr 1fr auto;gap:10px 14px;align-items:end}
+.editgrid input{width:100%;margin:0}
+.editgrid label{margin:0 0 4px}
+.editgrid .acts{display:flex;gap:7px;flex-wrap:wrap}
+@media(max-width:820px){.editgrid{grid-template-columns:1fr}}
+
 /* A summary strip. Four stat cards cost ~180px of height each to show one
    number; this carries the same figures, plus the action, in one band. */
 .sumbar{display:flex;flex-wrap:wrap;background:var(--bg);border:1px solid var(--line);
