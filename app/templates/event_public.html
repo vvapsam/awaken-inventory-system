@@ -493,11 +493,12 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
     <p>We needed to hear back{% if confirm_by %} by {{ confirm_by }}{% endif %}, and slots
       are going out to the waiting list now.</p>
     {% endif %}
-    <form method="post" action="/e/{{ p.token }}/reopen">
-      <button class="go">Still want in? Let us know</button>
-    </form>
-    <div class="tiny">We'll check whether anything has opened up and come back to you —
-      people drop out more often than you'd think.</div>
+    {# No button. "Still want in?" quietly put the slot back and told nobody,
+       which meant a seat could come back to somebody at the same moment it was
+       being handed to the waitlist. Filling a free slot is a decision made on
+       the tracker, where you can see what is actually free. #}
+    <div class="tiny">If a place opens up we'll be in touch — people drop out more
+      often than you'd think.</div>
   </div>
 
   {# ------------------------------------------------------------- late ---- #}
