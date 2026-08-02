@@ -156,10 +156,13 @@
 {% endif %}
 
 <div class="tfilter" style="margin-top:14px">
-  <a href="?tab=people" class="{{ 'on' if tab != 'reels' }}">Participants · {{ c.total }}</a>
+  <a href="?tab=people" class="{{ 'on' if tab not in ('reels','waitlist','gone') }}">Participants · {{ c.inplay }}</a>
   <a href="?tab=reels" class="{{ 'on' if tab == 'reels' }}">Reels · {{ c.posted }}</a>
   {% if c.waitlist %}
   <a href="?tab=waitlist" class="{{ 'on' if tab == 'waitlist' }}">Waitlist · {{ c.waitlist }}</a>
+  {% endif %}
+  {% if c.gone %}
+  <a href="?tab=gone" class="{{ 'on' if tab == 'gone' }}">Can't make it · {{ c.gone }}</a>
   {% endif %}
 </div>
 
@@ -174,7 +177,7 @@
 {% endif %}
 
 {# ============================================================ PARTICIPANTS #}
-{% if tab not in ('reels', 'waitlist') %}
+{% if tab not in ('reels', 'waitlist', 'gone') %}
 
 {% if not people %}
 <div class="card"><p class="muted" style="margin:0 0 10px">Nobody on the list yet. Paste your
@@ -216,7 +219,7 @@
   </tr></thead>
   <tbody>
   {% for p in people %}
-  <tr {% if p.released_at %}class="low"{% elif p.qualified %}style="background:var(--teal-tint)"{% endif %}>
+  <tr {% if p.qualified %}style="background:var(--teal-tint)"{% endif %}>
     <td><input type="checkbox" class="chk pick" name="pick" value="{{ p.id }}"
                data-mail="{{ 1 if p.email else 0 }}"></td>
     <td><div class="primary">{{ p.name }}</div>
@@ -338,6 +341,47 @@
     </div>
   </div>
 </details>
+
+{# ========================================================== CAN'T MAKE IT #}
+{% elif tab == 'gone' %}
+
+{% if request.query_params.get('back') %}
+<div class="notice">Back on the list, with a fresh window to answer in.</div>
+{% endif %}
+
+<div class="card" style="margin-top:12px">
+  <p class="muted small" style="margin:0">These {{ c.gone }}
+    {{ 'slot is' if c.gone == 1 else 'slots are' }} free. They're out of every
+    count and every send{% if c.waitlist %} — fill them from the
+    <a href="?tab=waitlist">waitlist</a>{% endif %}. Put somebody back if they
+    tapped the wrong thing or their plans changed again.</p>
+</div>
+
+{{ searchbar('gn', 'Search name, email, handle…') }}
+<table id="gn">
+  <thead><tr><th>Not coming</th><th>What happened</th><th>Instagram</th>
+    <th style="width:1%"></th></tr></thead>
+  <tbody>
+  {% for p in gone %}
+  <tr class="low">
+    <td><div class="primary">{{ p.name }}</div>
+      <div class="sub">{{ p.email or 'No email on record' }}</div></td>
+    <td>{% if p.declined %}<span class="tag grey">Said they can't make it</span>
+        {% if p.rsvp_at %}<div class="sub">{{ p.rsvp_at.strftime('%d %b, %H:%M') }}</div>{% endif %}
+      {% else %}<span class="tag grey">Didn't answer in time</span>
+        {% if p.released_at %}<div class="sub">{{ p.released_at.strftime('%d %b, %H:%M') }}</div>{% endif %}
+      {% endif %}</td>
+    <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>{% else %}—{% endif %}</td>
+    <td style="white-space:nowrap">
+      <button class="btn" form="ud-{{ p.id }}" style="margin:0">Put them back</button></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% for p in gone %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/undecline" id="ud-{{ p.id }}" hidden
+      onsubmit="return confirm('Put {{ p.name }} back on the list? They get a fresh window to answer in.')"></form>
+{% endfor %}
 
 {# =============================================================== WAITLIST #}
 {% elif tab == 'waitlist' %}

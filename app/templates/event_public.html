@@ -477,15 +477,27 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
       here, and this same link will turn into your confirmation.</div>
   </div>
 
+  {# Two different facts, so two different sentences. "You've just missed the
+     cut-off" is still fixable and reads as one. "It has gone to somebody else"
+     is not, and saying the first when the second is true sets somebody up to
+     be disappointed twice. #}
   {% elif stage in ('lapsed', 'released') %}
   <div class="done">
-    <h2 style="margin-top:8px">This slot went to the waitlist</h2>
-    <p>We didn't hear back before the cut-off, so it's gone to someone else — that's the only
-      fair way to run a full class.</p>
+    {% if stage == 'released' %}
+    <h2 style="margin-top:8px">Oh no — this one's gone 😔</h2>
+    <p>We didn't hear back{% if confirm_by %} by {{ confirm_by }}{% endif %}, so your slot
+      went to someone on the waiting list. Sorry — a full class is the only way these
+      stay free.</p>
+    {% else %}
+    <h2 style="margin-top:8px">Oh no — you've just missed it 😔</h2>
+    <p>We needed to hear back{% if confirm_by %} by {{ confirm_by }}{% endif %}, and slots
+      are going out to the waiting list now.</p>
+    {% endif %}
     <form method="post" action="/e/{{ p.token }}/reopen">
       <button class="go">Still want in? Let us know</button>
     </form>
-    <div class="tiny">We'll check whether anything has opened up and come back to you.</div>
+    <div class="tiny">We'll check whether anything has opened up and come back to you —
+      people drop out more often than you'd think.</div>
   </div>
 
   {# ------------------------------------------------------------- late ---- #}
