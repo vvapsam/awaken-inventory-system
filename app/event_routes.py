@@ -199,6 +199,27 @@ def confirm_deadline(p: EventParticipant, now=None):
     return min(soft, hard) if hard else soft
 
 
+#: The pass rides inside the confirmation email under this Content-ID.
+PASS_CID = "event-pass"
+
+
+def qr_png(url: str) -> bytes:
+    """A QR of a URL, as PNG bytes.
+
+    It encodes the check-in address rather than the token on its own, so any
+    phone's own camera opens it — nothing to install, and nothing to teach
+    whoever is on the door.
+    """
+    qr = qrcode.QRCode(box_size=10, border=2,
+                       error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color=BLACK, back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def base_url(request: Request) -> str:
     """The public origin, honouring the proxy Railway puts in front of us."""
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
@@ -354,6 +375,8 @@ def register(app, deps):
         p.instagram = handle
         p.acknowledged_at = now
         db.commit()
+        # Their pass, straight away, while they are still holding the phone.
+        _send_pass(db, p.event, p, base_url(request))
         return RedirectResponse(back + "?done=1", status_code=303)
 
     @app.post("/e/{token}/reel")
@@ -418,19 +441,18 @@ def register(app, deps):
         p = _participant(db, token)
         if not p:
             return Response(status_code=404)
-        qr = qrcode.QRCode(box_size=10, border=2,
-                           error_correction=qrcode.constants.ERROR_CORRECT_M)
-        qr.add_data("%s/i/%s" % (base_url(request), token))
-        qr.make(fit=True)
-        img = qr.make_image(fill_color=BLACK, back_color="white")
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return Response(buf.getvalue(), media_type="image/png",
+        png = qr_png("%s/i/%s" % (base_url(request), token))
+        return Response(png, media_type="image/png",
                         headers={"Cache-Control": "private, max-age=300"})
 
     @app.get("/i/{token}", response_class=HTMLResponse)
     def event_checkin(request: Request, token: str, db: Session = Depends(get_db)):
-        """Where a scanned QR lands. Staff only.
+        """Where a scanned QR lands — and the scan itself checks them in.
+
+        No button. A queue at a door is the one place an extra tap is
+        expensive, and whoever is holding the phone made the decision when
+        they pointed it at somebody's screen. What comes back is the receipt:
+        their name, big, and a way to undo it.
 
         Short path because it is what the QR has to carry, and a shorter
         payload is a QR with bigger squares — which is the difference between
@@ -446,9 +468,15 @@ def register(app, deps):
                 status_code=404)
         # `who`, not `p`: base.html binds `p` to the request path, and a
         # participant landing in that name renders a blank screen at a door.
+        # Already in means already in. Re-stamping would quietly rewrite the
+        # arrival time each time a screen got scanned twice in a queue.
+        fresh = not p.arrived_at
+        if fresh:
+            p.arrived_at = datetime.now(timezone.utc)
+            db.commit()
         return render(request, "event_checkin.html", db, staff, active="events",
                       ev=p.event, who=p, stage=_stage(p), c=counts(p.event),
-                      done=request.query_params.get("in") == "1")
+                      fresh=fresh)
 
     @app.post("/i/{token}")
     def event_checkin_mark(request: Request, token: str,
@@ -463,7 +491,9 @@ def register(app, deps):
         # a door is somebody standing there while you find a way to reverse it.
         p.arrived_at = None if undo else datetime.now(timezone.utc)
         db.commit()
-        return RedirectResponse("/i/%s?in=%d" % (token, 0 if undo else 1),
+        # Back to the door list, never to /i/ — landing there again would scan
+        # them straight back in.
+        return RedirectResponse("/events/%d?tab=door" % p.event_id,
                                 status_code=303)
 
     @app.post("/events/{eid}/people/{pid}/arrive")
@@ -1109,6 +1139,75 @@ def register(app, deps):
             _rewards_block(ev, "What you get for sharing"),
         ))
         return subject, text, html
+
+    def _pass_mail(ev, p, url):
+        """"You're in — here's your pass." Sent the moment they confirm.
+
+        The QR rides inside the message rather than as a link, because a
+        doorway is exactly where somebody has no signal and no patience, and
+        an email already sitting in their inbox opens without either.
+        """
+        when = _fmt_when(ev.starts_at)
+        first = (p.name or "").split()[0] if p.name else "there"
+        subject = "You're in — your pass for %s" % ev.name
+        text = "\n".join([
+            "You're confirmed, %s." % first,
+            "",
+            "%s%s" % (ev.name, " · %s" % when if when else ""),
+            "%s" % (ev.venue or ""),
+            "",
+            "Show the code in this email at the door — we'll scan it. If you "
+            "can't find it, your page has the same code: %s" % url,
+        ])
+        html = _shell(ev, """
+          <h1 style="font-size:20px;font-weight:650;margin:0 0 14px">You're in, %s ✅</h1>
+          <p style="font-size:15px;margin:0 0 18px;color:#2b3642">Show this at the door —
+             we'll scan it. No need to print anything.</p>
+          <table width="100%%" cellpadding="0" cellspacing="0"><tr><td align="center"
+            style="border:1px solid #e4e8ed;border-radius:12px;padding:18px 18px 14px">
+            <img src="cid:%s" alt="Your check-in code" width="200"
+                 style="display:block;width:200px;height:200px">
+            <div style="font-size:15px;font-weight:650;margin-top:10px">%s</div>
+            <div style="font-size:12px;color:#6b7683">%s</div>
+          </td></tr></table>
+          %s
+          %s
+        """ % (
+            _esc(first), PASS_CID, _esc(p.name), _esc(ev.name),
+            _facts(ev),
+            _window_note("Can't find this on the day? Your own page carries the same "
+                         "code — <a href=\"%s\" style=\"color:#008080\">open it here</a>."
+                         % _esc(url)),
+        ))
+        return subject, text, html
+
+    def _send_pass(db, ev, p, base):
+        """Best effort, and never in the way of a confirmation.
+
+        Somebody confirming their slot must not see an error because our mail
+        server had a bad minute — the confirmation is the thing that matters
+        and it is already saved by the time we get here.
+        """
+        if p.pass_email_at or not looks_like_email(p.email or ""):
+            return
+        mailer = Mailer()
+        if not mailer.cfg.configured:
+            return
+        url = "%s/e/%s" % (base, p.token)
+        subject, text, html = _pass_mail(ev, p, url)
+        inline = {PASS_CID: qr_png("%s/i/%s" % (base, p.token))}
+        logo = _logo_bytes()
+        if logo:
+            inline[LOGO_CID] = logo
+        if ev.sponsor_logo:
+            inline[SPONSOR_CID] = ev.sponsor_logo
+        try:
+            ok, _ = mailer.send(p.email, subject, text, html=html, inline=inline)
+        except Exception:
+            ok = False
+        if ok:
+            p.pass_email_at = datetime.now(timezone.utc)
+            db.commit()
 
     def _reel_mail(ev, p, url):
         """The 'thank you, here's your reward link' email."""

@@ -1252,6 +1252,9 @@ class EventParticipant(Base):
     acknowledged_at = Column(DateTime(timezone=True))
     #: Set when the confirmation window lapsed and the slot went elsewhere.
     released_at = Column(DateTime(timezone=True))
+    #: When the "you're in, here's your pass" email went out. Stamped so a
+    #: second confirm — somebody fixing their handle — doesn't send it twice.
+    pass_email_at = Column(DateTime(timezone=True))
     #: When they were scanned in at the door. The QR on their page is the
     #: fast path; the tracker has a button for the phone that died on the way.
     arrived_at = Column(DateTime(timezone=True))
