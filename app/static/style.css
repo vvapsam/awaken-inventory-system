@@ -602,3 +602,18 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 .c6{background:#e9edf1;color:#4a5765}
 .c7{background:#ffe0ef;color:#8a2a5c}
 .c8{background:#e2f5cd;color:#3f6b12}
+
+/* ---- the door: one hand, one doorway ---------------------------------- */
+/* The name is the biggest thing on the screen and the button is the width of
+   the card, because whoever is scanning is holding a phone in one hand and
+   looking at a person with the other. */
+.ckcard{text-align:center;padding:26px 20px 22px}
+.ckstate{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;padding:4px 11px;border-radius:999px;margin-bottom:12px}
+.ckstate.ok{background:var(--teal-tint);color:var(--teal-dark)}
+.ckstate.in{background:#14171a;color:#fff}
+.ckstate.warn{background:#fdf4e3;color:#8a6414}
+.ckstate.bad{background:#fdf2f2;color:#8c2c20}
+.ckname{font-size:1.6rem;font-weight:650;letter-spacing:-.015em;line-height:1.2}
+.ckwhen{color:var(--muted);font-size:.87rem;margin-top:5px}
+.ckbtn{width:100%;padding:14px;font-size:1rem}
