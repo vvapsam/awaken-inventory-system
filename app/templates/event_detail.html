@@ -167,9 +167,36 @@
 <div class="card"><p class="muted" style="margin:0 0 10px">Nobody on the list yet. Paste your
   participants below — one per line, <span class="mono">Name, email</span> or just a name.</p></div>
 {% else %}
+{% if request.query_params.get('edit') == 'ok' %}
+<div class="notice">Details updated.</div>
+{% elif request.query_params.get('edit') == 'bademail' %}
+<div class="alert bad"><b>That email doesn't look right.</b>
+  <span class="muted">Nothing was changed. Leave it blank if you don't have one yet.</span></div>
+{% elif request.query_params.get('edit') == 'noname' %}
+<div class="alert bad"><b>A name is needed.</b>
+  <span class="muted">It's how you'll find them on the day.</span></div>
+{% endif %}
+
 {{ searchbar('ppl', 'Search name, email, handle…') }}
+
+{# Tick names and email exactly those people. Every other send is filtered for
+   you — this is the escape hatch for the cases the tidy lists don't cover. #}
+<form method="post" action="/events/{{ ev.id }}/send" id="pickform">
+<input type="hidden" name="who" value="selected">
+<div class="selbar" id="selbar" hidden>
+  <b><span id="seln">0</span> selected</b>
+  <span class="selamt" id="selnote"></span>
+  <span style="flex:1"></span>
+  <button class="btn" name="kind" value="invite" {{ 'disabled' if not mail_ready }}>
+    ✉ Send the invitation</button>
+  <button class="btn" name="kind" value="reel" {{ 'disabled' if not mail_ready }}>
+    ✉ Send the Reel email</button>
+</div>
+
 <table id="ppl">
   <thead><tr>
+    <th style="width:34px"><input type="checkbox" class="chk" id="selall"
+        title="Select everyone"></th>
     <th>Participant</th><th>Emails</th><th>Instagram</th><th>Confirmed</th>
     <th>Acknowledged</th><th>Reel</th><th>Reward</th><th>Link</th>
     <th style="width:1%"></th>
@@ -177,6 +204,8 @@
   <tbody>
   {% for p in people %}
   <tr {% if p.released_at %}class="low"{% elif p.qualified %}style="background:var(--teal-tint)"{% endif %}>
+    <td><input type="checkbox" class="chk pick" name="pick" value="{{ p.id }}"
+               data-mail="{{ 1 if p.email else 0 }}"></td>
     <td><div class="primary">{{ p.name }}</div>
       <div class="sub">{{ p.email or 'No email on record' }}</div>
       {% if p.opens %}<div class="sub">Opened {{ p.opens }}×</div>{% endif %}</td>
@@ -213,19 +242,55 @@
     <td><button class="btn" style="padding:4px 10px;font-size:.76rem"
         data-copy="{{ base }}/e/{{ p.token }}">Copy</button></td>
     <td style="white-space:nowrap">
+      <button type="button" class="btn" style="padding:5px 9px" data-edit="{{ p.id }}"
+              title="Edit their details">✎</button>
       <a class="btn" style="padding:5px 10px" href="/e/{{ p.token }}" target="_blank">View</a>
-      {% if not p.posted %}
-      <form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/remove"
-            style="display:inline;margin:0"
-            onsubmit="return confirm('Remove {{ p.name }} from this event?')">
-        <button class="btn" style="padding:5px 9px" title="Remove">✕</button>
-      </form>
-      {% endif %}
+    </td>
+  </tr>
+  {# The edit row. Its own <tr> rather than a popover, so the fields get the
+     full width of the table and a long email address is readable. Kept out of
+     the picking form above — a form cannot nest. #}
+  <tr class="editrow" id="edit-{{ p.id }}" hidden>
+    <td colspan="10">
+      <div class="editgrid">
+        <div>
+          <label class="small" style="font-weight:600;margin:0 0 4px">Name</label>
+          <input form="ed-{{ p.id }}" name="name" value="{{ p.name }}" required></div>
+        <div>
+          <label class="small" style="font-weight:600;margin:0 0 4px">Email</label>
+          <input form="ed-{{ p.id }}" name="email" type="email" value="{{ p.email or '' }}"
+                 placeholder="them@example.com"></div>
+        <div>
+          <label class="small" style="font-weight:600;margin:0 0 4px">Instagram</label>
+          <input form="ed-{{ p.id }}" name="instagram" value="{{ p.instagram or '' }}"
+                 placeholder="handle" autocapitalize="none" spellcheck="false"></div>
+        <div class="acts">
+          <button class="btn primary" form="ed-{{ p.id }}" style="margin:0">Save</button>
+          <button type="button" class="btn" style="margin:0" data-edit="{{ p.id }}">Cancel</button>
+          {% if not p.posted %}
+          <button class="btn" form="rm-{{ p.id }}" style="margin:0;color:#b0392b"
+                  title="Remove from this event">✕ Remove</button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="muted small" style="margin:7px 0 0">A pasted profile URL or a leading @ is
+        fine — we tidy the handle up. Their link, confirmation and Reel are untouched.</div>
     </td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
+</form>
+
+{# One form per row, outside the picking form because forms cannot nest. The
+   inputs above point at these by id. #}
+{% for p in people %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/edit" id="ed-{{ p.id }}" hidden></form>
+{% if not p.posted %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/remove" id="rm-{{ p.id }}" hidden
+      onsubmit="return confirm('Remove {{ p.name }} from this event? Their link stops working.')"></form>
+{% endif %}
+{% endfor %}
 {% endif %}
 
 {# Thirty people arrive as a list, not as thirty form submissions. #}
@@ -313,13 +378,60 @@
 
 <script>
 document.addEventListener('click', function(e){
-  var b = e.target.closest('[data-copy]');
-  if(!b) return;
-  e.preventDefault();
-  var old = b.textContent;
-  navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){
-    b.textContent = 'Copied'; setTimeout(function(){ b.textContent = old; }, 1300);
-  });
+  var c = e.target.closest('[data-copy]');
+  if(c){
+    e.preventDefault();
+    var was = c.textContent;
+    navigator.clipboard.writeText(c.getAttribute('data-copy')).then(function(){
+      c.textContent = 'Copied'; setTimeout(function(){ c.textContent = was; }, 1300);
+    });
+    return;
+  }
+  var ed = e.target.closest('[data-edit]');
+  if(ed){
+    var row = document.getElementById('edit-' + ed.getAttribute('data-edit'));
+    if(row){
+      row.hidden = !row.hidden;
+      if(!row.hidden){ var f = row.querySelector('input'); if(f) f.focus(); }
+    }
+  }
 });
+
+// Ticking names to email exactly those people.
+(function(){
+  var all = document.getElementById('selall');
+  if(!all) return;
+  var bar = document.getElementById('selbar'),
+      n = document.getElementById('seln'),
+      note = document.getElementById('selnote');
+  function boxes(){
+    // Only rows the search has left visible — emailing somebody you have
+    // filtered out of sight would be a nasty surprise.
+    return Array.prototype.filter.call(
+      document.querySelectorAll('#ppl .pick'),
+      function(b){ return b.closest('tr').style.display !== 'none'; });
+  }
+  function sync(){
+    var on = boxes().filter(function(b){ return b.checked; });
+    n.textContent = on.length;
+    // Say up front how many of them can actually be reached.
+    var no = on.filter(function(b){ return b.getAttribute('data-mail') === '0'; }).length;
+    note.textContent = no ? ('· ' + no + ' with no email will be skipped') : '';
+    bar.hidden = on.length === 0;
+    var every = boxes().length;
+    all.checked = every > 0 && on.length === every;
+    all.indeterminate = on.length > 0 && on.length < every;
+  }
+  all.addEventListener('change', function(){
+    boxes().forEach(function(b){ b.checked = all.checked; });
+    sync();
+  });
+  document.getElementById('ppl').addEventListener('change', function(e){
+    if(e.target.classList.contains('pick')) sync();
+  });
+  var search = document.querySelector('input[data-filter="#ppl"]');
+  if(search) search.addEventListener('input', function(){ setTimeout(sync, 0); });
+  sync();
+})();
 </script>
 {% endblock %}
