@@ -455,12 +455,10 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
         one. Follow <b>{{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }}</b>
         so you catch it when it opens.</p>
     </div>
-    <form method="post" action="/e/{{ p.token }}/confirm" style="margin-top:16px">
-      <input type="hidden" name="rsvp" value="yes">
-      <input type="hidden" name="instagram" value="{{ p.instagram or '' }}">
-      <input type="hidden" name="ack" value="on">
-      {% if p.instagram %}<button class="go ghost">Actually, I can make it</button>{% endif %}
-    </form>
+    {# No way back from here. The slot has already been offered to somebody
+       else by the time they read this, and a button that takes it back would
+       hand the same place to two people. If they do change their mind, they
+       message you and you decide — the tracker knows what is actually free. #}
   </div>
 
   {# ------------------------------------------------- lapsed / released --- #}
