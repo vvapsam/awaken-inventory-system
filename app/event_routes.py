@@ -219,6 +219,10 @@ def counts(event: Event) -> dict:
         "total": len(ps),
         "waitlist": len(waiting_list),
         "live": len(live),
+        # Still in play: nobody has said no and nobody has run out of time.
+        # This is the list you work from, so it is the one the tab counts.
+        "inplay": len([p for p in live if not p.declined]),
+        "gone": len([p for p in ps if p.declined or p.released_at]),
         "confirmed": len(confirmed),
         "declined": len([p for p in ps if p.declined]),
         "waiting": len([p for p in live if p.rsvp == RSVP_NONE]),
@@ -460,10 +464,16 @@ def register(app, deps):
             return RedirectResponse("/events", status_code=303)
         _release_lapsed(db, ev)
         everyone = sorted(ev.participants, key=lambda p: (p.name or "").lower())
-        people = [p for p in everyone if not p.waitlist]
         waiting = [p for p in everyone if p.waitlist]
+        rest = [p for p in everyone if not p.waitlist]
+        # Somebody who said no, or who never answered in time, is not somebody
+        # you are still chasing. Leaving them in the main table means every
+        # count you read off it is a count of a list you no longer have.
+        gone = [p for p in rest if p.declined or p.released_at]
+        people = [p for p in rest if not (p.declined or p.released_at)]
         return render(request, "event_detail.html", db, staff, active="events",
                       ev=ev, tab=tab, people=people, waiting=waiting,
+                      gone=gone,
                       upload=request.session.pop("event_upload", None),
                       c=counts(ev),
                       lists={k: len(v) for k, v in mail_lists(ev).items()},
@@ -720,6 +730,34 @@ def register(app, deps):
             "added": added, "waiting": waiting, "dupes": dupes}
         return RedirectResponse(back + "?up=ok", status_code=303)
 
+    @app.post("/events/{eid}/people/{pid}/undecline")
+    def event_undecline(request: Request, eid: int, pid: int,
+                        db: Session = Depends(get_db)):
+        """Put somebody back in the room after a no.
+
+        People tap the wrong button, and plans change back. Without this the
+        only repair is to delete them and start again, which throws away their
+        link and their history over a mis-tap — and leaves you with a slot the
+        waitlist has already been offered.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        p = db.get(EventParticipant, pid)
+        if not ev or not p or p.event_id != eid:
+            return RedirectResponse(f"/events/{eid}", status_code=303)
+        p.rsvp = RSVP_NONE
+        p.rsvp_at = None
+        p.released_at = None
+        # A fresh window, because whatever deadline applied has almost
+        # certainly passed by the time somebody is being put back.
+        p.confirm_due = (datetime.now(timezone.utc)
+                         + timedelta(hours=ev.confirm_hours or 24))
+        db.commit()
+        return RedirectResponse(f"/events/{eid}?tab=gone&back={pid}",
+                                status_code=303)
+
     @app.post("/events/{eid}/people/{pid}/promote")
     def event_promote(request: Request, eid: int, pid: int,
                       db: Session = Depends(get_db)):
@@ -896,10 +934,14 @@ def register(app, deps):
         # one more person and never can. They get their own number instead.
         mailable = [p for p in live if looks_like_email(p.email or "")]
         confirmed = [p for p in mailable if p.confirmed]
+        # Somebody who has told you they can't come is not somebody to invite
+        # again. "Re-send to all" reaching them is the exact message that makes
+        # a person stop reading anything you send.
+        askable = [p for p in mailable if not p.declined]
         return {
             # The invitation: everyone who hasn't had one.
-            "invite": [p for p in mailable if not p.invited_at],
-            "invite_all": mailable,
+            "invite": [p for p in askable if not p.invited_at],
+            "invite_all": askable,
             # The Reel email: everyone who came and hasn't been asked yet.
             "reel": [p for p in confirmed if not p.reel_email_at],
             # The nudge: everyone who was asked and still hasn't posted. A
