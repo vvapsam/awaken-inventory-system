@@ -620,3 +620,34 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 /* Undo is the only control on the receipt, and it must not look like the
    primary action — nobody should tap it by momentum after a scan. */
 .ckundo{padding:11px 22px;color:#8c2c20}
+
+/* ---- the scanner ------------------------------------------------------ */
+/* A phone held at arm's length in a doorway: the frame is as big as the
+   screen allows, and the answer sits under it where a thumb is not. */
+.scanwrap{max-width:520px;margin:14px auto 0}
+.scanhead{text-align:center;font-size:.9rem;color:var(--muted);margin-bottom:10px}
+.scanhead b{color:var(--ink);font-size:1.15rem;font-variant-numeric:tabular-nums}
+.scanbox{position:relative;aspect-ratio:1;border-radius:14px;overflow:hidden;
+  background:#14171a;display:flex;align-items:center;justify-content:center}
+.scanbox video{width:100%;height:100%;object-fit:cover;display:block}
+.scanstart{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:26px;
+  color:#c8ced4}
+/* display:flex above beats the browser's own [hidden] rule, so the prompt
+   would otherwise sit on top of the live camera. */
+.scanstart[hidden]{display:none}
+.scanstart .muted{color:#8f979f}
+/* Only drawn once the camera is live — a reticle over a black box just looks
+   like something is broken. */
+.reticle{display:none;position:absolute;inset:14%;border-radius:12px;
+  box-shadow:0 0 0 100vmax rgba(20,23,26,.34);pointer-events:none}
+.scanbox.live .reticle{display:block;border:2px solid rgba(255,255,255,.92)}
+.scanout{margin-top:14px;padding:16px 18px;border-radius:12px;text-align:center}
+.scanout .s{font-size:.68rem;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase}
+.scanout .n{font-size:1.5rem;font-weight:650;letter-spacing:-.015em;line-height:1.2;
+  margin-top:4px}
+.scanout .d{font-size:.86rem;margin-top:3px;opacity:.85}
+.scanout.in{background:var(--teal-tint);color:var(--teal-dark)}
+.scanout.again{background:#fdf4e3;color:#8a6414}
+.scanout.bad{background:#fdf2f2;color:#8c2c20}
