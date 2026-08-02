@@ -1149,7 +1149,14 @@ class Event(Base):
     hashtag = Column(String)                     # "#FuelledByKennyRogers"
     #: Hours after the class within which a Reel has to be posted.
     reel_hours = Column(Integer, nullable=False, default=48)
-    #: When a slot nobody has confirmed goes to the waitlist.
+    #: Hours from *their own* invitation within which somebody has to answer.
+    #: Counted per person rather than from one fixed date, because somebody
+    #: added to the list on the Thursday would otherwise inherit a deadline
+    #: that expired on the Tuesday and lose a slot they were never asked about.
+    confirm_hours = Column(Integer, nullable=False, default=48)
+    #: A hard backstop, whatever the per-person clock says — the point past
+    #: which an unanswered slot has to go to the waitlist so there is still
+    #: time to fill it. Optional; the 48-hour clock does the work on its own.
     confirm_by = Column(DateTime(timezone=True))
 
     # --- what they get for it ---
@@ -1245,6 +1252,17 @@ class EventParticipant(Base):
     acknowledged_at = Column(DateTime(timezone=True))
     #: Set when the confirmation window lapsed and the slot went elsewhere.
     released_at = Column(DateTime(timezone=True))
+    #: Their own answer-by, when it cannot be the event's. Somebody handed a
+    #: slot off the waitlist the night before is being asked after the event's
+    #: cut-off has passed — without a deadline of their own they would open
+    #: their link to "this slot went to the waitlist", which is the one thing
+    #: it did not do.
+    confirm_due = Column(DateTime(timezone=True))
+    #: On the waiting list rather than in the room. They are loaded at the same
+    #: time as everybody else — the whole point is that the replacement is
+    #: already on file when somebody drops out — but they are invisible to
+    #: every send and every count until you give one of them a slot.
+    waitlist = Column(Boolean, nullable=False, default=False)
 
     # --- after the class ---
     reel_url = Column(String)

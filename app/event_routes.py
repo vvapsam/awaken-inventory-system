@@ -30,7 +30,7 @@ import csv
 import io
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -160,6 +160,43 @@ def left_until(when, now=None) -> str:
     return "%d minute%s" % (mins, "" if mins == 1 else "s")
 
 
+def confirm_deadline(p: EventParticipant, now=None):
+    """When *this* person's slot stops being held.
+
+    Counted from their own invitation, not from one date shared by the whole
+    list. Somebody added on the Thursday would otherwise inherit a deadline
+    that expired on the Tuesday and lose a slot nobody ever asked them about.
+
+    Before the invitation goes out the clock is quoted from now, which is
+    exactly where it will start the moment the email sends — so the email can
+    print the deadline it is itself creating, and nobody who was never asked
+    can lapse.
+
+    `confirm_by` still wins if it is sooner: it is the point past which there
+    is no longer time to re-fill the slot, and no per-person clock can be
+    allowed to run past that. Set the hours to nothing and the fixed date is
+    the whole answer — one deadline for the room, which is what you want when
+    the class is close enough that everybody is being asked at once.
+    """
+    now = now or datetime.now(timezone.utc)
+    own = _aware(p.confirm_due)
+    if own:
+        # Set when somebody is asked outside the normal run — off the waitlist,
+        # after the event's own cut-off. Theirs wins outright; the event date
+        # is about having time to re-fill, and filling is what just happened.
+        return own
+    hours = p.event.confirm_hours or 0
+    hard = _aware(p.event.confirm_by)
+    if not hours:
+        # The rolling clock is switched off, so a fixed date is the whole
+        # answer — and with neither set there is no deadline at all and
+        # nobody can lapse.
+        return hard
+    start = _aware(p.invited_at) or now
+    soft = start + timedelta(hours=hours)
+    return min(soft, hard) if hard else soft
+
+
 def base_url(request: Request) -> str:
     """The public origin, honouring the proxy Railway puts in front of us."""
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
@@ -170,12 +207,17 @@ def base_url(request: Request) -> str:
 
 def counts(event: Event) -> dict:
     """Every headline number on the tracker, from one pass over the list."""
-    ps = event.participants
+    # The waitlist is not in the room. Counting them in "confirmed 4 of 30"
+    # or in a send list would mean every number on this page answers a
+    # different question from the one you asked it.
+    ps = [p for p in event.participants if not p.waitlist]
+    waiting_list = [p for p in event.participants if p.waitlist]
     live = [p for p in ps if not p.released_at]
     confirmed = [p for p in live if p.confirmed]
     posted = [p for p in confirmed if p.posted]
     return {
         "total": len(ps),
+        "waitlist": len(waiting_list),
         "live": len(live),
         "confirmed": len(confirmed),
         "declined": len([p for p in ps if p.declined]),
@@ -223,12 +265,14 @@ def register(app, deps):
         """
         now = now or datetime.now(timezone.utc)
         ev = p.event
+        if p.waitlist:
+            return "waiting"
         if p.released_at:
             return "released"
         if p.declined:
             return "declined"
         if p.rsvp == RSVP_NONE:
-            by = _aware(ev.confirm_by)
+            by = confirm_deadline(p, now)
             return "lapsed" if (by and now > by) else "confirm"
         # Confirmed from here on.
         if p.posted:
@@ -246,7 +290,8 @@ def register(app, deps):
         ev = p.event
         return {
             "request": request, "p": p, "ev": ev, "stage": _stage(p, now),
-            "confirm_left": left_until(ev.confirm_by, now),
+            "confirm_left": left_until(confirm_deadline(p, now), now),
+            "confirm_by": _fmt_when(confirm_deadline(p, now)),
             "reel_left": left_until(ev.reel_deadline, now),
             "reward": ev.reward(p.reward_key) if p.reward_key else None,
             "now": now,
@@ -414,9 +459,13 @@ def register(app, deps):
         if not ev:
             return RedirectResponse("/events", status_code=303)
         _release_lapsed(db, ev)
-        people = sorted(ev.participants, key=lambda p: (p.name or "").lower())
+        everyone = sorted(ev.participants, key=lambda p: (p.name or "").lower())
+        people = [p for p in everyone if not p.waitlist]
+        waiting = [p for p in everyone if p.waitlist]
         return render(request, "event_detail.html", db, staff, active="events",
-                      ev=ev, tab=tab, people=people, c=counts(ev),
+                      ev=ev, tab=tab, people=people, waiting=waiting,
+                      upload=request.session.pop("event_upload", None),
+                      c=counts(ev),
                       lists={k: len(v) for k, v in mail_lists(ev).items()},
                       reel_left=left_until(ev.reel_deadline),
                       base=base_url(request), tag_labels=TAG_LABELS,
@@ -431,13 +480,16 @@ def register(app, deps):
         worker, and a number that only updates when somebody is looking at it
         is exactly as correct as one that updates constantly.
         """
-        by = _aware(ev.confirm_by)
-        if not by or datetime.now(timezone.utc) <= by:
-            return 0
+        now = datetime.now(timezone.utc)
         n = 0
         for p in ev.participants:
-            if p.rsvp == RSVP_NONE and not p.released_at:
-                p.released_at = datetime.now(timezone.utc)
+            if p.rsvp != RSVP_NONE or p.released_at or p.waitlist:
+                continue
+            # Each person's own clock. Somebody we have not written to yet has
+            # a deadline quoted from now, so they can never lapse unasked.
+            by = confirm_deadline(p, now)
+            if by and now > by:
+                p.released_at = now
                 n += 1
         if n:
             db.commit()
@@ -462,7 +514,8 @@ def register(app, deps):
             starts_at: str = Form(""), venue: str = Form(""),
             capacity: str = Form("30"), bring: str = Form(""), perk: str = Form(""),
             handles: str = Form(""), hashtag: str = Form(""),
-            reel_hours: str = Form("48"), confirm_by: str = Form(""),
+            reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
+            confirm_by: str = Form(""),
             code_prefix: str = Form("EV"),
             reward_a: str = Form(""), reward_a_detail: str = Form(""),
             reward_a_value: str = Form(""),
@@ -507,6 +560,9 @@ def register(app, deps):
         ev.bring, ev.perk = bring.strip(), perk.strip()
         ev.handles, ev.hashtag = handles.strip(), hashtag.strip()
         ev.reel_hours = num(reel_hours, 48) or 48
+        # Zero is a real answer here — it switches the rolling clock off and
+        # hands the whole job to the fixed date below.
+        ev.confirm_hours = num(confirm_hours, 48)
         ev.confirm_by = dt(confirm_by)
         ev.code_prefix = (code_prefix.strip()[:4].upper() or "EV")
         ev.reward_a, ev.reward_a_detail = reward_a.strip(), reward_a_detail.strip()
@@ -559,6 +615,146 @@ def register(app, deps):
             added += 1
         db.commit()
         return RedirectResponse(f"/events/{eid}?added={added}", status_code=303)
+
+    #: What a column in an uploaded file might be called. People export from a
+    #: sign-up sheet, a Google Form or a phone's contacts, and none of them
+    #: agree on a name — so match on meaning rather than making you rename
+    #: headers before you can upload.
+    _CSV_FIELDS = {
+        "name": ("name", "full name", "fullname", "participant", "member"),
+        "email": ("email", "e-mail", "email address", "mail"),
+        "instagram": ("instagram", "ig", "handle", "instagram handle", "@"),
+        "waitlist": ("waitlist", "wait list", "waiting list", "list", "status",
+                     "type"),
+    }
+    #: A waitlist cell can say any of these. Anything else means "in the room".
+    _WAIT_WORDS = {"y", "yes", "true", "1", "w", "wait", "waitlist",
+                   "waiting", "waiting list", "reserve", "standby"}
+
+    def _csv_rows(raw: bytes):
+        """(rows, error) — the uploaded file as dicts keyed by our field names."""
+        for encoding in ("utf-8-sig", "utf-16", "latin-1"):
+            try:
+                text = raw.decode(encoding)
+                break
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        else:
+            return [], "that file isn't readable as text"
+        try:
+            dialect = csv.Sniffer().sniff(text[:2048], delimiters=",;\t")
+        except csv.Error:
+            dialect = csv.excel
+        reader = csv.reader(io.StringIO(text), dialect)
+        try:
+            header = next(reader)
+        except StopIteration:
+            return [], "that file is empty"
+        # Map each column we recognise onto one of our field names.
+        cols = {}
+        for i, cell in enumerate(header):
+            key = (cell or "").strip().lower().lstrip("@")
+            for field, names in _CSV_FIELDS.items():
+                if key in names and field not in cols:
+                    cols[field] = i
+        if "name" not in cols:
+            return [], ("no <b>name</b> column — the first row has to be the "
+                        "headings, and one of them has to say “name”")
+        out = []
+        for row in reader:
+            def cell(field):
+                i = cols.get(field)
+                return (row[i].strip() if i is not None and i < len(row) else "")
+            if not cell("name"):
+                continue
+            out.append({"name": cell("name"), "email": cell("email"),
+                        "instagram": cell("instagram"),
+                        "waitlist": cell("waitlist").lower() in _WAIT_WORDS})
+        return out, ""
+
+    @app.post("/events/{eid}/people/upload")
+    def event_upload_people(request: Request, eid: int,
+                            file: UploadFile = None,
+                            db: Session = Depends(get_db)):
+        """Load the whole list from one file, waitlist included.
+
+        The waitlist has to arrive at the same moment as everybody else. Its
+        entire purpose is that the replacement is already on file at the point
+        somebody drops out — a waitlist you have to go and find is a waitlist
+        that costs you the slot.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        back = f"/events/{eid}"
+        if file is None or not (file.filename or ""):
+            return RedirectResponse(back + "?up=nofile", status_code=303)
+        raw = file.file.read(4 * 1024 * 1024)
+        rows, err = _csv_rows(raw)
+        if err:
+            request.session["event_upload"] = {"error": err}
+            return RedirectResponse(back + "?up=bad", status_code=303)
+        seen = {(p.email or "").lower() for p in ev.participants if p.email}
+        added = waiting = dupes = 0
+        for r in rows:
+            addr = r["email"]
+            if addr and not looks_like_email(addr):
+                addr = ""
+            if addr and addr.lower() in seen:
+                dupes += 1
+                continue
+            if addr:
+                seen.add(addr.lower())
+            db.add(EventParticipant(
+                event_id=ev.id, name=r["name"][:120], email=addr,
+                instagram=clean_handle(r["instagram"]),
+                waitlist=r["waitlist"], token=new_token()))
+            added += 1
+            if r["waitlist"]:
+                waiting += 1
+        db.commit()
+        request.session["event_upload"] = {
+            "added": added, "waiting": waiting, "dupes": dupes}
+        return RedirectResponse(back + "?up=ok", status_code=303)
+
+    @app.post("/events/{eid}/people/{pid}/promote")
+    def event_promote(request: Request, eid: int, pid: int,
+                      db: Session = Depends(get_db)):
+        """Give a freed slot to somebody on the waitlist, and tell them.
+
+        Promoting and inviting are one action on purpose. A slot that has been
+        given to somebody who has not been told about it is a slot nobody is
+        going to fill, and the gap between the two steps is exactly where a
+        replacement gets forgotten.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        p = db.get(EventParticipant, pid)
+        if not ev or not p or p.event_id != eid:
+            return RedirectResponse(f"/events/{eid}", status_code=303)
+        if p.waitlist:
+            p.waitlist = False
+            # A day to answer, from now. Not the event's date — that may
+            # already be behind us, and a slot somebody cannot accept is not
+            # a slot you have filled.
+            p.confirm_due = (datetime.now(timezone.utc)
+                             + timedelta(hours=ev.confirm_hours or 24))
+            p.released_at = None
+            db.commit()
+        if looks_like_email(p.email or ""):
+            request.session["event_mail"] = _send(
+                db, ev, [p], "invite", base_url(request))
+        else:
+            request.session["event_mail"] = {
+                "sent": [], "failed": [], "kind": "invite",
+                "skipped": [{"name": p.name, "detail": "no email on record — "
+                             "copy their link from the table instead"}]}
+        return RedirectResponse(f"/events/{eid}?promoted={pid}", status_code=303)
 
     @app.post("/events/{eid}/people/{pid}/edit")
     def event_edit_person(request: Request, eid: int, pid: int,
@@ -691,7 +887,10 @@ def register(app, deps):
         Every send button is labelled with one of these counts, so you can see
         what a button will do before you press it rather than after.
         """
-        live = [p for p in ev.participants if not p.released_at]
+        # Waitlisted people are deliberately unreachable: an invitation to
+        # somebody who has not been given a slot is a promise we cannot keep.
+        live = [p for p in ev.participants
+                if not p.released_at and not p.waitlist]
         # Somebody with no address on record can never be emailed, so counting
         # them in "still to send" leaves a button that always offers to send to
         # one more person and never can. They get their own number instead.
@@ -760,7 +959,9 @@ def register(app, deps):
     def _invite_mail(ev, p, url):
         """The 'you're in, confirm your slot' email."""
         when = _fmt_when(ev.starts_at)
-        by = _fmt_when(ev.confirm_by)
+        # Their own deadline: a fixed date if you set one, otherwise the clock
+        # that starts the moment this email sends.
+        by = _fmt_when(confirm_deadline(p))
         first = (p.name or "").split()[0] if p.name else "there"
         subject = "You're in — confirm your %s slot" % ev.name
         text = "\n".join([
@@ -769,24 +970,19 @@ def register(app, deps):
             "%s%s" % (ev.name, " · %s" % when if when else ""),
             "%s" % (ev.venue or ""),
             "",
-            "%s is covering this one so it can be free for the community. The "
-            "way we say thank you is simple — everyone shares one Reel "
-            "afterwards." % (ev.sponsor or "Our sponsor"),
+            "%s is fuelling us after the class. All we ask in return is one "
+            "Reel." % (ev.sponsor or "Our sponsor"),
             "",
             "Confirm your slot here: %s" % url,
             "",
-            ("We're holding your slot until %s. If we haven't heard from you "
-             "by then we'll pass it to someone on the waitlist. No hard "
-             "feelings either way, just let us know." % by) if by else "",
+            ("Let us know by %s — we're holding your slot until then, after "
+             "that it goes to the next person." % by) if by else "",
         ])
         html = _shell(ev, """
-          <h1 style="font-size:20px;font-weight:650;margin:0 0 4px">You got a slot, %s 🎉</h1>
-          <p style="color:#6b7683;font-size:14px;margin:0 0 18px">Here's everything,
-             and one thing we need back from you.</p>
+          <h1 style="font-size:20px;font-weight:650;margin:0 0 14px">You got a slot, %s 🎉</h1>
           %s
-          <p style="font-size:15px;margin:0 0 16px;color:#2b3642">%s is covering this one so it
-             can be free for the community. The way we say thank you is simple — everyone
-             shares one Reel afterwards.</p>
+          <p style="font-size:15px;margin:0 0 16px;color:#2b3642">%s is fuelling us after
+             the class. All we ask in return is one Reel.</p>
           %s
           %s
           %s
@@ -796,10 +992,8 @@ def register(app, deps):
             _esc(ev.sponsor or "Our sponsor"),
             _button(url, "Confirm my slot →", "Takes under a minute"),
             _window_note(
-                "<b>Heads up on timing.</b> We're holding your slot until <b>%s</b>. "
-                "If we haven't heard from you by then we'll pass it to someone on the "
-                "waitlist. No hard feelings either way, just let us know." % _esc(by)
-            ) if by else "",
+                "<b>Let us know by %s.</b> We're holding your slot until then, "
+                "after that it goes to the next person." % _esc(by)) if by else "",
             _rewards_block(ev, "What you get for sharing"),
         ))
         return subject, text, html
@@ -812,8 +1006,8 @@ def register(app, deps):
         text = "\n".join([
             "Thank you, %s." % first,
             "",
-            "Thanks for turning up. %s backed this one so it could be free for "
-            "the community." % (ev.sponsor or "Our sponsor"),
+            "Thanks for turning up, and to %s for fuelling us after."
+            % (ev.sponsor or "Our sponsor"),
             "",
             "Submit your Reel and pick your reward: %s" % url,
             "",
@@ -823,10 +1017,10 @@ def register(app, deps):
         ])
         html = _shell(ev, """
           <h1 style="font-size:20px;font-weight:650;margin:0 0 4px">Thank you, %s 🙌</h1>
-          <p style="color:#6b7683;font-size:14px;margin:0 0 18px">%s</p>
-          <p style="font-size:15px;margin:0 0 16px;color:#2b3642">You turned up and worked.
-             That's the whole reason we run these. %s backed it so it could be free for the
-             community.</p>
+          <p style="color:#6b7683;font-size:14px;margin:0 0 16px">%s</p>
+          <p style="font-size:15px;margin:0 0 16px;color:#2b3642">You turned up and worked —
+             that's the whole reason we run these. And thanks to %s for fuelling us
+             after.</p>
           %s
           %s
           %s
@@ -840,7 +1034,7 @@ def register(app, deps):
                 % (_esc(by), _esc(" and ".join(ev.handle_list)),
                    (", use <b>%s</b>" % _esc(ev.hashtag)) if ev.hashtag else "")
             ) if by else "",
-            _rewards_block(ev, "Choose one when you submit"),
+            _rewards_block(ev, "Your reward"),
         ))
         return subject, text, html
 
@@ -950,20 +1144,43 @@ def _window_note(html) -> str:
 
 
 def _rewards_block(ev, title) -> str:
+    """The reward, or the choice of rewards.
+
+    A tick against each line reads as a list of things you are getting. There
+    is only ever one — so with more than one on offer they are drawn as
+    alternatives with an "or" between them, and the caption says so outright.
+    Somebody who turns up expecting both has been told the wrong thing by us,
+    and that is a worse start than offering nothing.
+    """
     rs = ev.rewards
     if not rs:
         return ""
-    items = "".join(
-        '<div style="font-size:14px;color:#2b3642;margin-bottom:8px">'
-        '<span style="color:#008080;font-weight:700">✓</span> '
-        '<b>%s</b> — %s%s</div>'
-        % (_esc(r["value"]), _esc(r["name"]),
-           " · %s" % _esc(r["detail"]) if r["detail"] else "")
-        for r in rs)
+    one = len(rs) == 1
+
+    def card(r):
+        # "A discount code for X", not "20% off X". The number is not settled
+        # until the sponsor signs it off, and a figure printed in an email is
+        # a figure we are held to — the offer is the code, not the percentage.
+        return ('<table width="100%%" cellpadding="0" cellspacing="0"><tr>'
+                '<td style="border:1px solid #e4e8ed;border-radius:8px;'
+                'padding:11px 14px;font-size:14px;color:#2b3642">'
+                '%sA discount code for <b>%s</b>%s</td></tr></table>'
+                % ('<span style="color:#008080;font-weight:700">✓</span> ' if one else "",
+                   _esc(r["name"]),
+                   _esc(" · %s" % r["detail"] if r["detail"] else "")))
+
+    divider = ('<div style="font-size:11px;font-weight:700;letter-spacing:1.4px;'
+               'text-transform:uppercase;color:#9aa3ab;text-align:center;'
+               'margin:8px 0">or</div>')
+    items = divider.join(card(r) for r in rs)
+    caption = "" if one else (
+        '<div style="font-size:12px;color:#6b7683;margin:0 0 10px">'
+        'Pick one when you send your Reel.</div>')
     return ('<div style="border-top:1px solid #e4e8ed;margin-top:24px;padding-top:20px">'
             '<div style="font-size:11px;font-weight:700;letter-spacing:1.4px;'
-            'text-transform:uppercase;color:#6b7683;margin-bottom:10px">%s</div>%s</div>'
-            % (_esc(title), items))
+            'text-transform:uppercase;color:#6b7683;margin-bottom:10px">%s</div>'
+            '%s%s</div>'
+            % (_esc(title), caption, items))
 
 
 def _shell(ev, body) -> str:
