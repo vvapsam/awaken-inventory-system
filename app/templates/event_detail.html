@@ -164,6 +164,9 @@
   {% if c.gone %}
   <a href="?tab=gone" class="{{ 'on' if tab == 'gone' }}">Can't make it · {{ c.gone }}</a>
   {% endif %}
+  {% if c.confirmed %}
+  <a href="?tab=door" class="{{ 'on' if tab == 'door' }}">Door · {{ c.arrived }}/{{ c.confirmed }}</a>
+  {% endif %}
 </div>
 
 {% if upload and upload.error %}
@@ -177,7 +180,7 @@
 {% endif %}
 
 {# ============================================================ PARTICIPANTS #}
-{% if tab not in ('reels', 'waitlist', 'gone') %}
+{% if tab not in ('reels', 'waitlist', 'gone', 'door') %}
 
 {% if not people %}
 <div class="card"><p class="muted" style="margin:0 0 10px">Nobody on the list yet. Paste your
@@ -341,6 +344,46 @@
     </div>
   </div>
 </details>
+
+{# =================================================================== DOOR #}
+{# Everyone who said they're coming, and whether they have walked in. The QR
+   on their page is the fast path; this is the list for the phone that died on
+   the way, and the one you read out at the end to see who never showed. #}
+{% elif tab == 'door' %}
+
+<div class="card" style="margin-top:12px">
+  <div class="row-between" style="align-items:center;gap:14px;flex-wrap:wrap">
+    <p class="muted small" style="margin:0;flex:1;min-width:240px">
+      <b>{{ c.arrived }} of {{ c.confirmed }} in.</b> Open the scanner and hold
+      their code up to it. Their own phone camera works too. Tap a row here
+      instead if their phone is flat.</p>
+    <a class="btn primary" href="/events/{{ ev.id }}/scan"
+       style="white-space:nowrap">📷 Open the scanner</a>
+  </div>
+</div>
+
+{{ searchbar('dr', 'Search name, email, handle…') }}
+<table id="dr">
+  <thead><tr><th style="width:1%"></th><th>Coming</th><th>Instagram</th>
+    <th>Checked in</th></tr></thead>
+  <tbody>
+  {% for p in people if p.confirmed %}
+  <tr {% if p.arrived_at %}style="background:var(--teal-tint)"{% endif %}>
+    <td><button class="btn {{ '' if p.arrived_at else 'primary' }}" form="ar-{{ p.id }}"
+                style="margin:0;white-space:nowrap">
+      {{ '✓ In' if p.arrived_at else 'Check in' }}</button></td>
+    <td><div class="primary">{{ p.name }}</div>
+      <div class="sub">{{ p.email or 'No email on record' }}</div></td>
+    <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>{% else %}—{% endif %}</td>
+    <td>{% if p.arrived_at %}<span class="tag">{{ p.arrived_at.strftime('%d %b, %H:%M') }}</span>
+      {% else %}<span class="muted small">Not yet</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% for p in people if p.confirmed %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/arrive" id="ar-{{ p.id }}" hidden></form>
+{% endfor %}
 
 {# ========================================================== CAN'T MAKE IT #}
 {% elif tab == 'gone' %}

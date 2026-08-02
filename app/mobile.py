@@ -19,6 +19,7 @@ from .db import get_db
 from .models import (
     Product, Staff, PricingGroup, Waiver, can, can_any,
     Transaction, TransactionItem, TX_CASH_SALE, TX_PAYMENT, TX_INVENTORY, TX_ORDER,
+    EVENT_CLOSED, EVENT_DRAFT, Event,
 )
 
 router = APIRouter()
@@ -197,6 +198,41 @@ def sales_history(request: Request, db: Session = Depends(get_db)):
         "today": _sales_today(db, staff, tz),
         "sales": [_sale_brief(s, tz, covered) for s in rows],
     }
+
+
+# ---------------------------------------------------------------- events
+@router.get("/api/m/events")
+def m_events(request: Request, db: Session = Depends(get_db)):
+    """The classes somebody on the door could be scanning for.
+
+    Drafts and closed events are left out: you cannot be standing at the door
+    of a class that has not been set up or has already been packed away, and a
+    list with them in is a list you have to read before you can use it.
+    """
+    staff = current_staff(request, db)
+    if not staff:
+        return _err("Not signed in", 401)
+    if not can(staff, "manage_hyrox"):
+        return _err("Not allowed", 403)
+    evs = (db.query(Event)
+           .filter(~Event.status.in_([EVENT_DRAFT, EVENT_CLOSED]))
+           .order_by(Event.starts_at.is_(None), Event.starts_at).all())
+    tz = _tz()
+    out = []
+    for ev in evs:
+        live = [p for p in ev.participants if not p.waitlist and not p.released_at]
+        coming = [p for p in live if p.confirmed]
+        when = ev.starts_at
+        if when is not None:
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            when = when.astimezone(tz).strftime("%a %d %b, %I:%M %p").replace(" 0", " ")
+        out.append({
+            "id": ev.id, "name": ev.name, "sponsor": ev.sponsor or "",
+            "when": when or "", "venue": ev.venue or "",
+            "in": len([p for p in coming if p.arrived_at]), "of": len(coming),
+        })
+    return {"ok": True, "events": out}
 
 
 # ---------------------------------------------------------------- page shell

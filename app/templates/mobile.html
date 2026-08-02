@@ -119,6 +119,40 @@ input,select{font-family:inherit;font-size:16px}
 .h-menu .hm-item:active{background:var(--paper)}
 .h-menu .hm-item.danger{color:#c0392b;border-top:1px solid var(--line)}
 .h-menu .hm-item.danger svg{color:#c0392b}
+/* events + scan */
+.pad{padding:2px 0 18px}
+.evlist{display:flex;flex-direction:column;gap:10px}
+.evrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  background:#fff;border:1px solid #e6e9ee;border-radius:14px;padding:14px 15px;
+  font:inherit;color:inherit;cursor:pointer}
+.evrow:active{background:#f4f6f8}
+.evrow .t{flex:1;min-width:0}
+.evrow .t b{display:block;font-size:1rem;letter-spacing:-.01em}
+.evrow .t small{display:block;color:#6b7683;font-size:.83rem;margin-top:2px}
+.evrow .c{flex:none;font-size:.8rem;font-weight:700;color:#006a6a;
+  background:#e6f2f2;border-radius:999px;padding:5px 10px;font-variant-numeric:tabular-nums}
+.sc-count{text-align:center;color:#6b7683;font-size:.9rem;margin-bottom:10px}
+.sc-count b{color:#12202e;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.sc-box{position:relative;aspect-ratio:1;border-radius:16px;overflow:hidden;
+  background:#14171a;display:flex;align-items:center;justify-content:center}
+.sc-box video{width:100%;height:100%;object-fit:cover;display:block}
+.sc-start{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:24px;color:#c8ced4}
+.sc-start[hidden]{display:none}
+.sc-start .btn{background:#008080;color:#fff;border:0;border-radius:12px;
+  padding:13px 22px;font:inherit;font-weight:650;font-size:1rem}
+.sc-hint{font-size:.83rem;color:#8f979f;margin-top:9px}
+.sc-ret{display:none;position:absolute;inset:14%;border-radius:12px;
+  box-shadow:0 0 0 100vmax rgba(20,23,26,.34);pointer-events:none}
+.sc-box.live .sc-ret{display:block;border:2px solid rgba(255,255,255,.92)}
+.sc-out{margin-top:14px;padding:16px 18px;border-radius:14px;text-align:center}
+.sc-out .s{font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+.sc-out .n{font-size:1.5rem;font-weight:650;letter-spacing:-.015em;line-height:1.2;margin-top:4px}
+.sc-out .d{font-size:.86rem;margin-top:3px;opacity:.85}
+.sc-out.in{background:#e6f2f2;color:#006a6a}
+.sc-out.again{background:#fdf4e3;color:#8a6414}
+.sc-out.bad{background:#fdf2f2;color:#8c2c20}
+
 /* recent sales (home) + history screen */
 .seclbl2{display:flex;align-items:center;justify-content:space-between;margin:10px 4px 0}
 .seclbl2 .t{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#9aa1aa}
@@ -330,6 +364,11 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 <body>
 
 <!-- ============ HOME ============ -->
+<!-- Safari has no barcode reader of its own, so the decoder ships with the
+     app rather than coming off somebody else's CDN — a bad minute on their
+     network should not be a door that stops working. -->
+<script src="/static/jsqr.js" defer></script>
+
 <section id="s-home" class="screen active">
   <div class="h-hero">
     <div class="h-top">
@@ -400,6 +439,10 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg>
       Signed waivers
     </a>
+    <button class="hm-item hide" id="home-menu-events" type="button" data-go="events">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 15 2 2 4-4"/></svg>
+      Events
+    </button>
     <a class="hm-item hide" id="home-menu-dash" href="/dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
       Full dashboard
@@ -574,6 +617,39 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
 </section>
 
 <!-- ============ CONFIRMATION ============ -->
+<!-- ============ EVENTS ============ -->
+<section id="s-events" class="screen">
+  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Home</button><h2 class="hd">Events</h2></div>
+  <div class="pad">
+    <div class="evlist" id="ev-list"></div>
+    <div class="muted" id="ev-empty" style="display:none">No class is open right now.
+      Anything still a draft, or already closed, is left out.</div>
+  </div>
+</section>
+
+<!-- ============ SCAN ============ -->
+<section id="s-scan" class="screen">
+  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Events</button><h2 class="hd" id="sc-title">Scan</h2></div>
+  <div class="pad">
+    <div class="sc-count"><b id="sc-in">0</b> of <b id="sc-of">0</b> in</div>
+    <div class="sc-box" id="sc-box">
+      <video id="sc-cam" playsinline muted></video>
+      <div class="sc-ret"></div>
+      <div class="sc-start" id="sc-start">
+        <button class="btn" id="sc-go" type="button">Start the camera</button>
+        <div class="sc-hint">Your phone will ask for permission.</div>
+      </div>
+    </div>
+    <div class="sc-out" id="sc-out" style="display:none">
+      <div class="s" id="sc-state"></div>
+      <div class="n" id="sc-name"></div>
+      <div class="d" id="sc-note"></div>
+    </div>
+    <div class="muted" id="sc-tip" style="margin-top:12px;text-align:center">
+      Hold their code inside the frame.</div>
+  </div>
+</section>
+
 <section id="s-done" class="screen">
   <div class="conf" id="done-body"></div>
   <div class="actionbar"><button class="bigbtn" id="done-home">Back to home</button></div>
@@ -592,8 +668,12 @@ function show(name){
   window.scrollTo(0,0);
 }
 function go(name){ stack.push(name); show(name); }
-function back(){ if(stack.length>1){stack.pop();} show(stack[stack.length-1]); }
-function home(){ stack=['home']; show('home'); }
+function back(){ if(stack.length>1){stack.pop();} show(stack[stack.length-1]); leaving(); }
+function home(){ stack=['home']; show('home'); leaving(); }
+// A camera left running behind another screen is a hot phone and a flat
+// battery halfway through a class.
+function leaving(){ if(stack[stack.length-1]!=='scan' && typeof scStop==='function') scStop(); }
+window.addEventListener('pagehide',function(){ if(typeof scStop==='function') scStop(); });
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-back]'); if(b){back();}
   const g=e.target.closest('[data-go]'); if(g){openScreen(g.dataset.go);}
@@ -606,8 +686,133 @@ function openScreen(name){
   if(name==='balances') initBalances();
   if(name==='history') initHistory();
   if(name==='approvals') initApprovals();
+  if(name==='events'){ toggleAcctMenu(false); initEvents(); }
   go(name);
 }
+
+// ---- events, and the door ------------------------------------------------
+// Pick the class first, then scan. The event has to be chosen because a code
+// carries a person, not a room — and checking somebody into the wrong class
+// is a number you will not notice is wrong until afterwards.
+let scEvent=null, scStream=null, scRunning=false, scDetector=null,
+    scLast='', scLastAt=0, scBusy=false;
+
+function initEvents(){
+  const list=$('#ev-list'), empty=$('#ev-empty');
+  list.innerHTML='<div class="muted">Loading…</div>';
+  fetch('/api/m/events',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{
+    const evs=(j&&j.events)||[];
+    list.innerHTML='';
+    empty.style.display=evs.length?'none':'';
+    evs.forEach(ev=>{
+      const b=document.createElement('button');
+      b.type='button'; b.className='evrow';
+      const bits=[ev.when,ev.venue].filter(Boolean).join(' · ');
+      b.innerHTML='<span class="t"><b></b><small></small></span><span class="c"></span>';
+      b.querySelector('b').textContent=ev.name;
+      b.querySelector('small').textContent=bits||(ev.sponsor||'');
+      b.querySelector('.c').textContent=ev['in']+'/'+ev.of;
+      b.onclick=()=>openScan(ev);
+      list.appendChild(b);
+    });
+  }).catch(()=>{ list.innerHTML='<div class="muted">Could not load the classes.</div>'; });
+}
+
+function openScan(ev){
+  scEvent=ev;
+  $('#sc-title').textContent=ev.name;
+  $('#sc-in').textContent=ev['in']; $('#sc-of').textContent=ev.of;
+  $('#sc-out').style.display='none';
+  $('#sc-start').hidden=false;
+  $('#sc-box').classList.remove('live');
+  $('#sc-tip').textContent='Hold their code inside the frame.';
+  go('scan');
+}
+
+function scShow(kind,name,note){
+  const out=$('#sc-out');
+  out.style.display=''; out.className='sc-out '+kind;
+  $('#sc-state').textContent = kind==='in' ? '✓ Checked in'
+    : kind==='again' ? 'Already in' : 'Not recognised';
+  $('#sc-name').textContent=name||'';
+  $('#sc-note').textContent=note||'';
+  if(navigator.vibrate) navigator.vibrate(kind==='bad'?[40,60,40]:30);
+}
+
+function scSend(code){
+  if(scBusy||!scEvent) return;
+  scBusy=true;
+  const body=new URLSearchParams(); body.append('code',code);
+  fetch('/events/'+scEvent.id+'/scan',{method:'POST',body:body,credentials:'same-origin'})
+    .then(r=>r.json()).then(d=>{
+      if(d.counts){ $('#sc-in').textContent=d.counts['in']; $('#sc-of').textContent=d.counts.of; }
+      if(!d.ok) scShow('bad','',d.why||'That code did not match anybody.');
+      else scShow(d.fresh?'in':'again',d.name,d.note);
+    })
+    .catch(()=>scShow('bad','','Lost the connection — try that one again.'))
+    .then(()=>{ scBusy=false; });
+}
+
+// The same code stays in front of the lens for a second or two after a scan.
+// Without this it would post twenty times while somebody puts their phone away.
+function scHit(code){
+  const now=Date.now();
+  if(code===scLast && now-scLastAt<2500) return;
+  scLast=code; scLastAt=now; scSend(code);
+}
+
+function scTick(){
+  if(!scRunning) return;
+  const v=$('#sc-cam');
+  if(v.readyState===v.HAVE_ENOUGH_DATA){
+    if(scDetector){
+      scDetector.detect(v).then(cs=>{ if(cs&&cs.length) scHit(cs[0].rawValue); }).catch(()=>{});
+    } else if(window.jsQR){
+      const cv=scCanvas(); cv.width=v.videoWidth; cv.height=v.videoHeight;
+      if(cv.width&&cv.height){
+        const cx=cv.getContext('2d',{willReadFrequently:true});
+        cx.drawImage(v,0,0,cv.width,cv.height);
+        const img=cx.getImageData(0,0,cv.width,cv.height);
+        const got=window.jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
+        if(got&&got.data) scHit(got.data);
+      }
+    }
+  }
+  setTimeout(scTick,220);
+}
+let _scCanvas=null;
+function scCanvas(){ if(!_scCanvas) _scCanvas=document.createElement('canvas'); return _scCanvas; }
+
+function scStop(){
+  scRunning=false;
+  if(scStream){ scStream.getTracks().forEach(t=>t.stop()); scStream=null; }
+  $('#sc-cam').srcObject=null;
+  $('#sc-box').classList.remove('live');
+  $('#sc-start').hidden=false;
+}
+
+$('#sc-go').onclick=function(){
+  const v=$('#sc-cam'), tip=$('#sc-tip');
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    tip.textContent="This browser won't open a camera. Point your phone's own "+
+      "camera app at the code instead — it opens the same check-in.";
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false})
+    .then(st=>{ scStream=st; v.srcObject=st; v.setAttribute('playsinline',''); return v.play(); })
+    .then(()=>{
+      $('#sc-start').hidden=true;
+      $('#sc-box').classList.add('live');
+      tip.textContent='Keep scanning — the camera stays on for the next one.';
+      if('BarcodeDetector' in window){
+        try{ scDetector=new window.BarcodeDetector({formats:['qr_code']}); }
+        catch(e){ scDetector=null; }
+      }
+      scRunning=true; scTick();
+    })
+    .catch(()=>{ tip.textContent="Couldn't open the camera — check the permission, "+
+      "or use your phone's own camera app on the code instead."; });
+};
 
 // ---- sales history (home preview + full screen) ----
 const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>';
@@ -726,6 +931,7 @@ async function boot(){
   $('#home-menu-dash').classList.toggle('hide', !isAdmin);
   $('#home-menu-kiosk').classList.toggle('hide', !(isAdmin || (DATA.perms && DATA.perms.manage_kiosk)));
   $('#home-menu-waivers').classList.toggle('hide', !(isAdmin || (DATA.perms && DATA.perms.view_waivers)));
+  $('#home-menu-events').classList.toggle('hide', !(isAdmin || (DATA.perms && DATA.perms.manage_hyrox)));
   const d=new Date();
   $('#home-date').textContent=d.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'});
 }

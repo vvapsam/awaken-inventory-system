@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block body %}
+{# `who`, not `p` — base.html already binds `p` to the request path.
+
+   The receipt for a scan. They are already checked in by the time this
+   renders: the scan was the decision, and a queue at a door is the one place
+   an extra tap is expensive. So this page's whole job is to say who it was,
+   large enough to read at arm's length, and to offer a way back if it was the
+   wrong person. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ ev.name }}</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ c.arrived }} of {{ c.confirmed }} in
+      · {{ c.to_arrive }} still to arrive</p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}?tab=door">The door list</a>
+  </div>
+</div>
+
+<div class="card ckcard">
+  {% if fresh %}
+  <div class="ckstate in">✓ Checked in</div>
+  {% else %}
+  <div class="ckstate warn">Already checked in</div>
+  {% endif %}
+
+  <div class="ckname">{{ who.name }}</div>
+
+  <div class="ckwhen">
+    {% if not fresh and who.arrived_at %}
+      Scanned {{ who.arrived_at.strftime('%I:%M %p')|replace(' 0',' ')|trim }} — this is
+      the second scan, so nothing changed.
+    {% elif stage in ('ready', 'submit', 'late', 'rewarded') %}
+      On the list{% if who.handle %} · {{ who.handle }}{% endif %}
+    {% elif stage == 'confirm' %}
+      {# Not a refusal. They have a slot, they just never answered — and a door
+         is a bad place to hold that against somebody who turned up. #}
+      Had a slot but never confirmed. Counted as here.
+    {% elif who.waitlist %}
+      Was on the waitlist{% if c.seats_left %} · {{ c.seats_left }}
+      {{ 'slot' if c.seats_left == 1 else 'slots' }} free{% endif %}
+    {% elif who.declined %}
+      Had said they couldn't make it — but they're here.
+    {% else %}
+      Their slot had lapsed — but they're here.
+    {% endif %}
+  </div>
+
+  {# The only button, and it exists because the cost of scanning the wrong
+     screen is somebody standing at a door while you find a way to reverse it. #}
+  <form method="post" action="/i/{{ who.token }}" style="margin-top:20px">
+    <input type="hidden" name="undo" value="1">
+    <button class="btn ckundo">Undo — wrong person</button>
+  </form>
+</div>
+
+<p class="muted small" style="text-align:center;margin-top:16px">
+  Scanning one at a time? <a href="/events/{{ ev.id }}/scan">Open the scanner</a>
+  and it stays on between people.</p>
+{% endblock %}

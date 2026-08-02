@@ -34,8 +34,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+import qrcode
+
 from fastapi import Depends, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    HTMLResponse, JSONResponse, RedirectResponse, Response,
+)
 from sqlalchemy.orm import Session
 
 from .db import get_db
@@ -197,6 +201,27 @@ def confirm_deadline(p: EventParticipant, now=None):
     return min(soft, hard) if hard else soft
 
 
+#: The pass rides inside the confirmation email under this Content-ID.
+PASS_CID = "event-pass"
+
+
+def qr_png(url: str) -> bytes:
+    """A QR of a URL, as PNG bytes.
+
+    It encodes the check-in address rather than the token on its own, so any
+    phone's own camera opens it — nothing to install, and nothing to teach
+    whoever is on the door.
+    """
+    qr = qrcode.QRCode(box_size=10, border=2,
+                       error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color=BLACK, back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def base_url(request: Request) -> str:
     """The public origin, honouring the proxy Railway puts in front of us."""
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
@@ -230,6 +255,8 @@ def counts(event: Event) -> dict:
         "handles": len([p for p in confirmed if p.handle]),
         "invited": len([p for p in live if p.invited_at]),
         "reel_emailed": len([p for p in confirmed if p.reel_email_at]),
+        "arrived": len([p for p in confirmed if p.arrived_at]),
+        "to_arrive": len([p for p in confirmed if not p.arrived_at]),
         "posted": len(posted),
         "to_post": len(confirmed) - len(posted),
         "to_check": len([p for p in posted if p.tags == TAGS_PENDING]),
@@ -350,6 +377,8 @@ def register(app, deps):
         p.instagram = handle
         p.acknowledged_at = now
         db.commit()
+        # Their pass, straight away, while they are still holding the phone.
+        _send_pass(db, p.event, p, base_url(request))
         return RedirectResponse(back + "?done=1", status_code=303)
 
     @app.post("/e/{token}/reel")
@@ -401,6 +430,159 @@ def register(app, deps):
             p.reward_key = picked["key"]
             db.commit()
         return RedirectResponse(f"/e/{token}", status_code=303)
+
+    @app.get("/e/{token}/qr.png")
+    def event_qr(token: str, request: Request, db: Session = Depends(get_db)):
+        """Their pass, as a picture.
+
+        It encodes the check-in URL rather than the token on its own, so any
+        phone's own camera opens it — no scanner app to install and nothing to
+        teach whoever is on the door. The page it opens needs a login, so a
+        photographed QR is worth nothing to a participant.
+        """
+        p = _participant(db, token)
+        if not p:
+            return Response(status_code=404)
+        png = qr_png("%s/i/%s" % (base_url(request), token))
+        return Response(png, media_type="image/png",
+                        headers={"Cache-Control": "private, max-age=300"})
+
+    @app.get("/i/{token}", response_class=HTMLResponse)
+    def event_checkin(request: Request, token: str, db: Session = Depends(get_db)):
+        """Where a scanned QR lands — and the scan itself checks them in.
+
+        No button. A queue at a door is the one place an extra tap is
+        expensive, and whoever is holding the phone made the decision when
+        they pointed it at somebody's screen. What comes back is the receipt:
+        their name, big, and a way to undo it.
+
+        Short path because it is what the QR has to carry, and a shorter
+        payload is a QR with bigger squares — which is the difference between
+        scanning first time in a gym doorway and not.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = _participant(db, token)
+        if not p:
+            return templates.TemplateResponse(
+                "event_gone.html", {"request": request, "reason": "unknown"},
+                status_code=404)
+        # `who`, not `p`: base.html binds `p` to the request path, and a
+        # participant landing in that name renders a blank screen at a door.
+        # Already in means already in. Re-stamping would quietly rewrite the
+        # arrival time each time a screen got scanned twice in a queue.
+        fresh = not p.arrived_at
+        if fresh:
+            p.arrived_at = datetime.now(timezone.utc)
+            db.commit()
+        return render(request, "event_checkin.html", db, staff, active="events",
+                      ev=p.event, who=p, stage=_stage(p), c=counts(p.event),
+                      fresh=fresh)
+
+    @app.post("/i/{token}")
+    def event_checkin_mark(request: Request, token: str,
+                           undo: str = Form(""), db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = _participant(db, token)
+        if not p:
+            return RedirectResponse("/events", status_code=303)
+        # Undo is deliberately as easy as marking: the cost of a wrong scan at
+        # a door is somebody standing there while you find a way to reverse it.
+        p.arrived_at = None if undo else datetime.now(timezone.utc)
+        db.commit()
+        # Back to the door list, never to /i/ — landing there again would scan
+        # them straight back in.
+        return RedirectResponse("/events/%d?tab=door" % p.event_id,
+                                status_code=303)
+
+    @app.get("/events/{eid}/scan", response_class=HTMLResponse)
+    def event_scanner(request: Request, eid: int, db: Session = Depends(get_db)):
+        """The camera, inside the app.
+
+        A phone's own camera app works too — the QR carries a URL for exactly
+        that reason — but it is one person, one scan, one app switch. This
+        keeps the camera open and the count on screen, which is what you want
+        with a queue in front of you.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        return render(request, "event_scan.html", db, staff, active="events",
+                      ev=ev, c=counts(ev))
+
+    @app.post("/events/{eid}/scan")
+    def event_scan_hit(request: Request, eid: int, code: str = Form(""),
+                       db: Session = Depends(get_db)):
+        """One scanned code. Answers in JSON so the camera never has to stop.
+
+        Takes whatever the QR contained — we encode a full URL, so the token
+        is the last path segment — and is deliberately forgiving about it, on
+        the grounds that a door is a bad place to debug a string.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return JSONResponse({"ok": False, "why": "signed out"},
+                                status_code=401)
+        ev = db.get(Event, eid)
+        if not ev:
+            return JSONResponse({"ok": False, "why": "no such event"},
+                                status_code=404)
+        token = (code or "").strip().rstrip("/").split("/")[-1].split("?")[0]
+        p = _participant(db, token) if token else None
+        if not p or p.event_id != eid:
+            return JSONResponse({
+                "ok": False,
+                "why": "That code isn't for this class."
+                       if p else "We don't recognise that code.",
+                "counts": {"in": counts(ev)["arrived"],
+                           "of": counts(ev)["confirmed"]},
+            })
+        fresh = not p.arrived_at
+        if fresh:
+            p.arrived_at = datetime.now(timezone.utc)
+            db.commit()
+        c = counts(ev)
+        stage = _stage(p)
+        # One short line under the name. Whoever is scanning reads it at arm's
+        # length with somebody waiting, so it says what it means and stops.
+        if not fresh:
+            note = "Already scanned in at %s" % _aware(p.arrived_at).strftime(
+                "%I:%M %p").lstrip("0")
+        elif stage in ("ready", "submit", "late", "rewarded"):
+            note = p.handle or "On the list"
+        elif stage == "confirm":
+            note = "Never confirmed — counted as here"
+        elif p.waitlist:
+            note = "Was on the waitlist"
+        elif p.declined:
+            note = "Had said they couldn't make it"
+        else:
+            note = "Their slot had lapsed"
+        return JSONResponse({
+            "ok": True, "fresh": fresh, "name": p.name, "note": note,
+            "token": p.token,
+            "counts": {"in": c["arrived"], "of": c["confirmed"]},
+        })
+
+    @app.post("/events/{eid}/people/{pid}/arrive")
+    def event_arrive(request: Request, eid: int, pid: int,
+                     db: Session = Depends(get_db)):
+        """The same mark, from the tracker — for the phone that died on the way."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse(f"/events/{eid}", status_code=303)
+        p.arrived_at = None if p.arrived_at else datetime.now(timezone.utc)
+        db.commit()
+        return RedirectResponse(f"/events/{eid}?tab=door", status_code=303)
 
     def _mint_code(db, event: Event) -> str:
         """A short, per-person, single-use code — KR-4471.
@@ -1031,6 +1213,75 @@ def register(app, deps):
             _rewards_block(ev, "What you get for sharing"),
         ))
         return subject, text, html
+
+    def _pass_mail(ev, p, url):
+        """"You're in — here's your pass." Sent the moment they confirm.
+
+        The QR rides inside the message rather than as a link, because a
+        doorway is exactly where somebody has no signal and no patience, and
+        an email already sitting in their inbox opens without either.
+        """
+        when = _fmt_when(ev.starts_at)
+        first = (p.name or "").split()[0] if p.name else "there"
+        subject = "You're in — your pass for %s" % ev.name
+        text = "\n".join([
+            "You're confirmed, %s." % first,
+            "",
+            "%s%s" % (ev.name, " · %s" % when if when else ""),
+            "%s" % (ev.venue or ""),
+            "",
+            "Show the code in this email at the door — we'll scan it. If you "
+            "can't find it, your page has the same code: %s" % url,
+        ])
+        html = _shell(ev, """
+          <h1 style="font-size:20px;font-weight:650;margin:0 0 14px">You're in, %s ✅</h1>
+          <p style="font-size:15px;margin:0 0 18px;color:#2b3642">Show this at the door —
+             we'll scan it. No need to print anything.</p>
+          <table width="100%%" cellpadding="0" cellspacing="0"><tr><td align="center"
+            style="border:1px solid #e4e8ed;border-radius:12px;padding:18px 18px 14px">
+            <img src="cid:%s" alt="Your check-in code" width="200"
+                 style="display:block;width:200px;height:200px">
+            <div style="font-size:15px;font-weight:650;margin-top:10px">%s</div>
+            <div style="font-size:12px;color:#6b7683">%s</div>
+          </td></tr></table>
+          %s
+          %s
+        """ % (
+            _esc(first), PASS_CID, _esc(p.name), _esc(ev.name),
+            _facts(ev),
+            _window_note("Can't find this on the day? Your own page carries the same "
+                         "code — <a href=\"%s\" style=\"color:#008080\">open it here</a>."
+                         % _esc(url)),
+        ))
+        return subject, text, html
+
+    def _send_pass(db, ev, p, base):
+        """Best effort, and never in the way of a confirmation.
+
+        Somebody confirming their slot must not see an error because our mail
+        server had a bad minute — the confirmation is the thing that matters
+        and it is already saved by the time we get here.
+        """
+        if p.pass_email_at or not looks_like_email(p.email or ""):
+            return
+        mailer = Mailer()
+        if not mailer.cfg.configured:
+            return
+        url = "%s/e/%s" % (base, p.token)
+        subject, text, html = _pass_mail(ev, p, url)
+        inline = {PASS_CID: qr_png("%s/i/%s" % (base, p.token))}
+        logo = _logo_bytes()
+        if logo:
+            inline[LOGO_CID] = logo
+        if ev.sponsor_logo:
+            inline[SPONSOR_CID] = ev.sponsor_logo
+        try:
+            ok, _ = mailer.send(p.email, subject, text, html=html, inline=inline)
+        except Exception:
+            ok = False
+        if ok:
+            p.pass_email_at = datetime.now(timezone.utc)
+            db.commit()
 
     def _reel_mail(ev, p, url):
         """The 'thank you, here's your reward link' email."""
