@@ -277,6 +277,12 @@ tr.needs:hover td{background:#f6ecd6}
 .mailbar .st{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:11px}
 .mailbar .go{display:flex;gap:7px;flex-wrap:wrap;margin-top:auto}
 .mailbar .go form{margin:0}
+/* The public link is the whole of an open event's first card, so it is shown
+   in full rather than truncated — a link you have to widen a window to read is
+   a link you retype wrong. */
+.publink{flex:1 1 100%;min-width:0;font-size:.82rem;background:var(--panel,#f3f5f7);
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+  color:#2b3642;overflow-wrap:anywhere;line-height:1.4}
 .mailbar .go .btn{margin:0;padding:7px 13px;font-size:.85rem}
 @media(max-width:760px){.mailbar{grid-template-columns:1fr}}
 
