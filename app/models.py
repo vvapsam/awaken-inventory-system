@@ -1124,6 +1124,29 @@ TAG_LABELS = {TAGS_PENDING: "To check", TAGS_OK: "All good",
               TAGS_MISSING: "Needs a word"}
 
 
+#: How people get into an event.
+EVENT_INVITE = "invite"
+EVENT_OPEN = "open"
+EVENT_MODES = [(EVENT_INVITE, "By invitation"), (EVENT_OPEN, "Open registration")]
+
+#: Where a self-registration has got to.
+#: ``draft`` — started, not yet paid for. A real row from the first Save, so a
+#: trip out to the organiser's site can never cost somebody their answers.
+PAY_DRAFT = "draft"
+PAY_SUBMITTED = "submitted"
+PAY_APPROVED = "approved"
+PAY_RETURNED = "returned"
+PAY_LABELS = {
+    PAY_DRAFT: "Not finished",
+    PAY_SUBMITTED: "Waiting on us",
+    PAY_APPROVED: "Approved",
+    PAY_RETURNED: "Sent back",
+}
+
+#: Male / female, as asked for on the form.
+SEXES = [("m", "Male"), ("f", "Female")]
+
+
 class Event(Base):
     """One sponsored class, with the terms of the sponsorship on it.
 
@@ -1147,6 +1170,35 @@ class Event(Base):
     # --- what we ask for in return ---
     handles = Column(String)                     # "@awakenfitnessph @kennyrogersph"
     hashtag = Column(String)                     # "#FuelledByKennyRogers"
+    # --- how people get in ---
+    #: ``invite`` — you upload a list and each person gets a link.
+    #: ``open`` — one public link, anyone can sign up and pay.
+    #: One field, because everything else about an event is the same either way:
+    #: the pass, the door, the Reel and the reward all work unchanged.
+    mode = Column(String, nullable=False, default=EVENT_INVITE)
+    #: Whether the public page is taking registrations right now. Deliberately a
+    #: switch rather than a capacity check — a page that closes itself the moment
+    #: the last slot goes will close on somebody mid-payment.
+    signup_open = Column(Boolean, nullable=False, default=True)
+    #: The step we cannot do for them: registering on the organiser's own site.
+    external_url = Column(String)
+    external_label = Column(String)          # "Register on HYROX"
+    external_note = Column(Text)             # why, and why before paying
+    #: Two rates. Same shape as the two rewards, for the same reason: one price
+    #: for members and one for everybody else covers almost every event.
+    tier_a_label = Column(String)            # "Members"
+    tier_a_price = Column(Numeric(10, 2))
+    tier_b_label = Column(String)            # "Non-members"
+    tier_b_price = Column(Numeric(10, 2))
+    #: How to pay. A QR to scan, free-text bank details, or both.
+    pay_qr = Column(LargeBinary)
+    pay_qr_mime = Column(String)
+    pay_qr_caption = Column(String)          # "GCash · 0917 555 0100"
+    bank_details = Column(Text)
+    pay_note = Column(String)                # "Put your name as the reference"
+    #: The promise on the page, and in the email that follows it.
+    review_hours = Column(Integer, nullable=False, default=24)
+
     #: Hours after the class within which a Reel has to be posted.
     reel_hours = Column(Integer, nullable=False, default=48)
     #: Hours from *their own* invitation within which somebody has to answer.
@@ -1258,6 +1310,25 @@ class EventParticipant(Base):
     #: When they were scanned in at the door. The QR on their page is the
     #: fast path; the tracker has a button for the phone that died on the way.
     arrived_at = Column(DateTime(timezone=True))
+    # --- self-registration (mode == open) ---
+    first_name = Column(String)
+    last_name = Column(String)
+    mobile = Column(String)
+    sex = Column(String)                     # 'm' / 'f'
+    tier = Column(String)                    # 'a' / 'b'
+    #: What they owed, stored per person rather than read off the event — so a
+    #: price change tomorrow never restates what somebody paid today.
+    amount = Column(Numeric(10, 2))
+    external_done_at = Column(DateTime(timezone=True))
+    proof = Column(LargeBinary)
+    proof_mime = Column(String)
+    proof_ref = Column(String)
+    pay_status = Column(String)              # None for invited people
+    submitted_at = Column(DateTime(timezone=True))
+    reviewed_at = Column(DateTime(timezone=True))
+    reviewed_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    review_note = Column(Text)
+
     #: Their own answer-by, when it cannot be the event's. Somebody handed a
     #: slot off the waitlist the night before is being asked after the event's
     #: cut-off has passed — without a deadline of their own they would open
@@ -1286,12 +1357,32 @@ class EventParticipant(Base):
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     event = relationship("Event", back_populates="participants")
+    reviewed_by = relationship("Staff", foreign_keys=[reviewed_by_id])
 
     __table_args__ = (UniqueConstraint("event_id", "reward_code",
                                        name="uq_event_reward_code"),)
 
     @property
+    def full_name(self) -> str:
+        """First + last where we have them, otherwise whatever we were given."""
+        both = " ".join(x for x in (self.first_name, self.last_name) if x)
+        return both or (self.name or "")
+
+    @property
+    def registering(self) -> bool:
+        """A self-registration, at any stage."""
+        return self.pay_status is not None
+
+    @property
+    def paid(self) -> bool:
+        return self.pay_status == PAY_APPROVED
+
+    @property
     def confirmed(self) -> bool:
+        # A registration that has been paid for and approved is a confirmed
+        # slot: they said yes with money, which is a firmer yes than a button.
+        if self.pay_status is not None:
+            return self.pay_status == PAY_APPROVED
         return self.rsvp == RSVP_YES
 
     @property

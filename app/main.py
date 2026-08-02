@@ -1,6 +1,7 @@
 import csv
 import io
 import os
+import secrets
 from datetime import date, datetime, timedelta, timezone
 try:
     from zoneinfo import ZoneInfo
@@ -475,6 +476,44 @@ def startup():
                 "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  confirm_hours INTEGER NOT NULL DEFAULT 48; "
+                "END IF; END $$;"))
+            # Open registration: a second way into an event, where the public
+            # signs itself up and pays rather than being invited.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS mode VARCHAR NOT NULL DEFAULT 'invite'; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS signup_open BOOLEAN NOT NULL DEFAULT TRUE; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS external_url VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS external_label VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS external_note TEXT; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS tier_a_label VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS tier_a_price NUMERIC(10,2); "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS tier_b_label VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS tier_b_price NUMERIC(10,2); "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS pay_qr BYTEA; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS pay_qr_mime VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS pay_qr_caption VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS bank_details TEXT; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS pay_note VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS review_hours INTEGER NOT NULL DEFAULT 24; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS first_name VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS last_name VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS mobile VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS sex VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS tier VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS amount NUMERIC(10,2); "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS external_done_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS proof BYTEA; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS proof_mime VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS proof_ref VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS pay_status VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS reviewed_by_id INTEGER; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS review_note TEXT; "
                 "END IF; END $$;"))
             # When the "post your Reel" email went out, kept apart from the
             # invitation because they are two different asks at two different
@@ -3279,6 +3318,10 @@ commission_routes.register(app, {
 # Same registration pattern, and for the same reason.
 from . import event_routes  # noqa: E402
 
+# One secret per boot, for signing the registration puzzles. Per boot is fine:
+# the worst a restart does is make somebody's half-solved puzzle stale, and the
+# page mints a fresh one on the next load.
+app.state.pow_secret = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
 event_routes.register(app, {
     "render": render,
     "require": require,
