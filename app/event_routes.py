@@ -560,6 +560,39 @@ def register(app, deps):
         db.commit()
         return RedirectResponse(f"/events/{eid}?added={added}", status_code=303)
 
+    @app.post("/events/{eid}/people/{pid}/edit")
+    def event_edit_person(request: Request, eid: int, pid: int,
+                          name: str = Form(""), email: str = Form(""),
+                          instagram: str = Form(""), db: Session = Depends(get_db)):
+        """Fix somebody's details.
+
+        Addresses arrive mistyped off a sign-up sheet, people change their
+        handle, someone's name comes through as a nickname. Without this the
+        only repair is to delete them and start again — which throws away their
+        link, their confirmation and their Reel along with the typo.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse(f"/events/{eid}", status_code=303)
+        back = f"/events/{eid}"
+        clean_name = name.strip()[:120]
+        if not clean_name:
+            # A nameless row is a row nobody can identify on the day.
+            return RedirectResponse(back + "?edit=noname", status_code=303)
+        addr = email.strip()
+        if addr and not looks_like_email(addr):
+            return RedirectResponse(back + "?edit=bademail", status_code=303)
+        p.name = clean_name
+        p.email = addr
+        # Same cleaning as the participant's own page, so a handle typed here
+        # and a handle typed there end up stored identically.
+        p.instagram = clean_handle(instagram)
+        db.commit()
+        return RedirectResponse(back + "?edit=ok", status_code=303)
+
     @app.post("/events/{eid}/people/{pid}/remove")
     def event_remove_person(request: Request, eid: int, pid: int,
                             db: Session = Depends(get_db)):
@@ -682,7 +715,8 @@ def register(app, deps):
 
     @app.post("/events/{eid}/send")
     def event_send(request: Request, eid: int, kind: str = Form("invite"),
-                   who: str = Form(""), db: Session = Depends(get_db)):
+                   who: str = Form(""), pick: list[int] = Form(default=[]),
+                   db: Session = Depends(get_db)):
         """Send one of the two emails.
 
         They are two separate sends on purpose. The invitation asks somebody to
@@ -702,6 +736,17 @@ def register(app, deps):
         if not ev:
             return RedirectResponse("/events", status_code=303)
         lists = mail_lists(ev)
+        if who == "selected":
+            # You ticked these names, so they are the list — no filtering by
+            # who has already had it or who has confirmed. Hand-picking is the
+            # escape hatch for every case the tidy lists don't cover, and
+            # second-guessing it would defeat the point.
+            chosen = set(pick)
+            pool = [p for p in ev.participants if p.id in chosen]
+            request.session["event_mail"] = _send(
+                db, ev, pool, "invite" if kind != "reel" else "reel",
+                base_url(request))
+            return RedirectResponse(f"/events/{eid}", status_code=303)
         if kind == "reel":
             pool = lists["nudge"] if who == "nudge" else (
                 lists["reel_all"] if who == "all" else lists["reel"])
