@@ -1252,6 +1252,9 @@ class EventParticipant(Base):
     acknowledged_at = Column(DateTime(timezone=True))
     #: Set when the confirmation window lapsed and the slot went elsewhere.
     released_at = Column(DateTime(timezone=True))
+    #: When they were scanned in at the door. The QR on their page is the
+    #: fast path; the tracker has a button for the phone that died on the way.
+    arrived_at = Column(DateTime(timezone=True))
     #: Their own answer-by, when it cannot be the event's. Somebody handed a
     #: slot off the waitlist the night before is being asked after the event's
     #: cut-off has passed — without a deadline of their own they would open

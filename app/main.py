@@ -487,6 +487,8 @@ def startup():
                 "  waitlist BOOLEAN NOT NULL DEFAULT FALSE; "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  confirm_due TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  arrived_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is

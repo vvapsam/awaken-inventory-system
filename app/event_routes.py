@@ -34,6 +34,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+import qrcode
+
 from fastapi import Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
@@ -230,6 +232,8 @@ def counts(event: Event) -> dict:
         "handles": len([p for p in confirmed if p.handle]),
         "invited": len([p for p in live if p.invited_at]),
         "reel_emailed": len([p for p in confirmed if p.reel_email_at]),
+        "arrived": len([p for p in confirmed if p.arrived_at]),
+        "to_arrive": len([p for p in confirmed if not p.arrived_at]),
         "posted": len(posted),
         "to_post": len(confirmed) - len(posted),
         "to_check": len([p for p in posted if p.tags == TAGS_PENDING]),
@@ -401,6 +405,80 @@ def register(app, deps):
             p.reward_key = picked["key"]
             db.commit()
         return RedirectResponse(f"/e/{token}", status_code=303)
+
+    @app.get("/e/{token}/qr.png")
+    def event_qr(token: str, request: Request, db: Session = Depends(get_db)):
+        """Their pass, as a picture.
+
+        It encodes the check-in URL rather than the token on its own, so any
+        phone's own camera opens it — no scanner app to install and nothing to
+        teach whoever is on the door. The page it opens needs a login, so a
+        photographed QR is worth nothing to a participant.
+        """
+        p = _participant(db, token)
+        if not p:
+            return Response(status_code=404)
+        qr = qrcode.QRCode(box_size=10, border=2,
+                           error_correction=qrcode.constants.ERROR_CORRECT_M)
+        qr.add_data("%s/i/%s" % (base_url(request), token))
+        qr.make(fit=True)
+        img = qr.make_image(fill_color=BLACK, back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(buf.getvalue(), media_type="image/png",
+                        headers={"Cache-Control": "private, max-age=300"})
+
+    @app.get("/i/{token}", response_class=HTMLResponse)
+    def event_checkin(request: Request, token: str, db: Session = Depends(get_db)):
+        """Where a scanned QR lands. Staff only.
+
+        Short path because it is what the QR has to carry, and a shorter
+        payload is a QR with bigger squares — which is the difference between
+        scanning first time in a gym doorway and not.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = _participant(db, token)
+        if not p:
+            return templates.TemplateResponse(
+                "event_gone.html", {"request": request, "reason": "unknown"},
+                status_code=404)
+        # `who`, not `p`: base.html binds `p` to the request path, and a
+        # participant landing in that name renders a blank screen at a door.
+        return render(request, "event_checkin.html", db, staff, active="events",
+                      ev=p.event, who=p, stage=_stage(p), c=counts(p.event),
+                      done=request.query_params.get("in") == "1")
+
+    @app.post("/i/{token}")
+    def event_checkin_mark(request: Request, token: str,
+                           undo: str = Form(""), db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = _participant(db, token)
+        if not p:
+            return RedirectResponse("/events", status_code=303)
+        # Undo is deliberately as easy as marking: the cost of a wrong scan at
+        # a door is somebody standing there while you find a way to reverse it.
+        p.arrived_at = None if undo else datetime.now(timezone.utc)
+        db.commit()
+        return RedirectResponse("/i/%s?in=%d" % (token, 0 if undo else 1),
+                                status_code=303)
+
+    @app.post("/events/{eid}/people/{pid}/arrive")
+    def event_arrive(request: Request, eid: int, pid: int,
+                     db: Session = Depends(get_db)):
+        """The same mark, from the tracker — for the phone that died on the way."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse(f"/events/{eid}", status_code=303)
+        p.arrived_at = None if p.arrived_at else datetime.now(timezone.utc)
+        db.commit()
+        return RedirectResponse(f"/events/{eid}?tab=door", status_code=303)
 
     def _mint_code(db, event: Event) -> str:
         """A short, per-person, single-use code — KR-4471.
