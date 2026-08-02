@@ -15,6 +15,12 @@
 {% if request.query_params.get('saved') %}
 <div class="notice">Saved.</div>
 {% endif %}
+{% if request.query_params.get('err') == 'slug' %}
+{# Nothing was saved — the whole form is rolled back, so what is on screen is
+   still what they typed and they can fix the one field and send it again. #}
+<div class="alert warn"><b>Another event already uses that link.</b>
+  <span class="muted">Nothing was saved. Pick a different one and save again.</span></div>
+{% endif %}
 
 <form method="post" action="/events/{{ ev.id }}/settings" enctype="multipart/form-data">
 
@@ -92,9 +98,22 @@
   </div>
 
   {% if ev.mode == 'open' %}
-  <div class="notice" style="margin:14px 0 0">The public link is
-    <a href="{{ base }}/r/{{ ev.slug }}" target="_blank" rel="noopener"
-       class="mono">{{ base }}/r/{{ ev.slug }}</a> — that's what you post.</div>
+  {# Editable, because this is the string that goes in a caption and gets read
+     off a phone screen — and the name it was first generated from may well
+     have had a typo in it. #}
+  <div style="margin:14px 0 0">
+    <label class="small" style="font-weight:600">The public link</label>
+    <div class="slugline"><span class="mono muted">{{ base }}/r/</span>
+      <input type="text" name="slug" value="{{ ev.slug }}" class="mono"
+             spellcheck="false" autocapitalize="none"></div>
+    <div class="muted small" style="margin:3px 0 0">Letters, numbers and
+      hyphens; anything else is folded into one. This is what you post, so keep
+      it short. <b>It doesn't follow the name</b> — change it and any link you
+      have already shared stops working, which is why it's yours to decide
+      rather than ours.
+      <a href="{{ base }}/r/{{ ev.slug }}" target="_blank" rel="noopener">Open
+        the current one</a></div>
+  </div>
   {% endif %}
 </div>
 
