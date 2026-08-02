@@ -1,0 +1,424 @@
+{# The public registration page for an open event.
+
+   Outside base.html for the same reason the invitation page is: this is one of
+   the two pages a member of the public sees, and it must not carry the app's
+   navigation or imply there is a system behind it to log into.
+
+   `step` decides what renders — 0 landing, 1 details, 2 the organiser's own
+   site, 3 pay, 4 waiting on us, 5 approved. It is worked out server-side from
+   what they have actually done, so closing the tab and coming back always
+   lands in the right place. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ ev.name }} · Registration</title>
+<link rel="icon" href="/static/logo.svg">
+<style>
+:root{--ink:#1a232e;--muted:#6b7683;--line:#e4e8ed;--panel:#f3f5f7;
+  --teal:#008080;--teal-dark:#006a6a;--teal-tint:#e6f2f2;
+  --black:#14171a;--black-soft:#9aa3ab;--wash:#f1f2f4;--wash-line:#dfe2e6;
+  --amber:#8a6414;--amber-bg:#fdf4e3;--red:#8c2c20;--red-bg:#fdf2f2}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:var(--ink);background:#eef1f4;line-height:1.5;-webkit-font-smoothing:antialiased}
+.sheet{max-width:430px;margin:0 auto;background:#fff;min-height:100vh}
+@media(min-width:480px){.sheet{margin:22px auto;min-height:0;border-radius:12px;
+  overflow:hidden;box-shadow:0 6px 30px rgba(16,24,32,.10)}}
+.top{background:var(--black);color:#fff;padding:20px 24px 0;text-align:center}
+.top svg{width:24px;height:30px;display:block;margin:0 auto 6px}
+.top .wm{letter-spacing:.34em;font-size:.66rem;color:#b6bdc4;padding-left:.34em}
+.top .ev{margin-top:11px;font-size:1.02rem;font-weight:650;letter-spacing:-.01em}
+.top .sub{margin-top:3px;font-size:.68rem;color:var(--black-soft);letter-spacing:.08em;
+  text-transform:uppercase;padding-bottom:18px}
+/* Where they are, without a number to read. */
+.rail{display:flex;gap:5px;justify-content:center;margin-top:14px;padding-bottom:14px}
+.rail i{height:3px;width:30px;border-radius:2px;background:#2e343b}
+.rail i.on{background:var(--teal)}
+.rail i.now{background:#fff}
+.saved{display:flex;align-items:center;justify-content:center;gap:6px;
+  background:var(--teal-tint);color:var(--teal-dark);font-size:.78rem;
+  padding:9px 14px;font-weight:600;text-align:center}
+.body{padding:22px 24px 26px}
+.hi{font-size:1.14rem;font-weight:650;margin:0 0 3px}
+.hi + p{color:var(--muted);font-size:.88rem;margin:0 0 20px}
+.lbl{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin:18px 0 8px}
+.lbl .req{color:#c0392b;margin-left:3px}
+.lbl .opt{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted)}
+input[type=text],input[type=email],input[type=tel]{width:100%;border:1px solid var(--line);
+  border-radius:9px;padding:12px 13px;font-size:.97rem;font-family:inherit;color:var(--ink);
+  outline:0;background:#fff}
+input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.seg label{border:1px solid var(--line);border-radius:9px;padding:12px 10px;text-align:center;
+  font-size:.92rem;cursor:pointer;background:#fff;position:relative}
+.seg label small{display:block;color:var(--muted);font-size:.78rem}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){border-color:var(--teal);background:var(--teal-tint);
+  color:var(--teal-dark);font-weight:650;box-shadow:inset 0 0 0 1px var(--teal)}
+.seg label:has(input:checked) small{color:var(--teal-dark)}
+button.go{width:100%;background:var(--teal);color:#fff;border:0;border-radius:11px;
+  padding:15px;font-weight:650;font-size:1rem;font-family:inherit;cursor:pointer;
+  margin-top:20px}
+button.go:disabled{background:#dfe4e9;color:#96a0a9;cursor:default}
+a.go{display:block;text-align:center;text-decoration:none;background:var(--black);
+  color:#fff;border-radius:11px;padding:15px;font-weight:650;font-size:1rem;margin-top:6px}
+.note{border-radius:9px;padding:12px 14px;font-size:.85rem;margin:14px 0 0}
+.note.grey{background:var(--wash);border:1px solid var(--wash-line);color:#4b535b}
+.note.warn{background:var(--amber-bg);color:var(--amber)}
+.note.bad{background:var(--red-bg);color:var(--red)}
+.note.ok{background:var(--teal-tint);color:var(--teal-dark)}
+.steps{margin:4px 0 0}
+.steps .s{display:flex;gap:11px;padding:11px 0;font-size:.92rem;align-items:flex-start}
+.steps .s + .s{border-top:1px solid var(--line)}
+.steps .i{width:23px;height:23px;border-radius:50%;background:var(--panel);color:var(--muted);
+  font-size:.76rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.steps .s.now .i{background:var(--black);color:#fff}
+.steps small{display:block;color:var(--muted);font-size:.83rem}
+.price{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.price .r{display:flex;justify-content:space-between;padding:12px 14px;font-size:.92rem}
+.price .r + .r{border-top:1px solid var(--line)}
+.price b{font-variant-numeric:tabular-nums}
+.qrbox{text-align:center;border:1px solid var(--line);border-radius:12px;padding:16px}
+.qrbox img{width:186px;height:186px;display:block;margin:0 auto;object-fit:contain}
+.qrbox .t{font-size:.9rem;font-weight:650;margin-top:10px}
+.qrbox .s{font-size:.8rem;color:var(--muted)}
+details.acct{margin-top:14px}
+details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cursor:pointer}
+.bank{border:1px solid var(--line);border-radius:10px;padding:13px;margin-top:10px;
+  white-space:pre-wrap;font-size:.88rem;font-family:ui-monospace,Menlo,Consolas,monospace}
+.hr{border-top:1px solid var(--line);margin:22px -24px 18px}
+.drop{display:block;border:1.5px dashed #cfd6dd;border-radius:11px;padding:24px;
+  text-align:center;color:var(--muted);font-size:.88rem;cursor:pointer}
+.drop.bad{border-color:#e0b4ae;background:#fdf7f6;color:var(--red)}
+.drop input{display:none}
+.shot{border:1px solid var(--line);border-radius:11px;padding:10px;margin-top:10px;
+  display:flex;gap:11px;align-items:center;font-size:.86rem}
+.shot img{width:46px;height:56px;border-radius:6px;object-fit:cover;flex:none;
+  background:var(--panel)}
+.ring{width:56px;height:56px;border-radius:50%;background:var(--amber-bg);margin:4px auto 12px;
+  display:flex;align-items:center;justify-content:center;font-size:1.6rem}
+.ring.ok{background:var(--teal-tint);color:var(--teal)}
+.done{padding:26px 24px 28px;text-align:center}
+.done h2{margin:0 0 5px;font-size:1.2rem}
+.done p{color:var(--muted);font-size:.9rem;margin:0}
+.pass{border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;
+  margin-top:16px}
+.pass img{width:190px;height:190px;display:block;margin:0 auto;image-rendering:pixelated}
+.pass .nm{font-weight:650;font-size:.98rem;margin-top:10px}
+.pass .sb{font-size:.8rem;color:var(--muted)}
+.chk{display:flex;gap:11px;align-items:flex-start;border:1px solid var(--line);
+  border-radius:10px;padding:13px 14px;font-size:.9rem;cursor:pointer;background:#fff}
+.chk input{width:19px;height:19px;accent-color:var(--teal);flex:none;margin:1px 0 0}
+.ask{display:flex;align-items:center;gap:12px;border:1px solid var(--line);
+  border-radius:10px;padding:13px 14px;background:#fafbfc;margin-top:8px}
+.ask input{width:88px}
+.foot{border-top:1px solid var(--line);padding:15px 24px;text-align:center;
+  font-size:.79rem;color:var(--muted)}
+/* The honeypot. Off-screen rather than display:none, because some scripts skip
+   what is hidden and fill what is merely out of sight. */
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<div class="top">
+  <svg viewBox="0 0 200 250" fill="#fff">
+    <path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/>
+    <path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
+  <div class="wm">AWAKEN</div>
+  <div class="ev">{{ ev.name }}</div>
+  <div class="sub" {% if step %}style="padding-bottom:0"{% endif %}>Registration</div>
+  {% if step %}
+  <div class="rail">
+    {% for i in range(1, 5) %}
+    <i class="{{ 'on' if i < step else ('now' if i == step else '') }}"></i>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% if p and step > 1 %}
+<div class="saved">✓ &nbsp;<b>Saved.</b>&nbsp;{{ p.full_name }}{% if tier %} ·
+  {{ tier.label }}{% endif %}</div>
+{% endif %}
+
+{# ---------------------------------------------------------- 0 · landing ---- #}
+{% if step == 0 %}
+<div class="body">
+  {% if not ev.signup_open %}
+  <div class="hi">Registration is closed</div>
+  <p>This one isn't taking any more sign-ups. Follow
+    {{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }} — the next one
+    goes up there first.</p>
+  {% else %}
+  <div class="hi">Reserve your slot</div>
+  <p>{% if ev.starts_at %}{{ ev.starts_at.strftime('%a %d %b')|replace(' 0',' ') }}{% endif %}{%
+     if ev.venue %} · {{ ev.venue }}{% endif %}</p>
+
+  <div class="steps">
+    <div class="s now"><div class="i">1</div><div><b>Your details</b>
+      <small>Name, email, mobile</small></div></div>
+    {% if ev.external_url %}
+    <div class="s"><div class="i">2</div><div><b>{{ ev.external_label or 'Register with the organiser' }}</b>
+      <small>On their own site — we can't do this bit for you</small></div></div>
+    {% endif %}
+    <div class="s"><div class="i">{{ 3 if ev.external_url else 2 }}</div>
+      <div><b>Pay and send the receipt</b>
+      <small>We check it and come back within {{ ev.review_hours }} hours</small></div></div>
+  </div>
+
+  {% if tiers %}
+  <div class="lbl">What it costs</div>
+  <div class="price">
+    {% for t in tiers %}
+    <div class="r"><span>{{ t.label }}</span><b>{{ t.money }}</b></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if err %}
+  <div class="note bad">
+    {% if err == 'missing' %}We need every box filled in — have another look.
+    {% elif err == 'stale' %}This page had been open a while. Your details are
+      still below — send it again.
+    {% elif err == 'fast' %}That came through faster than the page loads. Give
+      it a second and try again.
+    {% else %}That didn't go through. Try once more.{% endif %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/r/{{ ev.slug }}" id="reg">
+    {# The salt carries the minute it was minted and is signed, so it is also
+       the clock: we can tell a form filled in two seconds from one filled in
+       two minutes without trusting anything the page sends us. #}
+    <input type="hidden" name="salt" value="{{ salt }}">
+    <input type="hidden" name="nonce" id="nonce" value="">
+    {# A field no person ever sees. Anything that fills it is not a person. #}
+    <div class="hp"><label>Website<input type="text" name="website" tabindex="-1"
+      autocomplete="off"></label></div>
+
+    <div class="lbl">Name<span class="req">*</span></div>
+    <div class="row2">
+      <input type="text" name="first_name" placeholder="First" required
+             autocomplete="given-name">
+      <input type="text" name="last_name" placeholder="Last" required
+             autocomplete="family-name">
+    </div>
+    <div class="lbl">Email<span class="req">*</span></div>
+    <input type="email" name="email" placeholder="you@example.com" required
+           autocomplete="email" autocapitalize="none">
+    <div class="lbl">Mobile<span class="req">*</span></div>
+    <input type="tel" name="mobile" placeholder="0917 000 0000" required
+           autocomplete="tel">
+    <div class="lbl">Category<span class="req">*</span></div>
+    <div class="seg">
+      {% for k, label in sexes %}
+      <label><input type="radio" name="sex" value="{{ k }}" required>{{ label }}</label>
+      {% endfor %}
+    </div>
+    {% if tiers %}
+    <div class="lbl">Which rate applies<span class="req">*</span></div>
+    <div class="seg">
+      {% for t in tiers %}
+      <label><input type="radio" name="tier" value="{{ t.key }}" required>
+        {{ t.label }}<small>{{ t.money }}</small></label>
+      {% endfor %}
+    </div>
+    <div class="note grey">We check this on our side — pick honestly and we'll
+      sort it out if it doesn't match.</div>
+    {% endif %}
+
+    {# Only drawn if the puzzle could not run at all. #}
+    <div id="fallback" hidden>
+      <div class="lbl">One last thing<span class="req">*</span></div>
+      <div class="ask"><span>What is {{ qa }} plus {{ qb }}?</span>
+        <input type="text" name="qanswer" inputmode="numeric" autocomplete="off"></div>
+    </div>
+
+    <button class="go" id="submit" disabled>Just a moment…</button>
+  </form>
+  {% endif %}
+</div>
+
+{# ------------------------------------------------ 2 · the outside step ---- #}
+{% elif step == 2 %}
+<div class="body">
+  <div class="hi">{{ ev.external_label or 'Register with the organiser' }}</div>
+  <p>{{ ev.external_note or "This part happens on their own site. We can't do it for you." }}</p>
+  <div class="note warn"><b>Do this before you pay.</b> If their slots fill up we
+    can't hold yours, and we'd only have to refund you.</div>
+  <a class="go" href="{{ ev.external_url }}" target="_blank" rel="noopener">
+    Open their site ↗</a>
+  <div class="note grey" style="font-size:.82rem">Opens in a new tab, so you
+    won't lose this one. Everything you've typed is saved.</div>
+  {% if err == 'tick' %}
+  <div class="note bad">Tick the box once you've done it.</div>
+  {% endif %}
+  <form method="post" action="/r/{{ ev.slug }}/{{ p.token }}/external">
+    <div class="lbl">Confirm<span class="req">*</span></div>
+    <label class="chk"><input type="checkbox" name="done" value="1" required>
+      <span>I've registered on their site</span></label>
+    <button class="go">Save and continue</button>
+  </form>
+</div>
+
+{# ------------------------------------------------------------- 3 · pay ---- #}
+{% elif step == 3 %}
+<div class="body">
+  <div class="hi">Pay{% if p.amount %} {{ money(p.amount) }}{% endif %} and send the receipt</div>
+  <p>{% if tier %}{{ tier.label }} rate. {% endif %}Scan with your banking app, or transfer.</p>
+
+  {% if p.pay_status == 'returned' and p.review_note %}
+  <div class="note bad"><b>We need another look.</b><br>{{ p.review_note }}</div>
+  {% endif %}
+  {% if err == 'proof' %}
+  <div class="note bad"><b>We still need your receipt.</b> Everything else is in —
+    add the screenshot and you're done.</div>
+  {% elif err == 'notimage' %}
+  <div class="note bad">That file wasn't a photo. A screenshot from your banking
+    app is what we're after.</div>
+  {% endif %}
+
+  {% if ev.pay_qr %}
+  <div class="qrbox"><img src="/events/{{ ev.id }}/pay-qr" alt="Payment QR">
+    {% if ev.pay_qr_caption %}<div class="t">{{ ev.pay_qr_caption }}</div>{% endif %}
+  </div>
+  {% endif %}
+  {% if ev.bank_details %}
+  <details class="acct" {{ 'open' if not ev.pay_qr }}>
+    <summary>{{ 'Or bank transfer' if ev.pay_qr else 'Bank details' }}</summary>
+    <div class="bank">{{ ev.bank_details }}</div>
+  </details>
+  {% endif %}
+  {% if ev.pay_note %}<div class="note grey">{{ ev.pay_note }}</div>{% endif %}
+
+  <div class="hr"></div>
+  <form method="post" action="/r/{{ ev.slug }}/{{ p.token }}/pay"
+        enctype="multipart/form-data" id="payform">
+    <div class="lbl" style="margin-top:0">Your receipt<span class="req">*</span></div>
+    {% if p.proof %}
+    <div class="shot"><img src="/r/{{ ev.slug }}/{{ p.token }}/proof" alt="">
+      <div><b>What you sent</b><br><span style="color:var(--muted)">Tap below to
+        replace it</span></div></div>
+    {% endif %}
+    <label class="drop {{ 'bad' if err == 'proof' }}" id="drop">
+      📷 &nbsp;<span id="dropt">{{ 'Add a different photo' if p.proof else 'Tap to add a photo' }}</span>
+      <input type="file" name="proof" accept="image/*" id="proof"
+             {{ '' if p.proof else 'required' }}>
+    </label>
+    <div class="lbl">Reference number
+      <span class="opt">— the only optional thing here</span></div>
+    <input type="text" name="ref" value="{{ p.proof_ref or '' }}"
+           placeholder="e.g. 9021 4455 1" autocomplete="off">
+    <button class="go">Submit my registration</button>
+  </form>
+</div>
+
+{# ------------------------------------------------------- 4 · with us ------ #}
+{% elif step == 4 %}
+<div class="done">
+  <div class="ring">⏳</div>
+  <h2>Got it, {{ p.first_name or p.full_name }}</h2>
+  <p>We'll check your payment and come back <b>within {{ ev.review_hours }} hours</b>.
+     Watch your email — {{ p.email }}.</p>
+  <div class="note grey" style="text-align:left">Nothing else to do. If anything's
+    wrong with the receipt we'll tell you what we need rather than just
+    rejecting it.</div>
+</div>
+
+{# --------------------------------------------------------- 5 · approved --- #}
+{% elif step == 5 %}
+<div class="done">
+  <div class="ring ok">✓</div>
+  <h2>You're in 🎉</h2>
+  <p>Show this at the door — we'll scan it.</p>
+  <div class="pass"><img src="/e/{{ p.token }}/qr.png" alt="Your check-in code">
+    <div class="nm">{{ p.full_name }}</div>
+    <div class="sb">{{ ev.name }}</div></div>
+  <div class="note grey" style="text-align:left">
+    {% if ev.starts_at %}{{ ev.starts_at.strftime('%a %d %b, %I:%M %p')|replace(' 0',' ') }}{% endif %}{%
+    if ev.venue %}<br>{{ ev.venue }}{% endif %}
+    {% if ev.bring %}<br>Bring: {{ ev.bring }}{% endif %}</div>
+</div>
+{% endif %}
+
+<div class="foot">Questions? DM
+  <b>{{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }}</b> — we reply fast.</div>
+</div>
+
+{% if step == 0 and ev.signup_open %}
+<script>
+// A small sum the browser has to do before the form will send. Half a second on
+// a phone and nobody notices, because they are still typing — but a script
+// wanting a thousand registrations pays it a thousand times, which is what
+// makes flooding this not worth the electricity.
+(function(){
+  var bits = {{ pow_bits }}, challenge = "{{ challenge }}";
+  var btn = document.getElementById('submit'), out = document.getElementById('nonce');
+  function hex(buf){
+    return Array.prototype.map.call(new Uint8Array(buf),
+      function(b){ return ('00' + b.toString(16)).slice(-2); }).join('');
+  }
+  function leadingZeroBits(h){
+    var n = 0;
+    for (var i = 0; i < h.length; i++){
+      var v = parseInt(h[i], 16);
+      if (v === 0) { n += 4; continue; }
+      for (var s = 3; s >= 0; s--){ if ((v >> s) & 1) return n; n++; }
+      return n;
+    }
+    return n;
+  }
+  function ready(){ btn.disabled = false; btn.textContent = 'Save and continue'; }
+  function fallback(){
+    // No crypto API, or it refused to run. A question instead — the only time
+    // anybody is asked to do anything at all. The sum was written by the
+    // server, not by this page, so posting past it takes reading it.
+    document.getElementById('fallback').hidden = false;
+    ready();
+  }
+  if (!(window.crypto && crypto.subtle && window.TextEncoder)) return fallback();
+  var enc = new TextEncoder(), n = 0, started = Date.now();
+  (function spin(){
+    var batch = 0;
+    (function step(){
+      if (batch++ > 500) return setTimeout(spin, 0);
+      if (Date.now() - started > 12000) return fallback();
+      var guess = String(n++);
+      crypto.subtle.digest('SHA-256', enc.encode(challenge + ':' + guess))
+        .then(function(buf){
+          if (leadingZeroBits(hex(buf)) >= bits) { out.value = guess; return ready(); }
+          step();
+        })
+        .catch(fallback);
+    })();
+  })();
+})();
+</script>
+{% endif %}
+
+{% if step == 3 %}
+<script>
+// Show them the file name the moment they pick one, so nobody submits wondering
+// whether the photo actually attached.
+(function(){
+  var input = document.getElementById('proof'), t = document.getElementById('dropt');
+  if (!input) return;
+  input.addEventListener('change', function(){
+    if (input.files && input.files[0]) {
+      t.textContent = input.files[0].name;
+      document.getElementById('drop').classList.remove('bad');
+    }
+  });
+})();
+</script>
+{% endif %}
+</body>
+</html>

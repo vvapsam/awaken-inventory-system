@@ -57,8 +57,12 @@
 <div class="sumbar">
   <div class="s hero"><div class="l">Confirmed</div>
     <div class="v">{{ c.confirmed }} of {{ ev.capacity }}</div>
-    <div class="sub">{% if c.waiting %}{{ c.waiting }} still to hear from{%
-      else %}everyone has answered{% endif %}</div></div>
+    {# An open event isn't waiting on anybody to answer — it is waiting on you
+       to look at receipts, which is a different sentence and a different job. #}
+    <div class="sub">{% if ev.mode == 'open' %}{% if c.to_review %}{{ c.to_review }}
+      waiting on you{% elif c.unfinished %}{{ c.unfinished }} started, not paid{%
+      else %}nothing to review{% endif %}{% elif c.waiting %}{{ c.waiting }}
+      still to hear from{% else %}everyone has answered{% endif %}</div></div>
   <div class="s"><div class="l">Handles in</div><div class="v">{{ c.handles }}</div>
     <div class="sub">of {{ c.confirmed }} confirmed</div></div>
   <div class="s"><div class="l">Reels posted</div><div class="v">{{ c.posted }}</div>
@@ -77,6 +81,27 @@
    ask for different things — one button that guesses from the event's status
    hides the second one, and you cannot press a button you cannot see. #}
 <div class="mailbar">
+  {% if ev.mode == 'open' %}
+  {# Nobody is invited to an open event — they arrive through the link. So the
+     first card is the link itself, and the thing you do with it is share it. #}
+  <div class="m">
+    <div class="n">1 · The public link</div>
+    <div class="d">Anyone with this can register. Put it in a post, a story or a
+      DM — there is nothing to send from here.</div>
+    <div class="st">
+      {% if ev.signup_open %}<span class="tag">Open</span>
+      {% else %}<span class="tag amber">Closed to new people</span>{% endif %}
+      {% if c.unfinished %}<span class="tag amber">{{ c.unfinished }} started,
+        not paid</span>{% endif %}
+    </div>
+    <div class="go" style="align-items:center;flex-wrap:wrap">
+      <code class="publink">{{ base }}/r/{{ ev.slug }}</code>
+      <button class="btn primary" type="button"
+              data-copy="{{ base }}/r/{{ ev.slug }}">Copy the link</button>
+      <a class="btn" href="/r/{{ ev.slug }}" target="_blank" rel="noopener">Open it</a>
+    </div>
+  </div>
+  {% else %}
   <div class="m">
     <div class="n">1 · The invitation</div>
     <div class="d">"You're in — confirm your slot." Attendance, Instagram handle,
@@ -105,6 +130,7 @@
       {% endif %}
     </div>
   </div>
+  {% endif %}
 
   <div class="m">
     <div class="n">2 · The Reel email</div>
@@ -141,8 +167,12 @@
 
 {% if not mail_ready %}
 <div class="alert warn" style="margin-top:10px"><b>Mail isn't set up on this server yet.</b>
-  <span class="muted">Add the SMTP details under Settings and both buttons come alive. Until
-    then you can still copy each person's link from their row and send it yourself.</span></div>
+  <span class="muted">Add the SMTP details under Settings and
+    {% if ev.mode == 'open' %}the Reel email comes alive — and approving somebody
+      emails them their pass. Until then nothing goes out on its own: copy each
+      person's link from their row and send it yourself.{%
+    else %}both buttons come alive. Until then you can still copy each person's
+      link from their row and send it yourself.{% endif %}</span></div>
 {% endif %}
 
 {% if lists.no_email %}
@@ -167,6 +197,9 @@
   {% if c.confirmed %}
   <a href="?tab=door" class="{{ 'on' if tab == 'door' }}">Door · {{ c.arrived }}/{{ c.confirmed }}</a>
   {% endif %}
+  {% if ev.mode == 'open' %}
+  <a href="?tab=review" class="{{ 'on' if tab == 'review' }}">To review · {{ c.to_review }}</a>
+  {% endif %}
 </div>
 
 {% if upload and upload.error %}
@@ -180,7 +213,7 @@
 {% endif %}
 
 {# ============================================================ PARTICIPANTS #}
-{% if tab not in ('reels', 'waitlist', 'gone', 'door') %}
+{% if tab not in ('reels', 'waitlist', 'gone', 'door', 'review') %}
 
 {% if not people %}
 <div class="card"><p class="muted" style="margin:0 0 10px">Nobody on the list yet. Paste your
@@ -344,6 +377,86 @@
     </div>
   </div>
 </details>
+
+{# ================================================================= REVIEW #}
+{# Payments waiting on you. Oldest first, because a 24-hour promise is only
+   kept if you work the front of the queue. #}
+{% elif tab == 'review' %}
+
+{% if request.query_params.get('ok') %}
+<div class="notice">Approved — their pass is on its way.</div>
+{% elif request.query_params.get('sent') %}
+<div class="notice">Sent back. They can fix it without starting over.</div>
+{% elif request.query_params.get('err') == 'why' %}
+<div class="alert bad"><b>Say what was wrong.</b>
+  <span class="muted">Sending somebody back with no reason just makes them
+    guess, and guess again.</span></div>
+{% endif %}
+
+<div class="card" style="margin-top:12px">
+  <p class="muted small" style="margin:0">
+    {% if c.to_review %}<b>{{ c.to_review }} waiting on you.</b>{% else %}
+    <b>Nothing waiting.</b>{% endif %}
+    Approving mints their pass and emails it. Sending one back keeps their
+    details, their rate and their place in the queue — only the receipt is
+    asked for again.
+    {% if c.unfinished %} {{ c.unfinished }} started and never
+    paid;{% endif %}{% if c.returned %} {{ c.returned }} sent back and not
+    resubmitted yet.{% endif %}</p>
+</div>
+
+{% if review %}
+<table id="rv" style="margin-top:14px">
+  <thead><tr><th>Who</th><th>Rate</th><th>Receipt</th><th>Waiting</th>
+    <th style="width:1%"></th></tr></thead>
+  <tbody>
+  {% for p in review %}
+  <tr>
+    <td><div class="primary">{{ p.full_name }}</div>
+      <div class="sub">{{ p.email }}{% if p.mobile %} · {{ p.mobile }}{% endif %}{%
+        if p.sex %} · {{ 'Male' if p.sex == 'm' else 'Female' }}{% endif %}</div></td>
+    <td><div class="primary">{{ money(p.amount) }}</div>
+      <div class="sub">{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label) or '—' }}</div></td>
+    <td>{% if p.proof %}
+      <a href="/events/{{ ev.id }}/people/{{ p.id }}/proof" target="_blank" rel="noopener">
+        <img src="/events/{{ ev.id }}/people/{{ p.id }}/proof" alt="Receipt"
+             style="height:54px;width:44px;object-fit:cover;border-radius:5px;
+                    border:1px solid var(--line);vertical-align:middle"></a>
+      {% else %}<span class="muted small">None</span>{% endif %}
+      <span class="sub" style="margin-left:8px">{{ p.proof_ref or 'No reference' }}</span></td>
+    <td class="sub">{% if p.submitted_at %}{{ p.submitted_at.strftime('%d %b, %H:%M') }}{% endif %}</td>
+    <td style="white-space:nowrap">
+      <button class="btn primary" form="ap-{{ p.id }}" style="margin:0">Approve</button>
+      <button type="button" class="btn" style="margin:0;color:#8a6414"
+              data-ask="{{ p.id }}">Ask again</button></td>
+  </tr>
+  <tr class="editrow" id="ask-{{ p.id }}" hidden>
+    <td colspan="5">
+      <form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/return">
+        <div class="small" style="font-weight:600;margin-bottom:7px">
+          What should {{ p.first_name or p.full_name }} do?</div>
+        <div class="whys" style="margin-bottom:9px">
+          <button type="button" class="btn" data-why="ask-{{ p.id }}">The amount doesn't match {{ money(p.amount) }} — could you send the difference, or the right screenshot?</button>
+          <button type="button" class="btn" data-why="ask-{{ p.id }}">We can't read that screenshot — could you send a clearer one?</button>
+          <button type="button" class="btn" data-why="ask-{{ p.id }}">That payment went somewhere else — could you check the account details and try again?</button>
+        </div>
+        <textarea name="why" rows="3" required
+          style="width:100%;font-family:inherit;font-size:.9rem"
+          placeholder="Say what was wrong, and what you need."></textarea>
+        <div class="hdact" style="margin-top:9px">
+          <button class="btn primary" style="margin:0">Send it back</button>
+          <button type="button" class="btn" style="margin:0" data-ask="{{ p.id }}">Cancel</button>
+        </div>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% for p in review %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/approve" id="ap-{{ p.id }}" hidden></form>
+{% endfor %}
+{% endif %}
 
 {# =================================================================== DOOR #}
 {# Everyone who said they're coming, and whether they have walked in. The QR
@@ -530,6 +643,24 @@
 {% endif %}
 {% endif %}
 
+<script>
+// The "ask again" row, and the ready-made reasons. Typing the same three
+// sentences forty times is how a review queue stops getting worked.
+document.addEventListener('click', function(e){
+  var t = e.target.closest('[data-ask]');
+  if (t) {
+    var row = document.getElementById('ask-' + t.dataset.ask);
+    if (row) row.hidden = !row.hidden;
+    return;
+  }
+  var w = e.target.closest('[data-why]');
+  if (w) {
+    var box = document.getElementById(w.dataset.why).querySelector('textarea');
+    box.value = w.textContent.trim();
+    box.focus();
+  }
+});
+</script>
 <script>
 document.addEventListener('click', function(e){
   var c = e.target.closest('[data-copy]');
