@@ -396,20 +396,6 @@ def register(app, deps):
             db.commit()
         return RedirectResponse(f"/e/{token}", status_code=303)
 
-    @app.post("/e/{token}/reopen")
-    def event_reopen(request: Request, token: str, db: Session = Depends(get_db)):
-        """"Still want in?" on a lapsed slot — flags it for your team.
-
-        Not an automatic re-grant: the seat may genuinely be gone. It puts them
-        back in front of you rather than leaving them at a dead end.
-        """
-        p = _participant(db, token)
-        if p and _stage(p) in ("lapsed", "released"):
-            p.released_at = None
-            p.tags_note = "Asked to be let back in"
-            db.commit()
-        return RedirectResponse(f"/e/{token}", status_code=303)
-
     def _mint_code(db, event: Event) -> str:
         """A short, per-person, single-use code — KR-4471.
 
