@@ -158,10 +158,23 @@
 <div class="tfilter" style="margin-top:14px">
   <a href="?tab=people" class="{{ 'on' if tab != 'reels' }}">Participants · {{ c.total }}</a>
   <a href="?tab=reels" class="{{ 'on' if tab == 'reels' }}">Reels · {{ c.posted }}</a>
+  {% if c.waitlist %}
+  <a href="?tab=waitlist" class="{{ 'on' if tab == 'waitlist' }}">Waitlist · {{ c.waitlist }}</a>
+  {% endif %}
 </div>
 
+{% if upload and upload.error %}
+<div class="alert bad" style="margin-top:12px"><b>That file couldn't be read.</b>
+  <span class="muted">There was {{ upload.error|safe }}. Nothing was added.</span></div>
+{% elif upload %}
+<div class="notice">Added {{ upload.added }}
+  {{ 'person' if upload.added == 1 else 'people' }}{% if upload.waiting %} —
+  {{ upload.waiting }} of them on the waitlist{% endif %}{% if upload.dupes %},
+  and skipped {{ upload.dupes }} already on the list{% endif %}.</div>
+{% endif %}
+
 {# ============================================================ PARTICIPANTS #}
-{% if tab != 'reels' %}
+{% if tab not in ('reels', 'waitlist') %}
 
 {% if not people %}
 <div class="card"><p class="muted" style="margin:0 0 10px">Nobody on the list yet. Paste your
@@ -304,11 +317,65 @@
         placeholder="Marc Damil, marc@example.com&#10;Adrian Lim, adrian@example.com&#10;Viel Naval"></textarea>
       <button class="btn primary" style="margin-top:9px">Add them</button>
     </form>
+
+    {# The waitlist has to arrive with everybody else. Its whole purpose is that
+       the replacement is already on file the moment somebody drops out. #}
+    <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px">
+      <div class="small" style="font-weight:600;margin-bottom:4px">Or upload a file</div>
+      <p class="muted small" style="margin:0 0 9px">CSV, first row the headings.
+        <span class="mono">name</span> is the only one we need;
+        <span class="mono">email</span>, <span class="mono">instagram</span> and
+        <span class="mono">waitlist</span> are used if they're there. Put
+        <span class="mono">yes</span> in the waitlist column for anybody who is a
+        reserve — they stay out of every count and every send until you give them
+        a slot.</p>
+      <form method="post" action="/events/{{ ev.id }}/people/upload"
+            enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv,text/csv" required
+               style="padding:7px 9px">
+        <button class="btn primary" style="margin-top:9px">Upload the list</button>
+      </form>
+    </div>
   </div>
 </details>
 
+{# =============================================================== WAITLIST #}
+{% elif tab == 'waitlist' %}
+
+<div class="card" style="margin-top:12px">
+  <p class="muted small" style="margin:0">
+    {% if c.seats_left %}<b>{{ c.seats_left }}
+      {{ 'slot is' if c.seats_left == 1 else 'slots are' }} free.</b>
+    {% else %}<b>The room is full.</b>{% endif %}
+    Giving somebody a slot moves them onto the list and{% if mail_ready %} emails them
+    their invitation in the same step — a slot handed to somebody who hasn't been told
+    about it is a slot nobody turns up for.{% else %} gives them a day to answer. Mail
+    isn't set up, so you'll need to copy their link across yourself.{% endif %}</p>
+</div>
+
+{{ searchbar('wl', 'Search name, email, handle…') }}
+<table id="wl">
+  <thead><tr><th>On the waitlist</th><th>Instagram</th><th style="width:1%"></th></tr></thead>
+  <tbody>
+  {% for p in waiting %}
+  <tr>
+    <td><div class="primary">{{ p.name }}</div>
+      <div class="sub">{{ p.email or 'No email on record' }}</div></td>
+    <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>{% else %}—{% endif %}</td>
+    <td style="white-space:nowrap">
+      <button class="btn primary" form="pr-{{ p.id }}" style="margin:0">
+        Give them a slot</button></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% for p in waiting %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/promote" id="pr-{{ p.id }}" hidden
+      onsubmit="return confirm('Give {{ p.name }} a slot and email them the invitation?')"></form>
+{% endfor %}
+
 {# ================================================================== REELS #}
-{% else %}
+{% elif tab == 'reels' %}
 
 {% set posted = people | selectattr('posted') | list %}
 {% if not posted %}

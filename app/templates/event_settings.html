@@ -48,7 +48,7 @@
       </div>
     </div>
     <div><label class="small" style="font-weight:600">Starts</label>
-      <input type="datetime-local" name="starts_at"
+      <input type="datetime-local" name="starts_at" required
         value="{{ ev.starts_at.strftime('%Y-%m-%dT%H:%M') if ev.starts_at }}"></div>
     <div><label class="small" style="font-weight:600">Venue</label>
       <input name="venue" value="{{ ev.venue or '' }}" placeholder="AWAKEN Fitness Center, BGC"></div>
@@ -74,18 +74,25 @@
   <div class="grid2">
     <div><label class="small" style="font-weight:600">Accounts to tag</label>
       <input name="handles" value="{{ ev.handles or '' }}"
-             placeholder="@awakenfitnessph @kennyrogersph">
+             placeholder="@awakengymph @kennyrogersph">
       <div class="muted small" style="margin:3px 0 0">Space or comma separated. These appear as
         tap-to-copy on the participant's page.</div></div>
     <div><label class="small" style="font-weight:600">Hashtag</label>
       <input name="hashtag" value="{{ ev.hashtag or '' }}" placeholder="#FuelledByKennyRogers"></div>
     <div><label class="small" style="font-weight:600">Reel window (hours after the class)</label>
       <input name="reel_hours" value="{{ ev.reel_hours }}" style="width:90px"></div>
-    <div><label class="small" style="font-weight:600">Confirm by</label>
+    <div><label class="small" style="font-weight:600">Answer by</label>
       <input type="datetime-local" name="confirm_by"
         value="{{ ev.confirm_by.strftime('%Y-%m-%dT%H:%M') if ev.confirm_by }}">
-      <div class="muted small" style="margin:3px 0 0">Slots nobody confirms by then are released
-        to the waitlist. Leave it several days before the class so you have time to re-fill.</div></div>
+      <div class="muted small" style="margin:3px 0 0">One deadline for the whole room, which
+        is what you want when everybody is being asked at once. Unanswered slots go to the
+        waitlist after it.</div></div>
+    <div><label class="small" style="font-weight:600">Or a rolling clock (hours)</label>
+      <input name="confirm_hours" value="{{ ev.confirm_hours }}" style="width:90px">
+      <div class="muted small" style="margin:3px 0 0">Counted from <b>each person's own
+        invitation</b> instead, so somebody added late still gets a full window rather than
+        inheriting a deadline that already passed. Set it to <b>0</b> to switch it off and
+        use only the date above; with both set, whichever comes first wins.</div></div>
   </div>
 </div>
 
@@ -97,14 +104,17 @@
   <div class="grid2">
     <div><label class="small" style="font-weight:600">Reward A</label>
       <input name="reward_a" value="{{ ev.reward_a or '' }}" placeholder="HYROX PFT"></div>
-    <div><label class="small" style="font-weight:600">A · value</label>
-      <input name="reward_a_value" value="{{ ev.reward_a_value or '' }}" placeholder="20% off"></div>
+    <div><label class="small" style="font-weight:600">A · value <span class="muted">— optional</span></label>
+      <input name="reward_a_value" value="{{ ev.reward_a_value or '' }}" placeholder="20% off">
+      <div class="muted small" style="margin:3px 0 0">Shown only <b>with the code</b>, after
+        they've posted. The offer itself just says "a discount code" — a figure printed in an
+        invitation is a figure we're held to before the sponsor has signed it off.</div></div>
     <div style="grid-column:1/-1"><label class="small" style="font-weight:600">A · detail</label>
       <input name="reward_a_detail" value="{{ ev.reward_a_detail or '' }}"
              placeholder="23 August · use it at checkout"></div>
     <div><label class="small" style="font-weight:600">Reward B</label>
       <input name="reward_b" value="{{ ev.reward_b or '' }}" placeholder="First month of membership"></div>
-    <div><label class="small" style="font-weight:600">B · value</label>
+    <div><label class="small" style="font-weight:600">B · value <span class="muted">— optional</span></label>
       <input name="reward_b_value" value="{{ ev.reward_b_value or '' }}" placeholder="20% off"></div>
     <div style="grid-column:1/-1"><label class="small" style="font-weight:600">B · detail</label>
       <input name="reward_b_detail" value="{{ ev.reward_b_detail or '' }}"
