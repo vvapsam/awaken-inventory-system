@@ -1006,6 +1006,7 @@ def register(app, deps):
             reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
             confirm_by: str = Form(""),
             mode: str = Form(EVENT_INVITE), signup_open: str = Form(""),
+            slug: str = Form(""),
             external_url: str = Form(""), external_label: str = Form(""),
             external_note: str = Form(""),
             tier_a_label: str = Form(""), tier_a_price: str = Form(""),
@@ -1071,6 +1072,19 @@ def register(app, deps):
 
         ev.mode = mode if mode in (EVENT_INVITE, EVENT_OPEN) else EVENT_INVITE
         ev.signup_open = bool(signup_open)
+        # The slug is the URL you post, so a typo in the name at the moment the
+        # event was created must not own it forever. It is deliberately not
+        # rewritten when the name changes: somebody may already have shared it,
+        # and a link that quietly stops working is worse than an ugly one.
+        want = slugify(slug) if slug.strip() else ""
+        if want and want != ev.slug:
+            taken = (db.query(Event)
+                     .filter(Event.slug == want, Event.id != ev.id).first())
+            if taken:
+                db.rollback()
+                return RedirectResponse(f"/events/{eid}/settings?err=slug",
+                                        status_code=303)
+            ev.slug = want
         ev.external_url = external_url.strip()[:500]
         ev.external_label = external_label.strip()[:80]
         ev.external_note = external_note.strip()
