@@ -617,3 +617,6 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 .ckname{font-size:1.6rem;font-weight:650;letter-spacing:-.015em;line-height:1.2}
 .ckwhen{color:var(--muted);font-size:.87rem;margin-top:5px}
 .ckbtn{width:100%;padding:14px;font-size:1rem}
+/* Undo is the only control on the receipt, and it must not look like the
+   primary action — nobody should tap it by momentum after a scan. */
+.ckundo{padding:11px 22px;color:#8c2c20}
