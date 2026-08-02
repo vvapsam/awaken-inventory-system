@@ -37,7 +37,9 @@ from urllib.parse import urlparse
 import qrcode
 
 from fastapi import Depends, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    HTMLResponse, JSONResponse, RedirectResponse, Response,
+)
 from sqlalchemy.orm import Session
 
 from .db import get_db
@@ -495,6 +497,78 @@ def register(app, deps):
         # them straight back in.
         return RedirectResponse("/events/%d?tab=door" % p.event_id,
                                 status_code=303)
+
+    @app.get("/events/{eid}/scan", response_class=HTMLResponse)
+    def event_scanner(request: Request, eid: int, db: Session = Depends(get_db)):
+        """The camera, inside the app.
+
+        A phone's own camera app works too — the QR carries a URL for exactly
+        that reason — but it is one person, one scan, one app switch. This
+        keeps the camera open and the count on screen, which is what you want
+        with a queue in front of you.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        return render(request, "event_scan.html", db, staff, active="events",
+                      ev=ev, c=counts(ev))
+
+    @app.post("/events/{eid}/scan")
+    def event_scan_hit(request: Request, eid: int, code: str = Form(""),
+                       db: Session = Depends(get_db)):
+        """One scanned code. Answers in JSON so the camera never has to stop.
+
+        Takes whatever the QR contained — we encode a full URL, so the token
+        is the last path segment — and is deliberately forgiving about it, on
+        the grounds that a door is a bad place to debug a string.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return JSONResponse({"ok": False, "why": "signed out"},
+                                status_code=401)
+        ev = db.get(Event, eid)
+        if not ev:
+            return JSONResponse({"ok": False, "why": "no such event"},
+                                status_code=404)
+        token = (code or "").strip().rstrip("/").split("/")[-1].split("?")[0]
+        p = _participant(db, token) if token else None
+        if not p or p.event_id != eid:
+            return JSONResponse({
+                "ok": False,
+                "why": "That code isn't for this class."
+                       if p else "We don't recognise that code.",
+                "counts": {"in": counts(ev)["arrived"],
+                           "of": counts(ev)["confirmed"]},
+            })
+        fresh = not p.arrived_at
+        if fresh:
+            p.arrived_at = datetime.now(timezone.utc)
+            db.commit()
+        c = counts(ev)
+        stage = _stage(p)
+        # One short line under the name. Whoever is scanning reads it at arm's
+        # length with somebody waiting, so it says what it means and stops.
+        if not fresh:
+            note = "Already scanned in at %s" % _aware(p.arrived_at).strftime(
+                "%I:%M %p").lstrip("0")
+        elif stage in ("ready", "submit", "late", "rewarded"):
+            note = p.handle or "On the list"
+        elif stage == "confirm":
+            note = "Never confirmed — counted as here"
+        elif p.waitlist:
+            note = "Was on the waitlist"
+        elif p.declined:
+            note = "Had said they couldn't make it"
+        else:
+            note = "Their slot had lapsed"
+        return JSONResponse({
+            "ok": True, "fresh": fresh, "name": p.name, "note": note,
+            "token": p.token,
+            "counts": {"in": c["arrived"], "of": c["confirmed"]},
+        })
 
     @app.post("/events/{eid}/people/{pid}/arrive")
     def event_arrive(request: Request, eid: int, pid: int,
