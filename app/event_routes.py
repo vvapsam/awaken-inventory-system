@@ -326,7 +326,13 @@ def register(app, deps):
             return RedirectResponse("/", status_code=303)
         back = f"/e/{token}"
         now = datetime.now(timezone.utc)
-        if _stage(p, now) not in ("confirm", "declined", "ready"):
+        # Only somebody who has not answered yet, or who is already coming and
+        # is fixing their handle. A no is final from this side: by the time
+        # they reread the page their slot has been offered to somebody else,
+        # and letting them take it back would hand one place to two people.
+        # Putting somebody back is a decision made on the tracker, where you
+        # can see what is actually free.
+        if _stage(p, now) not in ("confirm", "ready"):
             return RedirectResponse(back, status_code=303)
 
         if rsvp == RSVP_NO:
