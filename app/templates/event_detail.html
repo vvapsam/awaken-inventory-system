@@ -89,11 +89,19 @@
     <div class="d">Anyone with this can register. Put it in a post, a story or a
       DM — there is nothing to send from here.</div>
     <div class="st">
-      {% if ev.signup_open %}<span class="tag">Open</span>
-      {% else %}<span class="tag amber">Closed to new people</span>{% endif %}
+      {% if ev.signups_shut() %}<span class="tag amber">Closed to new people</span>
+      {% else %}<span class="tag">Open</span>{% endif %}
       {% if c.unfinished %}<span class="tag amber">{{ c.unfinished }} started,
         not paid</span>{% endif %}
     </div>
+    {# The cut-off is on the public page, so it has to be here too — otherwise
+       the one screen you actually watch is the one that doesn't know. #}
+    {% if ev.signup_closes %}
+    <div class="muted small" style="margin:-4px 0 10px">
+      {% if ev.signups_shut() and ev.signup_open %}Closed automatically on
+      {% else %}Closes {% endif %}<b>{{ ev.closes_text }}</b>{%
+      if closes_left %} · {{ closes_left }} left{% endif %}</div>
+    {% endif %}
     <div class="go" style="align-items:center;flex-wrap:wrap">
       <code class="publink">{{ base }}/r/{{ ev.slug }}</code>
       <button class="btn primary" type="button"
