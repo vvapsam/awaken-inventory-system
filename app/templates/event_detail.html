@@ -7,6 +7,45 @@
   <span class="tsearch-note" id="{{ target }}-note"></span>
 </div>
 {% endmacro %}
+{% macro sendbar(tid) %}
+{# Tick names, then choose what those people get. Two clicks: opening the list
+   is not sending, and picking a template is not sending either — the count and
+   the template are both on the button you finally press.
+
+   A list rather than a row of buttons, because the alternative is a new button
+   here every time there is a new thing to say. One that doesn't apply to this
+   event is shown greyed with the reason, so you can see everything the system
+   can say and why this one is off, instead of hunting for a missing button. #}
+<div class="pickwrap" data-table="{{ tid }}">
+  <div class="selbar" hidden>
+    <b><span class="seln">0</span> selected</b>
+    <span class="selamt"></span>
+    <span style="flex:1"></span>
+    <button class="btn" type="button" data-pickopen
+            {{ 'disabled' if not mail_ready }}
+            title="{{ "Mail isn't set up on the server yet" if not mail_ready }}">
+      ✉ Email them…</button>
+  </div>
+  <div class="picker" hidden>
+    <div class="ph">Send to <span class="seln">0</span></div>
+    {% for t in templates %}
+    <label class="opt {{ '' if t.ok else 'off' }}">
+      <input type="radio" name="kind" value="{{ t.key }}" {{ 'disabled' if not t.ok }}>
+      <span class="tick"></span>
+      <span class="ol"><b>{{ t.name }}</b><span class="d">{{ t.blurb }}</span></span>
+      {% if t.why %}<span class="n">{{ t.why }}</span>{% endif %}
+    </label>
+    {% endfor %}
+    <div class="sendrow">
+      <button class="btn primary" data-picksend disabled>✉ Send to
+        <span class="seln">0</span></button>
+      <a class="btn" data-pickprev href="#" target="_blank" rel="noopener"
+         hidden>Preview it first</a>
+      <button class="btn" type="button" data-pickcancel>Cancel</button>
+    </div>
+  </div>
+</div>
+{% endmacro %}
 {% block body %}
 
 <div class="row-between">
@@ -32,7 +71,8 @@
 {# Say which of the two went out. "Emailed 26 people" on its own leaves you
    wondering whether you just sent the invitation again. #}
 <div class="notice">Sent the
-  <b>{{ 'Reel email' if mail.kind == 'reel' else 'invitation' }}</b>
+  <b>{% if mail.kind == 'reel' %}Reel email{% elif mail.kind == 'finish' %}finish-your-registration
+    nudge{% else %}invitation{% endif %}</b>
   to {{ mail.sent|length }} {{ 'person' if mail.sent|length == 1 else 'people' }} —
   {% for s in mail.sent %}{{ s.name }}{{ ', ' if not loop.last }}{% endfor %}.</div>
 {% endif %}
@@ -207,6 +247,10 @@
   {% endif %}
   {% if ev.mode == 'open' %}
   <a href="?tab=review" class="{{ 'on' if tab == 'review' }}">To review · {{ c.to_review }}</a>
+  {% if c.unfinished %}
+  <a href="?tab=unfinished" class="{{ 'on' if tab == 'unfinished' }}">Not finished
+    · {{ c.unfinished }}</a>
+  {% endif %}
   {% endif %}
 </div>
 
@@ -221,7 +265,7 @@
 {% endif %}
 
 {# ============================================================ PARTICIPANTS #}
-{% if tab not in ('reels', 'waitlist', 'gone', 'door', 'review') %}
+{% if tab not in ('reels', 'waitlist', 'gone', 'door', 'review', 'unfinished') %}
 
 {% if not people %}
 <div class="card"><p class="muted" style="margin:0 0 10px">Nobody on the list yet. Paste your
@@ -239,24 +283,13 @@
 
 {{ searchbar('ppl', 'Search name, email, handle…') }}
 
-{# Tick names and email exactly those people. Every other send is filtered for
-   you — this is the escape hatch for the cases the tidy lists don't cover. #}
 <form method="post" action="/events/{{ ev.id }}/send" id="pickform">
 <input type="hidden" name="who" value="selected">
-<div class="selbar" id="selbar" hidden>
-  <b><span id="seln">0</span> selected</b>
-  <span class="selamt" id="selnote"></span>
-  <span style="flex:1"></span>
-  <button class="btn" name="kind" value="invite" {{ 'disabled' if not mail_ready }}>
-    ✉ Send the invitation</button>
-  <button class="btn" name="kind" value="reel" {{ 'disabled' if not mail_ready }}>
-    ✉ Send the Reel email</button>
-</div>
+{{ sendbar('ppl') }}
 
 <table id="ppl">
   <thead><tr>
-    <th style="width:34px"><input type="checkbox" class="chk" id="selall"
-        title="Select everyone"></th>
+    <th style="width:34px"><input type="checkbox" class="chk selall" title="Select everyone"></th>
     <th>Participant</th><th>Emails</th><th>Instagram</th><th>Confirmed</th>
     <th>Acknowledged</th><th>Reel</th><th>Reward</th><th>Link</th>
     <th style="width:1%"></th>
@@ -465,6 +498,58 @@
 <form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/approve" id="ap-{{ p.id }}" hidden></form>
 {% endfor %}
 {% endif %}
+
+{# ============================================================ NOT FINISHED #}
+{# Started and stopped. The count was already on the tracker card; this gives
+   it somewhere to stand, so "select all" hands you exactly the people worth a
+   nudge rather than making you pick them out of the main table. #}
+{% elif tab == 'unfinished' %}
+
+<div class="card" style="margin-top:12px">
+  <p class="muted small" style="margin:0">
+    <b>{{ c.unfinished }} started and never paid.</b>
+    Nothing is held for any of them — a slot is only taken when you approve a
+    payment. Tick the ones worth chasing and pick <b>Finish your
+    registration</b>; the email knows how far each of them actually got.
+    {% if c.nudged %} {{ c.nudged }} {{ 'has' if c.nudged == 1 else 'have' }}
+    already been nudged.{% endif %}</p>
+</div>
+
+<form method="post" action="/events/{{ ev.id }}/send" id="pickform2">
+<input type="hidden" name="who" value="selected">
+{{ sendbar('unf') }}
+<table id="unf" style="margin-top:12px">
+  <thead><tr>
+    <th style="width:34px"><input type="checkbox" class="chk selall" title="Select everyone"></th>
+    <th>Who</th><th>Rate</th><th>Got as far as</th><th>Nudged</th><th>Link</th>
+  </tr></thead>
+  <tbody>
+  {% for p in unfinished %}
+  <tr>
+    <td><input type="checkbox" class="chk pick" name="pick" value="{{ p.id }}"
+        data-mail="{{ 1 if p.email else 0 }}"></td>
+    <td><b>{{ p.full_name }}</b>
+      <div class="muted small" style="margin:0">{{ p.email or 'no email on record' }}</div></td>
+    <td>{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label) or '—' }}
+      <div class="muted small" style="margin:0">{{ money(p.amount) }}</div></td>
+    <td>
+      {% if ev.external_url and not p.external_done_at %}
+        <span class="tag amber">Details in</span>
+        <div class="muted small" style="margin:0">hasn't been to
+          {{ ev.external_label or 'the organiser' }} yet</div>
+      {% else %}
+        <span class="tag">{{ 'HYROX done' if ev.external_url else 'Details in' }}</span>
+        <div class="muted small" style="margin:0">no receipt from them yet</div>
+      {% endif %}</td>
+    <td class="muted small">{% if p.nudged_at %}{{ (p.nudged_at|local).strftime('%d %b, %H:%M') }}
+      {% else %}—{% endif %}</td>
+    <td><button type="button" class="btn" style="padding:4px 10px;font-size:.76rem"
+        data-copy="{{ base }}/r/{{ ev.slug }}/{{ p.token }}">Copy</button></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</form>
 
 {# =================================================================== DOOR #}
 {# Everyone who said they're coming, and whether they have walked in. The QR
@@ -690,41 +775,63 @@ document.addEventListener('click', function(e){
   }
 });
 
-// Ticking names to email exactly those people.
+// Ticking names, then choosing what they get. Written against whichever
+// table is on screen, because the same bar serves the participant list and the
+// not-finished list and neither should know about the other.
 (function(){
-  var all = document.getElementById('selall');
-  if(!all) return;
-  var bar = document.getElementById('selbar'),
-      n = document.getElementById('seln'),
-      note = document.getElementById('selnote');
-  function boxes(){
-    // Only rows the search has left visible — emailing somebody you have
-    // filtered out of sight would be a nasty surprise.
-    return Array.prototype.filter.call(
-      document.querySelectorAll('#ppl .pick'),
-      function(b){ return b.closest('tr').style.display !== 'none'; });
-  }
-  function sync(){
-    var on = boxes().filter(function(b){ return b.checked; });
-    n.textContent = on.length;
-    // Say up front how many of them can actually be reached.
-    var no = on.filter(function(b){ return b.getAttribute('data-mail') === '0'; }).length;
-    note.textContent = no ? ('· ' + no + ' with no email will be skipped') : '';
-    bar.hidden = on.length === 0;
-    var every = boxes().length;
-    all.checked = every > 0 && on.length === every;
-    all.indeterminate = on.length > 0 && on.length < every;
-  }
-  all.addEventListener('change', function(){
-    boxes().forEach(function(b){ b.checked = all.checked; });
+  var evid = {{ ev.id }};
+  Array.prototype.forEach.call(document.querySelectorAll('.pickwrap'), function(wrap){
+    var table = document.getElementById(wrap.getAttribute('data-table'));
+    if(!table) return;
+    var bar = wrap.querySelector('.selbar'),
+        box = wrap.querySelector('.picker'),
+        note = wrap.querySelector('.selamt'),
+        all = table.querySelector('.selall'),
+        go = wrap.querySelector('[data-picksend]'),
+        prev = wrap.querySelector('[data-pickprev]');
+    function boxes(){
+      // Only rows the search has left visible — emailing somebody you have
+      // filtered out of sight would be a nasty surprise.
+      return Array.prototype.filter.call(table.querySelectorAll('.pick'),
+        function(b){ return b.closest('tr').style.display !== 'none'; });
+    }
+    function sync(){
+      var on = boxes().filter(function(b){ return b.checked; });
+      Array.prototype.forEach.call(wrap.querySelectorAll('.seln'),
+        function(el){ el.textContent = on.length; });
+      // Say up front how many of them can actually be reached.
+      var no = on.filter(function(b){ return b.getAttribute('data-mail') === '0'; }).length;
+      note.textContent = no ? ('· ' + no + ' with no email will be skipped') : '';
+      bar.hidden = on.length === 0;
+      if(on.length === 0) box.hidden = true;
+      if(all){
+        var every = boxes().length;
+        all.checked = every > 0 && on.length === every;
+        all.indeterminate = on.length > 0 && on.length < every;
+      }
+      var k = box.querySelector('input[name=kind]:checked');
+      go.disabled = !k || on.length === 0;
+      prev.hidden = !k;
+      if(k) prev.href = '/events/' + evid + '/preview/' + k.value;
+    }
+    if(all) all.addEventListener('change', function(){
+      boxes().forEach(function(b){ b.checked = all.checked; });
+      sync();
+    });
+    table.addEventListener('change', function(e){
+      if(e.target.classList.contains('pick')) sync();
+    });
+    box.addEventListener('change', sync);
+    wrap.querySelector('[data-pickopen]').addEventListener('click', function(){
+      box.hidden = false; sync();
+    });
+    wrap.querySelector('[data-pickcancel]').addEventListener('click', function(){
+      box.hidden = true;
+    });
+    var search = document.querySelector('input[data-filter="#' + table.id + '"]');
+    if(search) search.addEventListener('input', function(){ setTimeout(sync, 0); });
     sync();
   });
-  document.getElementById('ppl').addEventListener('change', function(e){
-    if(e.target.classList.contains('pick')) sync();
-  });
-  var search = document.querySelector('input[data-filter="#ppl"]');
-  if(search) search.addEventListener('input', function(){ setTimeout(sync, 0); });
-  sync();
 })();
 </script>
 {% endblock %}
