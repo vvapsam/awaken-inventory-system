@@ -72,7 +72,7 @@
   {% if ev.reel_deadline %}
   <div class="s"><div class="l">Reel window</div>
     <div class="v">{{ reel_left or 'closed' }}</div>
-    <div class="sub">{{ ev.reel_deadline.strftime('%d %b, %H:%M') }}</div></div>
+    <div class="sub">{{ (ev.reel_deadline|local).strftime('%d %b, %H:%M') }}</div></div>
   {% endif %}
   <div class="s spacer"></div>
 </div>
@@ -264,9 +264,9 @@
     {# Which of the two emails this person has had. Two ticks means they were
        asked to come and asked to post; one means the second is still owed. #}
     <td style="white-space:nowrap">
-      {% if p.invited_at %}<span class="tag" title="Invitation sent {{ p.invited_at.strftime('%d %b, %H:%M') }}">1</span>
+      {% if p.invited_at %}<span class="tag" title="Invitation sent {{ (p.invited_at|local).strftime('%d %b, %H:%M') }}">1</span>
       {% else %}<span class="tag grey" title="Invitation not sent">1</span>{% endif %}
-      {% if p.reel_email_at %}<span class="tag" title="Reel email sent {{ p.reel_email_at.strftime('%d %b, %H:%M') }}">2</span>
+      {% if p.reel_email_at %}<span class="tag" title="Reel email sent {{ (p.reel_email_at|local).strftime('%d %b, %H:%M') }}">2</span>
       {% elif p.confirmed %}<span class="tag amber" title="Reel email still owed">2</span>
       {% else %}<span class="tag grey" title="Not confirmed yet">2</span>{% endif %}
     </td>
@@ -276,10 +276,10 @@
       {% if p.released_at %}<span class="tag bad">Window closed</span>
         <div class="muted small" style="margin:0">Slot released</div>
       {% elif p.confirmed %}<span class="tag">Yes</span>
-        <div class="muted small" style="margin:0">{{ p.rsvp_at.strftime('%d %b, %H:%M') if p.rsvp_at }}</div>
+        <div class="muted small" style="margin:0">{{ (p.rsvp_at|local).strftime('%d %b, %H:%M') if p.rsvp_at }}</div>
       {% elif p.declined %}<span class="tag grey">Can't make it</span>
       {% elif p.invited_at %}<span class="tag amber">Not yet</span>
-        <div class="muted small" style="margin:0">Invited {{ p.invited_at.strftime('%d %b') }}</div>
+        <div class="muted small" style="margin:0">Invited {{ (p.invited_at|local).strftime('%d %b') }}</div>
       {% else %}<span class="muted small">Not invited</span>{% endif %}
     </td>
     <td>{% if p.acknowledged_at %}<span class="tag">Agreed</span>
@@ -424,7 +424,7 @@
                     border:1px solid var(--line);vertical-align:middle"></a>
       {% else %}<span class="muted small">None</span>{% endif %}
       <span class="sub" style="margin-left:8px">{{ p.proof_ref or 'No reference' }}</span></td>
-    <td class="sub">{% if p.submitted_at %}{{ p.submitted_at.strftime('%d %b, %H:%M') }}{% endif %}</td>
+    <td class="sub">{% if p.submitted_at %}{{ (p.submitted_at|local).strftime('%d %b, %H:%M') }}{% endif %}</td>
     <td style="white-space:nowrap">
       <button class="btn primary" form="ap-{{ p.id }}" style="margin:0">Approve</button>
       <button type="button" class="btn" style="margin:0;color:#8a6414"
@@ -488,7 +488,7 @@
     <td><div class="primary">{{ p.name }}</div>
       <div class="sub">{{ p.email or 'No email on record' }}</div></td>
     <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>{% else %}—{% endif %}</td>
-    <td>{% if p.arrived_at %}<span class="tag">{{ p.arrived_at.strftime('%d %b, %H:%M') }}</span>
+    <td>{% if p.arrived_at %}<span class="tag">{{ (p.arrived_at|local).strftime('%d %b, %H:%M') }}</span>
       {% else %}<span class="muted small">Not yet</span>{% endif %}</td>
   </tr>
   {% endfor %}
@@ -523,9 +523,9 @@
     <td><div class="primary">{{ p.name }}</div>
       <div class="sub">{{ p.email or 'No email on record' }}</div></td>
     <td>{% if p.declined %}<span class="tag grey">Said they can't make it</span>
-        {% if p.rsvp_at %}<div class="sub">{{ p.rsvp_at.strftime('%d %b, %H:%M') }}</div>{% endif %}
+        {% if p.rsvp_at %}<div class="sub">{{ (p.rsvp_at|local).strftime('%d %b, %H:%M') }}</div>{% endif %}
       {% else %}<span class="tag grey">Didn't answer in time</span>
-        {% if p.released_at %}<div class="sub">{{ p.released_at.strftime('%d %b, %H:%M') }}</div>{% endif %}
+        {% if p.released_at %}<div class="sub">{{ (p.released_at|local).strftime('%d %b, %H:%M') }}</div>{% endif %}
       {% endif %}</td>
     <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>{% else %}—{% endif %}</td>
     <td style="white-space:nowrap">
@@ -606,7 +606,7 @@
     <td><div class="primary">{{ p.name }}</div><div class="sub mono">{{ p.handle }}</div></td>
     <td><a class="tag" style="text-decoration:none" href="{{ p.reel_url }}" target="_blank"
       rel="noopener">Watch ↗</a></td>
-    <td>{{ p.reel_at.strftime('%d %b, %H:%M') if p.reel_at }}</td>
+    <td>{{ (p.reel_at|local).strftime('%d %b, %H:%M') if p.reel_at }}</td>
     <td>
       {# Three states on purpose: a Reel nobody has looked at is not the same
          as one that is fine. Marking it missing never touches the reward. #}

@@ -152,11 +152,12 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
 {# ---------------------------------------------------------- 0 · landing ---- #}
 {% if step == 0 %}
 <div class="body">
-  {% if not ev.signup_open %}
+  {% if shut %}
   <div class="hi">Registration is closed</div>
-  <p>This one isn't taking any more sign-ups. Follow
-    {{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }} — the next one
-    goes up there first.</p>
+  <p>{% if ev.signup_closes and ev.signup_open %}This one closed on
+    {{ ev.closes_text }}.{% else %}This one isn't taking any more sign-ups.{% endif %}
+    Follow {{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }} — the
+    next one goes up there first.</p>
   {% else %}
   <div class="hi">Reserve your slot</div>
   <p>{% if ev.starts_at %}{{ ev.when_text }}{% endif %}{%
@@ -173,6 +174,14 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
       <div><b>Pay and send the receipt</b>
       <small>We check it and come back within {{ ev.review_hours }} hours</small></div></div>
   </div>
+
+  {% if ev.signup_closes %}
+  {# Stated once, plainly. A countdown that ticks would turn a deadline into a
+     pressure tactic, which is not what this is for. #}
+  <div class="note warn" style="margin-top:16px"><b>Registration closes
+    {{ ev.closes_text }}.</b>{% if closes_left %} That's {{ closes_left }}
+    from now.{% endif %}</div>
+  {% endif %}
 
   {% if tiers %}
   <div class="lbl">What it costs</div>
@@ -353,7 +362,7 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
   <b>{{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }}</b> — we reply fast.</div>
 </div>
 
-{% if step == 0 and ev.signup_open %}
+{% if step == 0 and not shut %}
 <script>
 // A small sum the browser has to do before the form will send. Half a second on
 // a phone and nobody notices, because they are still typing — but a script

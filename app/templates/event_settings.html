@@ -55,7 +55,7 @@
     </div>
     <div><label class="small" style="font-weight:600">Starts</label>
       <input type="datetime-local" name="starts_at" required
-        value="{{ ev.starts_at.strftime('%Y-%m-%dT%H:%M') if ev.starts_at }}">
+        value="{{ ev.starts_at|local_dt if ev.starts_at }}">
       <label class="check small" style="margin-top:6px">
         <input type="checkbox" name="time_tba" value="on"
                {{ 'checked' if ev.time_tba }}> Show the day only — start times
@@ -99,9 +99,16 @@
         <input type="checkbox" name="signup_open" value="on"
                {{ 'checked' if ev.signup_open }}> Taking registrations right now</label>
       <div class="muted small" style="margin:3px 0 0">Untick to close the page
-        without deleting anything. Deliberately a switch rather than an automatic
-        cut-off — a page that closes itself the moment the last slot goes will
-        close on somebody mid-payment.</div></div>
+        without deleting anything.</div>
+      <label class="small" style="font-weight:600;display:block;margin-top:12px">
+        Or close it automatically on</label>
+      <input type="datetime-local" name="signup_closes"
+             value="{{ ev.signup_closes|local_dt if ev.signup_closes }}">
+      <div class="muted small" style="margin:3px 0 0">Shown on the page, so
+        people can see it coming. A date is safe to close on where a full room
+        is not — it doesn't arrive early because somebody else was quicker.
+        Anybody already part-way through can still finish paying; you review
+        theirs either way. Leave blank to keep it open until you say otherwise.</div></div>
   </div>
 
   {% if ev.mode == 'open' %}
@@ -213,7 +220,7 @@
       <input name="reel_hours" value="{{ ev.reel_hours }}" style="width:90px"></div>
     <div><label class="small" style="font-weight:600">Answer by</label>
       <input type="datetime-local" name="confirm_by"
-        value="{{ ev.confirm_by.strftime('%Y-%m-%dT%H:%M') if ev.confirm_by }}">
+        value="{{ ev.confirm_by|local_dt if ev.confirm_by }}">
       <div class="muted small" style="margin:3px 0 0">One deadline for the whole room, which
         is what you want when everybody is being asked at once. Unanswered slots go to the
         waitlist after it.</div></div>

@@ -421,7 +421,7 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
       <div class="code">{{ p.reward_code }}</div>
       {% if reward.value %}<div class="val">{{ reward.value }}</div>{% endif %}
       {% if p.redeemed_at %}<div class="hint" style="margin-top:7px">Redeemed
-        {{ p.redeemed_at.strftime('%d %b') }}</div>{% endif %}
+        {{ (p.redeemed_at|local).strftime('%d %b') }}</div>{% endif %}
     </div>
     <div class="copyrow"><span class="m">{{ p.reward_code }}</span>
       <button type="button" data-copy="{{ p.reward_code }}">COPY</button></div>
@@ -444,7 +444,7 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
           style="color:#006a6a">View ↗</a></span></div>
       {% if p.reel_at %}
       <div class="r"><span class="k">Submitted</span>
-        <span class="v">{{ p.reel_at.strftime('%d %b, %H:%M') }}</span></div>
+        <span class="v">{{ (p.reel_at|local).strftime('%d %b, %H:%M') }}</span></div>
       {% endif %}
       <div class="r"><span class="k">Tag check</span><span class="v">
         {% if p.tags == 'ok' %}<span class="pill">ALL GOOD</span>
