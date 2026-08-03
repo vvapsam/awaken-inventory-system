@@ -190,13 +190,25 @@ def confirm_deadline(p: EventParticipant, now=None):
     """
     now = now or datetime.now(timezone.utc)
     own = _aware(p.confirm_due)
+    hard = _aware(p.event.confirm_by)
     if own:
         # Set when somebody is asked outside the normal run — off the waitlist,
-        # after the event's own cut-off. Theirs wins outright; the event date
-        # is about having time to re-fill, and filling is what just happened.
+        # or put back after saying no. They get their own window so they are
+        # not handed a slot that expired before they were offered it.
+        #
+        # But the announced date is still a ceiling while it is ahead of us.
+        # One date told to the whole room has to mean the same thing for
+        # everybody in it, or the answer to "when do I need to hear back?" is
+        # different depending on how somebody got their slot — and only one of
+        # those answers is the one printed in the email.
+        #
+        # Once that date has passed it can no longer govern: somebody being
+        # asked for the first time after it cannot be held to a deadline that
+        # was already behind them, which is the case this branch exists for.
+        if hard and hard > now:
+            return min(own, hard)
         return own
     hours = p.event.confirm_hours or 0
-    hard = _aware(p.event.confirm_by)
     if not hours:
         # The rolling clock is switched off, so a fixed date is the whole
         # answer — and with neither set there is no deadline at all and
