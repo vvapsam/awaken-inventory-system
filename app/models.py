@@ -1393,6 +1393,10 @@ class EventParticipant(Base):
     #: When the "you're in, here's your pass" email went out. Stamped so a
     #: second confirm — somebody fixing their handle — doesn't send it twice.
     pass_email_at = Column(DateTime(timezone=True))
+    #: When they were last nudged about a registration they never finished.
+    #: Stamped so the second send can default to people who have not had one —
+    #: chasing the same person four times is how you get filed as spam.
+    nudged_at = Column(DateTime(timezone=True))
     #: When they were scanned in at the door. The QR on their page is the
     #: fast path; the tracker has a button for the phone that died on the way.
     arrived_at = Column(DateTime(timezone=True))
