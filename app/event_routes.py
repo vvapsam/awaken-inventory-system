@@ -957,6 +957,7 @@ def register(app, deps):
                       c=counts(ev),
                       lists={k: len(v) for k, v in mail_lists(ev).items()},
                       reel_left=left_until(ev.reel_deadline),
+                      closes_left=left_until(ev.signup_closes),
                       base=base_url(request), tag_labels=TAG_LABELS,
                       statuses=EVENT_STATUSES,
                       mail=request.session.pop("event_mail", None),
