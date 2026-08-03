@@ -56,6 +56,13 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 templates.env.globals["peso"] = lambda v: "₱{:,.2f}".format(float(v or 0))
+# Stored instants are UTC; every screen reads in gym time. `local` for showing
+# a moment, `local_dt` for pre-filling a datetime-local input — the browser
+# treats that value as a wall clock, so it has to be handed one.
+from .models import to_local as _to_local
+templates.env.filters["local"] = _to_local
+templates.env.filters["local_dt"] = lambda d: (
+    _to_local(d).strftime("%Y-%m-%dT%H:%M") if d else "")
 
 
 def _asset_version() -> str:
@@ -102,6 +109,39 @@ app.include_router(hyrox_router)
 
 def _slugify(s):
     return "".join(c for c in (s or "").lower() if c.isalnum()) or "user"
+
+
+def _fix_typed_times():
+    """Move times typed under the old rule onto the clock they always meant.
+
+    A date somebody typed used to be saved with a UTC label stuck on a Manila
+    wall-clock reading, so "6 PM" was stored as 6 PM UTC and every deadline
+    built on it fired eight hours late. Storage is real instants now. This
+    walks the rows written before that and re-reads each one as gym time,
+    which is what the person meant when they typed it.
+
+    Done in Python rather than as one SQL interval so it stays correct for a
+    timezone that observes daylight saving — the offset is not a constant
+    everywhere, even though it is here.
+    """
+    from .models import Event, from_local
+    with engine.begin() as conn:
+        stale = conn.execute(text(
+            "SELECT id, starts_at, confirm_by FROM events "
+            "WHERE NOT tz_fixed")).fetchall()
+        for row in stale:
+            vals = {"id": row[0]}
+            for col, raw in (("starts_at", row[1]), ("confirm_by", row[2])):
+                # Drop the label that was never true, then re-read the reading.
+                vals[col] = from_local(raw.replace(tzinfo=None)) if raw else None
+            conn.execute(text(
+                "UPDATE events SET starts_at = :starts_at, "
+                "confirm_by = :confirm_by, tz_fixed = TRUE WHERE id = :id"), vals)
+        if stale:
+            print("corrected the stored clock on %d event(s)" % len(stale))
+        # From here on every row is written as a real instant already.
+        conn.execute(text(
+            "ALTER TABLE events ALTER COLUMN tz_fixed SET DEFAULT TRUE"))
 
 
 @app.on_event("startup")
@@ -477,6 +517,20 @@ def startup():
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  confirm_hours INTEGER NOT NULL DEFAULT 48; "
                 "END IF; END $$;"))
+            # The advertised registration cut-off.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  signup_closes TIMESTAMPTZ; "
+                "END IF; END $$;"))
+            # Room for the one-time correction below. The column defaults to
+            # FALSE so that every row written under the old rule is picked up
+            # exactly once; the default flips to TRUE once they have been.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  tz_fixed BOOLEAN NOT NULL DEFAULT FALSE; "
+                "END IF; END $$;"))
             # A day without a clock time, for races whose heats are drawn later.
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
@@ -587,6 +641,10 @@ def startup():
                 "  ALTER TABLE commission_coach_rates DROP COLUMN IF EXISTS override_rate_type; "
                 "  ALTER TABLE commission_coach_rates DROP COLUMN IF EXISTS override_rate_value; "
                 "END IF; END $$;"))
+        # Every events column exists by now, so the stored clock can be put
+        # right. Runs after the ALTERs and only ever touches rows the tombstone
+        # says have not been corrected.
+        _fix_typed_times()
         # Seed commission rules (coach rates, delegators, settings). Idempotent.
         from . import commission_routes
         commission_routes.seed(db)

@@ -1,5 +1,36 @@
 import math
+import os
 from datetime import datetime, timedelta, timezone
+
+#: The gym runs in one place, so every time a person types or reads is that
+#: place's wall clock. Stored values are always real UTC instants; this is the
+#: lens they are written and read through.
+APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
+
+
+def gym_tz():
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(APP_TZ)
+    except Exception:
+        return timezone(timedelta(hours=8))   # Manila has no daylight saving
+
+
+def to_local(dt):
+    """A stored instant, as the clock on the gym wall would read it."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(gym_tz())
+
+
+def from_local(dt):
+    """A time somebody typed, read as gym time, returned as a real instant."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=gym_tz()).astimezone(timezone.utc)
+
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
     LargeBinary, Numeric, String, Text, UniqueConstraint,
@@ -1186,6 +1217,13 @@ class Event(Base):
     #: switch rather than a capacity check — a page that closes itself the moment
     #: the last slot goes will close on somebody mid-payment.
     signup_open = Column(Boolean, nullable=False, default=True)
+    #: The advertised cut-off. A date is safe to close on automatically in a way
+    #: that a full room is not: everybody can see it coming, and it does not
+    #: arrive early because somebody else was quicker.
+    signup_closes = Column(DateTime(timezone=True))
+    #: Tombstone for the one-time correction of times that were stored as gym
+    #: wall clock but labelled UTC. Kept so the fix can never run twice.
+    tz_fixed = Column(Boolean, nullable=False, default=True)
     #: The step we cannot do for them: registering on the organiser's own site.
     external_url = Column(String)
     external_label = Column(String)          # "Register on HYROX"
@@ -1270,7 +1308,31 @@ class Event(Base):
         if not self.starts_at:
             return ""
         fmt = "%a %d %b" if self.time_tba else "%a %d %b, %I:%M %p"
-        return self.starts_at.strftime(fmt).replace(" 0", " ")
+        return to_local(self.starts_at).strftime(fmt).replace(" 0", " ")
+
+    @property
+    def closes_text(self) -> str:
+        """The advertised cut-off, in gym time."""
+        if not self.signup_closes:
+            return ""
+        return to_local(self.signup_closes).strftime(
+            "%a %d %b, %I:%M %p").replace(" 0", " ")
+
+    def signups_shut(self, now=None) -> bool:
+        """Is the door closed to anybody new right now?
+
+        Two ways to shut it and they are not the same thing: the switch is you
+        deciding, the date is you having decided in advance. Either closes it.
+        """
+        if not self.signup_open:
+            return True
+        if not self.signup_closes:
+            return False
+        now = now or datetime.now(timezone.utc)
+        closes = self.signup_closes
+        if closes.tzinfo is None:
+            closes = closes.replace(tzinfo=timezone.utc)
+        return now >= closes
 
     @property
     def when_note(self) -> str:

@@ -54,7 +54,7 @@ from .models import (
     HANDLE_MAX, PAY_APPROVED, PAY_DRAFT, PAY_LABELS, PAY_RETURNED,
     PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
-    Event, EventParticipant,
+    Event, EventParticipant, from_local, to_local,
 )
 
 #: AWAKEN's palette, and nothing else. Emails are the one place a third
@@ -427,7 +427,8 @@ def register(app, deps):
 
     def _signup_ctx(request, ev, p=None, **kw):
         ctx = {"request": request, "ev": ev, "p": p, "tiers": _tiers(ev),
-               "sexes": SEXES, "money": money,
+               "sexes": SEXES, "money": money, "shut": ev.signups_shut(),
+               "closes_left": left_until(ev.signup_closes),
                "pow_bits": POW_BITS, "step": kw.pop("step", 1)}
         ctx.update(kw)
         return ctx
@@ -502,7 +503,7 @@ def register(app, deps):
         ev = db.query(Event).filter(Event.slug == slug).first()
         if not ev or ev.mode != EVENT_OPEN:
             return RedirectResponse("/", status_code=303)
-        if not ev.signup_open:
+        if ev.signups_shut():
             return RedirectResponse("/r/%s" % slug, status_code=303)
         form = await request.form()
         bad = _signup_guard(request, ev, form)
@@ -1007,7 +1008,7 @@ def register(app, deps):
             reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
             confirm_by: str = Form(""),
             mode: str = Form(EVENT_INVITE), signup_open: str = Form(""),
-            slug: str = Form(""),
+            signup_closes: str = Form(""), slug: str = Form(""),
             external_url: str = Form(""), external_label: str = Form(""),
             external_note: str = Form(""),
             tier_a_label: str = Form(""), tier_a_price: str = Form(""),
@@ -1030,17 +1031,18 @@ def register(app, deps):
             return RedirectResponse("/events", status_code=303)
 
         def dt(text):
-            """A datetime-local value, read as UTC.
+            """A datetime-local value, read as gym time.
 
-            The gym runs in one timezone and the server clock is UTC; storing
-            what was typed keeps the countdown and the tracker agreeing with
-            each other, which is what actually matters here.
+            Whoever fills this in is looking at a clock on a wall in Pasig, so
+            that is the clock the value means. It is stored as a real instant,
+            which is the only way a deadline can be compared to "now" and land
+            when the page said it would.
             """
             text = (text or "").strip()
             if not text:
                 return None
             try:
-                return datetime.fromisoformat(text).replace(tzinfo=timezone.utc)
+                return from_local(datetime.fromisoformat(text))
             except ValueError:
                 return None
 
@@ -1074,6 +1076,7 @@ def register(app, deps):
 
         ev.mode = mode if mode in (EVENT_INVITE, EVENT_OPEN) else EVENT_INVITE
         ev.signup_open = bool(signup_open)
+        ev.signup_closes = dt(signup_closes)
         # The slug is the URL you post, so a typo in the name at the moment the
         # event was created must not own it forever. It is deliberately not
         # rewritten when the name changes: somebody may already have shared it,
@@ -1862,7 +1865,8 @@ def _esc(s) -> str:
 
 
 def _fmt_when(dt) -> str:
-    dt = _aware(dt)
+    """A stored instant, written as the clock on the gym wall reads it."""
+    dt = to_local(_aware(dt))
     return dt.strftime("%a %d %b, %I:%M %p").replace(" 0", " ") if dt else ""
 
 
