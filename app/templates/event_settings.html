@@ -55,7 +55,14 @@
     </div>
     <div><label class="small" style="font-weight:600">Starts</label>
       <input type="datetime-local" name="starts_at" required
-        value="{{ ev.starts_at.strftime('%Y-%m-%dT%H:%M') if ev.starts_at }}"></div>
+        value="{{ ev.starts_at.strftime('%Y-%m-%dT%H:%M') if ev.starts_at }}">
+      <label class="check small" style="margin-top:6px">
+        <input type="checkbox" name="time_tba" value="on"
+               {{ 'checked' if ev.time_tba }}> Show the day only — start times
+        to follow</label>
+      <div class="muted small" style="margin:3px 0 0">For a race whose heats are
+        drawn nearer the day. Still pick a time here — the countdown and the
+        ordering need one — this only decides whether anybody is shown it.</div></div>
     <div><label class="small" style="font-weight:600">Venue</label>
       <input name="venue" value="{{ ev.venue or '' }}" placeholder="AWAKEN Fitness Center, BGC"></div>
     <div><label class="small" style="font-weight:600">Slots</label>

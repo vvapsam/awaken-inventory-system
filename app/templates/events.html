@@ -40,7 +40,7 @@
   <tr>
     <td><a href="/events/{{ ev.id }}"><b>{{ ev.name }}</b></a>
       {% if ev.sponsor %}<div class="muted small" style="margin:0">{{ ev.sponsor }}</div>{% endif %}</td>
-    <td>{% if ev.starts_at %}{{ ev.starts_at.strftime('%d %b %Y, %H:%M') }}
+    <td>{% if ev.starts_at %}{{ ev.when_text }}
       {% else %}<span class="muted small">Not set</span>{% endif %}</td>
     <td style="text-align:right">{{ c.confirmed }} <span class="muted">/ {{ ev.capacity }}</span>
       {% if c.waiting %}<div class="muted small" style="margin:0">{{ c.waiting }} to hear from</div>{% endif %}</td>

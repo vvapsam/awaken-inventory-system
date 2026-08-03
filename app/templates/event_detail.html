@@ -14,7 +14,7 @@
     <h1 style="margin:0">{{ ev.name }}
       {% if ev.sponsor %}<span class="muted" style="font-weight:400">× {{ ev.sponsor }}</span>{% endif %}</h1>
     <p class="muted small" style="margin:2px 0 0">
-      {% if ev.starts_at %}{{ ev.starts_at.strftime('%a %d %b %Y, %H:%M') }} · {% endif %}
+      {% if ev.starts_at %}{{ ev.when_text }}{% if ev.time_tba %} · time TBA{% endif %} · {% endif %}
       {{ ev.capacity }} slots{% if ev.hashtag %} · {{ ev.hashtag }}{% endif %}</p>
   </div>
   <div class="hdact">

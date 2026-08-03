@@ -159,7 +159,7 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     goes up there first.</p>
   {% else %}
   <div class="hi">Reserve your slot</div>
-  <p>{% if ev.starts_at %}{{ ev.starts_at.strftime('%a %d %b')|replace(' 0',' ') }}{% endif %}{%
+  <p>{% if ev.starts_at %}{{ ev.when_text }}{% endif %}{%
      if ev.venue %} · {{ ev.venue }}{% endif %}</p>
 
   <div class="steps">
@@ -343,7 +343,7 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     <div class="nm">{{ p.full_name }}</div>
     <div class="sb">{{ ev.name }}</div></div>
   <div class="note grey" style="text-align:left">
-    {% if ev.starts_at %}{{ ev.starts_at.strftime('%a %d %b, %I:%M %p')|replace(' 0',' ') }}{% endif %}{%
+    {% if ev.starts_at %}{{ ev.when_text }}{% if ev.time_tba %}<br>{{ ev.when_note }}{% endif %}{% endif %}{%
     if ev.venue %}<br>{{ ev.venue }}{% endif %}
     {% if ev.bring %}<br>Bring: {{ ev.bring }}{% endif %}</div>
 </div>
