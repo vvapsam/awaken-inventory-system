@@ -477,6 +477,12 @@ def startup():
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  confirm_hours INTEGER NOT NULL DEFAULT 48; "
                 "END IF; END $$;"))
+            # A day without a clock time, for races whose heats are drawn later.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  time_tba BOOLEAN NOT NULL DEFAULT FALSE; "
+                "END IF; END $$;"))
             # Open registration: a second way into an event, where the public
             # signs itself up and pays rather than being invited.
             conn.execute(text(

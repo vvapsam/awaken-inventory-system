@@ -1162,6 +1162,12 @@ class Event(Base):
     status = Column(String, nullable=False, default=EVENT_DRAFT)
 
     starts_at = Column(DateTime(timezone=True))
+    #: Show the day but not the clock time. For a race the heats are drawn and
+    #: published closer to the day, so a start time printed weeks ahead is a
+    #: number somebody will plan around and then have to be corrected on. The
+    #: date is still stored — the countdown and the ordering need it — this only
+    #: decides whether anybody is shown it.
+    time_tba = Column(Boolean, nullable=False, default=False)
     venue = Column(String)
     capacity = Column(Integer, nullable=False, default=30)
     bring = Column(String)                       # "Training gear, towel, water"
@@ -1252,6 +1258,24 @@ class Event(Base):
     def reel_deadline(self):
         return (self.ends_at + timedelta(hours=self.reel_hours or 48)
                 if self.ends_at else None)
+
+    @property
+    def when_text(self) -> str:
+        """When the class is, written the way everybody should read it.
+
+        One place decides, because this string goes on the public page, in two
+        emails, on the pass and in your own tracker — and a date that reads four
+        different ways is four chances for somebody to turn up on the wrong one.
+        """
+        if not self.starts_at:
+            return ""
+        fmt = "%a %d %b" if self.time_tba else "%a %d %b, %I:%M %p"
+        return self.starts_at.strftime(fmt).replace(" 0", " ")
+
+    @property
+    def when_note(self) -> str:
+        """The line that replaces a start time nobody has been given yet."""
+        return "Start times to follow" if self.time_tba else ""
 
     @property
     def handle_list(self) -> list:

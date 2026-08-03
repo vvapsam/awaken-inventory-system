@@ -1000,7 +1000,8 @@ def register(app, deps):
             request: Request, eid: int,
             name: str = Form(...), sponsor: str = Form(""),
             status: str = Form(EVENT_DRAFT),
-            starts_at: str = Form(""), venue: str = Form(""),
+            starts_at: str = Form(""), time_tba: str = Form(""),
+            venue: str = Form(""),
             capacity: str = Form("30"), bring: str = Form(""), perk: str = Form(""),
             handles: str = Form(""), hashtag: str = Form(""),
             reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
@@ -1053,6 +1054,7 @@ def register(app, deps):
         ev.sponsor = sponsor.strip()
         ev.status = status if status in dict(EVENT_STATUSES) else ev.status
         ev.starts_at = dt(starts_at)
+        ev.time_tba = bool(time_tba)
         ev.venue = venue.strip()
         ev.capacity = num(capacity, 30)
         ev.bring, ev.perk = bring.strip(), perk.strip()
@@ -1601,7 +1603,7 @@ def register(app, deps):
 
     def _invite_mail(ev, p, url):
         """The 'you're in, confirm your slot' email."""
-        when = _fmt_when(ev.starts_at)
+        when = ev.when_text
         # Their own deadline: a fixed date if you set one, otherwise the clock
         # that starts the moment this email sends.
         by = _fmt_when(confirm_deadline(p))
@@ -1648,7 +1650,7 @@ def register(app, deps):
         doorway is exactly where somebody has no signal and no patience, and
         an email already sitting in their inbox opens without either.
         """
-        when = _fmt_when(ev.starts_at)
+        when = ev.when_text
         first = (p.name or "").split()[0] if p.name else "there"
         subject = "You're in — your pass for %s" % ev.name
         text = "\n".join([
@@ -1865,8 +1867,8 @@ def _fmt_when(dt) -> str:
 
 
 def _facts(ev) -> str:
-    rows = [("When", _fmt_when(ev.starts_at)), ("Where", ev.venue),
-            ("Bring", ev.bring), ("After", ev.perk)]
+    rows = [("When", " — ".join(x for x in (ev.when_text, ev.when_note) if x)),
+            ("Where", ev.venue), ("Bring", ev.bring), ("After", ev.perk)]
     cells = "".join(
         '<tr><td style="color:#6b7683;font-size:14px;padding:4px 12px 4px 0;'
         'width:76px">%s</td><td style="font-size:14px;font-weight:600">%s</td></tr>'
