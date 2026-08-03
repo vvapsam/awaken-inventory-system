@@ -29,7 +29,7 @@
 
   <div class="ckwhen">
     {% if not fresh and who.arrived_at %}
-      Scanned {{ who.arrived_at.strftime('%I:%M %p')|replace(' 0',' ')|trim }} — this is
+      Scanned {{ (who.arrived_at|local).strftime('%I:%M %p')|replace(' 0',' ')|trim }} — this is
       the second scan, so nothing changed.
     {% elif stage in ('ready', 'submit', 'late', 'rewarded') %}
       On the list{% if who.handle %} · {{ who.handle }}{% endif %}

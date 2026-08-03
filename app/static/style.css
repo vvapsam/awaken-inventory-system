@@ -277,6 +277,21 @@ tr.needs:hover td{background:#f6ecd6}
 .mailbar .st{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:11px}
 .mailbar .go{display:flex;gap:7px;flex-wrap:wrap;margin-top:auto}
 .mailbar .go form{margin:0}
+/* The public link is the whole of an open event's first card, so it is shown
+   in full rather than truncated — a link you have to widen a window to read is
+   a link you retype wrong. */
+/* The fixed part of the URL sits flush against the editable part, so what you
+   are typing reads as the tail of a link rather than as a free-text field. */
+.slugline{display:flex;align-items:center;gap:0;border:1px solid var(--line);
+  border-radius:8px;overflow:hidden;background:#fff;margin-top:4px}
+.slugline span{padding:8px 2px 8px 10px;white-space:nowrap;font-size:.84rem}
+.slugline input{border:0;border-radius:0;margin:0;flex:1;min-width:0;
+  padding:8px 10px 8px 0;font-size:.84rem;background:transparent}
+.slugline input:focus{outline:0;box-shadow:none}
+.slugline:focus-within{border-color:var(--teal,#008080)}
+.publink{flex:1 1 100%;min-width:0;font-size:.82rem;background:var(--panel,#f3f5f7);
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+  color:#2b3642;overflow-wrap:anywhere;line-height:1.4}
 .mailbar .go .btn{margin:0;padding:7px 13px;font-size:.85rem}
 @media(max-width:760px){.mailbar{grid-template-columns:1fr}}
 

@@ -3,7 +3,7 @@
 <div class="card">
   <div class="r"><span class="k">Name</span><span class="v">{{ p.name }}</span></div>
   {% if ev.starts_at %}<div class="r"><span class="k">When</span>
-    <span class="v">{{ ev.starts_at.strftime('%a %d %b, %I:%M %p')|replace(' 0',' ') }}</span></div>{% endif %}
+    <span class="v">{{ ev.when_text }}{% if ev.time_tba %}<br><span class="muted small">{{ ev.when_note }}</span>{% endif %}</span></div>{% endif %}
   {% if ev.venue %}<div class="r"><span class="k">Where</span><span class="v">{{ ev.venue }}</span></div>{% endif %}
   {% if ev.bring %}<div class="r"><span class="k">Bring</span><span class="v">{{ ev.bring }}</span></div>{% endif %}
   {% if p.handle %}<div class="r"><span class="k">Instagram</span><span class="v">{{ p.handle }}</span></div>{% endif %}
@@ -276,7 +276,7 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
         <label class="opt">
           <input type="radio" name="rsvp" value="yes" checked>
           <span><span class="t">Yes, I'll be there</span>
-            {% if ev.starts_at %}<span class="d">{{ ev.starts_at.strftime('%a %d %b, %I:%M %p')|replace(' 0',' ') }}</span>{% endif %}</span>
+            {% if ev.starts_at %}<span class="d">{{ ev.when_text }}</span>{% endif %}</span>
         </label>
         {# A real button, not small print. Making it easy to decline is how the
            slot comes back in time to fill it. #}
@@ -421,7 +421,7 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
       <div class="code">{{ p.reward_code }}</div>
       {% if reward.value %}<div class="val">{{ reward.value }}</div>{% endif %}
       {% if p.redeemed_at %}<div class="hint" style="margin-top:7px">Redeemed
-        {{ p.redeemed_at.strftime('%d %b') }}</div>{% endif %}
+        {{ (p.redeemed_at|local).strftime('%d %b') }}</div>{% endif %}
     </div>
     <div class="copyrow"><span class="m">{{ p.reward_code }}</span>
       <button type="button" data-copy="{{ p.reward_code }}">COPY</button></div>
@@ -444,7 +444,7 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
           style="color:#006a6a">View ↗</a></span></div>
       {% if p.reel_at %}
       <div class="r"><span class="k">Submitted</span>
-        <span class="v">{{ p.reel_at.strftime('%d %b, %H:%M') }}</span></div>
+        <span class="v">{{ (p.reel_at|local).strftime('%d %b, %H:%M') }}</span></div>
       {% endif %}
       <div class="r"><span class="k">Tag check</span><span class="v">
         {% if p.tags == 'ok' %}<span class="pill">ALL GOOD</span>

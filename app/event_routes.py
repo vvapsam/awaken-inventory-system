@@ -27,10 +27,13 @@ Design decisions worth knowing before reading the code:
 from __future__ import annotations
 
 import csv
+import hashlib
+import hmac
 import io
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -40,15 +43,18 @@ from fastapi import Depends, Form, Request, UploadFile
 from fastapi.responses import (
     HTMLResponse, JSONResponse, RedirectResponse, Response,
 )
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .db import get_db
 from .mailer import Mailer, looks_like_email
 from .models import (
-    EVENT_CLOSED, EVENT_DRAFT, EVENT_OPEN, EVENT_RUNNING, EVENT_STATUSES,
-    HANDLE_MAX, RSVP_NO, RSVP_NONE, RSVP_YES,
+    EVENT_CLOSED, EVENT_DRAFT, EVENT_INVITE, EVENT_MODES, EVENT_OPEN,
+    EVENT_RUNNING, EVENT_STATUSES,
+    HANDLE_MAX, PAY_APPROVED, PAY_DRAFT, PAY_LABELS, PAY_RETURNED,
+    PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
-    Event, EventParticipant,
+    Event, EventParticipant, from_local, to_local,
 )
 
 #: AWAKEN's palette, and nothing else. Emails are the one place a third
@@ -222,6 +228,79 @@ def qr_png(url: str) -> bytes:
     return buf.getvalue()
 
 
+#: How hard the browser has to work before a registration is accepted. Sixteen
+#: bits is about half a second on a phone and nothing to a laptop — the point is
+#: not to stop one person, it is to make ten thousand attempts cost real money.
+POW_BITS = 16
+#: How long a minted puzzle stays good for.
+POW_TTL = 60 * 30
+#: Nothing fills a form this fast except a script.
+MIN_FILL_SECONDS = 3
+
+
+def pow_challenge(secret: str, salt: str) -> str:
+    """A puzzle tied to this event and this minute, signed so it can't be forged."""
+    return hmac.new(secret.encode(), salt.encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def pow_salt(now=None) -> str:
+    """A fresh salt that carries the minute it was minted, in the clear.
+
+    The time has to be readable by us and unforgeable by them, which is why it
+    lives in the salt rather than in a form field: the salt is what the
+    challenge is signed over, so changing the timestamp changes the puzzle and
+    the answer they already found stops working.
+    """
+    stamp = int((now or datetime.now(timezone.utc)).timestamp())
+    return "%d.%s" % (stamp, secrets.token_urlsafe(9))
+
+
+def pow_age(salt: str, now=None):
+    """How many seconds ago that salt was minted, or None if it isn't ours."""
+    head = (salt or "").split(".", 1)[0]
+    try:
+        minted = int(head)
+    except ValueError:
+        return None
+    return (now or datetime.now(timezone.utc)).timestamp() - minted
+
+
+def pow_question(secret: str, salt: str):
+    """The plain sum shown to a browser that can't run the puzzle.
+
+    Derived from the same signed salt rather than made up by the page, because
+    a question the client invents is a question the client can answer for
+    itself — and then the whole gate is one POST away from being skipped.
+    """
+    digest = hmac.new(secret.encode(), ("q:" + salt).encode(),
+                      hashlib.sha256).digest()
+    return digest[0] % 9 + 2, digest[1] % 9 + 2
+
+
+def pow_ok(challenge: str, nonce: str, bits: int = POW_BITS) -> bool:
+    """Did they find a nonce whose hash starts with enough zero bits?"""
+    if not challenge or not nonce or len(str(nonce)) > 32:
+        return False
+    digest = hashlib.sha256(("%s:%s" % (challenge, nonce)).encode()).digest()
+    need, seen = bits, 0
+    for byte in digest:
+        for shift in range(7, -1, -1):
+            if (byte >> shift) & 1:
+                return False
+            seen += 1
+            if seen >= need:
+                return True
+    return True
+
+
+def money(v) -> str:
+    """₱1,500 — no trailing zeroes nobody reads."""
+    if v is None:
+        return ""
+    v = Decimal(v)
+    return "₱{:,.0f}".format(v) if v == v.to_integral() else "₱{:,.2f}".format(v)
+
+
 def base_url(request: Request) -> str:
     """The public origin, honouring the proxy Railway puts in front of us."""
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
@@ -255,6 +334,9 @@ def counts(event: Event) -> dict:
         "handles": len([p for p in confirmed if p.handle]),
         "invited": len([p for p in live if p.invited_at]),
         "reel_emailed": len([p for p in confirmed if p.reel_email_at]),
+        "to_review": len([p for p in ps if p.pay_status == PAY_SUBMITTED]),
+        "unfinished": len([p for p in ps if p.pay_status == PAY_DRAFT]),
+        "returned": len([p for p in ps if p.pay_status == PAY_RETURNED]),
         "arrived": len([p for p in confirmed if p.arrived_at]),
         "to_arrive": len([p for p in confirmed if not p.arrived_at]),
         "posted": len(posted),
@@ -327,6 +409,224 @@ def register(app, deps):
             "reward": ev.reward(p.reward_key) if p.reward_key else None,
             "now": now,
         }
+
+    # ------------------------------------------------- open registration ----
+
+    def _tiers(ev):
+        """The rates on offer, as (key, label, price). Empty if none are set."""
+        out = []
+        for key, label, price in (("a", ev.tier_a_label, ev.tier_a_price),
+                                  ("b", ev.tier_b_label, ev.tier_b_price)):
+            if (label or "").strip():
+                out.append({"key": key, "label": label,
+                            "price": price, "money": money(price)})
+        return out
+
+    def _tier(ev, key):
+        return next((t for t in _tiers(ev) if t["key"] == key), None)
+
+    def _signup_ctx(request, ev, p=None, **kw):
+        ctx = {"request": request, "ev": ev, "p": p, "tiers": _tiers(ev),
+               "sexes": SEXES, "money": money, "shut": ev.signups_shut(),
+               "closes_left": left_until(ev.signup_closes),
+               "pow_bits": POW_BITS, "step": kw.pop("step", 1)}
+        ctx.update(kw)
+        return ctx
+
+    def _mint_pow(request, ev):
+        """A fresh puzzle, signed with the session secret so it can't be made up."""
+        salt = pow_salt()
+        secret = request.app.state.pow_secret
+        key = "%s:%s" % (ev.id, salt)
+        return salt, pow_challenge(secret, key), pow_question(secret, key)
+
+    def _signup_guard(request, ev, form) -> str:
+        """Everything that has to be true before we write a row. '' means fine.
+
+        None of this is visible to a person. The honeypot is a field no human
+        sees, the clock catches anything that filled the form faster than a
+        person can read it, and the puzzle costs a script real time per attempt.
+        """
+        if (form.get("website") or "").strip():
+            return "bot"
+        salt, nonce = form.get("salt") or "", form.get("nonce") or ""
+        # The clock lives in the salt, which we signed, so neither the floor nor
+        # the expiry can be edited by whoever is posting.
+        age = pow_age(salt)
+        if age is None:
+            return "pow"
+        if age < MIN_FILL_SECONDS:
+            return "fast"
+        if age > POW_TTL:
+            return "stale"
+        secret = request.app.state.pow_secret
+        key = "%s:%s" % (ev.id, salt)
+        if not pow_ok(pow_challenge(secret, key), nonce):
+            # The plain question is the way through for a browser that could not
+            # run the puzzle at all.
+            a, b = pow_question(secret, key)
+            try:
+                if int(form.get("qanswer") or -1) == a + b:
+                    return ""
+            except ValueError:
+                pass
+            return "pow"
+        return ""
+
+    @app.get("/r/{slug}", response_class=HTMLResponse)
+    def signup_page(request: Request, slug: str, db: Session = Depends(get_db)):
+        """The public front door of an open event."""
+        ev = db.query(Event).filter(Event.slug == slug).first()
+        if not ev or ev.mode != EVENT_OPEN:
+            return templates.TemplateResponse(
+                "event_gone.html", {"request": request, "reason": "unknown"},
+                status_code=404)
+        # Somebody who started before comes straight back to where they were.
+        tok = request.cookies.get("reg_%d" % ev.id)
+        if tok:
+            p = _participant(db, tok)
+            if p and p.event_id == ev.id:
+                return RedirectResponse("/r/%s/%s" % (slug, tok), status_code=303)
+        salt, challenge, (qa, qb) = _mint_pow(request, ev)
+        return templates.TemplateResponse("event_signup.html", _signup_ctx(
+            request, ev, step=0, salt=salt, challenge=challenge,
+            qa=qa, qb=qb, err=request.query_params.get("err", "")))
+
+    @app.post("/r/{slug}")
+    async def signup_start(request: Request, slug: str,
+                           db: Session = Depends(get_db)):
+        """Their details — and the first row we write.
+
+        Written here, before anything else, so the trip out to the organiser's
+        own site can never cost somebody what they have already typed.
+        """
+        ev = db.query(Event).filter(Event.slug == slug).first()
+        if not ev or ev.mode != EVENT_OPEN:
+            return RedirectResponse("/", status_code=303)
+        if ev.signups_shut():
+            return RedirectResponse("/r/%s" % slug, status_code=303)
+        form = await request.form()
+        bad = _signup_guard(request, ev, form)
+        if bad:
+            return RedirectResponse("/r/%s?err=%s" % (slug, bad), status_code=303)
+
+        first = (form.get("first_name") or "").strip()[:60]
+        last = (form.get("last_name") or "").strip()[:60]
+        email = (form.get("email") or "").strip()
+        mobile = re.sub(r"[^0-9+ ]", "", (form.get("mobile") or "").strip())[:24]
+        sex = (form.get("sex") or "").strip()
+        tier = (form.get("tier") or "").strip()
+        picked = _tier(ev, tier)
+        if not (first and last and mobile and sex in ("m", "f") and picked
+                and looks_like_email(email)):
+            return RedirectResponse("/r/%s?err=missing" % slug, status_code=303)
+        # One registration per address. Coming back with the same email lands
+        # you on your own row rather than making a second one.
+        seen = (db.query(EventParticipant)
+                .filter(EventParticipant.event_id == ev.id,
+                        func.lower(EventParticipant.email) == email.lower())
+                .first())
+        if seen:
+            resp = RedirectResponse("/r/%s/%s" % (slug, seen.token), status_code=303)
+            resp.set_cookie("reg_%d" % ev.id, seen.token, max_age=60 * 60 * 24 * 60,
+                            httponly=True, samesite="lax")
+            return resp
+        p = EventParticipant(
+            event_id=ev.id, token=new_token(), name="%s %s" % (first, last),
+            first_name=first, last_name=last, email=email, mobile=mobile,
+            sex=sex, tier=picked["key"], amount=picked["price"],
+            pay_status=PAY_DRAFT)
+        db.add(p)
+        db.commit()
+        resp = RedirectResponse("/r/%s/%s" % (slug, p.token), status_code=303)
+        resp.set_cookie("reg_%d" % ev.id, p.token, max_age=60 * 60 * 24 * 60,
+                        httponly=True, samesite="lax")
+        return resp
+
+    def _reg(db, slug, token):
+        p = _participant(db, token)
+        if not p or not p.registering or p.event.slug != slug:
+            return None
+        return p
+
+    @app.get("/r/{slug}/{token}", response_class=HTMLResponse)
+    def signup_step(request: Request, slug: str, token: str,
+                    db: Session = Depends(get_db)):
+        """Wherever they got to, shown again."""
+        p = _reg(db, slug, token)
+        if not p:
+            return templates.TemplateResponse(
+                "event_gone.html", {"request": request, "reason": "unknown"},
+                status_code=404)
+        ev = p.event
+        if p.pay_status == PAY_APPROVED:
+            step = 5
+        elif p.pay_status == PAY_SUBMITTED:
+            step = 4
+        elif p.pay_status == PAY_RETURNED:
+            step = 3
+        elif ev.external_url and not p.external_done_at:
+            step = 2
+        else:
+            step = 3
+        return templates.TemplateResponse("event_signup.html", _signup_ctx(
+            request, ev, p, step=step, tier=_tier(ev, p.tier),
+            err=request.query_params.get("err", "")))
+
+    @app.post("/r/{slug}/{token}/external")
+    def signup_external(request: Request, slug: str, token: str,
+                        done: str = Form(""), db: Session = Depends(get_db)):
+        p = _reg(db, slug, token)
+        if not p:
+            return RedirectResponse("/", status_code=303)
+        if not done:
+            return RedirectResponse("/r/%s/%s?err=tick" % (slug, token),
+                                    status_code=303)
+        p.external_done_at = datetime.now(timezone.utc)
+        db.commit()
+        return RedirectResponse("/r/%s/%s" % (slug, token), status_code=303)
+
+    @app.post("/r/{slug}/{token}/pay")
+    def signup_pay(request: Request, slug: str, token: str,
+                   proof: UploadFile = None, ref: str = Form(""),
+                   db: Session = Depends(get_db)):
+        """The receipt. Required — a registration without one is not a
+        registration, it is a person who read a page."""
+        p = _reg(db, slug, token)
+        if not p:
+            return RedirectResponse("/", status_code=303)
+        back = "/r/%s/%s" % (slug, token)
+        raw = proof.file.read(6 * 1024 * 1024) if proof is not None else b""
+        if not raw and not p.proof:
+            return RedirectResponse(back + "?err=proof", status_code=303)
+        if raw:
+            mime = (proof.content_type or "").lower()
+            if not mime.startswith("image/"):
+                return RedirectResponse(back + "?err=notimage", status_code=303)
+            p.proof, p.proof_mime = raw, mime
+        p.proof_ref = (ref or "").strip()[:60]
+        p.pay_status = PAY_SUBMITTED
+        p.submitted_at = datetime.now(timezone.utc)
+        p.review_note = None
+        db.commit()
+        return RedirectResponse(back, status_code=303)
+
+    @app.get("/r/{slug}/{token}/proof")
+    def signup_proof(slug: str, token: str, db: Session = Depends(get_db)):
+        """Their own receipt back, so the page can show what they sent."""
+        p = _reg(db, slug, token)
+        if not p or not p.proof:
+            return Response(status_code=404)
+        return Response(p.proof, media_type=p.proof_mime or "image/jpeg",
+                        headers={"Cache-Control": "private, max-age=300"})
+
+    @app.get("/events/{eid}/pay-qr")
+    def event_pay_qr(eid: int, db: Session = Depends(get_db)):
+        ev = db.get(Event, eid)
+        if not ev or not ev.pay_qr:
+            return Response(status_code=404)
+        return Response(ev.pay_qr, media_type=ev.pay_qr_mime or "image/png",
+                        headers={"Cache-Control": "public, max-age=900"})
 
     @app.get("/e/{token}", response_class=HTMLResponse)
     def event_public(request: Request, token: str, db: Session = Depends(get_db)):
@@ -645,13 +945,19 @@ def register(app, deps):
         # count you read off it is a count of a list you no longer have.
         gone = [p for p in rest if p.declined or p.released_at]
         people = [p for p in rest if not (p.declined or p.released_at)]
+        # Oldest first: somebody who has been waiting nineteen hours on a
+        # 24-hour promise is the one to look at, not the newest arrival.
+        review = sorted([x for x in rest if x.pay_status == PAY_SUBMITTED],
+                        key=lambda x: _aware(x.submitted_at) or datetime.now(timezone.utc))
         return render(request, "event_detail.html", db, staff, active="events",
                       ev=ev, tab=tab, people=people, waiting=waiting,
-                      gone=gone,
+                      gone=gone, review=review, money=money,
+                      pay_labels=PAY_LABELS,
                       upload=request.session.pop("event_upload", None),
                       c=counts(ev),
                       lists={k: len(v) for k, v in mail_lists(ev).items()},
                       reel_left=left_until(ev.reel_deadline),
+                      closes_left=left_until(ev.signup_closes),
                       base=base_url(request), tag_labels=TAG_LABELS,
                       statuses=EVENT_STATUSES,
                       mail=request.session.pop("event_mail", None),
@@ -688,18 +994,29 @@ def register(app, deps):
         if not ev:
             return RedirectResponse("/events", status_code=303)
         return render(request, "event_settings.html", db, staff, active="events",
-                      ev=ev, statuses=EVENT_STATUSES)
+                      ev=ev, statuses=EVENT_STATUSES, modes=EVENT_MODES,
+                      base=base_url(request))
 
     @app.post("/events/{eid}/settings")
     def event_settings_save(
             request: Request, eid: int,
             name: str = Form(...), sponsor: str = Form(""),
             status: str = Form(EVENT_DRAFT),
-            starts_at: str = Form(""), venue: str = Form(""),
+            starts_at: str = Form(""), time_tba: str = Form(""),
+            venue: str = Form(""),
             capacity: str = Form("30"), bring: str = Form(""), perk: str = Form(""),
             handles: str = Form(""), hashtag: str = Form(""),
             reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
             confirm_by: str = Form(""),
+            mode: str = Form(EVENT_INVITE), signup_open: str = Form(""),
+            signup_closes: str = Form(""), slug: str = Form(""),
+            external_url: str = Form(""), external_label: str = Form(""),
+            external_note: str = Form(""),
+            tier_a_label: str = Form(""), tier_a_price: str = Form(""),
+            tier_b_label: str = Form(""), tier_b_price: str = Form(""),
+            pay_qr_caption: str = Form(""), bank_details: str = Form(""),
+            pay_note: str = Form(""), review_hours: str = Form("24"),
+            pay_qr: UploadFile = None, drop_pay_qr: str = Form(""),
             code_prefix: str = Form("EV"),
             reward_a: str = Form(""), reward_a_detail: str = Form(""),
             reward_a_value: str = Form(""),
@@ -715,17 +1032,18 @@ def register(app, deps):
             return RedirectResponse("/events", status_code=303)
 
         def dt(text):
-            """A datetime-local value, read as UTC.
+            """A datetime-local value, read as gym time.
 
-            The gym runs in one timezone and the server clock is UTC; storing
-            what was typed keeps the countdown and the tracker agreeing with
-            each other, which is what actually matters here.
+            Whoever fills this in is looking at a clock on a wall in Pasig, so
+            that is the clock the value means. It is stored as a real instant,
+            which is the only way a deadline can be compared to "now" and land
+            when the page said it would.
             """
             text = (text or "").strip()
             if not text:
                 return None
             try:
-                return datetime.fromisoformat(text).replace(tzinfo=timezone.utc)
+                return from_local(datetime.fromisoformat(text))
             except ValueError:
                 return None
 
@@ -739,6 +1057,7 @@ def register(app, deps):
         ev.sponsor = sponsor.strip()
         ev.status = status if status in dict(EVENT_STATUSES) else ev.status
         ev.starts_at = dt(starts_at)
+        ev.time_tba = bool(time_tba)
         ev.venue = venue.strip()
         ev.capacity = num(capacity, 30)
         ev.bring, ev.perk = bring.strip(), perk.strip()
@@ -748,6 +1067,45 @@ def register(app, deps):
         # hands the whole job to the fixed date below.
         ev.confirm_hours = num(confirm_hours, 48)
         ev.confirm_by = dt(confirm_by)
+
+        def price(text):
+            try:
+                v = Decimal(str(text).replace(",", "").strip())
+                return v if v >= 0 else None
+            except Exception:
+                return None
+
+        ev.mode = mode if mode in (EVENT_INVITE, EVENT_OPEN) else EVENT_INVITE
+        ev.signup_open = bool(signup_open)
+        ev.signup_closes = dt(signup_closes)
+        # The slug is the URL you post, so a typo in the name at the moment the
+        # event was created must not own it forever. It is deliberately not
+        # rewritten when the name changes: somebody may already have shared it,
+        # and a link that quietly stops working is worse than an ugly one.
+        want = slugify(slug) if slug.strip() else ""
+        if want and want != ev.slug:
+            taken = (db.query(Event)
+                     .filter(Event.slug == want, Event.id != ev.id).first())
+            if taken:
+                db.rollback()
+                return RedirectResponse(f"/events/{eid}/settings?err=slug",
+                                        status_code=303)
+            ev.slug = want
+        ev.external_url = external_url.strip()[:500]
+        ev.external_label = external_label.strip()[:80]
+        ev.external_note = external_note.strip()
+        ev.tier_a_label, ev.tier_a_price = tier_a_label.strip()[:60], price(tier_a_price)
+        ev.tier_b_label, ev.tier_b_price = tier_b_label.strip()[:60], price(tier_b_price)
+        ev.pay_qr_caption = pay_qr_caption.strip()[:120]
+        ev.bank_details = bank_details.strip()
+        ev.pay_note = pay_note.strip()[:200]
+        ev.review_hours = num(review_hours, 24) or 24
+        if drop_pay_qr:
+            ev.pay_qr, ev.pay_qr_mime = None, None
+        elif pay_qr is not None and (pay_qr.filename or ""):
+            raw = pay_qr.file.read(2 * 1024 * 1024)
+            if raw and (pay_qr.content_type or "").startswith("image/"):
+                ev.pay_qr, ev.pay_qr_mime = raw, pay_qr.content_type
         ev.code_prefix = (code_prefix.strip()[:4].upper() or "EV")
         ev.reward_a, ev.reward_a_detail = reward_a.strip(), reward_a_detail.strip()
         ev.reward_a_value = reward_a_value.strip()
@@ -932,6 +1290,76 @@ def register(app, deps):
         return RedirectResponse(f"/events/{eid}?tab=gone&back={pid}",
                                 status_code=303)
 
+    @app.post("/events/{eid}/people/{pid}/approve")
+    def event_approve_payment(request: Request, eid: int, pid: int,
+                              db: Session = Depends(get_db)):
+        """Their money is good. Mint the pass and tell them.
+
+        Approving is what takes the slot — not submitting. Somebody halfway
+        through paying has not got a place yet, and holding one for them is how
+        a class ends up full of people who never finished.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        p = db.get(EventParticipant, pid)
+        if not ev or not p or p.event_id != eid:
+            return RedirectResponse(f"/events/{eid}", status_code=303)
+        p.pay_status = PAY_APPROVED
+        p.reviewed_at = datetime.now(timezone.utc)
+        p.reviewed_by_id = staff.id
+        p.review_note = None
+        # A paid registration is a confirmed slot, so everything downstream —
+        # the door, the Reel email, the counts — treats them like anybody else.
+        p.rsvp, p.rsvp_at = RSVP_YES, p.rsvp_at or datetime.now(timezone.utc)
+        p.acknowledged_at = p.acknowledged_at or datetime.now(timezone.utc)
+        p.pass_email_at = None
+        db.commit()
+        _send_pass(db, ev, p, base_url(request))
+        return RedirectResponse(f"/events/{eid}?tab=review&ok={pid}", status_code=303)
+
+    @app.post("/events/{eid}/people/{pid}/return")
+    def event_return_payment(request: Request, eid: int, pid: int,
+                             why: str = Form(""), db: Session = Depends(get_db)):
+        """Ask for a better receipt, rather than refusing them.
+
+        A rejection that makes somebody start over is how you lose a paying
+        customer to a blurry photo. Their details, their rate and their place in
+        the queue all stay; only the receipt is asked for again.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        p = db.get(EventParticipant, pid)
+        if not ev or not p or p.event_id != eid:
+            return RedirectResponse(f"/events/{eid}", status_code=303)
+        note = (why or "").strip()[:600]
+        if not note:
+            return RedirectResponse(f"/events/{eid}?tab=review&err=why",
+                                    status_code=303)
+        p.pay_status = PAY_RETURNED
+        p.review_note = note
+        p.reviewed_at = datetime.now(timezone.utc)
+        p.reviewed_by_id = staff.id
+        db.commit()
+        _send_returned(db, ev, p, base_url(request))
+        return RedirectResponse(f"/events/{eid}?tab=review&sent={pid}",
+                                status_code=303)
+
+    @app.get("/events/{eid}/people/{pid}/proof")
+    def event_proof(request: Request, eid: int, pid: int,
+                    db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid or not p.proof:
+            return Response(status_code=404)
+        return Response(p.proof, media_type=p.proof_mime or "image/jpeg",
+                        headers={"Cache-Control": "private, max-age=300"})
+
     @app.post("/events/{eid}/people/{pid}/promote")
     def event_promote(request: Request, eid: int, pid: int,
                       db: Session = Depends(get_db)):
@@ -1112,10 +1540,15 @@ def register(app, deps):
         # again. "Re-send to all" reaching them is the exact message that makes
         # a person stop reading anything you send.
         askable = [p for p in mailable if not p.declined]
+        # Somebody who signed themselves up was never invited and must never be.
+        # The invitation asks "do you want this slot?" — a question with an
+        # awkward answer for a person who has already paid for it, and a
+        # confirm link that would step on their registration.
+        invitable = [p for p in askable if not p.registering]
         return {
             # The invitation: everyone who hasn't had one.
-            "invite": [p for p in askable if not p.invited_at],
-            "invite_all": askable,
+            "invite": [p for p in invitable if not p.invited_at],
+            "invite_all": invitable,
             # The Reel email: everyone who came and hasn't been asked yet.
             "reel": [p for p in confirmed if not p.reel_email_at],
             # The nudge: everyone who was asked and still hasn't posted. A
@@ -1174,7 +1607,7 @@ def register(app, deps):
 
     def _invite_mail(ev, p, url):
         """The 'you're in, confirm your slot' email."""
-        when = _fmt_when(ev.starts_at)
+        when = ev.when_text
         # Their own deadline: a fixed date if you set one, otherwise the clock
         # that starts the moment this email sends.
         by = _fmt_when(confirm_deadline(p))
@@ -1221,7 +1654,7 @@ def register(app, deps):
         doorway is exactly where somebody has no signal and no patience, and
         an email already sitting in their inbox opens without either.
         """
-        when = _fmt_when(ev.starts_at)
+        when = ev.when_text
         first = (p.name or "").split()[0] if p.name else "there"
         subject = "You're in — your pass for %s" % ev.name
         text = "\n".join([
@@ -1267,7 +1700,8 @@ def register(app, deps):
         mailer = Mailer()
         if not mailer.cfg.configured:
             return
-        url = "%s/e/%s" % (base, p.token)
+        url = ("%s/r/%s/%s" % (base, ev.slug, p.token) if p.registering
+               else "%s/e/%s" % (base, p.token))
         subject, text, html = _pass_mail(ev, p, url)
         inline = {PASS_CID: qr_png("%s/i/%s" % (base, p.token))}
         logo = _logo_bytes()
@@ -1282,6 +1716,55 @@ def register(app, deps):
         if ok:
             p.pass_email_at = datetime.now(timezone.utc)
             db.commit()
+
+    def _returned_mail(ev, p, url):
+        """"We need another look" — with the reason, and the way back."""
+        first = (p.first_name or p.name or "").split()[0] or "there"
+        subject = "One more thing about your %s registration" % ev.name
+        text = "\n".join([
+            "Hi %s," % first,
+            "",
+            "We had a look at your payment and need one more thing:",
+            "",
+            p.review_note or "",
+            "",
+            "Nothing is lost — everything you sent is still here. Pick up where "
+            "you left off: %s" % url,
+        ])
+        html = _shell(ev, """
+          <h1 style="font-size:20px;font-weight:650;margin:0 0 14px">One more thing, %s</h1>
+          <p style="font-size:15px;margin:0 0 6px;color:#2b3642">We had a look at your
+             payment and need another go at it.</p>
+          %s
+          <p style="font-size:15px;margin:16px 0 0;color:#2b3642">Nothing is lost —
+             your details and your place in the queue are exactly where you left them.</p>
+          %s
+        """ % (
+            _esc(first),
+            _window_note("<b>%s</b>" % _esc(p.review_note or "")),
+            _button(url, "Pick up where I left off →", "Takes a minute"),
+        ))
+        return subject, text, html
+
+    def _send_returned(db, ev, p, base):
+        """Best effort. A failed email must not undo a review you already made."""
+        if not looks_like_email(p.email or ""):
+            return
+        mailer = Mailer()
+        if not mailer.cfg.configured:
+            return
+        url = "%s/r/%s/%s" % (base, ev.slug, p.token)
+        subject, text, html = _returned_mail(ev, p, url)
+        inline = {}
+        logo = _logo_bytes()
+        if logo:
+            inline[LOGO_CID] = logo
+        if ev.sponsor_logo:
+            inline[SPONSOR_CID] = ev.sponsor_logo
+        try:
+            mailer.send(p.email, subject, text, html=html, inline=inline or None)
+        except Exception:
+            pass
 
     def _reel_mail(ev, p, url):
         """The 'thank you, here's your reward link' email."""
@@ -1383,13 +1866,14 @@ def _esc(s) -> str:
 
 
 def _fmt_when(dt) -> str:
-    dt = _aware(dt)
+    """A stored instant, written as the clock on the gym wall reads it."""
+    dt = to_local(_aware(dt))
     return dt.strftime("%a %d %b, %I:%M %p").replace(" 0", " ") if dt else ""
 
 
 def _facts(ev) -> str:
-    rows = [("When", _fmt_when(ev.starts_at)), ("Where", ev.venue),
-            ("Bring", ev.bring), ("After", ev.perk)]
+    rows = [("When", " — ".join(x for x in (ev.when_text, ev.when_note) if x)),
+            ("Where", ev.venue), ("Bring", ev.bring), ("After", ev.perk)]
     cells = "".join(
         '<tr><td style="color:#6b7683;font-size:14px;padding:4px 12px 4px 0;'
         'width:76px">%s</td><td style="font-size:14px;font-weight:600">%s</td></tr>'

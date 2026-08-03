@@ -15,6 +15,12 @@
 {% if request.query_params.get('saved') %}
 <div class="notice">Saved.</div>
 {% endif %}
+{% if request.query_params.get('err') == 'slug' %}
+{# Nothing was saved — the whole form is rolled back, so what is on screen is
+   still what they typed and they can fix the one field and send it again. #}
+<div class="alert warn"><b>Another event already uses that link.</b>
+  <span class="muted">Nothing was saved. Pick a different one and save again.</span></div>
+{% endif %}
 
 <form method="post" action="/events/{{ ev.id }}/settings" enctype="multipart/form-data">
 
@@ -49,7 +55,14 @@
     </div>
     <div><label class="small" style="font-weight:600">Starts</label>
       <input type="datetime-local" name="starts_at" required
-        value="{{ ev.starts_at.strftime('%Y-%m-%dT%H:%M') if ev.starts_at }}"></div>
+        value="{{ ev.starts_at|local_dt if ev.starts_at }}">
+      <label class="check small" style="margin-top:6px">
+        <input type="checkbox" name="time_tba" value="on"
+               {{ 'checked' if ev.time_tba }}> Show the day only — start times
+        to follow</label>
+      <div class="muted small" style="margin:3px 0 0">For a race whose heats are
+        drawn nearer the day. Still pick a time here — the countdown and the
+        ordering need one — this only decides whether anybody is shown it.</div></div>
     <div><label class="small" style="font-weight:600">Venue</label>
       <input name="venue" value="{{ ev.venue or '' }}" placeholder="AWAKEN Fitness Center, BGC"></div>
     <div><label class="small" style="font-weight:600">Slots</label>
@@ -69,6 +82,130 @@
   </div>
 </div>
 
+<h2>How people get in</h2>
+<div class="card">
+  <div class="grid2">
+    <div><label class="small" style="font-weight:600">Mode</label>
+      <select name="mode" id="evmode">
+        {% for k, label in modes %}
+        <option value="{{ k }}" {{ 'selected' if ev.mode == k }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <div class="muted small" style="margin:3px 0 0"><b>By invitation</b> — you
+        upload a list and each person gets their own link. <b>Open registration</b>
+        — one public link, anyone can sign up and pay, and you approve the
+        payments.</div></div>
+    <div><label class="check small" style="margin-top:24px">
+        <input type="checkbox" name="signup_open" value="on"
+               {{ 'checked' if ev.signup_open }}> Taking registrations right now</label>
+      <div class="muted small" style="margin:3px 0 0">Untick to close the page
+        without deleting anything.</div>
+      <label class="small" style="font-weight:600;display:block;margin-top:12px">
+        Or close it automatically on</label>
+      <input type="datetime-local" name="signup_closes"
+             value="{{ ev.signup_closes|local_dt if ev.signup_closes }}">
+      <div class="muted small" style="margin:3px 0 0">Shown on the page, so
+        people can see it coming. A date is safe to close on where a full room
+        is not — it doesn't arrive early because somebody else was quicker.
+        Anybody already part-way through can still finish paying; you review
+        theirs either way. Leave blank to keep it open until you say otherwise.</div></div>
+  </div>
+
+  {% if ev.mode == 'open' %}
+  {# Editable, because this is the string that goes in a caption and gets read
+     off a phone screen — and the name it was first generated from may well
+     have had a typo in it. #}
+  <div style="margin:14px 0 0">
+    <label class="small" style="font-weight:600">The public link</label>
+    <div class="slugline"><span class="mono muted">{{ base }}/r/</span>
+      <input type="text" name="slug" value="{{ ev.slug }}" class="mono"
+             spellcheck="false" autocapitalize="none"></div>
+    <div class="muted small" style="margin:3px 0 0">Letters, numbers and
+      hyphens; anything else is folded into one. This is what you post, so keep
+      it short. <b>It doesn't follow the name</b> — change it and any link you
+      have already shared stops working, which is why it's yours to decide
+      rather than ours.
+      <a href="{{ base }}/r/{{ ev.slug }}" target="_blank" rel="noopener">Open
+        the current one</a></div>
+  </div>
+  {% endif %}
+</div>
+
+<h2>Registration <span class="muted small" style="font-weight:400">— only used in
+  open mode</span></h2>
+<div class="card">
+  <h3 class="small" style="margin:0 0 10px;letter-spacing:.06em;text-transform:uppercase;
+      color:var(--muted)">The step we can't do for them</h3>
+  <div class="grid2">
+    <div><label class="small" style="font-weight:600">Link</label>
+      <input name="external_url" value="{{ ev.external_url or '' }}"
+             placeholder="https://pft.hyrox.com/event/…">
+      <div class="muted small" style="margin:3px 0 0">Leave blank for events with
+        no outside step — the page skips it.</div></div>
+    <div><label class="small" style="font-weight:600">What to call it</label>
+      <input name="external_label" value="{{ ev.external_label or '' }}"
+             placeholder="Register on HYROX"></div>
+    <div style="grid-column:1/-1"><label class="small" style="font-weight:600">Why,
+      in a sentence</label>
+      <input name="external_note" value="{{ ev.external_note or '' }}"
+             placeholder="The PFT is run by HYROX, so your result has to be recorded on their site."></div>
+  </div>
+
+  <h3 class="small" style="margin:20px 0 10px;letter-spacing:.06em;text-transform:uppercase;
+      color:var(--muted)">What it costs</h3>
+  <div class="grid2">
+    <div><label class="small" style="font-weight:600">Rate A</label>
+      <input name="tier_a_label" value="{{ ev.tier_a_label or '' }}" placeholder="Members"></div>
+    <div><label class="small" style="font-weight:600">A · price</label>
+      <input name="tier_a_price" value="{{ ev.tier_a_price|round(0)|int if ev.tier_a_price else '' }}"
+             placeholder="1500" style="width:140px"></div>
+    <div><label class="small" style="font-weight:600">Rate B</label>
+      <input name="tier_b_label" value="{{ ev.tier_b_label or '' }}" placeholder="Non-members"></div>
+    <div><label class="small" style="font-weight:600">B · price</label>
+      <input name="tier_b_price" value="{{ ev.tier_b_price|round(0)|int if ev.tier_b_price else '' }}"
+             placeholder="2000" style="width:140px"></div>
+  </div>
+
+  <h3 class="small" style="margin:20px 0 10px;letter-spacing:.06em;text-transform:uppercase;
+      color:var(--muted)">How to pay</h3>
+  <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+    {% if ev.pay_qr %}
+    <div style="background:#fff;border:1px solid var(--line);border-radius:8px;
+                padding:10px;flex:none">
+      <img src="/events/{{ ev.id }}/pay-qr" alt="Payment QR"
+           style="display:block;width:150px;height:150px;object-fit:contain"></div>
+    {% endif %}
+    <div style="flex:1;min-width:230px">
+      <label class="small" style="font-weight:600">Payment QR</label>
+      <input type="file" name="pay_qr" accept="image/png,image/jpeg" style="padding:7px 9px">
+      <div class="muted small" style="margin:4px 0 0">A screenshot of your GCash or
+        bank QR. People scan it straight off their screen.</div>
+      {% if ev.pay_qr %}
+      <label class="check small" style="margin-top:7px">
+        <input type="checkbox" name="drop_pay_qr" value="on"> Remove the current QR</label>
+      {% endif %}
+    </div>
+  </div>
+  <div class="grid2" style="margin-top:12px">
+    <div><label class="small" style="font-weight:600">Caption under the QR</label>
+      <input name="pay_qr_caption" value="{{ ev.pay_qr_caption or '' }}"
+             placeholder="AWAKEN Fitness Center · GCash 0917 000 0000"></div>
+    <div><label class="small" style="font-weight:600">A line about paying</label>
+      <input name="pay_note" value="{{ ev.pay_note or '' }}"
+             placeholder="Put your name as the reference so we can match it."></div>
+    <div style="grid-column:1/-1"><label class="small" style="font-weight:600">Bank
+      details</label>
+      <textarea name="bank_details" rows="4"
+        placeholder="BPI&#10;AWAKEN Fitness Center Inc.&#10;1234 5678 90">{{ ev.bank_details or '' }}</textarea>
+      <div class="muted small" style="margin:3px 0 0">Free text, shown exactly as
+        you type it. Leave blank if the QR is enough.</div></div>
+    <div><label class="small" style="font-weight:600">Come back within (hours)</label>
+      <input name="review_hours" value="{{ ev.review_hours }}" style="width:90px">
+      <div class="muted small" style="margin:3px 0 0">The promise on the page and
+        in the email. One number, so they can never disagree.</div></div>
+  </div>
+</div>
+
 <h2>What we ask for in return</h2>
 <div class="card">
   <div class="grid2">
@@ -83,7 +220,7 @@
       <input name="reel_hours" value="{{ ev.reel_hours }}" style="width:90px"></div>
     <div><label class="small" style="font-weight:600">Answer by</label>
       <input type="datetime-local" name="confirm_by"
-        value="{{ ev.confirm_by.strftime('%Y-%m-%dT%H:%M') if ev.confirm_by }}">
+        value="{{ ev.confirm_by|local_dt if ev.confirm_by }}">
       <div class="muted small" style="margin:3px 0 0">One deadline for the whole room, which
         is what you want when everybody is being asked at once. Unanswered slots go to the
         waitlist after it.</div></div>
