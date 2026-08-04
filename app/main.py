@@ -592,6 +592,8 @@ def startup():
                 "  pass_email_at TIMESTAMPTZ; "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  nudged_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  last_call_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is

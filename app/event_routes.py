@@ -1532,7 +1532,8 @@ def register(app, deps):
                    if kind in ("finish", "returned")
                    else "%s/e/%s" % (base, p.token))
             build = {"reel": _reel_mail, "finish": _finish_mail,
-                     "returned": _returned_mail}.get(kind, _invite_mail)
+                     "returned": _returned_mail,
+                     "lastcall": _lastcall_mail}.get(kind, _invite_mail)
             subject, text, html = build(db, ev, p, url)
             ok, detail = mailer.send(p.email, subject, text, html=html,
                                      inline=inline or None)
@@ -1544,6 +1545,12 @@ def register(app, deps):
                     p.nudged_at = now
                 elif kind == "reel":
                     p.reel_email_at = now
+                elif kind == "lastcall":
+                    # Not invited_at: that is "when we first asked", and the
+                    # per-person confirm clock is counted from it. Restarting
+                    # it here would hand somebody a fresh 48 hours on the
+                    # morning the whole thing closes.
+                    p.last_call_at = now
                 # "returned" stamps nothing on purpose. The review queue owns
                 # that state, and marking a row reviewed because somebody
                 # re-sent the email would move it out of a queue it still
@@ -1584,6 +1591,11 @@ def register(app, deps):
                       "to confirm a slot you're holding.",
              "ok": True,
              "why": "" if not openreg else "usually invite events"},
+            {"key": "lastcall", "name": "Last call to confirm",
+             "blurb": "\u201cWe still need a yes, and the deadline is today.\u201d "
+                      "For anyone asked who hasn't answered.",
+             "ok": True,
+             "why": "" if not openreg else "usually invite events"},
             {"key": "reel", "name": "The Reel email",
              "blurb": "\u201cThank you \u2014 submit your Reel and pick your "
                       "reward.\u201d",
@@ -1622,6 +1634,15 @@ def register(app, deps):
             # The invitation: everyone who hasn't had one.
             "invite": [p for p in invitable if not p.invited_at],
             "invite_all": invitable,
+            # The last call: asked, and still hasn't said yes or no. Anyone
+            # never asked is deliberately out — a "last call" to somebody who
+            # was never called is the first they'd hear of it, and it reads as
+            # a deadline they were set up to miss.
+            "lastcall": [p for p in invitable
+                         if p.invited_at and not p.confirmed
+                         and not p.last_call_at],
+            "lastcall_all": [p for p in invitable
+                             if p.invited_at and not p.confirmed],
             # The Reel email: everyone who came and hasn't been asked yet.
             "reel": [p for p in confirmed if not p.reel_email_at],
             # The nudge: everyone who was asked and still hasn't posted. A
@@ -1685,6 +1706,9 @@ def register(app, deps):
         elif kind == "finish":
             pool = (lists["unfinished_all"] if who == "all"
                     else lists["unfinished"])
+        elif kind == "lastcall":
+            pool = (lists["lastcall_all"] if who == "all"
+                    else lists["lastcall"])
         elif kind == "returned":
             # There is no sensible "everyone" for this one — it carries a reason
             # written about one payment. Reachable only by ticking names, which
@@ -1719,6 +1743,7 @@ def register(app, deps):
         # refusing: a preview off the wrong person still shows the wording.
         pool = {"finish": lists["unfinished_all"],
                 "reel": lists["reel_all"],
+                "lastcall": lists["lastcall_all"],
                 "returned": [p for p in ev.participants
                              if (p.review_note or "").strip()]}.get(
                     kind, lists["invite_all"])
@@ -1732,7 +1757,8 @@ def register(app, deps):
                if kind in ("finish", "returned")
                else "%s/e/%s" % (base, who.token))
         build = {"reel": _reel_mail, "finish": _finish_mail,
-                 "returned": _returned_mail}.get(kind, _invite_mail)
+                 "returned": _returned_mail,
+                 "lastcall": _lastcall_mail}.get(kind, _invite_mail)
         subject, _text, html = build(db, ev, who, url)
         # The inline marks are Content-IDs in a real message; a browser needs
         # the routes instead, so the preview swaps them.
@@ -2067,6 +2093,10 @@ def _finish_mail(db, ev, p, url):
 
 def _returned_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "returned")
+
+
+def _lastcall_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "lastcall")
 
 
 def _reel_mail(db, ev, p, url):
