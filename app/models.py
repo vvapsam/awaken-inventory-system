@@ -1,6 +1,6 @@
 import math
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 #: The gym runs in one place, so every time a person types or reads is that
@@ -1180,7 +1180,13 @@ class CommissionPayoutLine(Base):
 
 
 class CommissionCharge(Base):
-    """What a delegator owes AWAKEN for one run."""
+    """What a delegator owes AWAKEN for one run.
+
+    `coach_cost` is what we paid out on these sessions. It is ours, not theirs:
+    it exists for the margin figure on the internal screen and must not reach
+    the delegator's copy — not the PDF, not the statement. See
+    ``commission_invoice_pdf``, which is built from the lines alone.
+    """
     __tablename__ = "commission_charges"
     id = Column(Integer, primary_key=True)
     run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
@@ -1190,19 +1196,95 @@ class CommissionCharge(Base):
                                               ondelete="SET NULL"))
     delegator_name = Column(String)
     period_label = Column(String)
+    #: The calendar month billed. Held on the invoice itself rather than
+    #: reached through the run, so a statement can order and age invoices
+    #: without a join — and so the document still reads correctly if the run
+    #: behind it is ever re-imported.
+    period_start = Column(Date)
+    period_end = Column(Date)
     status = Column(String, nullable=False, default="unpaid")
     sessions = Column(Integer, nullable=False, default=0)
     total = Column(Numeric(10, 2), default=0)               # charged to them
     coach_cost = Column(Numeric(10, 2), default=0)          # paid out on their sessions
+    note = Column(Text)                                     # shown on the invoice
     created_at = Column(DateTime(timezone=True), default=now_utc)
+    issued_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     paid_at = Column(DateTime(timezone=True))
+    voided_at = Column(DateTime(timezone=True))
+    voided_reason = Column(String)
 
     delegator = relationship("CommissionDelegator")
+    issued_by = relationship("Staff", foreign_keys=[issued_by_id])
     lines = relationship("CommissionChargeLine", cascade="all, delete-orphan")
 
     @property
     def margin(self):
         return float(self.total or 0) - float(self.coach_cost or 0)
+
+    @property
+    def is_void(self):
+        return self.voided_at is not None
+
+    @property
+    def dates_label(self) -> str:
+        """"1–15 Jun 2026", "28 Jun – 4 Jul 2026", or the month's own name.
+
+        A range invoice is identified by its dates before anything else, so
+        they are formatted once here rather than in each template that shows
+        one. A range that happens to be a whole calendar month is named as that
+        month: "1–31 Jul 2026" is the same thing said less clearly.
+        """
+        a, b = self.period_start, self.period_end
+        if not a or not b:
+            return self.period_label or ""
+        if (a.day == 1 and b == date(a.year + (a.month == 12),
+                                     (a.month % 12) + 1, 1) - timedelta(days=1)):
+            return self.period_label or a.strftime("%B %Y")
+        if a == b:
+            return a.strftime("%-d %b %Y")
+        if (a.year, a.month) == (b.year, b.month):
+            return "%d–%s" % (a.day, b.strftime("%-d %b %Y"))
+        if a.year == b.year:
+            return "%s – %s" % (a.strftime("%-d %b"), b.strftime("%-d %b %Y"))
+        return "%s – %s" % (a.strftime("%-d %b %Y"), b.strftime("%-d %b %Y"))
+
+
+class DelegatorPayment(Base):
+    """Money received from a delegator, against their account.
+
+    Deliberately not against one invoice. Delegators pay round numbers and pay
+    late: ₱50,000 lands against a ₱58,300 invoice, then ₱20,000 arrives
+    covering the tail of one month and the head of the next. A payments table
+    that insisted on an invoice would have to invent an answer to "which one",
+    and would be wrong about half the time.
+
+    So the account is what has a balance, and the invoices are settled from it
+    oldest first — see ``account_ledger``. ``charge_id`` is provenance only, set
+    when a payment obviously belongs to one document, and it is never what the
+    arithmetic reads.
+    """
+    __tablename__ = "commission_delegator_payments"
+    id = Column(Integer, primary_key=True)
+    delegator_id = Column(Integer, ForeignKey("commission_delegators.id",
+                                              ondelete="CASCADE"), nullable=False)
+    paid_on = Column(Date, nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False, default=0)
+    #: How it reads on the statement: "Payment received — June conduction".
+    description = Column(String)
+    method = Column(String)                 # bank transfer, cash, GCash
+    reference = Column(String)              # their transfer reference
+    #: Set only when the payment plainly settles one invoice. Descriptive.
+    charge_id = Column(Integer, ForeignKey("commission_charges.id",
+                                           ondelete="SET NULL"))
+    recorded_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    delegator = relationship("CommissionDelegator")
+    recorded_by = relationship("Staff", foreign_keys=[recorded_by_id])
+
+    @property
+    def label(self) -> str:
+        return self.description or "Payment received"
 
 
 class CommissionChargeLine(Base):

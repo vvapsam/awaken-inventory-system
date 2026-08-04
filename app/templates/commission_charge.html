@@ -3,40 +3,84 @@
 <div class="row-between">
   <div>
     <h1 style="margin:0">{{ charge.number }} — {{ charge.delegator_name }}
-      {% if charge.status == 'paid' %}<span class="tag">Paid</span>
+      {% if charge.is_void %}<span class="tag" style="background:#f4d7d4;color:#7a1f16">Cancelled</span>
+      {% elif charge.status == 'paid' %}<span class="tag">Paid</span>
       {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
     </h1>
-    <p class="muted small" style="margin:2px 0 0">{{ charge.period_label }} · delegation charge</p>
+    <p class="muted small" style="margin:2px 0 0">{{ charge.dates_label or charge.period_label }}
+      · delegation invoice
+      {% if charge.issued_by %}· by {{ charge.issued_by.name }}{% endif %}</p>
   </div>
   <div class="hdact">
+    {% if charge.run_id %}
     <a class="btn" href="/commissions/{{ charge.run_id }}?tab=documents">← Run</a>
+    {% endif %}
+    {% if charge.delegator_id %}
+    <a class="btn" href="/commissions/delegation/{{ charge.delegator_id }}/statement">← Statement</a>
+    {% endif %}
+    <a class="btn" href="/commissions/charges/{{ charge.id }}/invoice.pdf"
+       target="_blank" rel="noopener">Print / PDF</a>
+    {% if not charge.is_void %}
     <form method="post" action="/commissions/charges/{{ charge.id }}/paid">
       <button class="btn primary">{{ 'Mark unpaid' if charge.status == 'paid' else 'Record payment' }}</button>
     </form>
+    {% endif %}
   </div>
 </div>
 
+{% if charge.is_void %}
+<div class="card" style="border-color:#b3261e;background:#fdf1f0;margin:14px 0">
+  <b>This invoice has been cancelled.</b>
+  {% if charge.voided_reason %}<span class="muted"> {{ charge.voided_reason }}</span>{% endif %}
+  <p class="muted small" style="margin:4px 0 0">It no longer counts towards
+    anything outstanding, and its sessions read as uninvoiced on the statement.</p>
+</div>
+{% endif %}
+
+{% if charge.note %}
+<div class="card" style="margin:14px 0"><p style="margin:0">{{ charge.note }}</p></div>
+{% endif %}
+
+{# The last two cards are ours alone. Nothing on the delegator's PDF or their
+   private link carries a cost figure, and neither should reach them by way of
+   a screenshot of this page — it is behind a login for that reason. #}
 <div class="grid" style="margin:14px 0">
   <div class="card stat"><div class="stat-label">Delegated sessions</div><div class="stat-value">{{ charge.sessions }}</div></div>
   <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Amount due</div><div class="stat-value">{{ peso(charge.total) }}</div></div>
-  <div class="card stat"><div class="stat-label">Paid to coaches</div><div class="stat-value">{{ peso(charge.coach_cost) }}</div></div>
+  <div class="card stat"><div class="stat-label">Paid to coaches</div><div class="stat-value">{{ peso(charge.coach_cost) }}</div>
+    <div class="muted small">internal — not on their invoice</div></div>
   <div class="card stat"><div class="stat-label">Our margin</div><div class="stat-value">{{ peso(charge.margin) }}</div></div>
 </div>
 
 <table>
   <tr><th>#</th><th>Booking</th><th>Date</th><th>Client</th><th>Coach who covered</th><th style="text-align:right">Rate</th></tr>
   {% for l in charge.lines %}
-  <tr>
+  <tr {% if l.kind == 'overtime' %}style="background:#fdf6e9"{% endif %}>
     <td class="muted">{{ loop.index }}</td>
     <td class="mono">{{ l.booking_ref }}</td>
     <td>{{ l.occurred_on.strftime('%d %b') if l.occurred_on }}</td>
-    <td>{{ l.description }}</td>
+    <td>{% if l.kind == 'overtime' %}<span class="muted">↳</span> {% endif %}{{ l.description }}</td>
     <td>{{ l.coach }}</td>
-    <td style="text-align:right">{{ peso(l.amount) }}</td>
+    <td style="text-align:right"{% if l.kind == 'overtime' %} class="othr"{% endif %}>{{ peso(l.amount) }}</td>
   </tr>
   {% endfor %}
   <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
     <td colspan="5">Total due</td><td style="text-align:right">{{ peso(charge.total) }}</td>
   </tr>
 </table>
+
+{% if is_admin and not charge.is_void %}
+<details style="margin-top:18px">
+  <summary class="muted small" style="cursor:pointer">Cancel this invoice</summary>
+  <form method="post" action="/commissions/charges/{{ charge.id }}/void" class="card"
+        style="margin-top:8px;max-width:520px">
+    <p class="muted small" style="margin:0 0 8px">The document is kept and its number
+      stays in the sequence — it is marked cancelled, not deleted. It drops out
+      of the amount outstanding on {{ charge.delegator_name }}'s statement.</p>
+    <label>Why <input name="reason" maxlength="200" autocomplete="off"
+      placeholder="e.g. wrong period, replaced by DEL-0009"></label>
+    <button class="btn danger" style="margin-top:9px">Cancel invoice</button>
+  </form>
+</details>
+{% endif %}
 {% endblock %}

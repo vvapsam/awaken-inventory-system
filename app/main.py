@@ -548,6 +548,60 @@ def startup():
                 "END IF; END $$;"))
             # commission_delegator_links is a new table, so create_all makes it.
             # Nothing to ALTER.
+            # A delegator statement ages invoices and marks cancelled ones,
+            # neither of which the charge row could answer before.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_charges') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE commission_charges ADD COLUMN IF NOT EXISTS "
+                "  period_start DATE; "
+                "ALTER TABLE commission_charges ADD COLUMN IF NOT EXISTS "
+                "  period_end DATE; "
+                "ALTER TABLE commission_charges ADD COLUMN IF NOT EXISTS "
+                "  note TEXT; "
+                "ALTER TABLE commission_charges ADD COLUMN IF NOT EXISTS "
+                "  issued_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
+                "ALTER TABLE commission_charges ADD COLUMN IF NOT EXISTS "
+                "  voided_at TIMESTAMPTZ; "
+                "ALTER TABLE commission_charges ADD COLUMN IF NOT EXISTS "
+                "  voided_reason VARCHAR; "
+                "END IF; END $$;"))
+            # A statement is an open-item ledger: invoiced minus received. Any
+            # invoice already flagged paid predates the payments table, so it
+            # gets one entry standing in for the money that must have arrived —
+            # otherwise the first statement anyone prints asks them for it
+            # again. Idempotent through charge_id, which exists for exactly
+            # this: it is provenance, never arithmetic.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_delegator_payments') "
+                "IS NOT NULL AND to_regclass('public.commission_charges') "
+                "IS NOT NULL THEN "
+                "INSERT INTO commission_delegator_payments "
+                "  (delegator_id, paid_on, amount, description, charge_id, created_at) "
+                "SELECT c.delegator_id, "
+                "       COALESCE(c.paid_at::date, c.created_at::date, CURRENT_DATE), "
+                "       c.total, "
+                "       'Payment received - ' || COALESCE(c.number, 'invoice'), "
+                "       c.id, COALESCE(c.paid_at, c.created_at, now()) "
+                "FROM commission_charges c "
+                "WHERE c.status = 'paid' AND c.voided_at IS NULL "
+                "  AND c.delegator_id IS NOT NULL AND COALESCE(c.total, 0) > 0 "
+                "  AND NOT EXISTS (SELECT 1 FROM commission_delegator_payments p "
+                "                  WHERE p.charge_id = c.id); "
+                "END IF; END $$;"))
+            # Invoices already on file predate period_start/period_end. Fill
+            # them from the run they came from, once, so "what have we already
+            # billed" can be answered by dates alone rather than by dates for
+            # new invoices and a join for old ones.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_charges') "
+                "IS NOT NULL AND to_regclass('public.commission_runs') "
+                "IS NOT NULL THEN "
+                "UPDATE commission_charges c SET "
+                "  period_start = r.period_start, period_end = r.period_end "
+                "FROM commission_runs r WHERE r.id = c.run_id "
+                "  AND c.period_start IS NULL AND r.period_start IS NOT NULL; "
+                "END IF; END $$;"))
             # The sponsor's logo, on the event rather than in the static
             # folder — a sponsor belongs to one event, and the next one should
             # be an upload rather than a deploy.

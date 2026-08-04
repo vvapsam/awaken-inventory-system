@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{# One delegator's account, laid out the way the statement AWAKEN already sends
+   is laid out: the amount due, then the breakdown, then the activity ledger.
+
+   The screen is the working copy — it has the Record payment form and the
+   links into each invoice. The PDF is the copy that goes out. Both are built
+   from `_statement_data`, so they cannot disagree, which matters because the
+   PDF is the one that gets argued with after the screen has been closed.
+
+   Nothing here carries what a coach was paid, and nothing in the PDF does
+   either — see the note at the top of commission_invoice_pdf. #}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ delegator.name }} — statement
+      {% for code in delegator.code_list() %}<span class="tag">{{ code }}</span> {% endfor %}</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ stmt_no }} ·
+      {{ as_at.strftime('%d %b %Y') }}{% if period %} · period {{ period }}{% endif %}</p>
+  </div>
+  <div class="hdact">
+    <form method="get" style="margin:0;display:flex;gap:6px;align-items:center">
+      <input type="date" name="as_at" value="{{ as_at.isoformat() }}"
+             style="width:auto;padding:7px 10px;font-family:inherit"
+             title="Statement date — invoices raised this month count as current charges">
+      <button class="btn">Show</button>
+    </form>
+    <a class="btn primary" href="/commissions/delegation/{{ delegator.id }}/statement.pdf?as_at={{ as_at.isoformat() }}"
+       target="_blank" rel="noopener">Print / PDF</a>
+    <a class="btn" href="/commissions/delegation/{{ delegator.id }}">← {{ delegator.name }}</a>
+  </div>
+</div>
+
+{% if saved %}
+<div class="card" style="margin:14px 0;{{ 'border-color:#d9b45a;background:#fdf6e9' if saved.error
+   else 'border-color:var(--teal);background:var(--teal-tint)' }}">
+  {% if saved.error %}<b>{{ saved.error }}</b>
+  {% else %}<b>{{ peso(saved.amount) }} recorded</b> as received on {{ saved.on }}.
+    Invoices are settled from it oldest first.{% endif %}
+</div>
+{% endif %}
+
+<div class="stmt-due">
+  <div>
+    <div class="l">Total amount due</div>
+    <div class="s">As of {{ as_at.strftime('%d %b %Y') }}{% if current %} ·
+      current charges due {{ due_by.strftime('%d %b %Y') }}{% endif %}</div>
+  </div>
+  <div class="v">{{ peso(amount_due) }}</div>
+</div>
+
+<h2 class="stmt-h">Statement breakdown</h2>
+<table class="stmt">
+  <thead><tr><th></th><th class="n">Balance forward</th>
+    <th class="n">Current charges</th><th class="n">Total</th></tr></thead>
+  <tbody>
+  {% if not breakdown %}
+  <tr><td class="muted">Nothing outstanding — the account is clear.</td>
+    <td></td><td></td><td class="n">{{ peso(0) }}</td></tr>
+  {% endif %}
+  {% for cat in breakdown %}
+  <tr class="cat"><td>{{ cat.name }}</td>
+    <td class="n">{{ peso(cat.forward) if cat.forward }}</td>
+    <td class="n">{{ peso(cat.current) if cat.current }}</td>
+    <td class="n">{{ peso(cat.total) }}</td></tr>
+  {% for r in cat.rows %}
+  <tr><td class="sub"><a href="/commissions/charges/{{ r.charge.id }}">{{ r.label }}</a></td>
+    <td class="n">{{ peso(r.forward) if r.forward }}</td>
+    <td class="n">{{ peso(r.current) if r.current }}</td>
+    <td class="n">{{ peso(r.forward + r.current) }}</td></tr>
+  {% endfor %}
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td>Total amount due</td>
+    <td class="n">{{ peso(forward) }}</td>
+    <td class="n">{{ peso(current) }}</td>
+    <td class="n">{{ peso(amount_due) }}</td></tr></tfoot>
+</table>
+
+{% if credit %}
+<p class="muted small" style="margin-top:8px">Includes {{ peso(credit) }} paid in
+  advance of invoicing, held on the account.</p>
+{% endif %}
+
+<h2 class="stmt-h">Full detail — account activity (by date)</h2>
+<table class="stmt act">
+  <thead><tr><th style="width:110px">Date</th><th>Description</th>
+    <th class="n" style="width:150px">Amount</th></tr></thead>
+  <tbody>
+  {% for a in activity %}
+    {% if a.kind == 'payment' %}
+    <tr class="pay">
+      <td>{{ a.on.strftime('%m/%d/%Y') if a.on }}</td>
+      <td>{{ a.ref }}{% if a.payment.reference %}
+        <span class="small" style="opacity:.75">· {{ a.payment.reference }}</span>{% endif %}</td>
+      <td class="n">-{{ peso(-a.amount) }}
+        {% if is_admin %}
+        <form method="post" style="display:inline"
+              action="/commissions/delegation/{{ delegator.id }}/payment/{{ a.id }}/delete"
+              onsubmit="return confirm('Remove this payment? The balance and every invoice status will be recalculated.')">
+          <button class="linkbtn" title="Remove this payment">×</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr class="doc">
+      <td>{{ a.on.strftime('%m/%d/%Y') if a.on }}</td>
+      <td><a href="/commissions/charges/{{ a.id }}">INVOICE {{ a.ref }}</a>
+        {% set st = ledger.by_id.get(a.id) %}
+        {% if st and st.settled %}<span class="tag">Paid</span>
+        {% elif st and st.part %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Part paid
+          — {{ peso(st.balance) }} left</span>{% endif %}</td>
+      <td class="n"></td>
+    </tr>
+    {% for it in a['items'] %}
+    <tr><td></td>
+      <td class="sub">{{ it.text }}{% if it.note %}
+        <div class="muted small" style="margin:0">{{ it.note }}</div>{% endif %}</td>
+      <td class="n">{{ peso(it.amount) }}</td></tr>
+    {% endfor %}
+    <tr class="sub-t"><td></td><td>Invoice subtotal</td>
+      <td class="n">{{ peso(a.amount) }}</td></tr>
+    {% endif %}
+  {% endfor %}
+  {% if not activity %}
+  <tr><td colspan="3" class="muted">No invoices and no payments on this account yet.</td></tr>
+  {% endif %}
+  </tbody>
+</table>
+
+<div class="stmt-sum">
+  <div><span>Total invoiced</span><b>{{ peso(ledger.invoiced) }}</b></div>
+  <div><span>Total payments received</span><b>-{{ peso(ledger.received) }}</b></div>
+  <div class="due"><span>Total amount due</span><b>{{ peso(amount_due) }}</b></div>
+</div>
+
+{% if is_admin %}
+<h2 class="stmt-h">Record a payment</h2>
+<form method="post" action="/commissions/delegation/{{ delegator.id }}/payment"
+      class="card">
+  <p class="muted small" style="margin:0 0 10px">Payments land on the account, not
+    on one invoice — which is what lets {{ peso(50000) }} settle a
+    {{ peso(58300) }} invoice and leave the rest showing. Invoices are then
+    cleared oldest first, so the ages above keep meaning something.</p>
+  <div class="payrow">
+    <label>Date received<input type="date" name="paid_on"
+      value="{{ as_at.isoformat() }}" required></label>
+    <label>Amount<input name="amount" inputmode="decimal" placeholder="0.00"
+      autocomplete="off" required></label>
+    <label style="flex:2">How it should read on the statement
+      <input name="description" maxlength="120" autocomplete="off"
+             placeholder="Payment received — July conduction"></label>
+    <label>Reference <span class="muted small">(optional)</span>
+      <input name="reference" maxlength="60" autocomplete="off"
+             placeholder="transfer ref"></label>
+    <button class="btn primary">Record</button>
+  </div>
+</form>
+{% endif %}
+
+{% if voided %}
+<details style="margin-top:16px">
+  <summary class="muted small" style="cursor:pointer">{{ voided|length }}
+    cancelled invoice{{ 's' if voided|length != 1 }} — not counted in anything above</summary>
+  <table style="margin-top:8px">
+    <thead><tr><th>Invoice</th><th>Period</th><th>Why</th>
+      <th class="n">Amount</th></tr></thead>
+    <tbody>
+    {% for c in voided %}
+    <tr style="opacity:.6">
+      <td class="mono"><a href="/commissions/charges/{{ c.id }}">{{ c.number }}</a></td>
+      <td>{{ c.dates_label or c.period_label }}</td>
+      <td class="muted small">{{ c.voided_reason or '—' }}</td>
+      <td class="n">{{ peso(c.total) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
+
+<style>
+.stmt-due{display:flex;justify-content:space-between;align-items:center;gap:16px;
+  background:#2e8b9e;color:#fff;border-radius:8px;padding:16px 20px;margin:16px 0 4px}
+.stmt-due .l{font-size:1rem;font-weight:700;letter-spacing:.01em}
+.stmt-due .s{font-size:.76rem;color:#d6ecf1;margin-top:2px}
+.stmt-due .v{font-size:1.9rem;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.stmt-h{margin:20px 0 8px;font-size:.82rem;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--ink);font-weight:700}
+table.stmt{width:100%;border-collapse:collapse}
+table.stmt th{background:#2e8b9e;color:#fff;font-weight:700;font-size:.78rem;
+  padding:9px 12px;text-align:left;border:0}
+table.stmt td{padding:8px 12px;border:0;border-bottom:1px solid #e6e9ec;
+  font-size:.87rem;vertical-align:top}
+table.stmt .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.stmt tr.cat td{background:#eaf4f6;font-weight:700;border-bottom:0}
+table.stmt td.sub{padding-left:26px}
+table.stmt tfoot td{background:#2e8b9e;color:#fff;font-weight:700;
+  font-size:.94rem;border:0}
+table.act tr.doc td{background:#eaf4f6;border-bottom:0}
+table.act tr.doc a{color:#1f6b7c;font-weight:700;text-decoration:none}
+table.act tr.pay td{background:#fbede6;color:#d9531e;font-weight:700}
+table.act tr.sub-t td{font-weight:700;border-bottom:2px solid var(--ink)}
+.linkbtn{background:none;border:0;color:#d9531e;cursor:pointer;font-size:1rem;
+  padding:0 0 0 6px;line-height:1;font-family:inherit}
+.stmt-sum{margin:14px 0 0;margin-left:auto;max-width:380px}
+.stmt-sum div{display:flex;justify-content:space-between;gap:16px;padding:6px 12px;
+  font-size:.88rem}
+.stmt-sum div b{font-variant-numeric:tabular-nums}
+.stmt-sum .due{background:#eaf4f6;border-top:1px solid #d9d9d9;color:#1f6b7c;
+  font-weight:700;font-size:1rem;padding:9px 12px}
+.payrow{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.payrow label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  font-weight:700;margin:0;flex:1;min-width:130px}
+.payrow input{padding:7px 10px;font-family:inherit}
+@media (max-width:720px){.stmt-due{flex-direction:column;align-items:flex-start}
+  .stmt-due .v{font-size:1.5rem}}
+</style>
+{% endblock %}

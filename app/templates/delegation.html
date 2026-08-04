@@ -69,7 +69,9 @@
     <td style="text-align:right" data-money="paid" data-value="{{ r.cost }}">{{ peso(r.cost) }}</td>
     <td style="text-align:right;color:var(--teal-dark);font-weight:650"
         data-money="margin" data-value="{{ r.margin }}">{{ peso(r.margin) }}</td>
-    <td><a class="btn" style="padding:5px 12px" href="/commissions/delegation/{{ r.delegator.id }}?run={{ run.id }}">Open</a></td>
+    <td style="white-space:nowrap"><a class="btn" style="padding:5px 12px"
+      href="/commissions/delegation/{{ r.delegator.id }}/statement">Statement</a>
+      <a class="btn" style="padding:5px 12px" href="/commissions/delegation/{{ r.delegator.id }}?run={{ run.id }}">Open</a></td>
   </tr>
   {% endfor %}
   </tbody>
