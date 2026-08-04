@@ -208,7 +208,7 @@
       {% endif %}
       {% set is_admin = staff.role == 'admin' %}
       {% if is_admin or can(staff,'manage_kiosk') or can(staff,'view_waivers') or can(staff,'manage_hyrox') or can(staff,'manage_commissions') %}
-      {% set settings_active = p.startswith('/admin/roles') or p.startswith('/admin/order-settings') or p.startswith('/admin/product-images') or p.startswith('/admin/kiosk') or p.startswith('/admin/waivers') or p.startswith('/admin/hyrox') or p.startswith('/admin/commission') %}
+      {% set settings_active = p.startswith('/admin/roles') or p.startswith('/admin/order-settings') or p.startswith('/admin/product-images') or p.startswith('/admin/kiosk') or p.startswith('/admin/email-templates') or p.startswith('/admin/waivers') or p.startswith('/admin/hyrox') or p.startswith('/admin/commission') %}
       <div class="settings-menu" id="settings-menu">
         <button type="button" class="gear-btn {% if settings_active %}active{% endif %}" id="gear-btn" aria-label="Settings" title="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -250,6 +250,10 @@
           </a>
           {% endif %}
           {% if is_admin %}
+          <a href="/admin/email-templates" class="{% if p.startswith('/admin/email-templates') %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+            <span>Email templates<small>The wording of every event email</small></span>
+          </a>
           <a href="/admin/product-images" class="{% if p.startswith('/admin/product-images') %}active{% endif %}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L3 21"/></svg>
             <span>Product photos<small>Item images for the Sell tiles</small></span>

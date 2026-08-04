@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.tpl-list{max-width:760px;display:grid;gap:10px;margin-top:18px}
+.tpl-row{display:flex;gap:16px;align-items:flex-start;border:1px solid var(--line);
+  border-radius:12px;padding:15px 17px;background:var(--bg)}
+.tpl-row:hover{border-color:var(--teal);background:var(--teal-tint)}
+.tpl-row .nm{font-weight:650;font-size:.98rem}
+.tpl-row .bl{color:var(--muted);font-size:.83rem;margin-top:3px}
+.tpl-row .go{margin-left:auto;align-self:center;color:var(--muted);flex:none}
+.tpl-where{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--muted);border:1px solid var(--line);
+  border-radius:999px;padding:2px 8px;margin-top:8px}
+.tpl-edited{color:var(--teal-dark);border-color:var(--teal);background:var(--teal-tint)}
+</style>
+
+<h1>Email templates</h1>
+<p class="muted small" style="max-width:640px">The wording of every email the
+  events section sends. Edit the HTML, watch it redraw beside you, and put it
+  back the way it shipped whenever you like — nothing is lost when you reset,
+  because your version is the only thing that gets deleted.</p>
+
+<div class="tpl-list">
+  {% for r in rows %}
+  <a class="tpl-row" href="/admin/email-templates/{{ r.key }}">
+    <div>
+      <div class="nm">{{ r.name }}</div>
+      <div class="bl">{{ r.blurb }}</div>
+      <span class="tpl-where">{{ r.where }}</span>
+      {% if r.edited %}<span class="tpl-where tpl-edited">Edited{% if r.edited_by %} by {{ r.edited_by }}{% endif %}{% if r.edited_at %} · {{ r.edited_at|local }}{% endif %}</span>{% endif %}
+    </div>
+    <svg class="go" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
