@@ -112,10 +112,15 @@
           — {{ peso(st.balance) }} left</span>{% endif %}</td>
       <td class="n"></td>
     </tr>
+    <tr class="head"><td></td>
+      <td>{{ a.heading }} · {{ a.sessions }} session{{ 's' if a.sessions != 1 }}</td>
+      <td></td></tr>
     {% for it in a['items'] %}
-    <tr><td></td>
-      <td class="sub">{{ it.text }}{% if it.note %}
-        <div class="muted small" style="margin:0">{{ it.note }}</div>{% endif %}</td>
+    <tr {% if it.ot %}class="ot"{% endif %}>
+      <td class="day">{{ it.on.strftime('%d %b') if it.on }}</td>
+      <td class="{{ 'subot' if it.ot else 'sub' }}">{{ it.text }}{% if it.note %}
+        <span class="muted small"> · {{ it.note }}</span>{% endif %}
+        {% if it.ref %}<span class="mono muted small"> · {{ it.ref }}</span>{% endif %}</td>
       <td class="n">{{ peso(it.amount) }}</td></tr>
     {% endfor %}
     <tr class="sub-t"><td></td><td>Invoice subtotal</td>
@@ -201,6 +206,12 @@ table.act tr.doc td{background:#eaf4f6;border-bottom:0}
 table.act tr.doc a{color:#1f6b7c;font-weight:700;text-decoration:none}
 table.act tr.pay td{background:#fbede6;color:#d9531e;font-weight:700}
 table.act tr.sub-t td{font-weight:700;border-bottom:2px solid var(--ink)}
+table.act tr.head td{color:var(--muted);font-weight:700;font-size:.8rem;padding-left:26px}
+table.act td.day{color:var(--muted);font-size:.8rem;white-space:nowrap}
+table.act td.sub{padding-left:26px}
+table.act td.subot{padding-left:44px;color:#b0741a}
+table.act tr.ot td{background:#fdf6e9}
+table.act tr.ot td.n{color:#b0741a}
 .linkbtn{background:none;border:0;color:#d9531e;cursor:pointer;font-size:1rem;
   padding:0 0 0 6px;line-height:1;font-family:inherit}
 .stmt-sum{margin:14px 0 0;margin-left:auto;max-width:380px}

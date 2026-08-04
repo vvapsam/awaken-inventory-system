@@ -2216,23 +2216,36 @@ def register(app, deps):
     def _stmt_no(when: date) -> str:
         return "STMT-%04d-%02d" % (when.year, when.month)
 
-    def _charge_lines(charge) -> dict:
-        """One invoice reduced to what a statement shows of it.
+    def _charge_lines(charge) -> list:
+        """Every conduction on one invoice, in the order they happened.
 
-        The statement summarises; the invoice itemises. Printing every session
-        twice would double the length of a document whose job is to be read in
-        one go, and the per-session detail is one click away on the invoice
-        itself.
+        The full log, not a summary. "What was that for" is the question a
+        delegator opens a statement to answer, and a single line saying "9
+        sessions" answers it only for somebody who already trusts the number —
+        which is exactly the person who was not going to ask.
+
+        Overtime sits immediately under the session it belongs to. Folding it
+        into that session's amount would make one row read as a more expensive
+        session than the rate card says, which is the first thing queried.
         """
-        fees = ot = Decimal(0)
-        for ln in charge.lines:
-            amt = Decimal(str(ln.amount or 0))
-            if (ln.kind or "") == "overtime":
-                ot += amt
+        out = []
+        for ln in sorted(charge.lines,
+                         key=lambda l: (l.occurred_on or date.min,
+                                        l.booking_ref or "",
+                                        1 if (l.kind or "") == "overtime" else 0)):
+            is_ot = (l_kind := (ln.kind or "")) == "overtime"
+            if is_ot:
+                text, note = ln.description or "Overtime", ""
             else:
-                fees += amt
-        return {"fees": fees, "ot": ot,
-                "total": Decimal(str(charge.total or 0))}
+                # "Private Coaching · Andrea Lim" -> the client leads, because
+                # that is how a delegator reads their own month.
+                client = (ln.description or "").split(" · ")[-1].strip()
+                text = client or (ln.description or "")
+                note = ln.coach or ""
+            out.append({"on": ln.occurred_on, "ref": ln.booking_ref or "",
+                        "text": text, "note": note, "ot": is_ot,
+                        "amount": Decimal(str(ln.amount or 0))})
+        return out
 
     def _statement_data(db: Session, did: int, as_at: date) -> dict:
         """Everything both the screen and the PDF are drawn from.
@@ -2292,17 +2305,13 @@ def register(app, deps):
         acts = []
         for r in led["charges"]:
             raised = to_local(r["c"].created_at).date() if r["c"].created_at else as_at
-            parts = _charge_lines(r["c"])
-            items = [{"text": "%s — %s" % (STATEMENT_LINE,
-                                           r["c"].period_label or r["c"].dates_label or ""),
-                      "note": "%d session%s" % (r["c"].sessions or 0,
-                                                "" if r["c"].sessions == 1 else "s"),
-                      "amount": parts["fees"]}]
-            if parts["ot"]:
-                items.append({"text": "Overtime — hours beyond scheduled session length",
-                              "note": "", "amount": parts["ot"]})
             acts.append({"kind": "invoice", "on": raised, "id": r["c"].id,
-                         "ref": r["c"].number or "", "items": items,
+                         "ref": r["c"].number or "",
+                         "heading": "%s — %s" % (
+                             STATEMENT_LINE,
+                             r["c"].period_label or r["c"].dates_label or ""),
+                         "sessions": r["c"].sessions or 0,
+                         "items": _charge_lines(r["c"]),
                          "amount": r["due"], "charge": r["c"]})
         for p in led["payments"]:
             acts.append({"kind": "payment", "on": p.paid_on, "id": p.id,
