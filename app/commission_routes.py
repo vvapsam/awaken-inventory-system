@@ -421,6 +421,58 @@ def delegator_map(db: Session) -> dict:
         for d in db.query(CommissionDelegator).all()}
 
 
+def _ot_line_text(b: CommissionBooking) -> str:
+    """How an overtime line reads on the delegator's invoice."""
+    hrs = Decimal(str(b.ot_hours or 0)).normalize()
+    return "Overtime · %s hr%s × %s/hr" % (
+        hrs, "" if hrs == 1 else "s", _fmt(b.ot_rate))
+
+
+def resync_charge(db: Session, run: CommissionRun, b: CommissionBooking):
+    """Put a finalized run's DEL invoice back in step with an overtime edit.
+
+    A finalized run has already produced the document the delegator was billed
+    from. Editing the sessions behind it and leaving that document alone would
+    give you two different answers to "what does Gab owe" — the screen's and the
+    invoice's — with nothing on either saying which is current. So the charge is
+    rebuilt rather than left to rot.
+
+    What this cannot do is unsend the invoice that was already emailed. The
+    screen says so; re-issuing or crediting the difference is a human job.
+    """
+    if not b.delegator_id or run.status != RUN_FINALIZED:
+        return None
+    charge = (db.query(CommissionCharge)
+              .filter_by(run_id=run.id, delegator_id=b.delegator_id).first())
+    if charge is None:
+        return None
+    before = Decimal(str(charge.total or 0))
+    line = (db.query(CommissionChargeLine)
+            .filter_by(charge_id=charge.id, booking_id=b.id, kind="overtime")
+            .first())
+    ot = b.overtime
+    if not ot:
+        if line is not None:
+            db.delete(line)
+    elif line is None:
+        db.add(CommissionChargeLine(
+            charge_id=charge.id, booking_id=b.id, booking_ref=b.booking_ref,
+            occurred_on=b.appointment_date, description=_ot_line_text(b),
+            kind="overtime", coach=b.coach or b.staff_raw, amount=ot))
+    else:
+        line.description = _ot_line_text(b)
+        line.amount = ot
+    db.flush()
+    # Summed from the lines rather than adjusted by a delta, so the document
+    # always agrees with what is printed on it.
+    charge.total = _money(sum(
+        (Decimal(str(ln.amount or 0)) for ln in
+         db.query(CommissionChargeLine).filter_by(charge_id=charge.id).all()),
+        Decimal(0)))
+    return {"number": charge.number, "before": before,
+            "after": Decimal(str(charge.total or 0))}
+
+
 def reprice_overtime(b: CommissionBooking) -> None:
     """hours x rate -> ot_charge. One place, called from every writer.
 
@@ -1726,14 +1778,17 @@ def register(app, deps):
         if not delegator:
             return RedirectResponse("/commissions/delegation", status_code=303)
         d = _delegator_detail(run, did)
-        # Typing overtime moves money out of the business, so it wants the same
-        # admin role as approving a rate — and a finalized run has already been
-        # invoiced, so there is nothing left to change.
-        editable = (staff.role == "admin" and run is not None
-                    and run.status == RUN_DRAFT)
+        # Typing overtime moves money, so it wants the same admin role as
+        # approving a rate. Unlike everything else on this screen it stays open
+        # on a finalized run — the invoice is rebuilt to match, and the screen
+        # says so rather than letting the two drift apart quietly.
+        open_run = run is not None and run.status in (RUN_DRAFT, RUN_FINALIZED)
+        editable = staff.role == "admin" and open_run
         return render(request, "delegation_detail.html", db, staff, active="delegation",
                       run=run, runs=runs, delegator=delegator, tab=tab,
-                      ot_editable=editable, **d)
+                      ot_editable=editable,
+                      ot_invoiced=(run is not None and run.status == RUN_FINALIZED),
+                      ot_result=request.session.pop("ot_result", None), **d)
 
     # ------------------------------------------------- conductions report ----
 
@@ -2074,8 +2129,10 @@ def register(app, deps):
                       mail_ready=Mailer().cfg.configured,
                       dg_rows=dg_rows, dg_pick=dg_pick, dg_detail=dg_detail, dg_count=dg_count,
                       dg_totals=_rollup_totals(run, dg_rows),
-                      ot_editable=(staff.role == "admin"
-                                   and run.status == RUN_DRAFT and dg_pick is not None),
+                      ot_editable=(staff.role == "admin" and dg_pick is not None
+                                   and run.status in (RUN_DRAFT, RUN_FINALIZED)),
+                      ot_invoiced=(run.status == RUN_FINALIZED),
+                      ot_result=request.session.pop("ot_result", None),
                       ot_back="/commissions/%d?tab=delegators&d=%s" % (
                           run.id, dg_pick["delegator"].id if dg_pick else ""),
                       RUN_DRAFT=RUN_DRAFT, RUN_FINALIZED=RUN_FINALIZED)
@@ -2291,10 +2348,11 @@ def register(app, deps):
         where = back if back.startswith("/commissions/") else f"/commissions/{rid}"
         if not run or not b or b.run_id != rid:
             return RedirectResponse(f"/commissions/{rid}", status_code=303)
-        # A finalized run has already been invoiced and paid against. And a
-        # session with no delegator has nobody to bill the hour to — the
-        # coach's own rate is a different conversation entirely.
-        if run.status != RUN_DRAFT or not b.delegator_id:
+        # A superseded run was replaced by a later import and is history; a
+        # session with no delegator has nobody to bill the hour to. A finalized
+        # run IS editable here, unlike everywhere else on this screen — see
+        # resync_charge for what that costs and why it was worth it.
+        if run.status not in (RUN_DRAFT, RUN_FINALIZED) or not b.delegator_id:
             return RedirectResponse(where, status_code=303)
 
         hrs = _num(hours, COMMISSION_FLAT)
@@ -2316,7 +2374,15 @@ def register(app, deps):
             b.ot_by_id = staff.id
             b.ot_at = datetime.now(timezone.utc)
             reprice_overtime(b)
+        moved = resync_charge(db, run, b)
         db.commit()
+        if moved:
+            # Said out loud on the way back, because the number that changed is
+            # on a document somebody has already been sent.
+            request.session["ot_result"] = {
+                "number": moved["number"],
+                "before": _fmt(moved["before"]), "after": _fmt(moved["after"]),
+            }
         return RedirectResponse(where, status_code=303)
 
     @app.post("/commissions/{rid}/booking/new")
@@ -2684,9 +2750,8 @@ def register(app, deps):
                     db.add(CommissionChargeLine(
                         charge_id=charge.id, booking_id=b.id,
                         booking_ref=b.booking_ref, occurred_on=b.appointment_date,
-                        description="Overtime · %s hr%s × %s/hr" % (
-                            hrs, "" if hrs == 1 else "s",
-                            _fmt(b.ot_rate)),
+                        description=_ot_line_text(b),
+                        kind="overtime",
                         coach=b.coach or b.staff_raw, amount=ot))
                     total += ot
             charge.total = _money(total)

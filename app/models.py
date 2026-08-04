@@ -1152,6 +1152,11 @@ class CommissionChargeLine(Base):
     description = Column(String)
     coach = Column(String)
     amount = Column(Numeric(10, 2), default=0)
+    #: "overtime" for the hours line that sits under a session, empty for the
+    #: session itself. Named rather than matched on the description, because
+    #: an invoice line that has to be identified by its own wording is a line
+    #: that breaks the moment somebody improves the wording.
+    kind = Column(String)
 
 
 # ==========================================================================
