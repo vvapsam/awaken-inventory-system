@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{{ delegator.name }} — {{ run.period_label or run.period }}</title>
+<link rel="icon" href="/static/logo.svg">
+<link rel="stylesheet" href="/static/style.css?v={{ ASSET_V }}">
+{#
+  One delegator's month, and nothing else.
+
+  There is no cost figure anywhere on this page and no cost figure in the
+  context that renders it. `_delegator_public` computes the charge and the
+  overtime and never reads a booking's `commission`, so a coach's pay is not
+  something a careless edit here could print — it is not in the room. Keep it
+  that way: if you find yourself wanting a number this template hasn't got,
+  the answer is almost never to widen the builder.
+
+  Standalone, like the coach statement: no app shell, no nav, nothing a
+  delegator could click into.
+#}
+<style>
+body{background:var(--panel)}
+.sbar{background:var(--side-bg);color:#fff;padding:20px 30px}
+.sbar .wm{font-size:.62rem;letter-spacing:.3em;font-weight:600;color:#a9bcd8}
+.sbar h1{margin:7px 0 2px;font-size:1.5rem;font-weight:650;letter-spacing:-.01em;color:#fff}
+.sbar p{margin:0;color:#a9bcd8;font-size:.86rem}
+.sbody{max-width:1000px;margin:0 auto;padding:22px 20px 0}
+.hero{display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;margin-bottom:6px}
+.hero .big{flex:1.3;min-width:250px;background:var(--bg);border:1px solid var(--teal);
+  border-radius:10px;padding:16px 19px}
+.hero .big .l{font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--teal-dark);font-weight:700}
+.hero .big .v{font-size:2.2rem;font-weight:700;color:var(--teal-dark);letter-spacing:-.02em;
+  line-height:1.15;margin-top:2px}
+.hero .big .sub{font-size:.79rem;color:var(--muted);margin-top:3px}
+.hero .side{flex:1;min-width:215px;display:flex;flex-direction:column;gap:8px}
+.mini{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 15px;
+  display:flex;justify-content:space-between;align-items:center;gap:10px}
+.mini .l{font-size:.61rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  font-weight:700}
+.mini .v{font-weight:700;font-size:1.03rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mini.ot .v{color:#b0741a}
+.dtabs{display:flex;gap:7px;margin:18px 0 10px;flex-wrap:wrap}
+.dtabs button{font-size:.84rem;padding:6px 14px;border:1px solid var(--line);border-radius:999px;
+  background:var(--bg);color:var(--muted);cursor:pointer;font-family:inherit}
+.dtabs button:hover{border-color:#c3ccd6;color:var(--ink)}
+.dtabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.pane{display:none}
+.pane.on{display:block}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.zero{color:#c9ced4}
+tfoot td{background:#fbfcfd;font-weight:700}
+.foot{max-width:1000px;margin:22px auto 0;padding:15px 20px 34px;border-top:1px solid var(--line);
+  font-size:.79rem;color:var(--muted)}
+@media (max-width:720px){.sbar{padding:16px 18px}.sbody{padding:16px 14px 0}}
+</style>
+</head>
+<body>
+
+<div class="sbar">
+  <div class="wm">A W A K E N &nbsp;·&nbsp; F I T N E S S &nbsp; C E N T E R</div>
+  <h1>{{ delegator.name }}</h1>
+  <p>{{ run.period_label or run.period }} · {{ sessions }} session{{ 's' if sessions != 1 }}
+    · {{ clients|length }} client{{ 's' if clients|length != 1 }}</p>
+</div>
+
+<div class="sbody">
+  <div class="hero">
+    <div class="big">
+      <div class="l">Total for {{ run.period_label or run.period }}</div>
+      <div class="v">{{ peso(total) }}</div>
+      <div class="sub">{{ sessions }} session{{ 's' if sessions != 1 }}{%
+        if ot %}, plus {{ peso(ot) }} of overtime{% endif %}</div>
+    </div>
+    <div class="side">
+      <div class="mini"><span class="l">Sessions</span><span class="v">{{ sessions }}</span></div>
+      <div class="mini"><span class="l">Session fees</span><span class="v">{{ peso(fees) }}</span></div>
+      {% if ot %}
+      <div class="mini ot"><span class="l">Overtime · {{ ot_hours|trim0 }} hr{{ 's' if ot_hours != 1 }}</span>
+        <span class="v">{{ peso(ot) }}</span></div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not rows %}
+  <div class="card"><p class="muted" style="margin:0">No sessions recorded for this period.</p></div>
+  {% else %}
+
+  <div class="dtabs">
+    {% if matrix.days %}<button class="on" data-p="cal">Schedule</button>{% endif %}
+    <button class="{{ 'on' if not matrix.days }}" data-p="ses">Sessions ({{ sessions }})</button>
+    <button data-p="cli">By client ({{ clients|length }})</button>
+  </div>
+
+  {% if matrix.days %}
+  <div class="pane on" id="cal">
+    <div class="legend"><span class="muted small" style="margin:0">Covered by:</span>
+      {% for name, code in matrix.codes|dictsort %}
+      <b class="{{ matrix.colors[name] }}">{{ code }}</b><span class="muted small"
+        style="margin:0">{{ name }}</span>
+      {% endfor %}
+      {% if ot_hours %}<span style="flex:1"></span>
+      <span class="othr">+1.5</span><span class="muted small" style="margin:0">hours of overtime</span>{% endif %}
+    </div>
+    <div class="mxwrap">
+    <table class="mx">
+      <thead><tr><th class="cli">Client</th>
+        {% for d in matrix.days %}
+        <th class="d{{ ' we' if d.weekday() >= 5 }}">
+          <span class="wd">{{ 'MTWTFSS'[d.weekday()] }}</span><span class="dn">{{ d.day }}</span></th>
+        {% endfor %}
+        <th class="tot">Sessions</th></tr></thead>
+      <tbody>
+      {% for c in matrix.clients %}
+      <tr><td class="cli" title="{{ c.client }}">{{ c.client }}</td>
+        {% for cell in c.cells %}
+        <td class="d{{ ' we' if matrix.days[loop.index0].weekday() >= 5 }}{{ ' hasot' if cell.ot_hours }}">
+          {% if cell.n %}
+          {# Coach names, never coach pay — who covered a client is the service
+             they bought and is already known to them. #}
+          <b class="{{ matrix.colors.get(cell.coach, 'c6') }}"
+             title="{% for b in cell.bookings %}{{ b.coach or b.staff_raw }}{{ ' · ' if not loop.last }}{% endfor %}">{{ matrix.codes.get(cell.coach, '?') }}{% if cell.n > 1 %}×{{ cell.n }}{% endif %}</b>
+          {%- if cell.ot_hours %}<span class="othr">+{{ cell.ot_hours|trim0 }}</span>{% endif -%}
+          {% else %}<i>·</i>{% endif %}
+        </td>
+        {% endfor %}
+        <td class="tot">{{ c.total }}{% if c.ot_hours %}<span class="otv">+{{ c.ot_hours|trim0 }} hr</span>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><td class="cli">Per day</td>
+        {% for d in matrix.days %}
+        <td class="d{{ ' we' if d.weekday() >= 5 }}">{% if matrix.totals[d] %}{{ matrix.totals[d] }}{% else %}<i>·</i>{% endif %}</td>
+        {% endfor %}
+        <td class="tot">{{ sessions }}</td></tr></tfoot>
+    </table>
+    </div>
+    <p class="muted small" style="margin-top:8px">Weekends are shaded.{% if ot_hours %}
+      An amber <span class="othr">+1.5</span> is overtime on that session — it is itemised
+      on the Sessions tab.{% endif %}</p>
+  </div>
+  {% endif %}
+
+  <div class="pane {{ 'on' if not matrix.days }}" id="ses">
+    <table>
+      <thead><tr><th>Date</th><th>Client</th><th>Covered by</th>
+        <th class="n">Session</th><th class="n">Overtime</th><th class="n">Total</th></tr></thead>
+      <tbody>
+      {% for b in rows %}
+      <tr>
+        <td class="mono">{{ b.appointment_date.strftime('%d %b') if b.appointment_date }}</td>
+        <td>{{ b.customer }}</td>
+        <td class="muted">{{ b.coach or b.staff_raw }}</td>
+        <td class="n">{{ peso(b.delegation_charge) }}</td>
+        <td class="n">{% if b.ot_hours %}<span class="othr">{{ b.ot_hours|trim0 }} hr</span>
+          <div class="muted small" style="margin:0">× {{ peso(b.ot_rate) }}</div>
+          {% else %}<span class="zero">—</span>{% endif %}</td>
+        <td class="n"{% if b.ot_hours %} style="font-weight:650"{% endif %}>{{
+          peso((b.delegation_charge or 0) + b.overtime) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><td colspan="3">{{ sessions }} session{{ 's' if sessions != 1 }}</td>
+        <td class="n">{{ peso(fees) }}</td>
+        <td class="n" style="color:#b0741a">{% if ot %}{{ peso(ot) }}{% else %}—{% endif %}</td>
+        <td class="n">{{ peso(total) }}</td></tr></tfoot>
+    </table>
+  </div>
+
+  <div class="pane" id="cli">
+    <table>
+      <thead><tr><th>Client</th><th class="n">Sessions</th><th>Coaches</th>
+        <th>First</th><th>Last</th><th class="n">Total</th></tr></thead>
+      <tbody>
+      {% for c in clients %}
+      <tr><td><b>{{ c.name }}</b></td>
+        <td class="n">{{ c.sessions }}</td>
+        <td class="muted small">{{ c.coaches|sort|join(', ') }}</td>
+        <td>{{ c.first.strftime('%d %b') if c.first }}</td>
+        <td>{{ c.last.strftime('%d %b') if c.last }}</td>
+        <td class="n">{{ peso(c.total) }}</td></tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><td>{{ clients|length }} client{{ 's' if clients|length != 1 }}</td>
+        <td class="n">{{ sessions }}</td><td colspan="3"></td>
+        <td class="n">{{ peso(total) }}</td></tr></tfoot>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<div class="foot">
+  Anything here look wrong? Reply to the email this link came in and we'll check it.
+  {% if link.expires_at %}<br>This link is private to you and stops working on
+  {{ link.expires_at|when }}.{% endif %}
+</div>
+
+<script>
+document.querySelectorAll('.dtabs button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('.dtabs button').forEach(function(x){x.classList.remove('on')});
+    document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on');
+    document.getElementById(b.dataset.p).classList.add('on');
+  });
+});
+</script>
+</body>
+</html>

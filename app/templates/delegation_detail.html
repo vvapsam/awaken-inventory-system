@@ -62,6 +62,88 @@
   <a href="?tab=coaches{{ qs }}" class="{{ 'on' if tab == 'coaches' }}">By coach ({{ coaches|length }})</a>
 </div>
 
+{# ---------------------------------------------------- the delegator's link #}
+{% if is_admin and run %}
+<details class="card" style="margin-top:12px" {{ 'open' if request.query_params.get('linked') or request.query_params.get('sent') or request.query_params.get('revoked') }}>
+  <summary style="cursor:pointer;font-weight:600;font-size:.92rem;list-style:none">
+    🔗 {{ delegator.name }}'s own link
+    {% if dlink and dlink.is_live %}<span class="tag">Live</span>
+    {% elif dlink %}<span class="tag grey">{{ dlink.state }}</span>
+    {% else %}<span class="muted small" style="margin:0">not created yet</span>{% endif %}
+  </summary>
+  <p class="muted small" style="margin:10px 0 0">A read-only page showing this month's
+    sessions, the calendar and <b>what they are charged</b> — never what a coach is paid.
+    It works for <b>{{ dlink_days }} days</b>, then stops.</p>
+
+  {% if request.query_params.get('sent') == '1' %}
+  <div class="notice" style="margin:10px 0 0">Sent. The link is live for {{ dlink_days }} days.</div>
+  {% elif request.query_params.get('sent') == 'noaddress' %}
+  <div class="error" style="margin:10px 0 0">No email address — link {{ delegator.name }} to a
+    person record with one, or type an address below.</div>
+  {% elif request.query_params.get('sent') == 'nomail' %}
+  <div class="error" style="margin:10px 0 0">Mail isn't set up on the server, so nothing was sent.
+    Copy the link across instead.</div>
+  {% elif request.query_params.get('sent') == 'failed' %}
+  <div class="error" style="margin:10px 0 0">That didn't send. The link is still live — copy it across.</div>
+  {% elif request.query_params.get('revoked') %}
+  <div class="notice amber" style="margin:10px 0 0">Revoked. Anyone opening it now is told it expired.</div>
+  {% endif %}
+
+  {% if dlink and dlink.is_live %}
+  <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:12px">
+    <span class="publink" id="dlink">{{ dlink_base }}/d/{{ dlink.token }}</span>
+    <button class="btn" type="button" data-copy="dlink" style="margin:0">Copy</button>
+    <form method="post" action="/commissions/{{ run.id }}/delegator/{{ delegator.id }}/link/send"
+          style="margin:0;display:flex;gap:7px;align-items:center">
+      <input name="to" value="{{ dlink_to }}" placeholder="their email"
+             style="width:200px;padding:7px 10px;font-size:.85rem">
+      <button class="btn primary" style="margin:0" {{ 'disabled' if not mail_ready }}
+        title="{{ "Mail isn't set up on the server" if not mail_ready }}">✉ Send</button>
+    </form>
+    <form method="post" action="/commissions/{{ run.id }}/delegator/{{ delegator.id }}/link/revoke"
+          style="margin:0" onsubmit="return confirm('Revoke this link? It stops working immediately.')">
+      <button class="btn" style="margin:0;color:#9c2c1e;border-color:#e6a49b">Revoke</button>
+    </form>
+  </div>
+  {% else %}
+  <form method="post" action="/commissions/{{ run.id }}/delegator/{{ delegator.id }}/link"
+        style="margin-top:12px">
+    <button class="btn primary" style="margin:0">Create a link for {{ delegator.name }}</button>
+  </form>
+  {% endif %}
+
+  {% if dlinks %}
+  <table style="margin-top:14px">
+    <thead><tr><th>Created</th><th>Sent</th><th>Opened</th><th>Until</th><th>State</th></tr></thead>
+    <tbody>
+    {% for l in dlinks %}
+    <tr><td>{{ l.created_at|when }}<div class="muted small" style="margin:0">{%
+        if l.created_by %}by {{ l.created_by.name }}{% endif %}</div></td>
+      <td>{% if l.sent_at %}{{ l.sent_at|when }}<div class="muted small" style="margin:0">{{ l.sent_to }}</div>
+        {% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{% if l.opens %}{{ l.last_opened_at|when }}<div class="muted small" style="margin:0">{{ l.opens }} open{{ 's' if l.opens != 1 }}</div>
+        {% else %}<span class="muted">Never opened</span>{% endif %}</td>
+      <td>{{ l.expires_at|when }}</td>
+      <td>{% if l.is_live %}<span class="tag">Live</span>{% else %}<span class="tag grey">{{ l.state }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</details>
+<script>
+document.querySelectorAll('[data-copy]').forEach(function(b){
+  b.addEventListener('click', function(){
+    var el = document.getElementById(b.dataset.copy);
+    navigator.clipboard.writeText(el.textContent.trim()).then(function(){
+      var was = b.textContent; b.textContent = 'Copied';
+      setTimeout(function(){ b.textContent = was; }, 1400);
+    });
+  });
+});
+</script>
+{% endif %}
+
 {% if ot_result %}
 <div class="notice amber"><b>{{ ot_result.number }} updated.</b>
   {{ ot_result.before }} → {{ ot_result.after }}. This month was already
