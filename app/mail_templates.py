@@ -53,6 +53,20 @@ ${block.button "Confirm my slot →" "Takes under a minute"}
 ${if record.deadline}${block.note}<b>Let us know by ${record.deadline}.</b> We're holding your slot until then, after that it goes to the next person.${/block.note}${/if}
 ${block.rewards "What you get for sharing"}"""
 
+#: The second ask, and the last one. Deliberately shorter than the invitation:
+#: they have already read the long version, and a wall of text on the morning of
+#: a deadline gets skimmed past the one sentence that matters.
+LASTCALL_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 12px">Last call, ${record.first_name}</h1>
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">Your slot for
+   <b>${event.name}</b> is still being held${if event.sponsor} — ${event.sponsor} are
+   fuelling us after${/if}. We just need a yes.</p>
+${if record.deadline}${block.note}<b>We need to hear from you by ${record.deadline}.</b> After that the slot goes to the next person on the list.${/block.note}${/if}
+${block.button "Confirm my slot →" "One tap, and you're done"}
+${block.facts}
+<p style="font-size:14px;margin:16px 0 0;color:#6b7683">Can't make it after all?
+   Use the same link to let us know — it means somebody on the waitlist gets to
+   train, and that's genuinely useful to us.</p>"""
+
 PASS_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">You're in, ${record.first_name} ✅</h1>
 <p style="font-size:15px;margin:0 0 18px;color:#2b3642">Show this at the door —
    we'll scan it. No need to print anything.</p>
@@ -110,6 +124,19 @@ TEMPLATES = [
                    "block.rewards": "both offers, with the “or”"},
         "pairs": {"block.note": "the bordered callout"},
         "body": INVITE_BODY,
+    },
+    {
+        "key": "lastcall", "name": "Last call to confirm",
+        "blurb": "“We still need a yes, and the deadline is today.”",
+        "where": "invite events",
+        "subject": "Last call — confirm your ${event.name} slot",
+        "values": dict(EVENT_VALUES, **PERSON_VALUES,
+                       **{"record.deadline": "Tue 4 Aug, 3:00 PM"}),
+        "blocks": {"block.facts": "When · Where · Bring · After",
+                   "block.button": "the teal call-to-action",
+                   "block.rewards": "both offers, with the “or”"},
+        "pairs": {"block.note": "the bordered callout"},
+        "body": LASTCALL_BODY,
     },
     {
         "key": "pass", "name": "Your pass",

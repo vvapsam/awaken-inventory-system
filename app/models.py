@@ -1397,6 +1397,10 @@ class EventParticipant(Base):
     #: Stamped so the second send can default to people who have not had one —
     #: chasing the same person four times is how you get filed as spam.
     nudged_at = Column(DateTime(timezone=True))
+    #: When they were sent the last call to confirm. Same reasoning as the
+    #: nudge: the default list is the people who have not had one, because a
+    #: deadline reminder that arrives three times stops reading as a deadline.
+    last_call_at = Column(DateTime(timezone=True))
     #: When they were scanned in at the door. The QR on their page is the
     #: fast path; the tracker has a button for the phone that died on the way.
     arrived_at = Column(DateTime(timezone=True))
