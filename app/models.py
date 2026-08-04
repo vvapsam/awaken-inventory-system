@@ -1,6 +1,7 @@
 import math
 import os
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 #: The gym runs in one place, so every time a person types or reads is that
 #: place's wall clock. Stored values are always real UTC instants; this is the
@@ -750,6 +751,11 @@ class CommissionDelegator(Base):
     codes = Column(String, nullable=False, default="")      # "KP,CP"
     rate = Column(Numeric(10, 2), nullable=False, default=0)
     cost = Column(Numeric(10, 2), nullable=False, default=0)
+    #: Charged per hour when a delegated session runs long. Billed to the
+    #: delegator only — the covering coach's payout does not move, so every
+    #: peso of overtime is margin. One rate, used as the default when somebody
+    #: logs hours; an unusual session can still carry its own rate.
+    ot_rate = Column(Numeric(10, 2), nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
 
     entity = relationship("Staff", foreign_keys=[entity_id])
@@ -884,6 +890,19 @@ class CommissionBooking(Base):
     rate_manual_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     commission = Column(Numeric(10, 2))
     delegation_charge = Column(Numeric(10, 2))
+    # --- overtime, typed by hand ---------------------------------------
+    # The export carries no duration, so these are the one part of a booking
+    # that a person enters rather than the import deriving. That is why
+    # Recalculate leaves them alone: re-running the rates must never silently
+    # erase hours somebody sat down and typed.
+    #
+    # `ot_rate` is snapshotted per row like every other rate here, so changing
+    # a delegator's rate tomorrow cannot restate a session billed today.
+    ot_hours = Column(Numeric(6, 2))
+    ot_rate = Column(Numeric(10, 2))
+    ot_charge = Column(Numeric(10, 2))
+    ot_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    ot_at = Column(DateTime(timezone=True))
     # Whether this row's booking status pays without anyone approving it,
     # decided against the rules in force when the run was calculated. Stored
     # rather than re-derived so that changing which statuses pay cannot
@@ -910,6 +929,20 @@ class CommissionBooking(Base):
     delegator = relationship("CommissionDelegator")
     approved_by = relationship("Staff", foreign_keys=[approved_by_id])
     voided_by = relationship("Staff", foreign_keys=[voided_by_id])
+    ot_by = relationship("Staff", foreign_keys=[ot_by_id])
+
+    @property
+    def overtime(self):
+        """What this row bills in overtime — zero unless it actually counts.
+
+        A struck-out or unapproved session bills nothing, and that has to be
+        true here as well as on the session fee. Asking one property rather
+        than reading the column means the calendar, the totals, the invoice
+        and the run all drop a voided row's overtime together.
+        """
+        if not self.is_commissionable or not self.delegator_id:
+            return Decimal("0")
+        return Decimal(str(self.ot_charge or 0))
 
     @property
     def is_commissionable(self):

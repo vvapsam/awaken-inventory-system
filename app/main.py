@@ -82,6 +82,17 @@ def _asset_version() -> str:
     return str(int(newest))
 
 
+#: 1.50 -> "1.5", 2.00 -> "2". Hours read as hours, not as money that lost
+#: its currency symbol.
+def _trim0(v):
+    try:
+        f = float(v or 0)
+    except (TypeError, ValueError):
+        return v
+    return ("%.2f" % f).rstrip("0").rstrip(".") or "0"
+
+
+templates.env.filters["trim0"] = _trim0
 templates.env.globals["ASSET_V"] = _asset_version()
 templates.env.globals["can"] = can
 templates.env.globals["can_any"] = can_any
@@ -501,6 +512,28 @@ def startup():
                 "  rate_manual BOOLEAN NOT NULL DEFAULT FALSE; "
                 "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
                 "  rate_manual_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
+                "END IF; END $$;"))
+            # Overtime on a delegated session: an hourly rate on the delegator,
+            # and the hours typed against one booking. Additive only — no
+            # existing column moves, and a database that has never seen
+            # overtime reads exactly as it did before.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_delegators') IS NOT NULL THEN "
+                "ALTER TABLE commission_delegators ADD COLUMN IF NOT EXISTS "
+                "  ot_rate NUMERIC(10,2) NOT NULL DEFAULT 0; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_bookings') IS NOT NULL THEN "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  ot_hours NUMERIC(6,2); "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  ot_rate NUMERIC(10,2); "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  ot_charge NUMERIC(10,2); "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  ot_by_id INTEGER REFERENCES entity(id) ON DELETE SET NULL; "
+                "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
+                "  ot_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
             # The sponsor's logo, on the event rather than in the static
             # folder — a sponsor belongs to one event, and the next one should

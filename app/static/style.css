@@ -645,6 +645,41 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 .c7{background:#ffe0ef;color:#8a2a5c}
 .c8{background:#e2f5cd;color:#3f6b12}
 
+/* ---- delegation overtime ---------------------------------------------- */
+/* Typed by hand rather than imported, so it is the one number on this screen
+   that carries its own colour — amber, and only amber, so a cell that has some
+   is findable at a glance without a legend. */
+.mx td.hasot{background:#fffaf0}
+.mx thead th.hasot,.mx td.hasot.we{background:#fdf6e8}
+.mxcell{border:0;background:none;padding:0;margin:0;font:inherit;cursor:pointer;
+  width:100%;height:100%;display:grid;place-items:center;position:relative}
+.mxcell:hover b{outline:2px solid var(--teal);outline-offset:1px}
+.mxcell:focus-visible{outline:2px solid var(--teal);outline-offset:-2px;border-radius:4px}
+.othr{display:inline-block;font-size:.6rem;font-weight:700;color:#b0741a;
+  background:#fdf2dd;border:1px solid #e6c98a;border-radius:4px;padding:0 3px;line-height:1.3}
+.mx .othr{position:absolute;right:0;bottom:0;font-size:.54rem;padding:0 2px}
+.mx td.tot .otv{display:block;font-size:.64rem;color:#b0741a;font-weight:600}
+.otfield{border-color:#e6c98a !important;background:#fdf2dd}
+
+.otpop{position:absolute;z-index:70;width:264px;background:var(--bg);
+  border:1px solid var(--line);border-radius:12px;padding:13px 15px 12px;
+  box-shadow:0 12px 34px rgba(20,30,45,.19)}
+.otpop[hidden]{display:none}
+.otpop-h{margin:0 0 10px}
+.otpop-h b{font-size:.92rem}
+.otpop-g{display:flex;gap:9px}
+.otpop-g label{flex:1;display:block;font-size:.66rem;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.otpop-g input{width:100%;margin-top:3px;text-align:right;font-variant-numeric:tabular-nums}
+.otpop-c{background:#fdf2dd;border:1px solid #e6c98a;border-radius:8px;padding:7px 10px;
+  margin-top:10px;font-size:.8rem;color:#7a5c17;font-variant-numeric:tabular-nums}
+.otpop-a{display:flex;gap:7px;margin-top:11px}
+.otpick{display:flex;gap:8px;align-items:center;width:100%;text-align:left;
+  border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 10px;
+  margin-top:6px;font:inherit;font-size:.82rem;cursor:pointer}
+.otpick:hover{border-color:var(--teal);background:var(--teal-tint)}
+.otpick .mono{margin-left:auto}
+
 /* ---- the door: one hand, one doorway ---------------------------------- */
 /* The name is the biggest thing on the screen and the button is the width of
    the card, because whoever is scanning is holding a phone in one hand and
