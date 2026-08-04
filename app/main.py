@@ -63,6 +63,11 @@ from .models import to_local as _to_local
 templates.env.filters["local"] = _to_local
 templates.env.filters["local_dt"] = lambda d: (
     _to_local(d).strftime("%Y-%m-%dT%H:%M") if d else "")
+#: A moment written the way a person says it: "11 August, 8:08 PM". `local`
+#: hands back a datetime and Jinja prints its repr, which is fine beside a
+#: field label and wrong in the middle of a sentence.
+templates.env.filters["when"] = lambda d: (
+    _to_local(d).strftime("%d %B, %I:%M %p").replace(" 0", " ") if d else "")
 
 
 def _asset_version() -> str:
@@ -541,6 +546,8 @@ def startup():
                 "ALTER TABLE commission_charge_lines ADD COLUMN IF NOT EXISTS "
                 "  kind VARCHAR; "
                 "END IF; END $$;"))
+            # commission_delegator_links is a new table, so create_all makes it.
+            # Nothing to ALTER.
             # The sponsor's logo, on the event rather than in the static
             # folder — a sponsor belongs to one event, and the next one should
             # be an upload rather than a deploy.
