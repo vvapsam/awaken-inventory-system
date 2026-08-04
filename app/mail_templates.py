@@ -69,7 +69,7 @@ ${block.note}<b>Nothing is held for you yet.</b> A slot is only yours once we've
 RETURNED_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">One more thing, ${record.first_name}</h1>
 <p style="font-size:15px;margin:0 0 6px;color:#2b3642">We had a look at your
    payment and need another go at it.</p>
-${block.note}<b>${record.review_note}</b>${/block.note}
+${if record.review_note}${block.note}<b>${record.review_note}</b>${/block.note}${/if}
 <p style="font-size:15px;margin:16px 0 0;color:#2b3642">Nothing is lost —
    your details and your place in the queue are exactly where you left them.</p>
 ${block.button "Pick up where I left off →" "Takes a minute"}"""

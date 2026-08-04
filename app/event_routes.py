@@ -1526,11 +1526,13 @@ def register(app, deps):
                 continue
             # Somebody mid-registration has to land back in the flow they
             # left, not on the participant page — that one assumes a slot they
-            # have not got yet.
+            # have not got yet. Same for a receipt we've sent back: the whole
+            # ask is "do the payment step again".
             url = ("%s/r/%s/%s" % (base, ev.slug, p.token)
-                   if kind == "finish" else "%s/e/%s" % (base, p.token))
-            build = {"reel": _reel_mail, "finish": _finish_mail}.get(
-                kind, _invite_mail)
+                   if kind in ("finish", "returned")
+                   else "%s/e/%s" % (base, p.token))
+            build = {"reel": _reel_mail, "finish": _finish_mail,
+                     "returned": _returned_mail}.get(kind, _invite_mail)
             subject, text, html = build(db, ev, p, url)
             ok, detail = mailer.send(p.email, subject, text, html=html,
                                      inline=inline or None)
@@ -1540,8 +1542,12 @@ def register(app, deps):
                     p.invited_at = now
                 elif kind == "finish":
                     p.nudged_at = now
-                else:
+                elif kind == "reel":
                     p.reel_email_at = now
+                # "returned" stamps nothing on purpose. The review queue owns
+                # that state, and marking a row reviewed because somebody
+                # re-sent the email would move it out of a queue it still
+                # belongs in.
                 sent.append({"name": p.name, "detail": p.email})
             else:
                 failed.append({"name": p.name, "detail": detail})
@@ -1553,28 +1559,39 @@ def register(app, deps):
     #: new button on that bar every time there is a new thing to say — and the
     #: bar is where you go when the tidy lists don't cover your case.
     def sendable_templates(ev) -> list:
-        """The templates, and whether each one applies to this event."""
+        """Every template, always selectable, with a note on where each fits.
+
+        These used to grey out the ones that didn't match the event's mode, and
+        that was the wrong call. This bar only ever sends to names you have
+        ticked yourself: you have already told us who, so being told you may not
+        is the software second-guessing a decision it does not have the context
+        to make. A class that half-registered on paper, a person who needs the
+        receipt email again a week after review \u2014 every one of those is a real
+        case that the rule locked out and nothing replaced.
+
+        The notes stay, because "usually sent from To review" is worth knowing.
+        A note is guidance; a disabled radio is a wall.
+        """
         openreg = ev.mode == EVENT_OPEN
         return [
             {"key": "finish", "name": "Finish your registration",
              "blurb": "\u201cYou started but haven't paid yet.\u201d For anyone "
                       "mid-registration.",
-             "ok": openreg,
-             "why": "" if openreg else "only on an open-registration event"},
+             "ok": True,
+             "why": "" if openreg else "usually open-registration"},
             {"key": "invite", "name": "The invitation",
-             "blurb": "\u201cYou're in \u2014 confirm your slot.\u201d Only for "
-                      "events you invite people to.",
-             "ok": not openreg,
-             "why": "" if not openreg else "not used on an open event"},
+             "blurb": "\u201cYou're in \u2014 confirm your slot.\u201d Asks them "
+                      "to confirm a slot you're holding.",
+             "ok": True,
+             "why": "" if not openreg else "usually invite events"},
             {"key": "reel", "name": "The Reel email",
              "blurb": "\u201cThank you \u2014 submit your Reel and pick your "
                       "reward.\u201d",
              "ok": True, "why": ""},
-            # Listed but never selectable here: it carries your reason for
-            # sending one back, so it belongs to the one row it is about.
             {"key": "returned", "name": "Ask for a better receipt",
-             "blurb": "Sent one at a time from the review queue, with your reason.",
-             "ok": False, "why": "sent from To review"},
+             "blurb": "Carries your reason for sending one back, when there is "
+                      "one on the row.",
+             "ok": True, "why": "usually from To review"},
         ]
 
     def mail_lists(ev) -> dict:
@@ -1668,6 +1685,12 @@ def register(app, deps):
         elif kind == "finish":
             pool = (lists["unfinished_all"] if who == "all"
                     else lists["unfinished"])
+        elif kind == "returned":
+            # There is no sensible "everyone" for this one — it carries a reason
+            # written about one payment. Reachable only by ticking names, which
+            # is the branch above; anything else sends to nobody rather than
+            # guessing a list.
+            pool = []
         else:
             pool = lists["invite_all"] if who == "all" else lists["invite"]
         request.session["event_mail"] = _send(
@@ -1690,19 +1713,26 @@ def register(app, deps):
         ev = db.get(Event, eid)
         if not ev or kind not in {t["key"] for t in sendable_templates(ev) if t["ok"]}:
             return RedirectResponse(f"/events/{eid}", status_code=303)
-        pool = {"finish": mail_lists(ev)["unfinished_all"],
-                "reel": mail_lists(ev)["reel_all"]}.get(
-                    kind, mail_lists(ev)["invite_all"])
+        lists = mail_lists(ev)
+        # Whoever this email is most about, so the preview shows the sentences
+        # that actually vary. Falls through to anybody on the list rather than
+        # refusing: a preview off the wrong person still shows the wording.
+        pool = {"finish": lists["unfinished_all"],
+                "reel": lists["reel_all"],
+                "returned": [p for p in ev.participants
+                             if (p.review_note or "").strip()]}.get(
+                    kind, lists["invite_all"])
         who = pool[0] if pool else (ev.participants[0] if ev.participants else None)
         if who is None:
             return HTMLResponse(
                 "<p style='font:15px system-ui;padding:28px'>Nobody on the list "
                 "to preview against yet.</p>")
         base = base_url(request)
-        url = ("%s/r/%s/%s" % (base, ev.slug, who.token) if kind == "finish"
+        url = ("%s/r/%s/%s" % (base, ev.slug, who.token)
+               if kind in ("finish", "returned")
                else "%s/e/%s" % (base, who.token))
-        build = {"reel": _reel_mail, "finish": _finish_mail}.get(
-            kind, _invite_mail)
+        build = {"reel": _reel_mail, "finish": _finish_mail,
+                 "returned": _returned_mail}.get(kind, _invite_mail)
         subject, _text, html = build(db, ev, who, url)
         # The inline marks are Content-IDs in a real message; a browser needs
         # the routes instead, so the preview swaps them.
