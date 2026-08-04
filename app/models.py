@@ -985,6 +985,70 @@ class CommissionSignoff(Base):
 #: How long a coach's statement link stays open, in days.
 STATEMENT_LINK_DAYS = 5
 
+#: How long a delegator's link stays open. Shorter than a coach's because it
+#: carries what somebody owes rather than what they are owed — a forwarded
+#: invoice is a different kind of leak from a forwarded payslip, and a week is
+#: long enough to read a month's figures and query them.
+DELEGATOR_LINK_DAYS = 7
+
+
+class CommissionDelegatorLink(Base):
+    """A private, expiring URL showing one delegator their own month.
+
+    Modelled on CommissionStatementLink and for the same reason: a delegator
+    reads this on a phone, and an account with a password is an account nobody
+    uses. It reaches exactly one delegator's one period.
+
+    What it must never carry is the cost paid to the covering coach — and by
+    subtraction, the margin. That is not enforced here; it is enforced by the
+    page being built from a function that never computes those numbers. A flag
+    on this row would be one `if` away from being wrong.
+    """
+    __tablename__ = "commission_delegator_links"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("commission_runs.id", ondelete="CASCADE"),
+                    nullable=False)
+    delegator_id = Column(Integer, ForeignKey("commission_delegators.id",
+                                              ondelete="CASCADE"), nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    expires_at = Column(DateTime(timezone=True))
+    revoked_at = Column(DateTime(timezone=True))
+    sent_to = Column(String)
+    sent_at = Column(DateTime(timezone=True))
+    first_opened_at = Column(DateTime(timezone=True))
+    last_opened_at = Column(DateTime(timezone=True))
+    opens = Column(Integer, nullable=False, default=0)
+
+    run = relationship("CommissionRun")
+    delegator = relationship("CommissionDelegator")
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+
+    # Same as the coach links: no unique constraint on (run_id, delegator_id).
+    # Replacing a link revokes the old row rather than deleting it, so somebody
+    # opening yesterday's email is told a newer one was sent.
+
+    @property
+    def is_expired(self):
+        return bool(self.expires_at and self.expires_at < now_utc())
+
+    @property
+    def is_live(self):
+        return not self.revoked_at and not self.is_expired
+
+    @property
+    def state(self):
+        if self.revoked_at:
+            return "revoked"
+        if self.is_expired:
+            return "expired"
+        if self.opens:
+            return "opened"
+        if self.sent_at:
+            return "sent"
+        return "ready"
+
 
 class CommissionComment(Base):
     """One message in the conversation about a coach's period.

@@ -30,6 +30,7 @@ import csv
 import hashlib
 import hmac
 import io
+import os
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -314,8 +315,27 @@ def money(v) -> str:
     return "₱{:,.0f}".format(v) if v == v.to_integral() else "₱{:,.2f}".format(v)
 
 
+#: The one address every public link is built from — participant pages, coach
+#: statements, delegator links, QR codes, the lot.
+#:
+#: Pinned rather than read off the request because a link is a thing somebody
+#: keeps. Deriving it from whichever host an admin happened to be logged into
+#: meant the same invitation went out as pay.awakengym.com one week and
+#: portal.awakengym.com the next, and a printed QR outlives the habit that
+#: produced it. Override with PUBLIC_BASE_URL if the address ever moves.
+PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL")
+                   or "https://portal.awakengym.com").strip().rstrip("/")
+
+
 def base_url(request: Request) -> str:
-    """The public origin, honouring the proxy Railway puts in front of us."""
+    """The public origin. One address, whatever host you are reading this on.
+
+    Falls back to the request's own host only if PUBLIC_BASE_URL is explicitly
+    blanked — useful on a laptop, where localhost is the only origin that
+    works, and never the case in production.
+    """
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get("x-forwarded-host") or request.headers.get(
         "host") or request.url.netloc

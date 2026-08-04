@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import calendar
 import hashlib
+import html as _html
 import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
@@ -25,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from . import commissions as engine
 from .db import get_db
+from .event_routes import base_url as event_base_url
 from .mailer import Mailer, looks_like_email
 from .models import (
     BOOKING_STATUSES, IMPORT_MERGE, IMPORT_REPLACE,
@@ -37,6 +39,7 @@ from .models import (
     COMMENT_MAX,
     CommissionCoachOverride, CommissionCoachRate, CommissionDelegator, CommissionPayout,
     CommissionPayoutLine, CommissionRun, CommissionSetting, CommissionSignoff,
+    CommissionDelegatorLink, DELEGATOR_LINK_DAYS,
     CommissionStatementLink, STATEMENT_LINK_DAYS, Staff,
 )
 
@@ -1184,15 +1187,15 @@ def register(app, deps):
     # ------------------------------------------------- coach statement links
 
     def _public_base(request: Request) -> str:
-        """The URL a coach should be given. Railway terminates TLS at its proxy,
-        so `request.base_url` reports http:// — pasting that into a message hands
-        the coach a link that only works because of a redirect. Trust the
-        proxy's forwarded proto when it is present."""
-        base = str(request.base_url).rstrip("/")
-        proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
-        if proto == "https" and base.startswith("http://"):
-            base = "https://" + base[len("http://"):]
-        return base
+        """The URL a coach or delegator should be given.
+
+        One address for every public link in the app — see PUBLIC_BASE_URL in
+        event_routes. This used to derive the origin from the request, which
+        meant a link said whichever host the admin was signed into at the time.
+        Two hosts serve this app; a link is a thing somebody keeps; those two
+        facts do not go together.
+        """
+        return event_base_url(request)
 
     def _links_for(db: Session, rid: int, coach: str):
         return (db.query(CommissionStatementLink)
@@ -1220,6 +1223,124 @@ def register(app, deps):
             expires_at=now + timedelta(days=STATEMENT_LINK_DAYS), opens=0)
         db.add(link)
         return link
+
+    # ---------------------------------------------------- delegator links ----
+    # The delegator's own view of their month. Everything below is written to
+    # one rule: the cost paid to the covering coach never leaves this building.
+    #
+    # The rule is kept by construction rather than by care. `_delegator_public`
+    # computes charge and overtime and stops; it never reads `commission`, so
+    # there is no cost in the context, nothing for a template to print by
+    # accident and nothing in the HTML to find with View Source. The admin
+    # builder `_delegator_detail` returns cost and margin in the same dict as
+    # charged, and reusing it here would put a coach's pay one careless
+    # `{{ }}` away from a delegator's screen.
+
+    def _esc_html(v) -> str:
+        return _html.escape(str(v or ""))
+
+    def _dlinks_for(db: Session, rid: int, did: int):
+        return (db.query(CommissionDelegatorLink)
+                .filter_by(run_id=rid, delegator_id=did)
+                .order_by(CommissionDelegatorLink.id.desc()).all())
+
+    def _current_dlink(db: Session, rid: int, did: int):
+        rows = _dlinks_for(db, rid, did)
+        return rows[0] if rows else None
+
+    def _issue_dlink(db: Session, rid: int, did: int, staff, now):
+        """Mint a link and retire any earlier one for the same month."""
+        for old in _dlinks_for(db, rid, did):
+            if not old.revoked_at:
+                old.revoked_at = now
+        link = CommissionDelegatorLink(
+            run_id=rid, delegator_id=did, token=secrets.token_urlsafe(24),
+            created_at=now, created_by_id=getattr(staff, "id", None),
+            expires_at=now + timedelta(days=DELEGATOR_LINK_DAYS), opens=0)
+        db.add(link)
+        return link
+
+    def _delegator_public(run: CommissionRun, delegator) -> dict:
+        """One delegator's month, with nothing in it they may not see.
+
+        Deliberately not built on _delegator_detail. This function has no
+        access to what a coach was paid because it never asks — the only money
+        it touches is `delegation_charge` and `ot_charge`, both of which are
+        what the delegator is billed.
+
+        Struck-out sessions are absent for the same reason they are absent from
+        the invoice: they did not happen, so they are not billed, and showing
+        them would invite a query about a line that costs nothing.
+        """
+        rows = [b for b in delegated_rows(run) if b.delegator_id == delegator.id]
+        live = [b for b in rows if not b.voided]
+        counted = [b for b in live if b.is_commissionable]
+
+        fees = sum((Decimal(str(b.delegation_charge or 0)) for b in counted),
+                   Decimal(0))
+        ot = sum((b.overtime for b in counted), Decimal(0))
+        ot_hours = sum((Decimal(str(b.ot_hours or 0)) for b in counted), Decimal(0))
+
+        by_client = {}
+        for b in live:
+            key = (b.customer or "—").strip()
+            d = by_client.setdefault(key, {
+                "name": key, "sessions": 0, "total": Decimal(0),
+                "first": None, "last": None, "coaches": set()})
+            d["sessions"] += 1
+            if b.is_commissionable:
+                d["total"] += Decimal(str(b.delegation_charge or 0)) + b.overtime
+            d["coaches"].add((b.coach or b.staff_raw or "—").strip())
+            if b.appointment_date:
+                d["first"] = min(d["first"] or b.appointment_date, b.appointment_date)
+                d["last"] = max(d["last"] or b.appointment_date, b.appointment_date)
+
+        return {
+            "delegator": delegator, "run": run,
+            "sessions": len(live),
+            "rows": sorted(live, key=lambda r: (r.appointment_date or date.min,
+                                                r.booking_ref or "")),
+            "fees": fees, "ot": ot, "ot_hours": ot_hours, "total": fees + ot,
+            "ot_sessions": sum(1 for b in counted if b.ot_hours),
+            "clients": sorted(by_client.values(),
+                              key=lambda r: (-r["sessions"], r["name"])),
+            "matrix": schedule_matrix(live),
+        }
+
+    def _delegator_email(delegator, run: CommissionRun, url: str, total, expires):
+        """The doorway to the page, and nothing more.
+
+        No figure breakdown in the message body: an emailed number is a number
+        that goes stale the moment anything is corrected, and then there are two
+        answers in circulation.
+        """
+        period = run.period_label or run.period
+        subject = f"Your {period} sessions with AWAKEN"
+        gone = expires.strftime("%d %B") if expires else ""
+        first = (delegator.name or "").split()[0] if delegator.name else "there"
+        text = (
+            f"Hi {first},\n\n"
+            f"Here is everything we covered for you in {period} — every session, "
+            f"who took it, and what it comes to.\n\n{url}\n\n"
+            + (f"The link works until {gone}.\n\n" if gone else "")
+            + "Anything look wrong? Reply to this message and we'll check it.\n\n"
+              "— AWAKEN Fitness Center\n")
+        html = (
+            '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,'
+            'Roboto,Helvetica,Arial,sans-serif;color:#1a232e;line-height:1.55;'
+            'font-size:15px">'
+            f'<p>Hi {_esc_html(first)},</p>'
+            f'<p>Here is everything we covered for you in {_esc_html(period)} — '
+            'every session, who took it, and what it comes to.</p>'
+            f'<p><a href="{url}" style="display:inline-block;background:#008080;'
+            'color:#fff;text-decoration:none;font-weight:650;padding:13px 26px;'
+            'border-radius:8px">Open my {period} summary &rarr;</a></p>'.replace(
+                "{period}", _esc_html(period))
+            + (f'<p style="color:#6b7683;font-size:13px">The link works until '
+               f'{_esc_html(gone)}.</p>' if gone else "")
+            + '<p>Anything look wrong? Just reply to this message and we\'ll '
+              'check it.</p><p>— AWAKEN Fitness Center</p></div>')
+        return subject, text, html
 
     def _coach_email(db: Session, coach: str):
         """The address on the coach's person record, if it looks usable."""
@@ -1375,6 +1496,105 @@ def register(app, deps):
         ctx = _statement_context(run, link.coach, db)
         ctx.update({"request": request, "link": link, "msgs": msgs})
         return templates.TemplateResponse("statement.html", ctx)
+
+    @app.get("/d/{token}", response_class=HTMLResponse)
+    def public_delegator(request: Request, token: str,
+                         db: Session = Depends(get_db)):
+        """One delegator's month. No login — the token is the credential.
+
+        Everything reachable from here is one delegator's one period, it is
+        read-only, and it carries no figure about what a coach is paid.
+        """
+        link = (db.query(CommissionDelegatorLink)
+                .filter(CommissionDelegatorLink.token == token).first())
+        if not link:
+            return templates.TemplateResponse(
+                "statement_gone.html",
+                {"request": request, "reason": "unknown"}, status_code=404)
+        if not link.is_live:
+            return templates.TemplateResponse(
+                "statement_gone.html",
+                {"request": request,
+                 "reason": "revoked" if link.revoked_at else "expired",
+                 "days": DELEGATOR_LINK_DAYS}, status_code=410)
+        link.opens = (link.opens or 0) + 1
+        now = datetime.now(timezone.utc)
+        link.first_opened_at = link.first_opened_at or now
+        link.last_opened_at = now
+        db.commit()
+        ctx = _delegator_public(link.run, link.delegator)
+        ctx.update({"request": request, "link": link})
+        return templates.TemplateResponse("delegator_statement.html", ctx)
+
+    @app.post("/commissions/{rid}/delegator/{did}/link")
+    def delegator_link_new(request: Request, rid: int, did: int,
+                           db: Session = Depends(get_db)):
+        """Mint (or replace) a delegator's link for this run."""
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        back = f"/commissions/delegation/{did}?run={rid}"
+        run, d = db.get(CommissionRun, rid), db.get(CommissionDelegator, did)
+        if not run or not d:
+            return RedirectResponse("/commissions/delegation", status_code=303)
+        _issue_dlink(db, rid, did, staff, datetime.now(timezone.utc))
+        db.commit()
+        return RedirectResponse(back + "&linked=1", status_code=303)
+
+    @app.post("/commissions/{rid}/delegator/{did}/link/revoke")
+    def delegator_link_revoke(request: Request, rid: int, did: int,
+                              db: Session = Depends(get_db)):
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        for link in _dlinks_for(db, rid, did):
+            if not link.revoked_at:
+                link.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+        return RedirectResponse(
+            f"/commissions/delegation/{did}?run={rid}&revoked=1", status_code=303)
+
+    @app.post("/commissions/{rid}/delegator/{did}/link/send")
+    def delegator_link_send(request: Request, rid: int, did: int,
+                            to: str = Form(""), db: Session = Depends(get_db)):
+        """Email the delegator their link, minting one if there isn't a live one."""
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        back = f"/commissions/delegation/{did}?run={rid}"
+        run, d = db.get(CommissionRun, rid), db.get(CommissionDelegator, did)
+        if not run or not d:
+            return RedirectResponse("/commissions/delegation", status_code=303)
+        address = (to or "").strip() or _delegator_address(db, d)
+        if not looks_like_email(address):
+            return RedirectResponse(back + "&sent=noaddress", status_code=303)
+        now = datetime.now(timezone.utc)
+        link = _current_dlink(db, rid, did)
+        if link is None or not link.is_live:
+            link = _issue_dlink(db, rid, did, staff, now)
+            db.flush()
+        url = "%s/d/%s" % (_public_base(request), link.token)
+        pub = _delegator_public(run, d)
+        subject, text, html = _delegator_email(
+            d, run, url, pub["total"], link.expires_at)
+        mailer = Mailer()
+        if not mailer.cfg.configured:
+            return RedirectResponse(back + "&sent=nomail", status_code=303)
+        ok, _detail = mailer.send(address, subject, text, html=html)
+        if ok:
+            link.sent_to, link.sent_at = address, now
+        db.commit()
+        return RedirectResponse(
+            back + ("&sent=1" if ok else "&sent=failed"), status_code=303)
+
+    def _delegator_address(db: Session, d) -> str:
+        """The address on their linked person record, if there is one."""
+        if d.entity_id:
+            person = db.get(Staff, d.entity_id)
+            email = (person.email or "").strip() if person and person.email else ""
+            if looks_like_email(email):
+                return email
+        return ""
 
     # ------------------------------------------------------- comments ----
 
@@ -1788,7 +2008,14 @@ def register(app, deps):
                       run=run, runs=runs, delegator=delegator, tab=tab,
                       ot_editable=editable,
                       ot_invoiced=(run is not None and run.status == RUN_FINALIZED),
-                      ot_result=request.session.pop("ot_result", None), **d)
+                      ot_result=request.session.pop("ot_result", None),
+                      dlink=_current_dlink(db, run.id, did) if run else None,
+                      dlinks=_dlinks_for(db, run.id, did) if run else [],
+                      dlink_days=DELEGATOR_LINK_DAYS,
+                      dlink_to=_delegator_address(db, delegator),
+                      dlink_base=_public_base(request),
+                      is_admin=(staff.role == "admin"),
+                      mail_ready=Mailer().cfg.configured, **d)
 
     # ------------------------------------------------- conductions report ----
 
