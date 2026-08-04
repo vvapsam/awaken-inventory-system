@@ -34,7 +34,7 @@
 {% endmacro %}
 
 
-{% macro popover(rid, back, default_rate) %}
+{% macro popover(rid, back, default_rate, invoiced=False) %}
 <div class="otpop" id="otpop" hidden>
   <div class="otpop-h">
     <b id="otpop-t">Log overtime</b>
@@ -52,6 +52,10 @@
                placeholder="{{ default_rate|round|int }}"></label>
     </div>
     <div class="otpop-c" id="otpop-c"></div>
+    {% if invoiced %}
+    <p class="otpop-warn">This month is already invoiced. Saving updates the
+      charge — you will need to re-issue it or credit the difference.</p>
+    {% endif %}
     <p class="muted" style="font-size:.72rem;margin:7px 0 0">Blank rate uses
       {{ peso(default_rate) }}/hr. Set hours to 0 to remove it.</p>
     <div class="otpop-a">

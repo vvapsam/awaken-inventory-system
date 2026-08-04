@@ -137,7 +137,12 @@
 {% if ot_editable %}
 <p class="muted small" style="margin-top:8px"><b>Click a session to log overtime</b> —
   charged to {{ dg_pick.delegator.name }}, and the coach's payout does not move.</p>
-{{ otcal.popover(run.id, ot_back, dg_pick.delegator.ot_rate) }}
+{% if ot_invoiced %}
+<div class="alert warn"><b>This run is finalized.</b> Logging overtime rebuilds
+  the charge on file, but not the invoice already sent — that one is yours to
+  re-issue or credit.</div>
+{% endif %}
+{{ otcal.popover(run.id, ot_back, dg_pick.delegator.ot_rate, ot_invoiced) }}
 {% endif %}
 {% endif %}
 
