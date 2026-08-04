@@ -679,6 +679,8 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
   margin-top:6px;font:inherit;font-size:.82rem;cursor:pointer}
 .otpick:hover{border-color:var(--teal);background:var(--teal-tint)}
 .otpick .mono{margin-left:auto}
+.otpop-warn{background:#fdecea;border:1px solid #e6a49b;color:#9c2c1e;
+  border-radius:8px;padding:7px 10px;margin:9px 0 0;font-size:.75rem;line-height:1.4}
 
 /* ---- the door: one hand, one doorway ---------------------------------- */
 /* The name is the biggest thing on the screen and the button is the width of
