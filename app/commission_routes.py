@@ -17,11 +17,12 @@ import html as _html
 import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import commissions as engine
@@ -39,7 +40,8 @@ from .models import (
     COMMENT_MAX,
     CommissionCoachOverride, CommissionCoachRate, CommissionDelegator, CommissionPayout,
     CommissionPayoutLine, CommissionRun, CommissionSetting, CommissionSignoff,
-    CommissionDelegatorLink, DELEGATOR_LINK_DAYS,
+    CommissionDelegatorLink, DELEGATOR_LINK_DAYS, to_local,
+    DelegatorPayment, PaymentSetting,
     CommissionStatementLink, STATEMENT_LINK_DAYS, Staff,
 )
 
@@ -429,6 +431,181 @@ def _ot_line_text(b: CommissionBooking) -> str:
     hrs = Decimal(str(b.ot_hours or 0)).normalize()
     return "Overtime · %s hr%s × %s/hr" % (
         hrs, "" if hrs == 1 else "s", _fmt(b.ot_rate))
+
+
+def _month_bounds(run: CommissionRun):
+    """The calendar month a run is for, as two dates.
+
+    `run.period_start` / `period_end` are the first and last session actually
+    in it, which is a different question and a worse answer for an invoice: a
+    July invoice covering the 2nd to the 20th reads as though the rest of the
+    month is still to come.
+    """
+    try:
+        y, m = (int(x) for x in (run.period or "").split("-")[:2])
+        return date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])
+    except (TypeError, ValueError):
+        return run.period_start, run.period_end
+
+
+#: The letterhead, as it reads on the statements AWAKEN already sends. Held
+#: here rather than in the template so the PDF and the screen quote one source,
+#: and overridden per install by whatever is filled in under company settings —
+#: an address typed into Settings should not have to be typed again here.
+COMPANY = {
+    "name": "888Awaken Fitness Center Inc",
+    "address": ["Metrowalk Commercial Complex", "Pasig City, Metro Manila 1604"],
+    "email": "admin@awakengym.com",
+    "phone": "+639178068287",
+    "web": "www.awakengym.com",
+    "bank": "UnionBank of the Philippines",
+    "account_name": "888Awaken Fitness Center Inc",
+    "account_number": "000590116836",
+}
+
+
+def company_block(db: Session) -> dict:
+    """The letterhead and the bank details, settings first.
+
+    A statement asks somebody to send money to an account number, so the number
+    printed on it has to be the one somebody maintains — not one frozen into a
+    deploy. Settings win where they are filled in; the defaults above are what
+    the handwritten statements say, so an install that has never opened the
+    settings screen still prints a correct document.
+    """
+    out = dict(COMPANY)
+    row = db.get(PaymentSetting, 1)
+    if row:
+        if (row.bank_name or "").strip():
+            out["bank"] = row.bank_name.strip()
+        if (row.account_name or "").strip():
+            out["account_name"] = row.account_name.strip()
+    return out
+
+
+def account_ledger(db: Session, delegator_id: int) -> dict:
+    """One delegator's account: everything invoiced, everything received.
+
+    An open-item ledger, which is the only shape that survives how delegators
+    actually pay. They pay round numbers and they pay late, so a payment does
+    not map onto an invoice — it lands on the account, and the invoices are
+    settled from it oldest first.
+
+    Oldest first is not a preference. Any other order lets a fresh payment
+    clear this month's invoice while a three-month-old one still shows open,
+    and the aging on the statement stops meaning anything.
+
+    Cancelled invoices are out of the arithmetic entirely: a voided document is
+    not a claim on anybody.
+    """
+    charges = [c for c in
+               db.query(CommissionCharge)
+               .filter(CommissionCharge.delegator_id == delegator_id,
+                       CommissionCharge.voided_at.is_(None))
+               .order_by(CommissionCharge.created_at.asc(),
+                         CommissionCharge.id.asc()).all()]
+    payments = (db.query(DelegatorPayment)
+                .filter(DelegatorPayment.delegator_id == delegator_id)
+                .order_by(DelegatorPayment.paid_on.asc(),
+                          DelegatorPayment.id.asc()).all())
+
+    invoiced = sum((Decimal(str(c.total or 0)) for c in charges), Decimal(0))
+    received = sum((Decimal(str(p.amount or 0)) for p in payments), Decimal(0))
+
+    pot = received
+    rows = []
+    for c in charges:
+        due = Decimal(str(c.total or 0))
+        covered = min(pot, due) if pot > 0 else Decimal(0)
+        pot -= covered
+        rows.append({"c": c, "due": due, "paid": covered,
+                     "balance": due - covered,
+                     "settled": covered >= due and due > 0,
+                     "part": Decimal(0) < covered < due})
+    return {
+        "charges": rows, "payments": payments,
+        "by_id": {r["c"].id: r for r in rows},
+        "invoiced": invoiced, "received": received,
+        "balance": invoiced - received,
+        #: Money in hand beyond what has been invoiced. Shown rather than
+        #: hidden: a delegator who has paid ahead should not be chased, and a
+        #: credit that only exists as a negative number nobody prints is a
+        #: credit that gets forgotten.
+        "credit": pot,
+    }
+
+
+def _span_label(a: date, b: date) -> str:
+    """How a statement names the stretch it covers."""
+    if a == b:
+        return a.strftime("%-d %b %Y")
+    if a.day == 1 and b == date(a.year + (a.month == 12),
+                                (a.month % 12) + 1, 1) - timedelta(days=1):
+        return a.strftime("%B %Y")
+    if a.year == b.year:
+        return "%s – %s" % (a.strftime("%-d %b"), b.strftime("%-d %b %Y"))
+    return "%s – %s" % (a.strftime("%-d %b %Y"), b.strftime("%-d %b %Y"))
+
+
+def billed_line_map(db: Session, delegator_id: int) -> dict:
+    """booking id -> the live invoice it is already on, for one delegator.
+
+    The whole point of letting somebody pick their own dates is that they will
+    eventually pick overlapping ones. This is what makes that safe: a session
+    that is already on an invoice is a session we have already asked to be paid
+    for, and billing it twice is the single worst thing this feature could do.
+
+    Voided invoices are ignored on purpose — voiding one is exactly how you
+    free its sessions up to be billed again.
+    """
+    rows = (db.query(CommissionChargeLine.booking_id, CommissionCharge)
+            .join(CommissionCharge,
+                  CommissionCharge.id == CommissionChargeLine.charge_id)
+            .filter(CommissionCharge.delegator_id == delegator_id,
+                    CommissionCharge.voided_at.is_(None),
+                    CommissionChargeLine.booking_id.isnot(None))
+            .all())
+    return {bid: charge for bid, charge in rows}
+
+
+def fill_charge(db: Session, charge: CommissionCharge, rows) -> tuple:
+    """Write the lines of one delegator invoice and total it.
+
+    One builder for both kinds of invoice. A monthly invoice raised by
+    finalizing and a range invoice raised by hand go through here, so the two
+    cannot drift into printing different things — which matters most for the
+    one a delegator actually reads.
+
+    Returns (total charged, cost paid out). The cost is returned rather than
+    printed: it belongs on our screen and nowhere near their copy.
+    """
+    total = cost = Decimal(0)
+    for b in sorted(rows, key=lambda r: (r.appointment_date or date.min,
+                                         r.booking_ref or "")):
+        amount = Decimal(str(b.delegation_charge or 0))
+        total += amount
+        cost += Decimal(str(b.commission or 0))
+        db.add(CommissionChargeLine(
+            charge_id=charge.id, booking_id=b.id, booking_ref=b.booking_ref,
+            occurred_on=b.appointment_date,
+            description="%s · %s" % (b.appointment_name, b.customer),
+            coach=b.coach or b.staff_raw, amount=amount))
+        # Overtime is its own line, immediately under the session it belongs
+        # to. Folding it into the session amount would make one row read as a
+        # more expensive session than the rate card says, which is the first
+        # thing a delegator queries.
+        ot = b.overtime
+        if ot:
+            db.add(CommissionChargeLine(
+                charge_id=charge.id, booking_id=b.id,
+                booking_ref=b.booking_ref, occurred_on=b.appointment_date,
+                description=_ot_line_text(b), kind="overtime",
+                coach=b.coach or b.staff_raw, amount=ot))
+            total += ot
+    charge.sessions = len(rows)
+    charge.total = _money(total)
+    charge.coach_cost = _money(cost)
+    return _money(total), _money(cost)
 
 
 def resync_charge(db: Session, run: CommissionRun, b: CommissionBooking):
@@ -2017,6 +2194,313 @@ def register(app, deps):
                       is_admin=(staff.role == "admin"),
                       mail_ready=Mailer().cfg.configured, **d)
 
+    # ------------------------------------------------ delegator statements --
+    #
+    # Built to match the statement AWAKEN already sends by hand, because a
+    # delegator who has been reading one shape of document for a year should
+    # not have to learn a second one just because we started generating it.
+    #
+    # It is an open-item statement: everything invoiced, everything received,
+    # and the difference. Balance forward is the older unpaid part of the
+    # account; current charges are the invoices raised this month. The two
+    # always add to the amount due, because they are computed by splitting one
+    # ledger rather than by summing two.
+    #
+    # It never raises an invoice. Printing a statement must not be a thing that
+    # moves money: invoices are raised by closing a month, and a document
+    # somebody prints to chase a payment should be safe to print twice.
+
+    STATEMENT_CATEGORY = "Coaches Conduction"
+    STATEMENT_LINE = "Standard Personal Training — Delegations"
+
+    def _stmt_no(when: date) -> str:
+        return "STMT-%04d-%02d" % (when.year, when.month)
+
+    def _charge_lines(charge) -> dict:
+        """One invoice reduced to what a statement shows of it.
+
+        The statement summarises; the invoice itemises. Printing every session
+        twice would double the length of a document whose job is to be read in
+        one go, and the per-session detail is one click away on the invoice
+        itself.
+        """
+        fees = ot = Decimal(0)
+        for ln in charge.lines:
+            amt = Decimal(str(ln.amount or 0))
+            if (ln.kind or "") == "overtime":
+                ot += amt
+            else:
+                fees += amt
+        return {"fees": fees, "ot": ot,
+                "total": Decimal(str(charge.total or 0))}
+
+    def _statement_data(db: Session, did: int, as_at: date) -> dict:
+        """Everything both the screen and the PDF are drawn from.
+
+        One builder, so the paper and the page cannot disagree — which matters
+        most here, because the paper is the copy that gets argued with after
+        the screen has been closed.
+        """
+        led = account_ledger(db, did)
+        month_start = date(as_at.year, as_at.month, 1)
+
+        # Current charges are the invoices raised in the month the statement is
+        # dated; everything older is balance forward. That is the rule the
+        # handwritten statements already used — a month is closed in the month
+        # after it, so July's invoice, raised in August, is what August's
+        # statement calls current.
+        current, forward = [], []
+        for r in led["charges"]:
+            raised = to_local(r["c"].created_at).date() if r["c"].created_at else as_at
+            r = dict(r, raised=raised)
+            (current if raised >= month_start else forward).append(r)
+
+        # ---- breakdown, one row per invoice under a category heading -------
+        #
+        # Both columns are what is *still owed*, never what was originally
+        # charged. That is the only version that adds up: payments have already
+        # been applied oldest first, so summing balances gives exactly the
+        # amount due, and an invoice that has been settled quietly leaves the
+        # table instead of sitting there contradicting the total above it.
+        rows = []
+        for r in sorted(forward, key=lambda r: r["raised"]):
+            if r["balance"] <= 0:
+                continue
+            label = r["c"].period_label or r["c"].dates_label or ""
+            rows.append({"label": "%s%s" % (label, " (remaining balance)"
+                                            if r["part"] else ""),
+                         "forward": r["balance"], "current": Decimal(0),
+                         "charge": r["c"]})
+        for r in sorted(current, key=lambda r: r["raised"]):
+            if r["balance"] <= 0:
+                continue
+            label = r["c"].period_label or r["c"].dates_label or ""
+            rows.append({"label": "%s%s" % (label, " (remaining balance)"
+                                            if r["part"] else ""),
+                         "forward": Decimal(0), "current": r["balance"],
+                         "charge": r["c"]})
+        fwd_total = sum((x["forward"] for x in rows), Decimal(0))
+        cur_total = sum((x["current"] for x in rows), Decimal(0))
+        breakdown = [{
+            "name": STATEMENT_CATEGORY,
+            "forward": fwd_total, "current": cur_total,
+            "total": fwd_total + cur_total,
+            "rows": rows,
+        }] if rows else []
+
+        # ---- account activity, newest first --------------------------------
+        acts = []
+        for r in led["charges"]:
+            raised = to_local(r["c"].created_at).date() if r["c"].created_at else as_at
+            parts = _charge_lines(r["c"])
+            items = [{"text": "%s — %s" % (STATEMENT_LINE,
+                                           r["c"].period_label or r["c"].dates_label or ""),
+                      "note": "%d session%s" % (r["c"].sessions or 0,
+                                                "" if r["c"].sessions == 1 else "s"),
+                      "amount": parts["fees"]}]
+            if parts["ot"]:
+                items.append({"text": "Overtime — hours beyond scheduled session length",
+                              "note": "", "amount": parts["ot"]})
+            acts.append({"kind": "invoice", "on": raised, "id": r["c"].id,
+                         "ref": r["c"].number or "", "items": items,
+                         "amount": r["due"], "charge": r["c"]})
+        for p in led["payments"]:
+            acts.append({"kind": "payment", "on": p.paid_on, "id": p.id,
+                         "ref": p.label, "items": [],
+                         "amount": -Decimal(str(p.amount or 0)), "payment": p})
+        acts.sort(key=lambda a: (a["on"], 0 if a["kind"] == "payment" else 1),
+                  reverse=True)
+
+        # ---- the service period the invoices cover -------------------------
+        starts = [c["c"].period_start for c in led["charges"] if c["c"].period_start]
+        ends = [c["c"].period_end for c in led["charges"] if c["c"].period_end]
+        # Zero-padded and spelled out the way the house statement writes it:
+        # "01 May - 31 Jul 2026". Not _span_label, which is the app's own
+        # shorthand and collapses a whole month to its name.
+        period = ""
+        if starts and ends:
+            a, b = min(starts), max(ends)
+            period = ("%s \u2013 %s" % (a.strftime("%d %b"), b.strftime("%d %b %Y"))
+                      if a.year == b.year else
+                      "%s \u2013 %s" % (a.strftime("%d %b %Y"),
+                                    b.strftime("%d %b %Y")))
+
+        due_by = as_at + timedelta(days=1)
+        return {
+            "as_at": as_at, "stmt_no": _stmt_no(as_at), "period": period,
+            "due_by": due_by, "ledger": led,
+            "forward": fwd_total, "current": cur_total,
+            "current_rows": current, "forward_rows": forward,
+            "breakdown": breakdown, "activity": acts,
+            "amount_due": led["balance"], "credit": led["credit"],
+            "voided": (db.query(CommissionCharge)
+                       .filter(CommissionCharge.delegator_id == did,
+                               CommissionCharge.voided_at.isnot(None))
+                       .order_by(CommissionCharge.id.desc()).all()),
+            "company": company_block(db),
+        }
+
+    def _as_at(text: str) -> date:
+        try:
+            return datetime.strptime((text or "").strip(), "%Y-%m-%d").date()
+        except ValueError:
+            return datetime.now(tz()).date()
+
+    @app.get("/commissions/delegation/{did}/statement", response_class=HTMLResponse)
+    def delegation_statement(request: Request, did: int, as_at: str = "",
+                             db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        delegator = db.get(CommissionDelegator, did)
+        if not delegator:
+            return RedirectResponse("/commissions/delegation", status_code=303)
+        return render(request, "delegation_statement.html", db, staff,
+                      active="delegation", delegator=delegator,
+                      is_admin=(staff.role == "admin"),
+                      saved=request.session.pop("pay_saved", None),
+                      **_statement_data(db, did, _as_at(as_at)))
+
+    @app.get("/commissions/delegation/{did}/statement.pdf")
+    def delegation_statement_pdf(request: Request, did: int, as_at: str = "",
+                                 download: str = "",
+                                 db: Session = Depends(get_db)):
+        from fastapi.responses import Response
+        from . import commission_invoice_pdf
+
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        delegator = db.get(CommissionDelegator, did)
+        if not delegator:
+            return RedirectResponse("/commissions/delegation", status_code=303)
+        data = _statement_data(db, did, _as_at(as_at))
+        pdf = commission_invoice_pdf.statement(delegator, data)
+        name = "statement-%s-%s.pdf" % (
+            re.sub(r"[^A-Za-z0-9]+", "-", delegator.name or "").strip("-").lower(),
+            data["stmt_no"].lower())
+        disp = "attachment" if download else "inline"
+        return Response(pdf, media_type="application/pdf", headers={
+            "Content-Disposition": '%s; filename="%s"' % (disp, name)})
+
+    # ------------------------------------------------------------ payments --
+
+    @app.post("/commissions/delegation/{did}/payment")
+    def delegation_payment_add(request: Request, did: int,
+                               paid_on: str = Form(""), amount: str = Form(""),
+                               description: str = Form(""),
+                               method: str = Form(""), reference: str = Form(""),
+                               db: Session = Depends(get_db)):
+        """Record money received. Admin only — it moves the balance."""
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        delegator = db.get(CommissionDelegator, did)
+        back = "/commissions/delegation/%d/statement" % did
+        if not delegator:
+            return RedirectResponse("/commissions/delegation", status_code=303)
+        try:
+            value = Decimal(str(amount).replace(",", "").strip() or "0")
+        except (InvalidOperation, ValueError):
+            value = Decimal(0)
+        if value <= 0:
+            request.session["pay_saved"] = {"error": "Enter an amount received."}
+            return RedirectResponse(back, status_code=303)
+        when = _as_at(paid_on)
+        pay = DelegatorPayment(
+            delegator_id=did, paid_on=when, amount=_money(value),
+            description=(description or "").strip() or "Payment received",
+            method=(method or "").strip() or None,
+            reference=(reference or "").strip() or None,
+            recorded_by_id=staff.id)
+        db.add(pay)
+        db.flush()
+        _resettle(db, did)
+        db.commit()
+        request.session["pay_saved"] = {
+            "amount": str(_money(value)), "on": when.isoformat()}
+        return RedirectResponse(back, status_code=303)
+
+    @app.post("/commissions/delegation/{did}/payment/{pid}/delete")
+    def delegation_payment_delete(request: Request, did: int, pid: int,
+                                  db: Session = Depends(get_db)):
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        pay = db.get(DelegatorPayment, pid)
+        if pay and pay.delegator_id == did:
+            db.delete(pay)
+            db.flush()
+            _resettle(db, did)
+            db.commit()
+        return RedirectResponse("/commissions/delegation/%d/statement" % did,
+                                status_code=303)
+
+    def _resettle(db: Session, did: int) -> None:
+        """Bring every invoice's paid flag back in step with the ledger.
+
+        The ledger is the truth; `status` is a cache of it that the run's
+        documents tab and the invoice screen already read. Recomputed in full
+        after any payment changes rather than nudged, so deleting a payment
+        reopens exactly the invoices it had closed.
+        """
+        for r in account_ledger(db, did)["charges"]:
+            c = r["c"]
+            if r["settled"] and c.status != "paid":
+                c.status = "paid"
+                c.paid_at = c.paid_at or datetime.now(timezone.utc)
+            elif not r["settled"] and c.status == "paid":
+                c.status = "unpaid"
+                c.paid_at = None
+    @app.post("/commissions/charges/{cid}/void")
+    def commission_charge_void(request: Request, cid: int,
+                               reason: str = Form(""),
+                               db: Session = Depends(get_db)):
+        """Cancel an invoice without deleting it.
+
+        Deleting would take the number out of the sequence and leave a hole
+        somebody has to explain. Voiding keeps the document, marks it
+        cancelled, and drops it out of the amount due on every statement.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        charge = db.get(CommissionCharge, cid)
+        if charge and not charge.voided_at:
+            charge.voided_at = datetime.now(timezone.utc)
+            charge.voided_reason = (reason or "").strip() or None
+            charge.status = "unpaid"
+            charge.paid_at = None
+            db.commit()
+        return RedirectResponse("/commissions/charges/%d" % cid, status_code=303)
+
+    @app.get("/commissions/charges/{cid}/invoice.pdf")
+    def commission_charge_pdf(request: Request, cid: int, download: str = "",
+                              db: Session = Depends(get_db)):
+        """One invoice, printable.
+
+        Built from the stored lines, which is what makes it safe: the cost we
+        paid the covering coach is on the charge row, not on any line, so the
+        document cannot print it by accident.
+        """
+        from fastapi.responses import Response
+        from . import commission_invoice_pdf
+
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        charge = db.get(CommissionCharge, cid)
+        if not charge:
+            return RedirectResponse("/commissions", status_code=303)
+        pdf = commission_invoice_pdf.invoice(
+            charge, generated_by=getattr(staff, "name", "") or "")
+        name = "invoice-%s-%s.pdf" % (
+            (charge.number or "del").lower(),
+            re.sub(r"[^A-Za-z0-9]+", "-",
+                   charge.delegator_name or "").strip("-").lower())
+        disp = "attachment" if download else "inline"
+        return Response(pdf, media_type="application/pdf", headers={
+            "Content-Disposition": '%s; filename="%s"' % (disp, name)})
     # ------------------------------------------------- conductions report ----
 
     def _month_key(d: date) -> str:
@@ -2950,39 +3434,19 @@ def register(app, deps):
                 by_del.setdefault(b.delegator_id, []).append(b)
         for did, rows in sorted(by_del.items()):
             d = db.get(CommissionDelegator, did)
+            # The calendar month, not the run's own first and last session —
+            # those answer "when did work happen", and an invoice for July
+            # should say July even if nobody trained on the 1st.
+            span = _month_bounds(run)
             charge = CommissionCharge(
                 run_id=run.id, number=_next_number(db, CommissionCharge, "DEL"),
                 delegator_id=did, delegator_name=d.name if d else "—",
-                period_label=run.period_label, sessions=len(rows))
+                period_label=run.period_label,
+                period_start=span[0], period_end=span[1],
+                issued_by_id=staff.id)
             db.add(charge)
             db.flush()
-            total = cost = Decimal(0)
-            for b in sorted(rows, key=lambda r: (r.appointment_date or date.min,
-                                                 r.booking_ref or "")):
-                amount = Decimal(str(b.delegation_charge or 0))
-                total += amount
-                cost += Decimal(str(b.commission or 0))
-                db.add(CommissionChargeLine(
-                    charge_id=charge.id, booking_id=b.id, booking_ref=b.booking_ref,
-                    occurred_on=b.appointment_date,
-                    description=f"{b.appointment_name} · {b.customer}",
-                    coach=b.coach or b.staff_raw, amount=amount))
-                # Overtime is its own line, immediately under the session it
-                # belongs to. Folding it into the session amount would make
-                # one row read as a more expensive session than the rate card
-                # says, which is the first thing a delegator queries.
-                ot = b.overtime
-                if ot:
-                    hrs = Decimal(str(b.ot_hours or 0)).normalize()
-                    db.add(CommissionChargeLine(
-                        charge_id=charge.id, booking_id=b.id,
-                        booking_ref=b.booking_ref, occurred_on=b.appointment_date,
-                        description=_ot_line_text(b),
-                        kind="overtime",
-                        coach=b.coach or b.staff_raw, amount=ot))
-                    total += ot
-            charge.total = _money(total)
-            charge.coach_cost = _money(cost)
+            fill_charge(db, charge, rows)
 
         run.status = RUN_FINALIZED
         run.finalized_by_id = staff.id
@@ -3024,7 +3488,8 @@ def register(app, deps):
         charge = db.get(CommissionCharge, cid)
         if not charge:
             return RedirectResponse("/commissions", status_code=303)
-        return render(request, "commission_charge.html", db, staff, charge=charge)
+        return render(request, "commission_charge.html", db, staff, charge=charge,
+                      is_admin=(staff.role == "admin"))
 
     @app.post("/commissions/charges/{cid}/paid")
     def commission_charge_paid(request: Request, cid: int,
