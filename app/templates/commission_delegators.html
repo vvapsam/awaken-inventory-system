@@ -17,7 +17,8 @@
 
 <table>
   <tr><th>Delegator</th><th>Export codes</th><th style="text-align:right">Rate charged</th>
-      <th style="text-align:right">Cost paid</th><th style="text-align:right">Margin</th><th>Active</th><th></th></tr>
+      <th style="text-align:right">Cost paid</th><th style="text-align:right">Margin</th>
+      <th style="text-align:right">Overtime / hr</th><th>Active</th><th></th></tr>
   {% for d in delegators %}
   <tr>
     <form method="post" action="/admin/commission-delegators/{{ d.id }}">
@@ -36,12 +37,18 @@
     <td style="text-align:right"><input name="rate" value="{{ '%g'|format(d.rate) }}" style="width:100px;text-align:right"></td>
     <td style="text-align:right"><input name="cost" value="{{ '%g'|format(d.cost) }}" style="width:100px;text-align:right"></td>
     <td style="text-align:right;font-weight:600;color:var(--teal-dark)">{{ peso(d.margin) }}</td>
+    <td style="text-align:right"><input name="ot_rate" value="{{ '%g'|format(d.ot_rate) }}"
+        style="width:100px;text-align:right" class="otfield"></td>
     <td><input type="checkbox" name="is_active" {{ 'checked' if d.is_active }}></td>
     <td><button class="btn primary" style="padding:6px 12px">Save</button></td>
     </form>
   </tr>
   {% endfor %}
 </table>
+<p class="muted small"><b>Overtime</b> is charged per hour when a delegated session runs long.
+  It bills the delegator only — the covering coach's payout does not change, so all of it is
+  margin. This is the rate that gets filled in when somebody logs hours on the calendar; a
+  session that was priced differently keeps whatever it was billed at.</p>
 <p class="muted small">Codes are a list — Culver appears in the export as both <span class="mono">KP</span> and <span class="mono">CP</span>, so both map to one person. A code that matches nothing is raised on the preview rather than silently dropped.</p>
 
 <div class="card" style="margin-top:18px">
@@ -49,6 +56,7 @@
   <form method="post" action="/admin/commission-delegators/new" class="row-between" style="gap:10px;align-items:flex-end">
     <div style="flex:1"><label>Name<input name="name" required></label></div>
     <div style="flex:1"><label>Codes<input name="codes" class="mono" placeholder="GR"></label></div>
+    <div style="flex:1"><label>Overtime / hr<input name="ot_rate" value="0"></label></div>
     <div style="flex:1"><label>Rate charged<input name="rate" value="1000"></label></div>
     <div style="flex:1"><label>Cost paid<input name="cost" value="640"></label></div>
     <button class="btn primary">Add</button>

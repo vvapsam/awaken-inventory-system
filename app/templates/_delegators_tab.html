@@ -1,3 +1,6 @@
+{# `otcal` and not `ot`: the page also carries `ot`, the overtime
+   total, and an import silently shadows a context variable. #}
+{% import "_ot_calendar.html" as otcal with context %}
 {# By delegator — a peer of By coach, so both halves of the business sit on the
    same run. The name strip persists once a delegator is open, because the
    question is almost always "how does this one compare to that one". #}
@@ -113,14 +116,12 @@
   <tr>
     <td class="cli" title="{{ c.client }}">{{ c.client }}</td>
     {% for cell in c.cells %}
-    <td class="d{{ ' we' if d.matrix.days[loop.index0].weekday() >= 5 }}">
-      {% if cell.n %}
-      <b class="{{ d.matrix.colors.get(cell.coach, 'c6') }}"
-         title="{% for b in cell.bookings %}{{ b.coach or b.staff_raw }} · {{ b.booking_ref }}{{ ' · ' if not loop.last }}{% endfor %}">{{ d.matrix.codes.get(cell.coach, '?') }}{% if cell.n > 1 %}×{{ cell.n }}{% endif %}</b>
+    <td class="d{{ ' we' if d.matrix.days[loop.index0].weekday() >= 5 }}{{ ' hasot' if cell.ot_hours }}">
+      {% if cell.n %}{{ otcal.cell(cell, d.matrix, ot_editable, run.id, ot_back) }}
       {% else %}<i>·</i>{% endif %}
     </td>
     {% endfor %}
-    <td class="tot">{{ c.total }}</td>
+    <td class="tot">{{ c.total }}{% if c.ot_hours %}<span class="otv">+{{ c.ot_hours|trim0 }} hr</span>{% endif %}</td>
   </tr>
   {% endfor %}
   </tbody>
@@ -133,6 +134,11 @@
   </tfoot>
 </table>
 </div>
+{% if ot_editable %}
+<p class="muted small" style="margin-top:8px"><b>Click a session to log overtime</b> —
+  charged to {{ dg_pick.delegator.name }}, and the coach's payout does not move.</p>
+{{ otcal.popover(run.id, ot_back, dg_pick.delegator.ot_rate) }}
+{% endif %}
 {% endif %}
 
 <h2>Clients</h2>

@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+{# `otcal` and not `ot`: the page also carries `ot`, the overtime
+   total, and an import silently shadows a context variable. #}
+{% import "_ot_calendar.html" as otcal with context %}
 {% macro searchbar(target, placeholder, selector='') %}
 <div class="tsearchbar">
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -32,6 +35,7 @@
   </div>
 </div>
 
+{% set back = '/commissions/delegation/' ~ delegator.id ~ '?tab=schedule' ~ ('&run=' ~ run.id if run else '') %}
 <div class="grid" style="margin:14px 0">
   <div class="card stat"><div class="stat-label">Sessions</div><div class="stat-value">{{ sessions }}</div>
     <div class="muted small">{{ clients|length }} client{{ 's' if clients|length != 1 }} ·
@@ -41,11 +45,13 @@
        reader to work out which number the money used. #}
     {% if voided %}<div class="small" style="color:#b0392b;margin-top:2px">{{ voided }} struck out</div>{% endif %}</div>
   <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(charged) }}</div>
-    <div class="muted small">{{ counting }} × {{ peso(delegator.rate) }}</div></div>
+    <div class="muted small">{{ counting }} × {{ peso(delegator.rate) }}{% if ot %}
+      + {{ peso(ot) }} overtime{% endif %}</div></div>
   <div class="card stat"><div class="stat-label">Paid to coaches</div><div class="stat-value">{{ peso(cost) }}</div>
     <div class="muted small">{{ counting }} × {{ peso(delegator.cost) }}</div></div>
   <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Margin</div>
-    <div class="stat-value">{{ peso(margin) }}</div></div>
+    <div class="stat-value">{{ peso(margin) }}</div>
+    {% if ot %}<div class="muted small">includes {{ peso(ot) }} overtime, all of it margin</div>{% endif %}</div>
 </div>
 
 {% set qs = '&run=' ~ run.id if run else '' %}
@@ -83,14 +89,12 @@
   {% for c in matrix.clients %}
   <tr><td class="cli" title="{{ c.client }}">{{ c.client }}</td>
     {% for cell in c.cells %}
-    <td class="d{{ ' we' if matrix.days[loop.index0].weekday() >= 5 }}">
-      {% if cell.n %}
-      <b class="{{ matrix.colors.get(cell.coach, 'c6') }}"
-         title="{% for b in cell.bookings %}{{ b.coach or b.staff_raw }} · {{ b.booking_ref }}{{ ' · ' if not loop.last }}{% endfor %}">{{ matrix.codes.get(cell.coach, '?') }}{% if cell.n > 1 %}×{{ cell.n }}{% endif %}</b>
+    <td class="d{{ ' we' if matrix.days[loop.index0].weekday() >= 5 }}{{ ' hasot' if cell.ot_hours }}">
+      {% if cell.n %}{{ otcal.cell(cell, matrix, ot_editable, run.id if run else 0, back) }}
       {% else %}<i>·</i>{% endif %}
     </td>
     {% endfor %}
-    <td class="tot">{{ c.total }}</td></tr>
+    <td class="tot">{{ c.total }}{% if c.ot_hours %}<span class="otv">+{{ c.ot_hours|trim0 }} hr</span>{% endif %}</td></tr>
   {% endfor %}
   </tbody>
   <tfoot>
@@ -104,8 +108,13 @@
 </div>
 <p class="muted small" style="margin-top:8px">Weekends are shaded. A cell reading
   <span class="mono">×2</span> is two sessions that day; hover it for the booking refs.
+  {% if ot_editable %}<b>Click a session to log overtime</b> — it is charged to
+  {{ delegator.name }} and does not change what the coach is paid.
+  {% elif ot_hours %}Overtime shows as an amber <span class="othr">+1.5</span> on the session
+  it was logged against.{% endif %}
   {% if voided %}Session{{ 's' if voided != 1 }} struck out {{ 'are' if voided != 1 else 'is' }}
   not on this calendar — see the Sessions tab.{% endif %}</p>
+{% if ot_editable %}{{ otcal.popover(run.id, back, delegator.ot_rate) }}{% endif %}
 
 {% elif tab == 'clients' %}
 {{ searchbar('cl', 'Search client…') }}
@@ -153,7 +162,8 @@
 {{ searchbar('ds', 'Search client, coach, booking ref…') }}
 <table id="ds">
   <thead><tr><th>Booking</th><th>Date</th><th>Client</th><th>Session</th><th>Coach</th>
-    <th>Counts?</th><th style="text-align:right">Charged</th>
+    <th>Counts?</th><th style="text-align:right">Overtime</th>
+    <th style="text-align:right">Charged</th>
     <th style="text-align:right">Coach cost</th><th style="text-align:right">Margin</th></tr></thead>
   <tbody>
   {% for b in rows %}
@@ -176,11 +186,18 @@
     <td style="text-align:right" class="muted">—</td>
     <td style="text-align:right" class="muted">—</td>
     <td style="text-align:right" class="muted">—</td>
+    <td style="text-align:right" class="muted">—</td>
     {% else %}
-    <td style="text-align:right" data-money="charged" data-value="{{ b.delegation_charge or 0 }}">{{ peso(b.delegation_charge) }}</td>
+    {# Typed by hand, so it gets its own column rather than being folded into
+       Charged — otherwise a session reads as costing more than the rate card
+       says and nobody can see why. #}
+    <td style="text-align:right">{% if b.ot_hours %}<span class="othr">{{ b.ot_hours|trim0 }} hr</span>
+        <div class="muted small" style="margin:0">× {{ peso(b.ot_rate) }} = {{ peso(b.ot_charge) }}</div>
+        {% else %}<span class="muted">—</span>{% endif %}</td>
+    <td style="text-align:right" data-money="charged" data-value="{{ (b.delegation_charge or 0) + b.overtime }}">{{ peso((b.delegation_charge or 0) + b.overtime) }}</td>
     <td style="text-align:right" data-money="paid" data-value="{{ b.commission or 0 }}">{{ peso(b.commission) }}</td>
     <td style="text-align:right;color:var(--teal-dark);font-weight:650"
-        data-money="margin" data-value="{{ (b.delegation_charge or 0) - (b.commission or 0) }}">{{ peso((b.delegation_charge or 0) - (b.commission or 0)) }}</td>
+        data-money="margin" data-value="{{ (b.delegation_charge or 0) + b.overtime - (b.commission or 0) }}">{{ peso((b.delegation_charge or 0) + b.overtime - (b.commission or 0)) }}</td>
     {% endif %}
   </tr>
   {% endfor %}
@@ -190,6 +207,7 @@
     <td colspan="6">{{ sessions }} session{{ 's' if sessions != 1 }}{%
       if voided %} <span class="muted small" style="font-weight:400">·
         {{ voided }} struck out, not billed</span>{% endif %}</td>
+    <td style="text-align:right">{% if ot_hours %}{{ ot_hours|trim0 }} hr · {{ peso(ot) }}{% else %}—{% endif %}</td>
     <td style="text-align:right">{{ peso(charged) }}</td>
     <td style="text-align:right">{{ peso(cost) }}</td>
     <td style="text-align:right">{{ peso(margin) }}</td>

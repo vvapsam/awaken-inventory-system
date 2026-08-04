@@ -1,0 +1,159 @@
+{# The delegation calendar's cell, and the box you type overtime into.
+
+   Lives in its own file because the same calendar is drawn twice — on the
+   standalone Delegation screen and on the By delegator tab of a run. Two
+   copies of this markup is two places for the cell contract to drift, and the
+   one nobody edits is the one that goes wrong.
+
+   Overtime is charged to the delegator only. Nothing here reads or writes a
+   coach's commission, which is why every peso typed into this box lands in
+   the margin rather than needing to be netted off somewhere else. #}
+
+{% macro cell(c, matrix, editable, rid, back) %}
+{%- set bl = [] -%}
+{%- for b in c.bookings -%}
+  {%- set _ = bl.append({'id': b.id, 'ref': b.booking_ref or '',
+                         'coach': b.coach or b.staff_raw or '—',
+                         'h': (b.ot_hours|string if b.ot_hours else ''),
+                         'r': (b.ot_rate|string if b.ot_rate is not none else '')}) -%}
+{%- endfor -%}
+{%- set label = matrix.codes.get(c.coach, '?') ~ ('×' ~ c.n if c.n > 1 else '') -%}
+{%- set tip -%}
+{% for b in c.bookings %}{{ b.coach or b.staff_raw }} · {{ b.booking_ref }}{% if b.ot_hours %} · {{ b.ot_hours|trim0 }} hr overtime{% endif %}{{ ' · ' if not loop.last }}{% endfor %}
+{%- endset -%}
+{% if editable %}
+<button type="button" class="mxcell" data-ot data-b='{{ bl|tojson }}'
+        data-day="{{ c.day_label }}" data-client="{{ c.client }}" title="{{ tip }}">
+  <b class="{{ matrix.colors.get(c.coach, 'c6') }}">{{ label }}</b>
+  {%- if c.ot_hours %}<span class="othr">+{{ c.ot_hours|trim0 }}</span>{% endif -%}
+</button>
+{% else %}
+<b class="{{ matrix.colors.get(c.coach, 'c6') }}" title="{{ tip }}">{{ label }}</b>
+{%- if c.ot_hours %}<span class="othr">+{{ c.ot_hours|trim0 }}</span>{% endif -%}
+{% endif %}
+{% endmacro %}
+
+
+{% macro popover(rid, back, default_rate) %}
+<div class="otpop" id="otpop" hidden>
+  <div class="otpop-h">
+    <b id="otpop-t">Log overtime</b>
+    <div class="muted small" id="otpop-w" style="margin:0"></div>
+  </div>
+  <form method="post" id="otpop-f">
+    <input type="hidden" name="back" value="{{ back }}">
+    <div class="otpop-g">
+      <label>Hours
+        <input name="hours" id="otpop-h" type="number" step="0.25" min="0" max="24"
+               inputmode="decimal" autocomplete="off"></label>
+      <label>Rate / hr
+        <input name="rate" id="otpop-r" type="number" step="50" min="0"
+               inputmode="decimal" autocomplete="off"
+               placeholder="{{ default_rate|round|int }}"></label>
+    </div>
+    <div class="otpop-c" id="otpop-c"></div>
+    <p class="muted" style="font-size:.72rem;margin:7px 0 0">Blank rate uses
+      {{ peso(default_rate) }}/hr. Set hours to 0 to remove it.</p>
+    <div class="otpop-a">
+      <button class="btn primary" type="submit">Save</button>
+      <button class="btn" type="button" data-otclose>Cancel</button>
+    </div>
+  </form>
+  <div class="otpop-many" id="otpop-many" hidden></div>
+</div>
+<script>
+(function(){
+  var pop = document.getElementById('otpop'),
+      form = document.getElementById('otpop-f'),
+      fh = document.getElementById('otpop-h'),
+      fr = document.getElementById('otpop-r'),
+      calc = document.getElementById('otpop-c'),
+      many = document.getElementById('otpop-many'),
+      DEF = {{ default_rate|round(2) }}, RID = {{ rid }},
+      cur = null;
+
+  function peso(n){
+    return '₱' + Number(n).toLocaleString('en-PH',
+      {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function recalc(){
+    var h = parseFloat(fh.value) || 0,
+        r = fr.value.trim() === '' ? DEF : (parseFloat(fr.value) || 0);
+    calc.textContent = h > 0
+      ? h + ' hr × ' + peso(r) + ' = ' + peso(h * r) + ' charged'
+      : 'No overtime on this session.';
+  }
+  fh.addEventListener('input', recalc);
+  fr.addEventListener('input', recalc);
+
+  function open(btn, b, who){
+    cur = b;
+    form.action = '/commissions/' + RID + '/booking/' + b.id + '/overtime';
+    document.getElementById('otpop-t').textContent =
+      b.h ? 'Edit overtime' : 'Log overtime';
+    document.getElementById('otpop-w').textContent = who;
+    fh.value = b.h || '';
+    fr.value = b.r || '';
+    recalc();
+    many.hidden = true;
+    form.hidden = false;
+    place(btn);
+    fh.focus();
+    fh.select();
+  }
+
+  function place(btn){
+    pop.hidden = false;
+    var r = btn.getBoundingClientRect(), w = pop.offsetWidth;
+    var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2),
+                        window.innerWidth - w - 8);
+    var top = r.bottom + window.scrollY + 8;
+    if (r.bottom + pop.offsetHeight + 12 > window.innerHeight) {
+      top = r.top + window.scrollY - pop.offsetHeight - 8;
+    }
+    pop.style.left = left + 'px';
+    pop.style.top = Math.max(8, top) + 'px';
+  }
+
+  function close(){ pop.hidden = true; cur = null; }
+  document.querySelectorAll('[data-otclose]').forEach(function(el){
+    el.addEventListener('click', close);
+  });
+
+  document.addEventListener('click', function(ev){
+    var btn = ev.target.closest('[data-ot]');
+    if (!btn){
+      if (!ev.target.closest('#otpop')) close();
+      return;
+    }
+    ev.preventDefault();
+    ev.stopPropagation();
+    var list = JSON.parse(btn.getAttribute('data-b') || '[]');
+    var who = btn.dataset.client + ' · ' + btn.dataset.day;
+    if (list.length === 1){ open(btn, list[0], who + ' · ' + list[0].coach); return; }
+    // Two sessions in one cell: pick which one before typing a number that
+    // would otherwise land on whichever happened to be first.
+    cur = null;
+    form.hidden = true;
+    document.getElementById('otpop-t').textContent = 'Which session?';
+    document.getElementById('otpop-w').textContent = who;
+    many.innerHTML = '';
+    list.forEach(function(b){
+      var a = document.createElement('button');
+      a.type = 'button';
+      a.className = 'otpick';
+      a.innerHTML = '<b>' + b.coach + '</b><span class="mono">' + b.ref + '</span>' +
+        (b.h ? '<span class="othr">+' + b.h + '</span>' : '');
+      a.addEventListener('click', function(){ open(btn, b, who + ' · ' + b.coach); });
+      many.appendChild(a);
+    });
+    many.hidden = false;
+    place(btn);
+  });
+
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape' && !pop.hidden) close();
+  });
+})();
+</script>
+{% endmacro %}
