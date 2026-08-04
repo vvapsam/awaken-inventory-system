@@ -535,6 +535,12 @@ def startup():
                 "ALTER TABLE commission_bookings ADD COLUMN IF NOT EXISTS "
                 "  ot_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_charge_lines') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE commission_charge_lines ADD COLUMN IF NOT EXISTS "
+                "  kind VARCHAR; "
+                "END IF; END $$;"))
             # The sponsor's logo, on the event rather than in the static
             # folder — a sponsor belongs to one event, and the next one should
             # be an upload rather than a deploy.
