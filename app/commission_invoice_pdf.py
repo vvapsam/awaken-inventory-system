@@ -381,6 +381,13 @@ def _sstyles():
         "s_item": P("si", fontSize=8.5, leading=11, leftIndent=9),
         "s_note": P("sni", fontSize=7.5, leading=10, textColor=S_GREY,
                     leftIndent=9),
+        "s_head": P("shd", fontName=BOLD, fontSize=8, leading=11,
+                    textColor=S_GREY, leftIndent=9),
+        "s_day": P("sdy", fontSize=8, leading=11, textColor=S_GREY),
+        "s_ot": P("sot", fontSize=8.5, leading=11, textColor=AMBER,
+                  leftIndent=20),
+        "s_otr": P("sotr", fontSize=8.5, leading=11, textColor=AMBER,
+                   alignment=TA_RIGHT),
         "s_pay": P("sp", fontName=BOLD, fontSize=8.5, leading=11,
                    textColor=PAY_INK),
         "s_payr": P("spr", fontName=BOLD, fontSize=8.5, leading=11,
@@ -575,11 +582,28 @@ def statement(delegator, data, *, company: str = "") -> bytes:
                       Paragraph("", st["s_r"])])
         astyle.append(("BACKGROUND", (0, n), (-1, n), S_TINT))
         n += 1
+        # What the invoice is for, once, then every conduction under it.
+        arows.append(["", Paragraph("%s &nbsp;·&nbsp; %d session%s" % (
+            _pdfsafe(a["heading"]), a["sessions"],
+            "" if a["sessions"] == 1 else "s"), st["s_head"]),
+            Paragraph("", st["s_r"])])
+        astyle.append(("LINEBELOW", (0, n), (-1, n), 0.5, S_RULE))
+        n += 1
         for it in a["items"]:
-            cell = [Paragraph(_pdfsafe(it["text"]), st["s_item"])]
-            if it["note"]:
-                cell.append(Paragraph(_pdfsafe(it["note"]), st["s_note"]))
-            arows.append(["", cell, Paragraph(_pesos(it["amount"]), st["s_r"])])
+            on = it["on"].strftime("%d %b") if it["on"] else ""
+            cell = [Paragraph(_pdfsafe(it["text"]),
+                              st["s_ot"] if it["ot"] else st["s_item"])]
+            # Coach and booking reference under the client. The reference is
+            # what somebody quotes when they query a line, so a log without it
+            # can be disagreed with but not checked.
+            under = " · ".join(x for x in (it["note"], it["ref"]) if x)
+            if under:
+                cell.append(Paragraph(_pdfsafe(under), st["s_note"]))
+            arows.append([Paragraph(on, st["s_day"]), cell,
+                          Paragraph(_pesos(it["amount"]),
+                                    st["s_otr"] if it["ot"] else st["s_r"])])
+            if it["ot"]:
+                astyle.append(("BACKGROUND", (0, n), (-1, n), AMBER_TINT))
             astyle.append(("LINEBELOW", (0, n), (-1, n), 0.5, S_RULE))
             n += 1
         arows.append(["", Paragraph("Invoice subtotal", st["s_cat"]),
