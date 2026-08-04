@@ -48,6 +48,7 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .mailer import Mailer, looks_like_email
+from . import mail_templates
 from .models import (
     EVENT_CLOSED, EVENT_DRAFT, EVENT_INVITE, EVENT_MODES, EVENT_OPEN,
     EVENT_RUNNING, EVENT_STATUSES,
@@ -970,7 +971,7 @@ def register(app, deps):
         return render(request, "event_detail.html", db, staff, active="events",
                       ev=ev, tab=tab, people=people, waiting=waiting,
                       gone=gone, review=review, unfinished=unfinished,
-                      templates=mail_templates(ev), money=money,
+                      templates=sendable_templates(ev), money=money,
                       pay_labels=PAY_LABELS,
                       upload=request.session.pop("event_upload", None),
                       c=counts(ev),
@@ -1525,12 +1526,14 @@ def register(app, deps):
                 continue
             # Somebody mid-registration has to land back in the flow they
             # left, not on the participant page — that one assumes a slot they
-            # have not got yet.
+            # have not got yet. Same for a receipt we've sent back: the whole
+            # ask is "do the payment step again".
             url = ("%s/r/%s/%s" % (base, ev.slug, p.token)
-                   if kind == "finish" else "%s/e/%s" % (base, p.token))
-            build = {"reel": _reel_mail, "finish": _finish_mail}.get(
-                kind, _invite_mail)
-            subject, text, html = build(ev, p, url)
+                   if kind in ("finish", "returned")
+                   else "%s/e/%s" % (base, p.token))
+            build = {"reel": _reel_mail, "finish": _finish_mail,
+                     "returned": _returned_mail}.get(kind, _invite_mail)
+            subject, text, html = build(db, ev, p, url)
             ok, detail = mailer.send(p.email, subject, text, html=html,
                                      inline=inline or None)
             if ok:
@@ -1539,8 +1542,12 @@ def register(app, deps):
                     p.invited_at = now
                 elif kind == "finish":
                     p.nudged_at = now
-                else:
+                elif kind == "reel":
                     p.reel_email_at = now
+                # "returned" stamps nothing on purpose. The review queue owns
+                # that state, and marking a row reviewed because somebody
+                # re-sent the email would move it out of a queue it still
+                # belongs in.
                 sent.append({"name": p.name, "detail": p.email})
             else:
                 failed.append({"name": p.name, "detail": detail})
@@ -1551,29 +1558,40 @@ def register(app, deps):
     #: them. Data rather than a row of buttons, because the alternative is a
     #: new button on that bar every time there is a new thing to say — and the
     #: bar is where you go when the tidy lists don't cover your case.
-    def mail_templates(ev) -> list:
-        """The templates, and whether each one applies to this event."""
+    def sendable_templates(ev) -> list:
+        """Every template, always selectable, with a note on where each fits.
+
+        These used to grey out the ones that didn't match the event's mode, and
+        that was the wrong call. This bar only ever sends to names you have
+        ticked yourself: you have already told us who, so being told you may not
+        is the software second-guessing a decision it does not have the context
+        to make. A class that half-registered on paper, a person who needs the
+        receipt email again a week after review \u2014 every one of those is a real
+        case that the rule locked out and nothing replaced.
+
+        The notes stay, because "usually sent from To review" is worth knowing.
+        A note is guidance; a disabled radio is a wall.
+        """
         openreg = ev.mode == EVENT_OPEN
         return [
             {"key": "finish", "name": "Finish your registration",
              "blurb": "\u201cYou started but haven't paid yet.\u201d For anyone "
                       "mid-registration.",
-             "ok": openreg,
-             "why": "" if openreg else "only on an open-registration event"},
+             "ok": True,
+             "why": "" if openreg else "usually open-registration"},
             {"key": "invite", "name": "The invitation",
-             "blurb": "\u201cYou're in \u2014 confirm your slot.\u201d Only for "
-                      "events you invite people to.",
-             "ok": not openreg,
-             "why": "" if not openreg else "not used on an open event"},
+             "blurb": "\u201cYou're in \u2014 confirm your slot.\u201d Asks them "
+                      "to confirm a slot you're holding.",
+             "ok": True,
+             "why": "" if not openreg else "usually invite events"},
             {"key": "reel", "name": "The Reel email",
              "blurb": "\u201cThank you \u2014 submit your Reel and pick your "
                       "reward.\u201d",
              "ok": True, "why": ""},
-            # Listed but never selectable here: it carries your reason for
-            # sending one back, so it belongs to the one row it is about.
             {"key": "returned", "name": "Ask for a better receipt",
-             "blurb": "Sent one at a time from the review queue, with your reason.",
-             "ok": False, "why": "sent from To review"},
+             "blurb": "Carries your reason for sending one back, when there is "
+                      "one on the row.",
+             "ok": True, "why": "usually from To review"},
         ]
 
     def mail_lists(ev) -> dict:
@@ -1648,7 +1666,7 @@ def register(app, deps):
         lists = mail_lists(ev)
         # A template that does not apply to this event is not a thing you can
         # send, however the request got here.
-        allowed = {t["key"] for t in mail_templates(ev) if t["ok"]}
+        allowed = {t["key"] for t in sendable_templates(ev) if t["ok"]}
         if kind not in allowed:
             return RedirectResponse(f"/events/{eid}?err=template", status_code=303)
         if who == "selected":
@@ -1667,6 +1685,12 @@ def register(app, deps):
         elif kind == "finish":
             pool = (lists["unfinished_all"] if who == "all"
                     else lists["unfinished"])
+        elif kind == "returned":
+            # There is no sensible "everyone" for this one — it carries a reason
+            # written about one payment. Reachable only by ticking names, which
+            # is the branch above; anything else sends to nobody rather than
+            # guessing a list.
+            pool = []
         else:
             pool = lists["invite_all"] if who == "all" else lists["invite"]
         request.session["event_mail"] = _send(
@@ -1687,22 +1711,29 @@ def register(app, deps):
         if redir:
             return redir
         ev = db.get(Event, eid)
-        if not ev or kind not in {t["key"] for t in mail_templates(ev) if t["ok"]}:
+        if not ev or kind not in {t["key"] for t in sendable_templates(ev) if t["ok"]}:
             return RedirectResponse(f"/events/{eid}", status_code=303)
-        pool = {"finish": mail_lists(ev)["unfinished_all"],
-                "reel": mail_lists(ev)["reel_all"]}.get(
-                    kind, mail_lists(ev)["invite_all"])
+        lists = mail_lists(ev)
+        # Whoever this email is most about, so the preview shows the sentences
+        # that actually vary. Falls through to anybody on the list rather than
+        # refusing: a preview off the wrong person still shows the wording.
+        pool = {"finish": lists["unfinished_all"],
+                "reel": lists["reel_all"],
+                "returned": [p for p in ev.participants
+                             if (p.review_note or "").strip()]}.get(
+                    kind, lists["invite_all"])
         who = pool[0] if pool else (ev.participants[0] if ev.participants else None)
         if who is None:
             return HTMLResponse(
                 "<p style='font:15px system-ui;padding:28px'>Nobody on the list "
                 "to preview against yet.</p>")
         base = base_url(request)
-        url = ("%s/r/%s/%s" % (base, ev.slug, who.token) if kind == "finish"
+        url = ("%s/r/%s/%s" % (base, ev.slug, who.token)
+               if kind in ("finish", "returned")
                else "%s/e/%s" % (base, who.token))
-        build = {"reel": _reel_mail, "finish": _finish_mail}.get(
-            kind, _invite_mail)
-        subject, _text, html = build(ev, who, url)
+        build = {"reel": _reel_mail, "finish": _finish_mail,
+                 "returned": _returned_mail}.get(kind, _invite_mail)
+        subject, _text, html = build(db, ev, who, url)
         # The inline marks are Content-IDs in a real message; a browser needs
         # the routes instead, so the preview swaps them.
         # The same file the message inlines, so the preview is not a
@@ -1716,89 +1747,6 @@ def register(app, deps):
             "would receive it. Nothing has been sent.</div>"
             % (_esc(subject), _esc(who.full_name or who.name)))
         return HTMLResponse(banner + html)
-
-    def _invite_mail(ev, p, url):
-        """The 'you're in, confirm your slot' email."""
-        when = ev.when_text
-        # Their own deadline: a fixed date if you set one, otherwise the clock
-        # that starts the moment this email sends.
-        by = _fmt_when(confirm_deadline(p))
-        first = (p.name or "").split()[0] if p.name else "there"
-        subject = "You're in — confirm your %s slot" % ev.name
-        text = "\n".join([
-            "You got a slot, %s." % first,
-            "",
-            "%s%s" % (ev.name, " · %s" % when if when else ""),
-            "%s" % (ev.venue or ""),
-            "",
-            "%s is fuelling us after the class. All we ask in return is one "
-            "Reel." % (ev.sponsor or "Our sponsor"),
-            "",
-            "Confirm your slot here: %s" % url,
-            "",
-            ("Let us know by %s — we're holding your slot until then, after "
-             "that it goes to the next person." % by) if by else "",
-        ])
-        html = _shell(ev, """
-          <h1 style="font-size:20px;font-weight:650;margin:0 0 14px">You got a slot, %s 🎉</h1>
-          %s
-          <p style="font-size:15px;margin:0 0 16px;color:#2b3642">%s is fuelling us after
-             the class. All we ask in return is one Reel.</p>
-          %s
-          %s
-          %s
-        """ % (
-            _esc(first),
-            _facts(ev),
-            _esc(ev.sponsor or "Our sponsor"),
-            _button(url, "Confirm my slot →", "Takes under a minute"),
-            _window_note(
-                "<b>Let us know by %s.</b> We're holding your slot until then, "
-                "after that it goes to the next person." % _esc(by)) if by else "",
-            _rewards_block(ev, "What you get for sharing"),
-        ))
-        return subject, text, html
-
-    def _pass_mail(ev, p, url):
-        """"You're in — here's your pass." Sent the moment they confirm.
-
-        The QR rides inside the message rather than as a link, because a
-        doorway is exactly where somebody has no signal and no patience, and
-        an email already sitting in their inbox opens without either.
-        """
-        when = ev.when_text
-        first = (p.name or "").split()[0] if p.name else "there"
-        subject = "You're in — your pass for %s" % ev.name
-        text = "\n".join([
-            "You're confirmed, %s." % first,
-            "",
-            "%s%s" % (ev.name, " · %s" % when if when else ""),
-            "%s" % (ev.venue or ""),
-            "",
-            "Show the code in this email at the door — we'll scan it. If you "
-            "can't find it, your page has the same code: %s" % url,
-        ])
-        html = _shell(ev, """
-          <h1 style="font-size:20px;font-weight:650;margin:0 0 14px">You're in, %s ✅</h1>
-          <p style="font-size:15px;margin:0 0 18px;color:#2b3642">Show this at the door —
-             we'll scan it. No need to print anything.</p>
-          <table width="100%%" cellpadding="0" cellspacing="0"><tr><td align="center"
-            style="border:1px solid #e4e8ed;border-radius:12px;padding:18px 18px 14px">
-            <img src="cid:%s" alt="Your check-in code" width="200"
-                 style="display:block;width:200px;height:200px">
-            <div style="font-size:15px;font-weight:650;margin-top:10px">%s</div>
-            <div style="font-size:12px;color:#6b7683">%s</div>
-          </td></tr></table>
-          %s
-          %s
-        """ % (
-            _esc(first), PASS_CID, _esc(p.name), _esc(ev.name),
-            _facts(ev),
-            _window_note("Can't find this on the day? Your own page carries the same "
-                         "code — <a href=\"%s\" style=\"color:#008080\">open it here</a>."
-                         % _esc(url)),
-        ))
-        return subject, text, html
 
     def _send_pass(db, ev, p, base):
         """Best effort, and never in the way of a confirmation.
@@ -1814,7 +1762,7 @@ def register(app, deps):
             return
         url = ("%s/r/%s/%s" % (base, ev.slug, p.token) if p.registering
                else "%s/e/%s" % (base, p.token))
-        subject, text, html = _pass_mail(ev, p, url)
+        subject, text, html = _pass_mail(db, ev, p, url)
         inline = {PASS_CID: qr_png("%s/i/%s" % (base, p.token))}
         logo = _logo_bytes()
         if logo:
@@ -1829,113 +1777,6 @@ def register(app, deps):
             p.pass_email_at = datetime.now(timezone.utc)
             db.commit()
 
-    def _finish_mail(ev, p, url):
-        """"You started, but you haven't finished." Sent to somebody stalled.
-
-        The one thing that makes this worth sending is that it knows how far
-        they actually got. We already store whether they ticked the organiser's
-        step, so half the list is not told to go and do something they did last
-        Tuesday — which is the sort of email that teaches people to stop opening
-        ours.
-        """
-        first = (p.first_name or (p.name or "").split()[0] or "there").strip()
-        done = bool(p.external_done_at)
-        outside = ev.external_label or "the organiser's site"
-        amount = money(p.amount) or "the fee"
-        needs_outside = bool(ev.external_url) and not done
-
-        if needs_outside:
-            head = "You started, %s — but you're not done" % first
-            lede = ("We have your details. There are two things left, and the "
-                    "first one happens on somebody else's site.")
-        elif ev.external_url:
-            head = "You're nearly there, %s" % first
-            lede = ("You've registered with %s — the last thing is paying and "
-                    "sending us the receipt." % outside)
-        else:
-            head = "You started, %s — but you're not done" % first
-            lede = ("We have your details. All that's left is paying and "
-                    "sending us the receipt.")
-
-        steps = [(True, "Your details", "in")]
-        if ev.external_url:
-            steps.append((done, "Register with %s" % outside,
-                          "done" if done else "still to do"))
-        steps.append((False, "Pay %s and send the receipt" % amount,
-                      "still to do"))
-
-        closes = ev.closes_text
-        tail = ("Nothing is held for you until the payment is approved"
-                + (", and registration closes %s." % closes if closes else "."))
-
-        subject = "Your %s slot isn't finished yet" % ev.name
-        text = "\n".join([
-            "%s." % head, "",
-            lede, "",
-            "Where you got to:",
-            "\n".join("  %s %s — %s" % ("[x]" if ok else "[ ]", label, note)
-                      for ok, label, note in steps),
-            "",
-            "Pick up where you left off: %s" % url,
-            "", tail,
-        ])
-        rows = "".join(
-            '<tr><td style="font-size:14px;padding:5px 10px 5px 0;width:22px;'
-            'color:%s">%s</td><td style="font-size:14px;color:%s">%s</td>'
-            '<td style="font-size:13px;color:#8a939c;text-align:right;'
-            'white-space:nowrap">%s</td></tr>'
-            % (TEAL if ok else "#c9ced4", "&#10003;" if ok else "&#9675;",
-               "#8a939c" if ok else INK, _esc(label), _esc(note))
-            for ok, label, note in steps)
-        html = _shell(ev, """
-          <h1 style="font-size:20px;font-weight:650;margin:0 0 14px">%s 👋</h1>
-          <p style="font-size:15px;margin:0 0 18px;color:#2b3642">%s</p>
-          <table width="100%%" cellpadding="0" cellspacing="0"
-            style="border:1px solid #e4e8ed;border-radius:10px;padding:14px 16px;
-                   margin:0 0 18px">%s</table>
-          %s
-          %s
-        """ % (
-            _esc(head), _esc(lede), rows,
-            _button(url, "Pick up where I left off →",
-                    "Everything you typed is still there"),
-            _window_note(
-                "<b>Nothing is held for you yet.</b> A slot is only yours once "
-                "we've checked the payment%s."
-                % (" — and registration closes %s" % _esc(closes)
-                   if closes else "")),
-        ))
-        return subject, text, html
-
-    def _returned_mail(ev, p, url):
-        """"We need another look" — with the reason, and the way back."""
-        first = (p.first_name or p.name or "").split()[0] or "there"
-        subject = "One more thing about your %s registration" % ev.name
-        text = "\n".join([
-            "Hi %s," % first,
-            "",
-            "We had a look at your payment and need one more thing:",
-            "",
-            p.review_note or "",
-            "",
-            "Nothing is lost — everything you sent is still here. Pick up where "
-            "you left off: %s" % url,
-        ])
-        html = _shell(ev, """
-          <h1 style="font-size:20px;font-weight:650;margin:0 0 14px">One more thing, %s</h1>
-          <p style="font-size:15px;margin:0 0 6px;color:#2b3642">We had a look at your
-             payment and need another go at it.</p>
-          %s
-          <p style="font-size:15px;margin:16px 0 0;color:#2b3642">Nothing is lost —
-             your details and your place in the queue are exactly where you left them.</p>
-          %s
-        """ % (
-            _esc(first),
-            _window_note("<b>%s</b>" % _esc(p.review_note or "")),
-            _button(url, "Pick up where I left off →", "Takes a minute"),
-        ))
-        return subject, text, html
-
     def _send_returned(db, ev, p, base):
         """Best effort. A failed email must not undo a review you already made."""
         if not looks_like_email(p.email or ""):
@@ -1944,7 +1785,7 @@ def register(app, deps):
         if not mailer.cfg.configured:
             return
         url = "%s/r/%s/%s" % (base, ev.slug, p.token)
-        subject, text, html = _returned_mail(ev, p, url)
+        subject, text, html = _returned_mail(db, ev, p, url)
         inline = {}
         logo = _logo_bytes()
         if logo:
@@ -1955,48 +1796,6 @@ def register(app, deps):
             mailer.send(p.email, subject, text, html=html, inline=inline or None)
         except Exception:
             pass
-
-    def _reel_mail(ev, p, url):
-        """The 'thank you, here's your reward link' email."""
-        first = (p.name or "").split()[0] if p.name else "there"
-        by = _fmt_when(ev.reel_deadline)
-        subject = "Thank you — here's your reward link"
-        text = "\n".join([
-            "Thank you, %s." % first,
-            "",
-            "Thanks for turning up, and to %s for fuelling us after."
-            % (ev.sponsor or "Our sponsor"),
-            "",
-            "Submit your Reel and pick your reward: %s" % url,
-            "",
-            ("Your window is open until %s." % by) if by else "",
-            ("Tag %s and use %s." % (" and ".join(ev.handle_list), ev.hashtag)
-             if ev.handle_list else ""),
-        ])
-        html = _shell(ev, """
-          <h1 style="font-size:20px;font-weight:650;margin:0 0 4px">Thank you, %s 🙌</h1>
-          <p style="color:#6b7683;font-size:14px;margin:0 0 16px">%s</p>
-          <p style="font-size:15px;margin:0 0 16px;color:#2b3642">You turned up and worked —
-             that's the whole reason we run these. And thanks to %s for fuelling us
-             after.</p>
-          %s
-          %s
-          %s
-        """ % (
-            _esc(first),
-            _esc(ev.name),
-            _esc(ev.sponsor or "Our sponsor"),
-            _button(url, "Submit my Reel &amp; get my code →", "Takes about 20 seconds"),
-            _window_note(
-                "<b>Your window is open until %s.</b> Tag %s%s and you're done."
-                % (_esc(by), _esc(" and ".join(ev.handle_list)),
-                   (", use <b>%s</b>" % _esc(ev.hashtag)) if ev.hashtag else "")
-            ) if by else "",
-            _rewards_block(ev, "Your reward"),
-        ))
-        return subject, text, html
-
-    # ------------------------------------------------------------ export ----
 
     @app.get("/events/{eid}/sponsor-logo")
     def event_sponsor_logo(eid: int, db: Session = Depends(get_db)):
@@ -2142,8 +1941,144 @@ def _rewards_block(ev, title) -> str:
             % (_esc(title), caption, items))
 
 
-def _shell(ev, body) -> str:
+# --------------------------------------------------------- the wording ----
+# Every email is now assembled the same way: work out the values and the
+# blocks for this person, then hand them to whatever source is stored for
+# that template — theirs if somebody has edited it under Settings, ours if
+# not. One path, so an edited email cannot take a different route through
+# the code from an unedited one.
+
+def _mail_values(ev, p, url, key) -> dict:
+    """Everything ${...} can stand for, for this person, on this email."""
+    first = ((p.first_name or "").strip()
+             or ((p.name or "").split()[0] if p.name else "")
+             or "there")
+    v = {
+        "event.name": ev.name or "",
+        "event.when": ev.when_text,
+        "event.venue": ev.venue or "",
+        "event.sponsor": ev.sponsor or "Our sponsor",
+        "event.bring": ev.bring or "",
+        "event.perk": ev.perk or "",
+        "event.closes": ev.closes_text,
+        "event.handles": " and ".join(ev.handle_list),
+        "event.hashtag": ev.hashtag or "",
+        "record.name": p.full_name or p.name or "",
+        "record.first_name": first,
+        "record.email": p.email or "",
+        "record.link": url,
+        "record.rate": (ev.tier_a_label if p.tier == "a"
+                        else ev.tier_b_label) or "",
+        "record.amount": money(p.amount),
+        "record.deadline": _fmt_when(confirm_deadline(p)),
+        "record.reel_deadline": _fmt_when(ev.reel_deadline),
+        "record.review_note": p.review_note or "",
+    }
+    if key == "finish":
+        v["record.headline"], v["record.lede"] = _finish_lines(ev, p, first)
+    return v
+
+def _finish_lines(ev, p, first) -> tuple:
+    """The two sentences that depend on how far somebody actually got.
+
+    Computed rather than typed, because the whole point of this email is
+    that it does not tell half its readers to do something they did last
+    week. Editable as ${record.headline} and ${record.lede} — you choose
+    where they sit, we choose which of the two they are.
+    """
+    done = bool(p.external_done_at)
+    outside = ev.external_label or "the organiser's site"
+    if ev.external_url and not done:
+        return ("You started, %s — but you're not done" % first,
+                "We have your details. There are two things left, and the "
+                "first one happens on somebody else's site.")
+    if ev.external_url:
+        return ("You're nearly there, %s" % first,
+                "You've registered with %s — the last thing is paying and "
+                "sending us the receipt." % outside)
+    return ("You started, %s — but you're not done" % first,
+            "We have your details. All that's left is paying and sending "
+            "us the receipt.")
+
+def _checklist(ev, p) -> str:
+    """Three lines saying what is done and what isn't."""
+    done = bool(p.external_done_at)
+    steps = [(True, "Your details", "in")]
+    if ev.external_url:
+        steps.append((done, "Register with %s"
+                      % (ev.external_label or "the organiser's site"),
+                      "done" if done else "still to do"))
+    steps.append((False, "Pay %s and send the receipt"
+                  % (money(p.amount) or "the fee"), "still to do"))
+    rows = "".join(
+        '<tr><td style="font-size:14px;padding:5px 10px 5px 0;width:22px;'
+        'color:%s">%s</td><td style="font-size:14px;color:%s">%s</td>'
+        '<td style="font-size:13px;color:#8a939c;text-align:right;'
+        'white-space:nowrap">%s</td></tr>'
+        % (TEAL if ok else "#c9ced4", "&#10003;" if ok else "&#9675;",
+           "#8a939c" if ok else INK, _esc(label), _esc(note))
+        for ok, label, note in steps)
+    return ('<table width="100%%" cellpadding="0" cellspacing="0" '
+            'style="border:1px solid #e4e8ed;border-radius:10px;'
+            'padding:14px 16px;margin:0 0 18px">%s</table>' % rows)
+
+def _qr_block(ev, p) -> str:
+    return ('<table width="100%%" cellpadding="0" cellspacing="0"><tr><td '
+            'align="center" style="border:1px solid #e4e8ed;'
+            'border-radius:12px;padding:18px 18px 14px">'
+            '<img src="cid:%s" alt="Your check-in code" width="200" '
+            'style="display:block;width:200px;height:200px">'
+            '<div style="font-size:15px;font-weight:650;margin-top:10px">%s</div>'
+            '<div style="font-size:12px;color:#6b7683">%s</div>'
+            '</td></tr></table>'
+            % (PASS_CID, _esc(p.full_name or p.name), _esc(ev.name)))
+
+def _mail_blocks(ev, p, url, key) -> tuple:
+    """The pieces the system builds, and the one you wrap your own words in."""
+    blocks = {
+        "block.facts": lambda *a: _facts(ev),
+        "block.button": lambda label="Open →", sub="": _button(url, label, sub),
+        "block.rewards": lambda title="What you get": _rewards_block(ev, title),
+        "block.checklist": lambda *a: _checklist(ev, p),
+        "block.qr": lambda *a: _qr_block(ev, p),
+    }
+    pairs = {"block.note": lambda inner, *a: _window_note(inner)}
+    return blocks, pairs
+
+def _compose(db, ev, p, url, key, src=None) -> tuple:
+    """(subject, text, html) for one email to one person."""
+    values = _mail_values(ev, p, url, key)
+    blocks, pairs = _mail_blocks(ev, p, url, key)
+    subject, text, body = mail_templates.build(db, key, values, blocks, pairs,
+                                               src=src)
+    return subject, text, _shell(db, ev, body, src=src if key == "shell" else None)
+
+def _invite_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "invite")
+
+
+def _pass_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "pass")
+
+
+def _finish_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "finish")
+
+
+def _returned_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "returned")
+
+
+def _reel_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "reel")
+
+
+def _shell(db, ev, body, src=None) -> str:
     """The AWAKEN wrapper every event email sits inside.
+
+    The document scaffolding is fixed — nobody needs to edit a doctype, and a
+    broken one breaks every email at once. The three rows inside it are the
+    wrapper template, so the header, the mark and the footer line are yours.
 
     Navy, teal and neutrals — nothing else. The sponsor used to get their own
     coloured bar under the header, which meant every email carried a third
@@ -2167,6 +2102,20 @@ def _shell(ev, body) -> str:
             '<div style="color:%s;font-size:10px;font-weight:600;letter-spacing:2.2px;'
             'text-transform:uppercase;margin-top:14px">in partnership with</div>%s'
             % (BLACK_SOFT, mark))
+    logo = ('<img src="cid:%s" alt="AWAKEN" width="142" style="display:block;'
+            'margin:0 auto;width:142px;height:auto">' % LOGO_CID)
+    rows = mail_templates.build(
+        db, "shell",
+        {"event.name": ev.name or "", "event.when": ev.when_text,
+         "event.venue": ev.venue or "", "event.sponsor": ev.sponsor or "",
+         "event.bring": ev.bring or "", "event.perk": ev.perk or "",
+         "event.closes": ev.closes_text,
+         "event.handles": " and ".join(ev.handle_list),
+         "event.hashtag": ev.hashtag or ""},
+        {"block.logo": lambda *a: logo,
+         "block.sponsor": lambda *a: sponsor_bar,
+         "block.body": lambda *a: body},
+        {}, src=src)[2]
     return """<!DOCTYPE html><html><body style="margin:0;background:#f3f5f7;
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   color:#1a232e;line-height:1.5">
@@ -2174,13 +2123,65 @@ def _shell(ev, body) -> str:
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;
   border-radius:10px;overflow:hidden">
-  <tr><td style="background:#14171a;padding:26px 30px 24px;text-align:center">
-    <img src="cid:%s" alt="AWAKEN" width="142" style="display:block;margin:0 auto;
-      width:142px;height:auto">
-    %s
-  </td></tr>
-  <tr><td style="padding:28px 30px 30px">%s</td></tr>
-  <tr><td style="background:#f3f5f7;padding:18px 30px;text-align:center;font-size:12px;
-    color:#6b7683">Questions? Just reply to this email.<br>AWAKEN Fitness Center</td></tr>
+%s
 </table>
-</td></tr></table></body></html>""" % (LOGO_CID, sponsor_bar, body)
+</td></tr></table></body></html>""" % rows
+
+
+# ------------------------------------------------------ the editor's eye ----
+# What the preview beside the editing box is rendered against. A stand-in
+# rather than a real event on purpose: the examples match the ones in the token
+# palette, so somebody dropping ${record.first_name} into a sentence sees the
+# same Marc it said they would, on an evening when there may be no event on the
+# system at all. Checking the wording against a real list is a different job,
+# and the per-event preview already does it.
+
+def _sample_pair():
+    """A believable event and a believable person, neither of them saved."""
+    now = datetime.now(timezone.utc)
+    ev = Event(
+        id=0, name="HYROX Foundation Class", slug="sample",
+        sponsor="Kenny Rogers Roasters", status=EVENT_OPEN,
+        starts_at=now + timedelta(days=5), venue="AWAKEN Gym · Metrowalk, Pasig",
+        capacity=30, bring="Training gear, towel, water",
+        perk="Kenny Rogers meal on us", handles="@awakengymph @kennyrogersph",
+        hashtag="#FuelledByKennyRogers", mode=EVENT_OPEN,
+        signup_closes=now + timedelta(days=3),
+        external_url="https://hyrox.com/pft", external_label="HYROX",
+        tier_a_label="Member", tier_a_price=Decimal("1500"),
+        tier_b_label="Non-member", tier_b_price=Decimal("1800"),
+        reward_a="HYROX PFT", reward_a_detail="23 August · use it at checkout",
+        reward_a_value="20% off",
+        reward_b="AWAKEN day pass", reward_b_detail="Any day, any time",
+        reward_b_value="Free",
+        confirm_hours=48, reel_hours=48, review_hours=24, code_prefix="KR",
+    )
+    p = EventParticipant(
+        id=0, name="Marc Damil", first_name="Marc", last_name="Damil",
+        email="marc@example.com", token="sample", tier="a",
+        amount=Decimal("1500"), review_note="The photo is too dark to read "
+        "the amount.", invited_at=now - timedelta(hours=3),
+    )
+    p.event = ev
+    return ev, p
+
+
+def sample_email(db, key, subject_src, body_src) -> tuple:
+    """(subject, html) for one template source, rendered off the stand-in.
+
+    Same renderer, same blocks and the same wrapper as a real send — a preview
+    that took a shortcut would be a preview you could not trust, which is worse
+    than no preview at all.
+    """
+    ev, p = _sample_pair()
+    url = "https://awakengym.com/e/7Kq2f9"
+    src = (subject_src, body_src)
+    if key == "shell":
+        # The wrapper has nothing to wrap on its own, so it gets the shipped
+        # invitation inside it — you are looking at the header and the footer.
+        values = _mail_values(ev, p, url, "invite")
+        blocks, pairs = _mail_blocks(ev, p, url, "invite")
+        body = mail_templates.build(db, "invite", values, blocks, pairs)[2]
+        return None, _shell(db, ev, body, src=src)
+    subject, _text, html = _compose(db, ev, p, url, key, src=src)
+    return subject, html

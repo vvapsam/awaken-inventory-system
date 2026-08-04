@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block body %}
+<style>
+.ed-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.ed-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;
+  margin-top:16px;align-items:start}
+@media(max-width:980px){.ed-grid{grid-template-columns:minmax(0,1fr)}}
+.ed-pane{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg)}
+.ed-bar{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line);
+  font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ed-bar .sp{margin-left:auto;font-weight:500;letter-spacing:0;text-transform:none;font-size:.78rem}
+#body{width:100%;border:0;border-radius:0;padding:14px 15px;min-height:460px;resize:vertical;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.83rem;line-height:1.65;
+  background:transparent;color:var(--ink);tab-size:2}
+#body:focus{outline:none;box-shadow:none}
+/* Grows to fit the email, and stops growing at the height of the window so
+   the pane can still sit still while you type. */
+#frame{width:100%;height:560px;max-height:calc(100vh - 120px);border:0;display:block;
+  background:#f3f5f7}
+.tok{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--bg);
+  border-radius:999px;padding:4px 11px;font-size:.78rem;cursor:pointer;margin:0 6px 6px 0;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.tok:hover{border-color:var(--teal);background:var(--teal-tint);color:var(--teal-dark)}
+.tok em{font-style:normal;color:var(--muted);font-family:inherit;font-size:.72rem}
+.tok.blk{border-style:dashed;background:#fff8ea;border-color:#e6c98a;color:#8a6a1f}
+.tok.blk:hover{background:#fdf0d5}
+.pal{margin-top:16px;max-width:100%}
+.pal h4{margin:14px 0 3px;font-size:.74rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.pal p.h{margin:0 0 8px;font-size:.79rem;color:var(--muted)}
+.note{border-radius:10px;padding:11px 14px;font-size:.87rem;margin-top:14px;line-height:1.5}
+.note.bad{background:#fdeeee;border:1px solid #f0c9c9;color:#8a2f2f}
+.note.warn{background:#fff8ea;border:1px solid #ecd7a4;color:#7a5c17}
+.note.ok{background:var(--teal-tint);border:1px solid var(--teal);color:var(--teal-dark)}
+.ed-actions{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.subj{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem}
+</style>
+
+<a href="/admin/email-templates" class="muted" style="font-size:.85rem">‹ All email templates</a>
+
+<div class="ed-head" style="margin-top:6px">
+  <div>
+    <h1 style="margin:0">{{ t.name }}</h1>
+    <p class="muted small" style="margin:4px 0 0;max-width:600px">{{ t.blurb }}
+      {% if is_default %}<b>This is the wording we shipped.</b>{% else %}<b>You have your own version of this one.</b>{% endif %}</p>
+  </div>
+</div>
+
+{% if error %}<div class="note bad"><b>Not saved.</b> {{ error }}</div>{% endif %}
+{% if saved and not error %}<div class="note ok">Saved. Every {{ t.name|lower }} from now on uses this.</div>{% endif %}
+{% for w in warnings %}<div class="note warn">{{ w }}</div>{% endfor %}
+
+<form method="post" action="/admin/email-templates/{{ key }}" id="ed">
+  {% if t.subject %}
+  <label style="margin-top:16px">Subject line</label>
+  <input class="subj" name="subject" id="subject" value="{{ subject }}" spellcheck="false">
+  {% endif %}
+
+  <div class="ed-grid">
+    <div>
+      <div class="ed-pane">
+        <div class="ed-bar">The HTML<span class="sp" id="stamp">&nbsp;</span></div>
+        <textarea name="body" id="body" spellcheck="false">{{ body }}</textarea>
+      </div>
+      <div class="pal">
+        {% for title, hint, items in palette %}
+        <h4>{{ title }}</h4>
+        <p class="h">{{ hint }}</p>
+        <div>
+          {% for name, example in items %}
+          <span class="tok {% if title != 'Values' %}blk{% endif %}"
+                data-ins="{% if title == 'Wrapped' %}${{'{'}}{{ name }}{{'}'}}your words${{'{'}}/{{ name }}{{'}'}}{% else %}${{'{'}}{{ name }}{{'}'}}{% endif %}"
+                title="{{ example }}">${{'{'}}{{ name }}{{'}'}} <em>{{ example }}</em></span>
+          {% endfor %}
+        </div>
+        {% endfor %}
+        <h4>Only when there is one</h4>
+        <p class="h">wraps anything, and drops the lot when the value is empty.
+          Any value above works — these are the ones that are often blank.</p>
+        <div>
+          {% for name in conditionals %}
+          <span class="tok blk" data-ins="${{'{'}}if {{ name }}{{'}'}}…${{'{'}}/if{{'}'}}">${{'{'}}if {{ name }}{{'}'}} … ${{'{'}}/if{{'}'}}</span>
+          {% else %}
+          <span class="tok blk" data-ins="${{'{'}}if {{ palette[0][2][0][0] }}{{'}'}}…${{'{'}}/if{{'}'}}">${{'{'}}if … {{'}'}} … ${{'{'}}/if{{'}'}}</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="ed-pane" style="position:sticky;top:14px">
+      <div class="ed-bar">Preview<span class="sp">against sample details — nothing is sent</span></div>
+      <!-- Same origin so the height can be measured, but no scripts: anything
+           live was stripped on the way in, and this way nothing pasted into an
+           email can run inside your admin. -->
+      <iframe id="frame" title="Preview" sandbox="allow-same-origin"></iframe>
+    </div>
+  </div>
+
+  <div class="ed-actions">
+    <button class="btn primary" type="submit">Save</button>
+    {% if not is_default %}
+    <button class="btn" type="submit" form="reset-form"
+            onclick="return confirm('Put this email back to the wording we shipped? Your version is deleted.')">Reset to original</button>
+    {% endif %}
+    <span class="muted small">Placeholders we don't recognise will stop the save rather than go out as text.</span>
+  </div>
+</form>
+
+<form id="reset-form" method="post" action="/admin/email-templates/{{ key }}/reset"></form>
+
+<script>
+(function(){
+  var box=document.getElementById('body'), subj=document.getElementById('subject'),
+      frame=document.getElementById('frame'), stamp=document.getElementById('stamp'),
+      timer=null, last='';
+
+  function draw(){
+    var d=new FormData();
+    d.append('body', box.value);
+    d.append('subject', subj ? subj.value : '');
+    stamp.textContent='drawing…';
+    fetch('/admin/email-templates/{{ key }}/preview',{method:'POST',body:d})
+      .then(function(r){return r.text()})
+      .then(function(h){ frame.srcdoc=h; stamp.textContent=''; })
+      .catch(function(){ stamp.textContent="couldn't draw"; });
+  }
+  // Fit the pane to the email rather than to a number somebody guessed.
+  frame.addEventListener('load', function(){
+    try{
+      var d=frame.contentDocument;
+      if(d && d.body) frame.style.height=(d.body.scrollHeight+24)+'px';
+    }catch(e){}
+  });
+
+  function nudge(){
+    if(box.value===last) return;
+    last=box.value;
+    clearTimeout(timer); timer=setTimeout(draw, 450);
+  }
+  box.addEventListener('input', nudge);
+  if(subj) subj.addEventListener('input', function(){ clearTimeout(timer); timer=setTimeout(draw,450); });
+
+  // Clicking a token drops it where the cursor is, which is the only place
+  // somebody wanted it — a palette that appends to the end is a palette you
+  // stop using after the second time.
+  document.querySelectorAll('.tok').forEach(function(el){
+    el.addEventListener('click', function(){
+      var t=el.getAttribute('data-ins'), a=box.selectionStart, b=box.selectionEnd,
+          sel=box.value.slice(a,b);
+      if(sel && t.indexOf('…')>-1) t=t.replace('…', sel);
+      else if(sel && t.indexOf('your words')>-1) t=t.replace('your words', sel);
+      box.value=box.value.slice(0,a)+t+box.value.slice(b);
+      box.focus();
+      box.selectionStart=box.selectionEnd=a+t.length;
+      nudge();
+    });
+  });
+
+  // Tab indents rather than leaving the box — this is a code editor for the
+  // ten minutes somebody is in it.
+  box.addEventListener('keydown', function(e){
+    if(e.key!=='Tab') return;
+    e.preventDefault();
+    var a=box.selectionStart;
+    box.value=box.value.slice(0,a)+'  '+box.value.slice(box.selectionEnd);
+    box.selectionStart=box.selectionEnd=a+2;
+  });
+
+  last=box.value; draw();
+})();
+</script>
+{% endblock %}

@@ -3395,3 +3395,13 @@ event_routes.register(app, {
     # The participant's page is public — no login anywhere in that flow.
     "templates": templates,
 })
+
+# The words those emails are made of, editable under the gear rather than in a
+# release. Registered after the events section because it renders its preview
+# through exactly the same builders a real send uses.
+from . import template_routes  # noqa: E402
+
+template_routes.register(app, {
+    "render": render,
+    "require_admin": require_admin,
+})

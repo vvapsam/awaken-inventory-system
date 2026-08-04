@@ -1503,3 +1503,22 @@ class EventParticipant(Base):
 
 #: An Instagram handle longer than this is not a handle.
 HANDLE_MAX = 30
+
+
+class EmailTemplate(Base):
+    """An email whose wording somebody has taken over.
+
+    Absent means untouched: the built-in version is used. That is deliberate —
+    it makes "reset to original" a delete rather than a copy of a default that
+    would then rot the moment the shipped wording improves, and it means a new
+    install starts with no rows and the right emails.
+    """
+    __tablename__ = "email_templates"
+    id = Column(Integer, primary_key=True)
+    #: Which email. Matches a key in mail_defaults(); see email_routes.
+    key = Column(String, unique=True, nullable=False)
+    subject = Column(Text)
+    body = Column(Text)
+    updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    updated_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    updated_by = relationship("Staff", foreign_keys=[updated_by_id])

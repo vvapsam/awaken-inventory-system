@@ -13,9 +13,10 @@
    the template are both on the button you finally press.
 
    A list rather than a row of buttons, because the alternative is a new button
-   here every time there is a new thing to say. One that doesn't apply to this
-   event is shown greyed with the reason, so you can see everything the system
-   can say and why this one is off, instead of hunting for a missing button. #}
+   here every time there is a new thing to say. Every one is selectable — you
+   ticked the names, so you already know who you mean. The ones that usually
+   belong to a different kind of event carry a note saying so, which is worth
+   knowing and not worth being stopped by. #}
 <div class="pickwrap" data-table="{{ tid }}">
   <div class="selbar" hidden>
     <b><span class="seln">0</span> selected</b>
@@ -29,8 +30,8 @@
   <div class="picker" hidden>
     <div class="ph">Send to <span class="seln">0</span></div>
     {% for t in templates %}
-    <label class="opt {{ '' if t.ok else 'off' }}">
-      <input type="radio" name="kind" value="{{ t.key }}" {{ 'disabled' if not t.ok }}>
+    <label class="opt">
+      <input type="radio" name="kind" value="{{ t.key }}">
       <span class="tick"></span>
       <span class="ol"><b>{{ t.name }}</b><span class="d">{{ t.blurb }}</span></span>
       {% if t.why %}<span class="n">{{ t.why }}</span>{% endif %}
