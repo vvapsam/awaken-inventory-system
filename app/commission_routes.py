@@ -272,8 +272,11 @@ def pivot(run: CommissionRun):
 def run_totals(run: CommissionRun) -> dict:
     done = [b for b in _live(run) if b.is_commissionable]
     dele = [b for b in done if b.delegator_id]
-    charged = sum((Decimal(str(b.delegation_charge or 0)) for b in dele), Decimal(0))
+    sessions_charged = sum(
+        (Decimal(str(b.delegation_charge or 0)) for b in dele), Decimal(0))
     cost = sum((Decimal(str(b.commission or 0)) for b in dele), Decimal(0))
+    ot = sum((b.overtime for b in dele), Decimal(0))
+    charged = sessions_charged + ot
     return {
         "sessions": len(done),
         "revenue": sum((Decimal(str(b.revenue or 0)) for b in done), Decimal(0)),
@@ -281,6 +284,9 @@ def run_totals(run: CommissionRun) -> dict:
         "delegation_sessions": len(dele),
         "delegation_cost": cost,
         "delegation_charged": charged,
+        "delegation_ot": ot,
+        "delegation_ot_hours": sum(
+            (Decimal(str(b.ot_hours or 0)) for b in dele), Decimal(0)),
         "delegation_margin": charged - cost,
     }
 
@@ -415,6 +421,21 @@ def delegator_map(db: Session) -> dict:
         for d in db.query(CommissionDelegator).all()}
 
 
+def reprice_overtime(b: CommissionBooking) -> None:
+    """hours x rate -> ot_charge. One place, called from every writer.
+
+    Overtime is billed to the delegator only: the coach's commission is not
+    touched here or anywhere else, which is what makes every peso of it margin.
+    """
+    if not b.delegator_id or not b.ot_hours:
+        b.ot_hours = b.ot_rate = b.ot_charge = None
+        b.ot_by_id = b.ot_at = None
+        return
+    hours = Decimal(str(b.ot_hours))
+    rate = Decimal(str(b.ot_rate or 0))
+    b.ot_charge = engine.money(hours * rate)
+
+
 def recompute(b: CommissionBooking, config: engine.Config, db: Session,
               dmap: dict | None = None) -> None:
     """Recalculate one booking in place — after its approval flag changes, or
@@ -439,6 +460,11 @@ def recompute(b: CommissionBooking, config: engine.Config, db: Session,
     b.rate_value = row.rate_value
     b.commission = row.commission
     b.delegation_charge = row.delegation_charge
+    # Overtime is the one figure on this row a person typed rather than the
+    # import derived, so Recalculate re-multiplies it but never clears it.
+    # A row that has stopped being a delegation has nothing to bill overtime
+    # against, and that is the only case where the hours are dropped.
+    reprice_overtime(b)
     if manual and row.commission is not None and row.rule != "delegation":
         b.rate_type, b.rate_value = manual
         b.rule = "manual"
@@ -512,8 +538,12 @@ def delegator_rollup(run: CommissionRun, db: Session) -> list:
         # the list and the page you reach from it disagreeing.
         live = [b for b in d["rows"] if not b.voided]
         counted = [b for b in live if b.is_commissionable]
-        charged = sum((Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
+        sessions_charged = sum(
+            (Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
         cost = sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0))
+        ot = sum((b.overtime for b in counted), Decimal(0))
+        ot_hours = sum((Decimal(str(b.ot_hours or 0)) for b in counted), Decimal(0))
+        charged = sessions_charged + ot
         out.append({
             "delegator": d["delegator"],
             "sessions": len(live),
@@ -521,8 +551,14 @@ def delegator_rollup(run: CommissionRun, db: Session) -> list:
             "voided": len(d["rows"]) - len(live),
             "clients": len(d["clients"]),
             "coaches": len(d["coaches"]),
+            "sessions_charged": sessions_charged,
+            "ot": ot,
+            "ot_hours": ot_hours,
+            "ot_sessions": sum(1 for b in counted if b.ot_hours),
             "charged": charged,
             "cost": cost,
+            # Overtime lands here whole: it is charged to the delegator and
+            # nothing on the coach's side moves to offset it.
             "margin": charged - cost,
         })
     return sorted(out, key=lambda r: (-r["sessions"],
@@ -573,12 +609,26 @@ def schedule_matrix(rows) -> dict:
                 "bookings": got,
                 "coach": (got[0].coach or got[0].staff_raw) if got else None,
                 "n": len(got),
+                # Carried on the cell so the entry box can name what it is
+                # about without the template reaching back into the row.
+                "client": name,
+                "day_label": day.strftime("%a %d %b"),
+                # Overtime on this day, so the cell can carry it without the
+                # template summing anything.
+                "ot_hours": sum((Decimal(str(b.ot_hours or 0)) for b in got),
+                                Decimal(0)),
             })
         clients.append({"client": name, "cells": row,
-                        "total": sum(len(v) for v in cells[name].values())})
+                        "total": sum(len(v) for v in cells[name].values()),
+                        "ot_hours": sum(
+                            (Decimal(str(b.ot_hours or 0))
+                             for v in cells[name].values() for b in v),
+                            Decimal(0))})
     totals = {day: sum(len(cells[c].get(day, [])) for c in cells) for day in days}
     return {"days": days, "clients": clients, "codes": codes, "colors": colors,
-            "totals": totals, "month": month_start}
+            "totals": totals, "month": month_start,
+            "ot_hours": sum((Decimal(str(b.ot_hours or 0)) for b in rows),
+                            Decimal(0))}
 
 
 def coach_groups(run: CommissionRun, coach: str):
@@ -783,6 +833,7 @@ def register(app, deps):
     def commission_delegator_update(
             request: Request, did: int, name: str = Form(...), codes: str = Form(""),
             entity_id: str = Form(""), rate: str = Form("0"), cost: str = Form("0"),
+            ot_rate: str = Form("0"),
             is_active: str = Form(""), db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
@@ -796,6 +847,10 @@ def register(app, deps):
         d.codes = ",".join(c.strip().upper() for c in codes.split(",") if c.strip())
         d.rate = _num(rate, COMMISSION_FLAT)
         d.cost = _num(cost, COMMISSION_FLAT)
+        # Only the default for future entries — every session that already
+        # carries overtime keeps the rate it was billed at, the same way a
+        # coach's rate change never restates a booking.
+        d.ot_rate = _num(ot_rate, COMMISSION_FLAT)
         d.is_active = (is_active == "on")
         db.commit()
         return RedirectResponse("/admin/commission-delegators", status_code=303)
@@ -803,7 +858,7 @@ def register(app, deps):
     @app.post("/admin/commission-delegators/new")
     def commission_delegator_new(request: Request, name: str = Form(...),
                                  codes: str = Form(""), rate: str = Form("0"),
-                                 cost: str = Form("0"),
+                                 cost: str = Form("0"), ot_rate: str = Form("0"),
                                  db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
@@ -811,7 +866,8 @@ def register(app, deps):
         db.add(CommissionDelegator(
             name=name.strip(),
             codes=",".join(c.strip().upper() for c in codes.split(",") if c.strip()),
-            rate=_num(rate, COMMISSION_FLAT), cost=_num(cost, COMMISSION_FLAT)))
+            rate=_num(rate, COMMISSION_FLAT), cost=_num(cost, COMMISSION_FLAT),
+            ot_rate=_num(ot_rate, COMMISSION_FLAT)))
         db.commit()
         return RedirectResponse("/admin/commission-delegators", status_code=303)
 
@@ -1595,6 +1651,8 @@ def register(app, deps):
                             if (b.coach or b.staff_raw or "").strip()}),
             "charged": sum((r["charged"] for r in rows), Decimal(0)),
             "cost": sum((r["cost"] for r in rows), Decimal(0)),
+            "ot": sum((r["ot"] for r in rows), Decimal(0)),
+            "ot_hours": sum((r["ot_hours"] for r in rows), Decimal(0)),
             "margin": sum((r["margin"] for r in rows), Decimal(0)),
         }
 
@@ -1613,8 +1671,12 @@ def register(app, deps):
         # what was removed and why.
         live = [b for b in rows if not b.voided]
         counted = [b for b in live if b.is_commissionable]
-        charged = sum((Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
+        sessions_charged = sum(
+            (Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
         cost = sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0))
+        ot = sum((b.overtime for b in counted), Decimal(0))
+        ot_hours = sum((Decimal(str(b.ot_hours or 0)) for b in counted), Decimal(0))
+        charged = sessions_charged + ot
 
         by_client, by_coach = {}, {}
         for b in live:
@@ -1622,12 +1684,15 @@ def register(app, deps):
                                ((b.coach or b.staff_raw or "—").strip(), by_coach):
                 d = bucket.setdefault(key, {"name": key, "sessions": 0,
                                             "charged": Decimal(0), "cost": Decimal(0),
+                                            "ot": Decimal(0), "ot_hours": Decimal(0),
                                             "first": None, "last": None,
                                             "others": set()})
                 d["sessions"] += 1
                 if b.is_commissionable:
-                    d["charged"] += Decimal(str(b.delegation_charge or 0))
+                    d["charged"] += Decimal(str(b.delegation_charge or 0)) + b.overtime
                     d["cost"] += Decimal(str(b.commission or 0))
+                    d["ot"] += b.overtime
+                    d["ot_hours"] += Decimal(str(b.ot_hours or 0))
                 if b.appointment_date:
                     d["first"] = min(d["first"] or b.appointment_date, b.appointment_date)
                     d["last"] = max(d["last"] or b.appointment_date, b.appointment_date)
@@ -1644,6 +1709,8 @@ def register(app, deps):
             # explanation is a number that gets queried.
             voided=len(rows) - len(live),
             charged=charged, cost=cost, margin=charged - cost,
+            sessions_charged=sessions_charged, ot=ot, ot_hours=ot_hours,
+            ot_sessions=sum(1 for b in counted if b.ot_hours),
             clients=sorted(by_client.values(), key=lambda r: (-r["sessions"], r["name"])),
             coaches=sorted(by_coach.values(), key=lambda r: (-r["sessions"], r["name"])),
             matrix=schedule_matrix(live))
@@ -1659,8 +1726,14 @@ def register(app, deps):
         if not delegator:
             return RedirectResponse("/commissions/delegation", status_code=303)
         d = _delegator_detail(run, did)
+        # Typing overtime moves money out of the business, so it wants the same
+        # admin role as approving a rate — and a finalized run has already been
+        # invoiced, so there is nothing left to change.
+        editable = (staff.role == "admin" and run is not None
+                    and run.status == RUN_DRAFT)
         return render(request, "delegation_detail.html", db, staff, active="delegation",
-                      run=run, runs=runs, delegator=delegator, tab=tab, **d)
+                      run=run, runs=runs, delegator=delegator, tab=tab,
+                      ot_editable=editable, **d)
 
     # ------------------------------------------------- conductions report ----
 
@@ -2001,6 +2074,10 @@ def register(app, deps):
                       mail_ready=Mailer().cfg.configured,
                       dg_rows=dg_rows, dg_pick=dg_pick, dg_detail=dg_detail, dg_count=dg_count,
                       dg_totals=_rollup_totals(run, dg_rows),
+                      ot_editable=(staff.role == "admin"
+                                   and run.status == RUN_DRAFT and dg_pick is not None),
+                      ot_back="/commissions/%d?tab=delegators&d=%s" % (
+                          run.id, dg_pick["delegator"].id if dg_pick else ""),
                       RUN_DRAFT=RUN_DRAFT, RUN_FINALIZED=RUN_FINALIZED)
 
     @app.get("/commissions/{rid}/coach/{coach}", response_class=HTMLResponse)
@@ -2189,6 +2266,58 @@ def register(app, deps):
         void_signoff(db, rid, coach)
         db.commit()
         return RedirectResponse(back, status_code=303)
+
+    @app.post("/commissions/{rid}/booking/{bid}/overtime")
+    def commission_booking_overtime(
+            request: Request, rid: int, bid: int, hours: str = Form(""),
+            rate: str = Form(""), back: str = Form(""),
+            db: Session = Depends(get_db)):
+        """Log (or clear) overtime on one delegated session.
+
+        Typed rather than imported: the Rezerv export carries no duration, so
+        this is the only figure on a booking a person puts there by hand. It
+        bills the delegator and nothing else — the covering coach's commission
+        is not read or written here, which is what makes every peso of it
+        margin rather than a number that has to be netted off somewhere.
+
+        Hours of zero, blank, or a value we cannot read all mean "there wasn't
+        any", so clearing is the same gesture as never having logged it.
+        """
+        staff, redir = guard_money(request, db)
+        if redir:
+            return redir
+        run = db.get(CommissionRun, rid)
+        b = db.get(CommissionBooking, bid)
+        where = back if back.startswith("/commissions/") else f"/commissions/{rid}"
+        if not run or not b or b.run_id != rid:
+            return RedirectResponse(f"/commissions/{rid}", status_code=303)
+        # A finalized run has already been invoiced and paid against. And a
+        # session with no delegator has nobody to bill the hour to — the
+        # coach's own rate is a different conversation entirely.
+        if run.status != RUN_DRAFT or not b.delegator_id:
+            return RedirectResponse(where, status_code=303)
+
+        hrs = _num(hours, COMMISSION_FLAT)
+        if hrs <= 0:
+            b.ot_hours = b.ot_rate = b.ot_charge = None
+            b.ot_by_id = b.ot_at = None
+        else:
+            # A blank rate box means "the usual", not "free" — so it falls back
+            # to the delegator's standing rate. A rate somebody actually typed
+            # is honoured even when it is zero, because "this one is on us" is
+            # a real thing to want to record.
+            if rate.strip():
+                typed = max(_num(rate, COMMISSION_FLAT), Decimal(0))
+            else:
+                typed = Decimal(str(
+                    (b.delegator.ot_rate if b.delegator else 0) or 0))
+            b.ot_hours = hrs
+            b.ot_rate = typed
+            b.ot_by_id = staff.id
+            b.ot_at = datetime.now(timezone.utc)
+            reprice_overtime(b)
+        db.commit()
+        return RedirectResponse(where, status_code=303)
 
     @app.post("/commissions/{rid}/booking/new")
     def commission_booking_new(
@@ -2545,6 +2674,21 @@ def register(app, deps):
                     occurred_on=b.appointment_date,
                     description=f"{b.appointment_name} · {b.customer}",
                     coach=b.coach or b.staff_raw, amount=amount))
+                # Overtime is its own line, immediately under the session it
+                # belongs to. Folding it into the session amount would make
+                # one row read as a more expensive session than the rate card
+                # says, which is the first thing a delegator queries.
+                ot = b.overtime
+                if ot:
+                    hrs = Decimal(str(b.ot_hours or 0)).normalize()
+                    db.add(CommissionChargeLine(
+                        charge_id=charge.id, booking_id=b.id,
+                        booking_ref=b.booking_ref, occurred_on=b.appointment_date,
+                        description="Overtime · %s hr%s × %s/hr" % (
+                            hrs, "" if hrs == 1 else "s",
+                            _fmt(b.ot_rate)),
+                        coach=b.coach or b.staff_raw, amount=ot))
+                    total += ot
             charge.total = _money(total)
             charge.coach_cost = _money(cost)
 
