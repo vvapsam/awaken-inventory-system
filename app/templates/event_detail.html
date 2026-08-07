@@ -235,7 +235,7 @@
 {% endif %}
 
 <div class="tfilter" style="margin-top:14px">
-  <a href="?tab=people" class="{{ 'on' if tab not in ('reels','waitlist','gone') }}">Participants · {{ c.inplay }}</a>
+  <a href="?tab=people" class="{{ 'on' if tab not in ('reels','waitlist','gone','door','review','unfinished','organiser') }}">Participants · {{ c.inplay }}</a>
   <a href="?tab=reels" class="{{ 'on' if tab == 'reels' }}">Reels · {{ c.posted }}</a>
   {% if c.waitlist %}
   <a href="?tab=waitlist" class="{{ 'on' if tab == 'waitlist' }}">Waitlist · {{ c.waitlist }}</a>
@@ -253,6 +253,7 @@
     · {{ c.unfinished }}</a>
   {% endif %}
   {% endif %}
+  <a href="?tab=organiser" class="{{ 'on' if tab == 'organiser' }}">Organiser link</a>
 </div>
 
 {% if upload and upload.error %}
@@ -266,7 +267,8 @@
 {% endif %}
 
 {# ============================================================ PARTICIPANTS #}
-{% if tab not in ('reels', 'waitlist', 'gone', 'door', 'review', 'unfinished') %}
+{% if tab not in ('reels', 'waitlist', 'gone', 'door', 'review',
+                  'unfinished', 'organiser') %}
 
 {% if not people %}
 <div class="card"><p class="muted" style="margin:0 0 10px">Nobody on the list yet. Paste your
@@ -735,6 +737,108 @@
   discount back from someone who made a Reel and forgot one tag costs more than the discount
   is worth.</p>
 {% endif %}
+
+{% elif tab == 'organiser' %}
+
+{# The link the sponsor gets. It carries other people's email addresses, so it
+   is minted by an admin, gated by a password as well as a token, and expires
+   on its own if nobody remembers to revoke it. #}
+{% if org_new %}
+<div class="card" style="border-color:var(--teal);background:var(--teal-tint)">
+  <b>Link created.</b> This is the only time the password is shown — we keep a
+  hash of it, not the word.
+  <div class="orgbox" style="margin-top:10px">
+    <label>Link</label>
+    <input readonly value="{{ base }}/o/{{ org_new.token }}" onclick="this.select()">
+    <label>Password</label>
+    <input readonly value="{{ org_new.password }}" onclick="this.select()">
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:12px">
+  <h2 style="margin:0 0 4px;font-size:1rem">Participant list for the organiser</h2>
+  <p class="muted small" style="margin:0 0 12px">One private page showing each
+    participant's full name, email address and Instagram handle — nothing else
+    about them. The sponsor needs the link <em>and</em> the password: a link on
+    its own is one forward away from being public.</p>
+
+  {% if org_link %}
+  <div class="orgbox">
+    <label>Link</label>
+    <input readonly value="{{ base }}/o/{{ org_link.token }}" onclick="this.select()">
+  </div>
+  <p class="muted small" style="margin:10px 0 0">
+    {% if org_link.label %}For {{ org_link.label }}. {% endif %}
+    Created {{ org_link.created_at|when }}{% if org_link.created_by %}
+    by {{ org_link.created_by.name }}{% endif %}.
+    Stops working {{ org_link.expires_at|when }}.
+    {% if org_link.opens %}Opened {{ org_link.opens }} time{{ 's' if org_link.opens != 1 }},
+      last {{ org_link.last_opened_at|when }}.{% else %}Not opened yet.{% endif %}
+  </p>
+  {% else %}
+  <p class="muted small" style="margin:0 0 12px">No link is live for this event.</p>
+  {% endif %}
+
+  {% if is_admin %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+    <form method="post" action="/events/{{ ev.id }}/organiser-link" style="flex:1;min-width:280px">
+      <div class="orgrow">
+        <label>Who it is for
+          <input name="label" maxlength="60" autocomplete="off"
+                 value="{{ ev.sponsor or '' }}" placeholder="Kenny Rogers"></label>
+        <label>Password
+          <input name="password" maxlength="80" autocomplete="off"
+                 placeholder="{{ org_default }}"></label>
+        <button class="btn primary">{{ 'Replace link' if org_link else 'Create link' }}</button>
+      </div>
+      <p class="muted small" style="margin:8px 0 0">Blank uses
+        <span class="mono">{{ org_default }}</span>. Replacing kills the old link
+        immediately — anyone still holding it is told a newer one was sent.</p>
+    </form>
+    {% if org_link %}
+    <form method="post" action="/events/{{ ev.id }}/organiser-link/revoke"
+          onsubmit="return confirm('Revoke this link? The organiser will not be able to open it again.')">
+      <button class="btn danger">Revoke</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if org_history|length > 1 %}
+<details style="margin-top:14px">
+  <summary class="muted small" style="cursor:pointer">{{ org_history|length }} link{{ 's' if org_history|length != 1 }} issued for this event</summary>
+  <table style="margin-top:8px">
+    <thead><tr><th>Created</th><th>For</th><th>Status</th><th>Opens</th></tr></thead>
+    <tbody>
+    {% for l in org_history %}
+    <tr {% if not l.is_live %}style="opacity:.55"{% endif %}>
+      <td>{{ l.created_at|when }}</td>
+      <td>{{ l.label or '—' }}</td>
+      <td>{% if l.revoked_at %}<span class="tag" style="background:#f4d7d4;color:#7a1f16">Revoked</span>
+        {% elif l.is_expired %}<span class="tag">Expired</span>
+        {% else %}<span class="tag">Live</span>{% endif %}</td>
+      <td>{{ l.opens or 0 }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
+
+<style>
+.orgbox label{display:block;font-size:.68rem;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);font-weight:700;margin:8px 0 3px}
+.orgbox input{width:100%;padding:9px 12px;font-family:ui-monospace,monospace;
+  font-size:.88rem;box-sizing:border-box}
+.orgrow{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.orgrow label{display:flex;flex-direction:column;gap:3px;font-size:.68rem;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700;
+  margin:0;flex:1;min-width:150px}
+.orgrow input{padding:8px 11px;font-family:inherit}
+</style>
+
 {% endif %}
 
 <script>

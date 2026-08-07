@@ -24,9 +24,22 @@ p{color:#6b7683;font-size:.9rem;margin:0}
     <path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/>
     <path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
   <div class="wm">AWAKEN</div>
+{# `reason` distinguishes a link that never existed from one that was
+   deliberately switched off. Both are dead ends, but only one of them is
+   somebody's mistake, and telling them apart saves a support message. #}
+{% if reason == 'revoked' %}
+  <h1>This link has been turned off</h1>
+  <p>It was replaced or withdrawn. Reply to the email it came in and we'll
+    send you the current one.</p>
+{% elif reason == 'expired' %}
+  <h1>This link has expired</h1>
+  <p>Links are time-limited because of what they carry. Reply to the email it
+    came in and we'll issue a fresh one.</p>
+{% else %}
   <h1>We can't find that link</h1>
   <p>It may have been mistyped, or replaced with a newer one. DM
     <b>@awakengymph</b> and we'll send you a fresh one.</p>
+{% endif %}
 </div>
 </body>
 </html>

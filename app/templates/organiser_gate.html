@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{{ ev.name }} — participants</title>
+<link rel="icon" href="/static/logo.svg">
+<link rel="stylesheet" href="/static/style.css?v={{ ASSET_V }}">
+{#
+  The password step. Deliberately says almost nothing before it is passed —
+  the event name, and that a password is needed. Not who is coming, not how
+  many, not whether anyone has confirmed. A gate that leaks the shape of what
+  is behind it has already given away part of the thing it is guarding.
+#}
+<style>
+body{background:var(--panel);display:flex;align-items:center;justify-content:center;
+  min-height:100vh;margin:0;padding:20px}
+.gate{width:100%;max-width:390px}
+.gate .top{background:var(--side-bg);color:#fff;border-radius:12px 12px 0 0;padding:22px 24px}
+.gate .wm{font-size:.6rem;letter-spacing:.3em;font-weight:600;color:#a9bcd8}
+.gate h1{margin:8px 0 3px;font-size:1.2rem;font-weight:650;color:#fff;letter-spacing:-.01em}
+.gate .top p{margin:0;color:#a9bcd8;font-size:.83rem}
+.gate .body{background:var(--bg);border:1px solid var(--line);border-top:0;
+  border-radius:0 0 12px 12px;padding:22px 24px}
+.gate label{display:block;font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);font-weight:700;margin:0 0 5px}
+.gate input{width:100%;padding:11px 13px;font-family:inherit;font-size:1rem;
+  border:1px solid var(--line);border-radius:8px;box-sizing:border-box}
+.gate button{width:100%;margin-top:12px;padding:11px;font-size:.95rem}
+.err{background:#fdf1f0;border:1px solid #f0c9c4;color:#8c2f22;border-radius:8px;
+  padding:9px 12px;font-size:.85rem;margin:0 0 12px}
+.note{color:var(--muted);font-size:.78rem;margin:14px 0 0;line-height:1.5}
+</style>
+</head>
+<body>
+<form class="gate" method="post" autocomplete="off">
+  <div class="top">
+    <div class="wm">A W A K E N &nbsp;·&nbsp; F I T N E S S &nbsp; C E N T E R</div>
+    <h1>{{ ev.name }}</h1>
+    <p>Participant list{% if link.label %} for {{ link.label }}{% endif %}</p>
+  </div>
+  <div class="body">
+    {% if wait %}
+    <p class="err">Too many tries. Wait about {{ (wait.total_seconds() / 60)|round|int }}
+      minute{{ 's' if (wait.total_seconds() / 60)|round|int != 1 }} and try again.</p>
+    {% elif error %}
+    <p class="err">{{ error }}</p>
+    {% endif %}
+    <label for="pw">Password</label>
+    <input id="pw" name="password" type="password" autofocus required
+           autocomplete="current-password" {{ 'disabled' if wait }}>
+    <button class="btn primary" type="submit" {{ 'disabled' if wait }}>View participants</button>
+    <p class="note">This page is private to the organiser. If you don't have the
+      password, reply to the email this link came in and we'll send it.</p>
+  </div>
+</form>
+</body>
+</html>

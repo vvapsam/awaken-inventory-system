@@ -1543,6 +1543,72 @@ class Event(Base):
         return next((r for r in self.rewards if r["key"] == key), None)
 
 
+#: How long an organiser's roster link stays live before it has to be
+#: re-issued. Longer than a delegator's seven days because a sponsor works a
+#: campaign, not a billing cycle — but not unlimited, because this page carries
+#: other people's email addresses and a link nobody remembers issuing is the
+#: one still working a year later.
+ORGANISER_LINK_DAYS = 60
+
+#: What a new organiser link is protected with unless somebody types something
+#: else. A default only makes sense because the link is useless without the
+#: token as well — the password is the second factor, not the only one.
+ORGANISER_DEFAULT_PASS = "Kenny2026@"
+
+
+class EventOrganiserLink(Base):
+    """A private, password-gated roster for the people who paid for the class.
+
+    A sponsor wants to see who is coming, and emailing them a spreadsheet each
+    time is how the spreadsheet ends up three days stale in somebody's
+    downloads folder. So they get a URL instead.
+
+    Two things guard it, and they guard different failures. The token stops it
+    being found; the password stops a forwarded link working for whoever the
+    sponsor forwarded it to. Neither is enough alone — a token in a browser
+    history is a token in somebody's browser history, and a password like
+    Kenny2026@ would be guessed inside a minute if the address were public.
+
+    The password is stored hashed, with the same PBKDF2 the staff PINs use.
+    Nobody, including us, can read it back off this row; a forgotten one is
+    reset, not recovered.
+    """
+    __tablename__ = "event_organiser_links"
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"),
+                      nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    #: Who it was made for — "Kenny Rogers". Shown on the page so a sponsor
+    #: with two events open knows which roster they are looking at.
+    label = Column(String)
+    pass_hash = Column(String)
+    pass_salt = Column(String)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    expires_at = Column(DateTime(timezone=True))
+    revoked_at = Column(DateTime(timezone=True))
+    sent_to = Column(String)
+    sent_at = Column(DateTime(timezone=True))
+    first_opened_at = Column(DateTime(timezone=True))
+    last_opened_at = Column(DateTime(timezone=True))
+    opens = Column(Integer, nullable=False, default=0)
+
+    event = relationship("Event")
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+
+    # No unique constraint on event_id: replacing a link revokes the old row
+    # rather than deleting it, so somebody opening last month's email is told
+    # a newer one was sent instead of getting a bare 404.
+
+    @property
+    def is_expired(self):
+        return bool(self.expires_at and self.expires_at < now_utc())
+
+    @property
+    def is_live(self):
+        return not self.revoked_at and not self.is_expired
+
+
 class EventParticipant(Base):
     """One person's slot, and the whole trail of what they did with it.
 

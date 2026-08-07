@@ -47,6 +47,7 @@ from fastapi.responses import (
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .auth import hash_pin, verify_pin
 from .db import get_db
 from .mailer import Mailer, looks_like_email
 from . import mail_templates
@@ -56,7 +57,9 @@ from .models import (
     HANDLE_MAX, PAY_APPROVED, PAY_DRAFT, PAY_LABELS, PAY_RETURNED,
     PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
-    Event, EventParticipant, from_local, to_local,
+    Event, EventParticipant, EventOrganiserLink,
+    ORGANISER_LINK_DAYS, ORGANISER_DEFAULT_PASS,
+    from_local, to_local,
 )
 
 #: AWAKEN's palette, and nothing else. Emails are the one place a third
@@ -1001,6 +1004,11 @@ def register(app, deps):
                       base=base_url(request), tag_labels=TAG_LABELS,
                       statuses=EVENT_STATUSES,
                       mail=request.session.pop("event_mail", None),
+                      org_link=_org_current(db, eid),
+                      org_history=_org_links_for(db, eid),
+                      org_default=ORGANISER_DEFAULT_PASS,
+                      org_new=request.session.pop("org_new", None),
+                      is_admin=(staff.role == "admin"),
                       mail_ready=Mailer().cfg.configured)
 
     def _release_lapsed(db, ev: Event) -> int:
@@ -1856,6 +1864,236 @@ def register(app, deps):
         return Response(content=ev.sponsor_logo,
                         media_type=ev.sponsor_logo_mime or "image/png",
                         headers={"Cache-Control": "public, max-age=86400"})
+
+    # --------------------------------------------------- organiser roster ----
+    #
+    # The people who paid for the class want to see who is coming. Emailing a
+    # spreadsheet each time is how the spreadsheet ends up three days stale in
+    # somebody's downloads folder, so they get a URL.
+    #
+    # Two guards, for two different failures. The token stops it being found.
+    # The password stops a forwarded link working for whoever it was forwarded
+    # to — which is the likely one, because sponsors forward things. Neither is
+    # enough alone, which is why both are here and why the password is hashed
+    # rather than kept where a database dump would read it.
+
+    #: Failed unlock attempts, in memory, per token. A brake rather than a
+    #: lock: it resets on restart and a determined attacker can wait it out.
+    #: What actually makes guessing impractical is PBKDF2 at 120k iterations —
+    #: this just stops a script trying a dictionary in one afternoon.
+    _org_fails: dict = {}
+    ORG_MAX_TRIES = 8
+    ORG_COOLDOWN = timedelta(minutes=10)
+
+    def _org_blocked(token: str, now):
+        n, since = _org_fails.get(token, (0, now))
+        if now - since > ORG_COOLDOWN:
+            _org_fails.pop(token, None)
+            return None
+        if n >= ORG_MAX_TRIES:
+            return ORG_COOLDOWN - (now - since)
+        return None
+
+    def _org_failed(token: str, now):
+        n, since = _org_fails.get(token, (0, now))
+        if now - since > ORG_COOLDOWN:
+            n, since = 0, now
+        _org_fails[token] = (n + 1, since)
+
+    def _org_link(db, token: str):
+        return (db.query(EventOrganiserLink)
+                .filter(EventOrganiserLink.token == token).first())
+
+    def _org_links_for(db, eid: int):
+        return (db.query(EventOrganiserLink)
+                .filter(EventOrganiserLink.event_id == eid)
+                .order_by(EventOrganiserLink.id.desc()).all())
+
+    def _org_current(db, eid: int):
+        return next((l for l in _org_links_for(db, eid) if l.is_live), None)
+
+    def _org_unlocked(request, token: str) -> bool:
+        return token in (request.session.get("org_ok") or [])
+
+    def _org_unlock(request, token: str):
+        # Kept in the signed session cookie, so the password is typed once per
+        # browser rather than on every page of the roster.
+        have = list(request.session.get("org_ok") or [])
+        if token not in have:
+            have.append(token)
+            request.session["org_ok"] = have[-8:]
+
+    def _org_roster(ev) -> dict:
+        """Who is coming, as an organiser needs to read it.
+
+        Two groups are left off, for the same reason: they are not in the room.
+
+        Somebody who said no is not a participant, and listing them gives a
+        sponsor a headline number they then have to mentally correct. Somebody
+        whose confirmation window lapsed is the same story told differently —
+        their slot has already gone to the next person, so showing them would
+        double-count the seat.
+
+        The waitlist is kept apart rather than dropped, because those people
+        may yet be in the room and a sponsor deciding on catering wants to
+        know they exist.
+        """
+        def row(p):
+            return {
+                "name": p.full_name or p.name or "",
+                "email": (p.email or "").strip(),
+                "handle": p.handle,
+                "status": "Confirmed" if p.confirmed else "Awaiting reply",
+                "confirmed": p.confirmed,
+                "arrived": bool(p.arrived_at),
+                "posted": bool(p.reel_url),
+            }
+
+        def coming(p):
+            return not p.waitlist and not p.declined and not p.released_at
+
+        live = [p for p in ev.participants if coming(p)]
+        waiting = [p for p in ev.participants if p.waitlist]
+        rows = sorted((row(p) for p in live),
+                      key=lambda r: (not r["confirmed"], r["name"].lower()))
+        return {
+            "rows": rows,
+            "waitlist": sorted((row(p) for p in waiting),
+                               key=lambda r: r["name"].lower()),
+            "confirmed": sum(1 for r in rows if r["confirmed"]),
+            "handles": sum(1 for r in rows if r["handle"]),
+            "arrived": sum(1 for r in rows if r["arrived"]),
+        }
+
+    def _org_gone(request, reason: str, code: int = 410):
+        return templates.TemplateResponse(
+            "event_gone.html", {"request": request, "reason": reason},
+            status_code=code)
+
+    @app.get("/o/{token}", response_class=HTMLResponse)
+    def organiser_roster(request: Request, token: str,
+                         db: Session = Depends(get_db)):
+        """The sponsor's own view of who is coming."""
+        link = _org_link(db, token)
+        # An unknown token is a 404 and says nothing else. Telling a stranger
+        # that a link "expired" confirms it once existed.
+        if not link:
+            return _org_gone(request, "unknown", 404)
+        if link.revoked_at:
+            return _org_gone(request, "revoked")
+        if link.is_expired:
+            return _org_gone(request, "expired")
+        ev = link.event
+        if not ev:
+            return _org_gone(request, "unknown", 404)
+        if not _org_unlocked(request, token):
+            return templates.TemplateResponse(
+                "organiser_gate.html",
+                {"request": request, "ev": ev, "link": link, "error": None,
+                 "wait": _org_blocked(token, datetime.now(timezone.utc))})
+        now = datetime.now(timezone.utc)
+        link.opens = (link.opens or 0) + 1
+        link.first_opened_at = link.first_opened_at or now
+        link.last_opened_at = now
+        db.commit()
+        return templates.TemplateResponse(
+            "organiser_roster.html",
+            {"request": request, "ev": ev, "link": link, "token": token,
+             "counts": counts(ev), **_org_roster(ev)})
+
+    @app.post("/o/{token}")
+    def organiser_unlock(request: Request, token: str,
+                         password: str = Form(""),
+                         db: Session = Depends(get_db)):
+        link = _org_link(db, token)
+        if not link:
+            return _org_gone(request, "unknown", 404)
+        if not link.is_live:
+            return _org_gone(request, "revoked" if link.revoked_at else "expired")
+        now = datetime.now(timezone.utc)
+        wait = _org_blocked(token, now)
+        if wait is None and link.pass_hash and verify_pin(
+                password or "", link.pass_hash, link.pass_salt or ""):
+            _org_fails.pop(token, None)
+            _org_unlock(request, token)
+            return RedirectResponse("/o/%s" % token, status_code=303)
+        if wait is None:
+            _org_failed(token, now)
+            wait = _org_blocked(token, now)
+        return templates.TemplateResponse(
+            "organiser_gate.html",
+            {"request": request, "ev": link.event, "link": link, "wait": wait,
+             "error": "That password is not right."},
+            status_code=401)
+
+    @app.get("/o/{token}/roster.csv")
+    def organiser_csv(request: Request, token: str,
+                      db: Session = Depends(get_db)):
+        link = _org_link(db, token)
+        if not link or not link.is_live or not _org_unlocked(request, token):
+            return RedirectResponse("/o/%s" % token, status_code=303)
+        ev = link.event
+        data = _org_roster(ev)
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["Name", "Email", "Instagram", "Status"])
+        for r in data["rows"] + data["waitlist"]:
+            w.writerow([r["name"], r["email"], r["handle"], r["status"]])
+        return Response(buf.getvalue(), media_type="text/csv", headers={
+            "Content-Disposition":
+            'attachment; filename="%s-participants.csv"' % ev.slug})
+
+    @app.post("/events/{eid}/organiser-link")
+    def organiser_link_new(request: Request, eid: int,
+                           password: str = Form(""), label: str = Form(""),
+                           db: Session = Depends(get_db)):
+        """Mint a link, replacing whatever was live before.
+
+        Replacing revokes rather than deletes, so a sponsor opening an older
+        email is told a newer one was sent. Admin only: this hands somebody
+        else a list of other people's email addresses.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        now = datetime.now(timezone.utc)
+        for old in _org_links_for(db, eid):
+            if old.is_live:
+                old.revoked_at = now
+        raw = (password or "").strip() or ORGANISER_DEFAULT_PASS
+        h, salt = hash_pin(raw)
+        link = EventOrganiserLink(
+            event_id=eid, token=new_token(),
+            label=(label or "").strip() or ev.sponsor or None,
+            pass_hash=h, pass_salt=salt, created_by_id=staff.id,
+            # Both stamped from the same instant. Letting the column default
+            # fill created_at a few milliseconds later makes "expires in 60
+            # days" arrive as 59 days and change, which is the sort of detail
+            # that only ever surfaces in an argument about a link.
+            created_at=now, expires_at=now + timedelta(days=ORGANISER_LINK_DAYS))
+        db.add(link)
+        db.commit()
+        # The password is echoed back once, here, because it is the only
+        # moment anybody can read it — the row keeps a hash. If she loses it
+        # the answer is a new link, not a recovery.
+        request.session["org_new"] = {"token": link.token, "password": raw}
+        return RedirectResponse("/events/%d?tab=organiser" % eid, status_code=303)
+
+    @app.post("/events/{eid}/organiser-link/revoke")
+    def organiser_link_revoke(request: Request, eid: int,
+                              db: Session = Depends(get_db)):
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        now = datetime.now(timezone.utc)
+        for link in _org_links_for(db, eid):
+            if link.is_live:
+                link.revoked_at = now
+        db.commit()
+        return RedirectResponse("/events/%d?tab=organiser" % eid, status_code=303)
 
     @app.get("/events/{eid}/report.csv")
     def event_report(request: Request, eid: int, db: Session = Depends(get_db)):
