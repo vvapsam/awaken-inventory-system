@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{{ ev.name }} — participants</title>
+<link rel="icon" href="/static/logo.svg">
+<link rel="stylesheet" href="/static/style.css?v={{ ASSET_V }}">
+{#
+  The organiser's roster: name, email, Instagram handle, and where each person
+  got to. Standalone like the coach statement and the delegator page — no app
+  shell, no nav, nothing an organiser could click into.
+
+  These are other people's email addresses, which is why the page is behind a
+  token AND a password, carries noindex, and says so at the bottom. Everything
+  here was given to us to run this class; nothing else about a participant —
+  what they paid, what they uploaded, their phone number — is in this context.
+#}
+<style>
+body{background:var(--panel)}
+.sbar{background:var(--side-bg);color:#fff;padding:20px 30px}
+.sbar .wm{font-size:.62rem;letter-spacing:.3em;font-weight:600;color:#a9bcd8}
+.sbar h1{margin:7px 0 2px;font-size:1.5rem;font-weight:650;letter-spacing:-.01em;color:#fff}
+.sbar p{margin:0;color:#a9bcd8;font-size:.86rem}
+.sbody{max-width:1000px;margin:0 auto;padding:22px 20px 0}
+.tiles{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.tile{flex:1;min-width:150px;background:var(--bg);border:1px solid var(--line);
+  border-radius:10px;padding:12px 16px}
+.tile.lead{border-color:var(--teal);background:var(--teal-tint)}
+.tile .l{font-size:.61rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:700}
+.tile .v{font-weight:700;font-size:1.5rem;letter-spacing:-.02em;line-height:1.2;
+  font-variant-numeric:tabular-nums}
+.tile.lead .v{color:var(--teal-dark)}
+.tile .s{font-size:.75rem;color:var(--muted);margin-top:1px}
+.bar{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.bar input[type=search]{flex:1;min-width:200px;padding:8px 12px;font-family:inherit;
+  border:1px solid var(--line);border-radius:8px}
+table{width:100%;border-collapse:collapse;background:var(--bg)}
+th{text-align:left;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:.9rem}
+.pill{font-size:.72rem;padding:2px 9px;border-radius:999px;white-space:nowrap;
+  background:#eef1f4;color:#5a6472}
+.pill.yes{background:var(--teal-tint);color:var(--teal-dark);font-weight:600}
+.mailto{color:inherit}
+h2{font-size:.95rem;margin:24px 0 8px}
+.foot{max-width:1000px;margin:20px auto 0;padding:15px 20px 40px;
+  border-top:1px solid var(--line);font-size:.78rem;color:var(--muted);line-height:1.6}
+.none{color:var(--muted);padding:14px 12px;font-size:.88rem}
+@media (max-width:720px){.sbar{padding:16px 18px}.sbody{padding:16px 14px 0}
+  td,th{padding:8px}.hide-s{display:none}}
+</style>
+</head>
+<body>
+
+<div class="sbar">
+  <div class="wm">A W A K E N &nbsp;·&nbsp; F I T N E S S &nbsp; C E N T E R</div>
+  <h1>{{ ev.name }}</h1>
+  {# `when`, not `local_dt` — that one is for pre-filling a datetime input and
+     prints an ISO string in the middle of a sentence. And if the time is still
+     to be announced, say the day and nothing more, so nobody plans around a
+     clock time we have not settled. #}
+  <p>Participants{% if link.label %} · {{ link.label }}{% endif %}{% if ev.starts_at %}
+    · {{ (ev.starts_at|local).strftime('%-d %B %Y') if ev.time_tba else ev.starts_at|when }}
+    {%- endif %}{% if ev.venue %} · {{ ev.venue }}{% endif %}</p>
+</div>
+
+<div class="sbody">
+  <div class="tiles">
+    <div class="tile lead"><div class="l">Confirmed</div>
+      <div class="v">{{ confirmed }}</div>
+      <div class="s">of {{ rows|length }} on the list</div></div>
+    <div class="tile"><div class="l">Instagram handles</div>
+      <div class="v">{{ handles }}</div>
+      <div class="s">given so far</div></div>
+    <div class="tile"><div class="l">Checked in</div>
+      <div class="v">{{ arrived }}</div>
+      <div class="s">on the day</div></div>
+    {% if waitlist %}
+    <div class="tile"><div class="l">Waiting list</div>
+      <div class="v">{{ waitlist|length }}</div>
+      <div class="s">not in the room</div></div>
+    {% endif %}
+  </div>
+
+  <div class="bar">
+    <input type="search" id="q" placeholder="Search name, email or handle"
+           autocomplete="off" spellcheck="false">
+    <a class="btn" href="/o/{{ token }}/roster.csv">Download CSV</a>
+  </div>
+
+  {% macro table(list, empty) %}
+  <table>
+    <thead><tr><th>Name</th><th>Email</th><th>Instagram</th>
+      <th class="hide-s">Status</th></tr></thead>
+    <tbody>
+    {% for r in list %}
+    <tr class="row" data-q="{{ (r.name ~ ' ' ~ r.email ~ ' ' ~ r.handle)|lower }}">
+      <td><b>{{ r.name }}</b></td>
+      <td>{% if r.email %}<a class="mailto" href="mailto:{{ r.email }}">{{ r.email }}</a>
+        {% else %}<span class="pill">no email</span>{% endif %}</td>
+      <td>{% if r.handle %}<a class="mailto" target="_blank" rel="noopener"
+          href="https://instagram.com/{{ r.handle[1:] }}">{{ r.handle }}</a>
+        {% else %}<span class="pill">not given</span>{% endif %}</td>
+      <td class="hide-s"><span class="pill {{ 'yes' if r.confirmed }}"
+        >{{ r.status }}</span>{% if r.arrived %} <span class="pill yes">Checked in</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if not list %}<p class="none">{{ empty }}</p>{% endif %}
+  {% endmacro %}
+
+  {{ table(rows, "Nobody is on the list for this class yet.") }}
+  <p class="none" id="nomatch" hidden>Nothing matches that search.</p>
+
+  {% if waitlist %}
+  <h2>Waiting list ({{ waitlist|length }})</h2>
+  <p class="none" style="padding-top:0">Not counted above — they take a slot only
+    if somebody drops out.</p>
+  {{ table(waitlist, "") }}
+  {% endif %}
+</div>
+
+<div class="foot">
+  Anyone who has said they can't make it is not on this list, and neither is
+  anyone whose slot went to somebody else — so the count above is the room.
+  <br>This list is private to the organiser and is not indexed or shared. Please
+  treat the email addresses on it as given for this class only.
+  {% if link.expires_at %}<br>The link stops working on {{ link.expires_at|when }}.{% endif %}
+  <br>Something look wrong? Reply to the email this link came in.
+</div>
+
+<script>
+document.getElementById('q').addEventListener('input', function(){
+  var q = this.value.trim().toLowerCase(), n = 0, rows = document.querySelectorAll('tr.row');
+  rows.forEach(function(tr){
+    var hit = !q || tr.dataset.q.indexOf(q) !== -1;
+    tr.hidden = !hit;
+    if (hit) n++;
+  });
+  document.getElementById('nomatch').hidden = !(q && n === 0);
+});
+</script>
+</body>
+</html>
