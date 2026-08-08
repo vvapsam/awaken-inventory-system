@@ -264,6 +264,31 @@
   </div>
 </div>
 
+<div class="card" style="margin-top:14px">
+  <h2 style="margin:0 0 4px;font-size:1rem">Start times at the door</h2>
+  <p class="muted small" style="margin:0 0 12px">For a class that runs in waves.
+    Scanning somebody in gives them the next number and the start time it earns
+    — the first {{ ev.slot_a_cap or 'N' }} through the door get the earlier one.
+    Assigned on arrival rather than beforehand, because a place held for
+    somebody who never turns up is a place wasted.
+    <b>Leave the first time blank and none of this happens.</b></p>
+  <div class="grid2">
+    <div><label class="small" style="font-weight:600">First start time</label>
+      <input name="slot_a_time" value="{{ ev.slot_a_time or '' }}"
+             placeholder="10:00 AM" maxlength="20"></div>
+    <div><label class="small" style="font-weight:600">How many in it</label>
+      <input name="slot_a_cap" value="{{ ev.slot_a_cap or '' }}"
+             inputmode="numeric" placeholder="15" style="width:110px"></div>
+    <div><label class="small" style="font-weight:600">Everyone after that</label>
+      <input name="slot_b_time" value="{{ ev.slot_b_time or '' }}"
+             placeholder="11:00 AM" maxlength="20"></div>
+  </div>
+  <p class="muted small" style="margin:9px 0 0">Times are tidied up on save, so
+    <span class="mono">10am</span> and <span class="mono">10:00</span> both become
+    <span class="mono">10:00 AM</span>. A number already given out never changes,
+    even if you edit these afterwards.</p>
+</div>
+
 <div class="hdact" style="margin-top:16px">
   <button class="btn primary">Save settings</button>
   <a class="btn" href="/events/{{ ev.id }}">Cancel</a>
