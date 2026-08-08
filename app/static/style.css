@@ -715,6 +715,9 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 /* display:flex above beats the browser's own [hidden] rule, so the prompt
    would otherwise sit on top of the live camera. */
 .scanstart[hidden]{display:none}
+/* Same reason, one level up: `display:flex` on .scanbox outranks [hidden], so
+   the camera would sit above the confirmation instead of being replaced by it. */
+.scanbox[hidden]{display:none}
 .scanstart .muted{color:#8f979f}
 /* Only drawn once the camera is live — a reticle over a black box just looks
    like something is broken. */
@@ -730,3 +733,40 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 .scanout.in{background:var(--teal-tint);color:var(--teal-dark)}
 .scanout.again{background:#fdf4e3;color:#8a6414}
 .scanout.bad{background:#fdf2f2;color:#8c2c20}
+
+/* The confirmation that replaces the camera after a scan. Sized for one hand
+   and a queue: everything on it is readable at arm's length, and the only
+   thing to press is the full-width button at the bottom. */
+.scancard{margin-top:0;padding:26px 20px 20px;border-radius:14px;text-align:center;
+  border:1px solid var(--line);background:var(--bg)}
+.scancard .cstate{font-size:.7rem;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase}
+.scancard .cname{font-size:1.9rem;font-weight:700;letter-spacing:-.02em;
+  line-height:1.15;margin-top:6px;color:var(--ink)}
+.scancard .cnote{font-size:.9rem;margin-top:5px;opacity:.85}
+.scancard .cmeta{font-size:.82rem;color:var(--muted);margin-top:10px;
+  word-break:break-word}
+.scancard .cslot{margin:16px auto 0;padding:14px 18px;border-radius:12px;
+  background:var(--panel);border:1px solid var(--line);max-width:280px}
+.scancard .cslot .l{font-size:.63rem;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted)}
+.scancard .cslot .v{font-size:2.6rem;font-weight:700;letter-spacing:-.03em;
+  line-height:1.1;margin-top:2px;font-variant-numeric:tabular-nums}
+.scancard .cslot .s{font-size:.8rem;color:var(--muted);margin-top:2px}
+.scancard .btn.big{width:100%;margin-top:18px;padding:15px;font-size:1.05rem}
+.scancard.in{border-color:var(--teal)}
+.scancard.in .cstate{color:var(--teal-dark)}
+.scancard.in .cslot{background:var(--teal-tint);border-color:var(--teal)}
+.scancard.in .cslot .v{color:var(--teal-dark)}
+.scancard.again{border-color:#d9b45a;background:#fffdf7}
+.scancard.again .cstate{color:#8a6414}
+.scancard.again .cslot{background:#fdf4e3;border-color:#d9b45a}
+.scancard.again .cslot .v{color:#8a6414}
+.scancard.bad{border-color:#e0a79e;background:#fdf6f5}
+.scancard.bad .cstate{color:#8c2c20}
+.scancard.bad .cname:empty{display:none}
+/* How full each wave is, beside the head count. */
+.waves{display:inline-flex;gap:10px;margin-left:12px;flex-wrap:wrap}
+.waves span{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+  padding:2px 10px;font-size:.78rem;white-space:nowrap}
+.waves b{font-size:.9rem}
