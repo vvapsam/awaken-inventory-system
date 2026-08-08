@@ -127,6 +127,32 @@ _REEL_RE = re.compile(
     re.I)
 
 
+def _clock(raw: str) -> str:
+    """A start time as somebody would say it: "10:00 AM".
+
+    Accepts what a phone's time input sends ("10:00") and what a person types
+    ("10am", "10:00 AM"), because this field is filled in on a phone at least
+    as often as on a laptop.
+    """
+    text = (raw or "").strip().upper().replace(".", "")
+    if not text:
+        return ""
+    m = re.match(r"^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$", text)
+    if not m:
+        return text[:20]
+    hour, minute, half = int(m.group(1)), m.group(2) or "00", m.group(3)
+    if half:
+        if hour == 12:
+            hour = 0 if half == "AM" else 12
+        elif half == "PM":
+            hour += 12
+    if not 0 <= hour <= 23:
+        return text[:20]
+    suffix = "AM" if hour < 12 else "PM"
+    shown = hour % 12 or 12
+    return "%d:%s %s" % (shown, minute, suffix)
+
+
 def clean_reel_url(raw: str) -> str:
     """Normalise a pasted Reel link, or return '' if it isn't one.
 
@@ -837,6 +863,47 @@ def register(app, deps):
         return RedirectResponse("/events/%d?tab=door" % p.event_id,
                                 status_code=303)
 
+    def _wave_counts(ev: Event) -> dict:
+        """How full each start time is. Shown on the scanner so whoever is on
+        the door can see the first wave closing before it closes."""
+        out = {}
+        for p in ev.participants:
+            if p.slot_time:
+                out[p.slot_time] = out.get(p.slot_time, 0) + 1
+        waves = []
+        for t, cap in ((ev.slot_a_time, ev.slot_a_cap), (ev.slot_b_time, None)):
+            if t:
+                waves.append({"time": t, "n": out.get(t, 0), "cap": cap})
+        return {"waves": waves}
+
+    def _assign_slot(db: Session, ev: Event, p: EventParticipant) -> None:
+        """Give this arrival its number and its start time.
+
+        Order of arrival, not order of registration: the first fifteen through
+        the door get the early wave. A place held for somebody who never turns
+        up is a place wasted, which is the whole reason this happens at the
+        scanner rather than the night before.
+
+        Written once. If they already have a time, they keep it — telling
+        somebody ten o'clock and then moving them is worse than having no
+        system at all.
+        """
+        if not ev.slot_a_time or p.slot_no:
+            return
+        # Lock the event row so two phones on the door cannot hand out the
+        # same number. Cheap here — one row, held for the length of a scan.
+        db.query(Event).filter(Event.id == ev.id).with_for_update().first()
+        taken = (db.query(func.max(EventParticipant.slot_no))
+                 .filter(EventParticipant.event_id == ev.id).scalar()) or 0
+        n = taken + 1
+        cap = ev.slot_a_cap or 0
+        p.slot_no = n
+        # No second time set means one wave with no ceiling: everybody gets the
+        # first time rather than nobody getting anything after the cap.
+        p.slot_time = (ev.slot_a_time if (not cap or n <= cap or not ev.slot_b_time)
+                       else ev.slot_b_time)
+        p.slot_at = datetime.now(timezone.utc)
+
     @app.get("/events/{eid}/scan", response_class=HTMLResponse)
     def event_scanner(request: Request, eid: int, db: Session = Depends(get_db)):
         """The camera, inside the app.
@@ -853,7 +920,8 @@ def register(app, deps):
         if not ev:
             return RedirectResponse("/events", status_code=303)
         return render(request, "event_scan.html", db, staff, active="events",
-                      ev=ev, c=counts(ev))
+                      ev=ev, c=counts(ev),
+                      waves=_wave_counts(ev) if ev.slot_a_time else None)
 
     @app.post("/events/{eid}/scan")
     def event_scan_hit(request: Request, eid: int, code: str = Form(""),
@@ -885,6 +953,7 @@ def register(app, deps):
         fresh = not p.arrived_at
         if fresh:
             p.arrived_at = datetime.now(timezone.utc)
+            _assign_slot(db, ev, p)
             db.commit()
         c = counts(ev)
         stage = _stage(p)
@@ -906,6 +975,11 @@ def register(app, deps):
         return JSONResponse({
             "ok": True, "fresh": fresh, "name": p.name, "note": note,
             "token": p.token,
+            "email": (p.email or "").strip(),
+            "handle": p.handle,
+            "slot": p.slot_time or "",
+            "slot_no": p.slot_no,
+            "waves": _wave_counts(ev) if ev.slot_a_time else None,
             "counts": {"in": c["arrived"], "of": c["confirmed"]},
         })
 
@@ -1066,6 +1140,8 @@ def register(app, deps):
             pay_note: str = Form(""), review_hours: str = Form("24"),
             pay_qr: UploadFile = None, drop_pay_qr: str = Form(""),
             code_prefix: str = Form("EV"),
+            slot_a_time: str = Form(""), slot_a_cap: str = Form(""),
+            slot_b_time: str = Form(""),
             reward_a: str = Form(""), reward_a_detail: str = Form(""),
             reward_a_value: str = Form(""),
             reward_b: str = Form(""), reward_b_detail: str = Form(""),
@@ -1155,6 +1231,18 @@ def register(app, deps):
             if raw and (pay_qr.content_type or "").startswith("image/"):
                 ev.pay_qr, ev.pay_qr_mime = raw, pay_qr.content_type
         ev.code_prefix = (code_prefix.strip()[:4].upper() or "EV")
+        # Start times handed out at the door. A blank first time switches the
+        # whole thing off, which is how an event that does not run in waves
+        # keeps behaving exactly as it always did.
+        ev.slot_a_time = _clock(slot_a_time)
+        ev.slot_b_time = _clock(slot_b_time)
+        try:
+            cap = int((slot_a_cap or "").strip() or 0)
+        except ValueError:
+            cap = 0
+        ev.slot_a_cap = cap if cap > 0 else None
+        if not ev.slot_a_time:
+            ev.slot_a_cap = ev.slot_b_time = None
         ev.reward_a, ev.reward_a_detail = reward_a.strip(), reward_a_detail.strip()
         ev.reward_a_value = reward_a_value.strip()
         ev.reward_b, ev.reward_b_detail = reward_b.strip(), reward_b_detail.strip()

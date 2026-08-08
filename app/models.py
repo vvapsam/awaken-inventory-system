@@ -1450,6 +1450,20 @@ class Event(Base):
     reward_b_value = Column(String)
     #: Prefix for the codes we hand out, e.g. KR -> KR-4471.
     code_prefix = Column(String, nullable=False, default="EV")
+
+    # --- start times, handed out at the door ---------------------------------
+    #
+    # Some classes run in waves: the first fifteen through the door start at
+    # ten, everybody after them at eleven. Setting a first time switches the
+    # whole thing on, so an event that says nothing here behaves exactly as it
+    # always did.
+    #
+    # Assigned when somebody is scanned in rather than beforehand, because who
+    # actually turns up is not who you planned for, and a slot handed to
+    # somebody who never arrives is a wasted place in the earlier wave.
+    slot_a_time = Column(String)                 # "10:00 AM"
+    slot_a_cap = Column(Integer)                 # 15
+    slot_b_time = Column(String)                 # "11:00 AM"
     #: The sponsor's own logo, stored on the row rather than dropped in the
     #: static folder. A sponsor is a property of one event, not of the app, and
     #: the next one should be an upload rather than a deploy. It rides inside
@@ -1654,6 +1668,14 @@ class EventParticipant(Base):
     #: When they were scanned in at the door. The QR on their page is the
     #: fast path; the tracker has a button for the phone that died on the way.
     arrived_at = Column(DateTime(timezone=True))
+    #: Their place in the arrival order, and the start time it earned them.
+    #: The number is kept as well as the time because it is what makes the
+    #: assignment checkable — "why am I in the second wave" has an answer.
+    #: Both are written once, on the first scan, and never recomputed: a start
+    #: time that moved after somebody was told it is worse than no system.
+    slot_no = Column(Integer)
+    slot_time = Column(String)
+    slot_at = Column(DateTime(timezone=True))
     # --- self-registration (mode == open) ---
     first_name = Column(String)
     last_name = Column(String)

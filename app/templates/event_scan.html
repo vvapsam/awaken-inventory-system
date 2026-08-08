@@ -23,6 +23,8 @@
 <div class="scanwrap">
   <div class="scanhead">
     <b id="cin">{{ c.arrived }}</b> of <b id="cof">{{ c.confirmed }}</b> in
+    {% if waves %}<span id="waves" class="waves">{% for w in waves.waves %}<span
+      >{{ w.time }} <b>{{ w.n }}</b>{% if w.cap %}/{{ w.cap }}{% endif %}</span>{% endfor %}</span>{% endif %}
   </div>
 
   <div class="scanbox" id="box">
@@ -35,10 +37,21 @@
     </div>
   </div>
 
-  <div class="scanout" id="out" hidden>
-    <div class="s" id="state"></div>
-    <div class="n" id="name"></div>
-    <div class="d" id="note"></div>
+  {# The camera stops on a hit and this takes over the screen. Somebody on a
+     door has one hand free and a queue in front of them: a result that stays
+     up until it is dismissed can be read out loud, and the big button is the
+     only thing to aim at. #}
+  <div class="scancard" id="card" hidden>
+    <div class="cstate" id="state"></div>
+    <div class="cname" id="name"></div>
+    <div class="cnote" id="note"></div>
+    <div class="cslot" id="slot" hidden>
+      <div class="l" id="slotlab">Start time</div>
+      <div class="v" id="slottime"></div>
+      <div class="s" id="slotno"></div>
+    </div>
+    <div class="cmeta" id="meta"></div>
+    <button class="btn primary big" id="next" type="button">Scan next</button>
   </div>
 
   <p class="muted small" id="hint" style="text-align:center;margin:14px 0 0">
@@ -51,10 +64,17 @@
   var video = document.getElementById('cam'),
       box = document.getElementById('box'),
       start = document.getElementById('start'),
-      out = document.getElementById('out'),
+      card = document.getElementById('card'),
       elState = document.getElementById('state'),
       elName = document.getElementById('name'),
       elNote = document.getElementById('note'),
+      elSlot = document.getElementById('slot'),
+      elSlotLab = document.getElementById('slotlab'),
+      elSlotTime = document.getElementById('slottime'),
+      elSlotNo = document.getElementById('slotno'),
+      elMeta = document.getElementById('meta'),
+      elWaves = document.getElementById('waves'),
+      btnNext = document.getElementById('next'),
       hint = document.getElementById('hint'),
       cin = document.getElementById('cin'), cof = document.getElementById('cof'),
       canvas = document.createElement('canvas'),
@@ -65,15 +85,55 @@
       // their phone away.
       lastCode = '', lastAt = 0, busy = false;
 
-  function show(kind, name, note){
-    out.hidden = false;
-    out.className = 'scanout ' + kind;
+  function show(kind, d){
+    d = d || {};
+    // Stop looking while the result is up. The same code sits in front of the
+    // lens for seconds after a scan, and a camera still running behind a
+    // confirmation is a camera that reads the next person by accident.
+    running = false;
+    box.hidden = true;
+    card.hidden = false;
+    card.className = 'scancard ' + kind;
     elState.textContent = kind === 'in' ? '✓ Checked in'
-      : kind === 'again' ? 'Already in' : 'Not recognised';
-    elName.textContent = name || '';
-    elNote.textContent = note || '';
+      : kind === 'again' ? 'Already scanned' : 'Not recognised';
+    elName.textContent = d.name || '';
+    elNote.textContent = d.note || d.why || '';
+
+    if (d.slot) {
+      elSlot.hidden = false;
+      elSlotLab.textContent = kind === 'again'
+        ? 'Already has a start time' : 'Start time';
+      elSlotTime.textContent = d.slot;
+      elSlotNo.textContent = d.slot_no ? ('Number ' + d.slot_no) : '';
+    } else {
+      elSlot.hidden = true;
+    }
+
+    var bits = [];
+    if (d.handle) bits.push(d.handle);
+    if (d.email) bits.push(d.email);
+    elMeta.textContent = bits.join('  ·  ');
+
+    if (d.waves && elWaves) {
+      elWaves.innerHTML = d.waves.waves.map(function(w){
+        return '<span>' + w.time + ' <b>' + w.n + '</b>' +
+               (w.cap ? '/' + w.cap : '') + '</span>';
+      }).join('');
+    }
+    btnNext.focus();
     if (navigator.vibrate) navigator.vibrate(kind === 'bad' ? [40,60,40] : 30);
   }
+
+  function again(){
+    card.hidden = true;
+    box.hidden = false;
+    // Whatever was on screen is stale the moment the camera is back, so the
+    // de-duplication window is cleared too — the same person can be re-scanned
+    // deliberately and will be told they already have a time.
+    lastCode = ''; lastAt = 0;
+    if (video.srcObject) { running = true; tick(); }
+  }
+  btnNext.addEventListener('click', again);
 
   function send(code){
     if (busy) return;
@@ -84,10 +144,10 @@
       .then(function(r){ return r.json(); })
       .then(function(d){
         if (d.counts) { cin.textContent = d.counts.in; cof.textContent = d.counts.of; }
-        if (!d.ok) show('bad', '', d.why || 'That code did not match anybody.');
-        else show(d.fresh ? 'in' : 'again', d.name, d.note);
+        if (!d.ok) show('bad', {why: d.why || 'That code did not match anybody.'});
+        else show(d.fresh ? 'in' : 'again', d);
       })
-      .catch(function(){ show('bad', '', 'Lost the connection — try that one again.'); })
+      .catch(function(){ show('bad', {why: 'Lost the connection — try that one again.'}); })
       .then(function(){ busy = false; });
   }
 
