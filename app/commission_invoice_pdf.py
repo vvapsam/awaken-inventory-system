@@ -637,6 +637,60 @@ def statement(delegator, data, *, company: str = "") -> bytes:
     ] + astyle))
     flow.append(t)
 
+    # ---- sessions nobody has been billed for yet -------------------------
+    pend = data.get("pending") or {}
+    if pend.get("sessions"):
+        flow.append(Paragraph("NOT YET INVOICED &middot; %s"
+                              % _pdfsafe(data["period"]).upper(), st["s_h"]))
+        flow.append(Paragraph(
+            "%d session%s worth %s %s not been invoiced yet%s. Nothing here "
+            "counts towards the amount due." % (
+                pend["sessions"], "" if pend["sessions"] == 1 else "s",
+                _pesos(pend["total"]),
+                "has" if pend["sessions"] == 1 else "have",
+                (" — %s %s still open" % (
+                    _pdfsafe(", ".join(pend["months"])),
+                    "is" if len(pend["months"]) == 1 else "are"))
+                if pend.get("months") else ""), st["s_payl"]))
+        flow.append(Spacer(1, 5))
+        prows = [[Paragraph("Date", st["s_th"]),
+                  Paragraph("Description", st["s_th"]),
+                  Paragraph("Amount", st["s_thr"])]]
+        pstyle = [("BACKGROUND", (0, 0), (-1, 0), S_TEAL)]
+        k = 1
+        for it in pend["items"]:
+            cell = [Paragraph(_pdfsafe(it["text"]),
+                              st["s_ot"] if it["ot"] else st["s_item"])]
+            under = " · ".join(x for x in (it["note"], it["ref"]) if x)
+            if under:
+                cell.append(Paragraph(_pdfsafe(under), st["s_note"]))
+            prows.append([
+                Paragraph(it["on"].strftime("%d %b %Y") if it["on"] else "",
+                          st["s_day"]),
+                cell,
+                Paragraph(_pesos(it["amount"]),
+                          st["s_otr"] if it["ot"] else st["s_r"])])
+            if it["ot"]:
+                pstyle.append(("BACKGROUND", (0, k), (-1, k), AMBER_TINT))
+            pstyle.append(("LINEBELOW", (0, k), (-1, k), 0.5, S_RULE))
+            k += 1
+        prows.append([Paragraph("", st["s_cat"]),
+                      Paragraph("<b>%d session%s &middot; not billed</b>" % (
+                          pend["sessions"], "" if pend["sessions"] == 1 else "s"),
+                          st["s_cat"]),
+                      Paragraph("<b>%s</b>" % _pesos(pend["total"]), st["s_catr"])])
+        pstyle.append(("LINEABOVE", (0, k), (-1, k), 0.8, S_INK))
+        t = Table(prows, colWidths=acols, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (0, -1), 11),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 11),
+            ("LEFTPADDING", (1, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ] + pstyle))
+        flow.append(t)
+
     # ---- reconciliation --------------------------------------------------
     led = data["ledger"]
     summ = Table([

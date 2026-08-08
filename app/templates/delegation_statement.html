@@ -51,6 +51,9 @@
     {{ sessions_shown }} session{{ 's' if sessions_shown != 1 }} shown in full below.
     {% if out_range %}The other {{ out_range }} still count towards the amount due;
     they appear as a single line each.{% endif %}
+    {% if pending.sessions %}{{ pending.sessions }} session{{ 's' if pending.sessions != 1 }}
+    in this period {{ 'is' if pending.sessions == 1 else 'are' }} not on any invoice
+    yet — listed at the bottom, and not counted.{% endif %}
     Nothing is left out of the total — that figure is what {{ delegator.name }}
     owes today.</p>
 </form>
@@ -147,10 +150,49 @@
     {% endif %}
   {% endfor %}
   {% if not activity %}
-  <tr><td colspan="3" class="muted">No invoices and no payments on this account yet.</td></tr>
+  <tr><td colspan="3" class="muted">No invoices and no payments on this account yet.{%
+    if pending.sessions %} The sessions below have happened but have not been
+    billed — close their month to raise the invoice.{% endif %}</td></tr>
   {% endif %}
   </tbody>
 </table>
+
+{% if pending.sessions %}
+{# Sessions that have happened but that no invoice covers yet — nearly always
+   because the month has not been closed. Shown in full so the page is useful
+   before anything is billed, and kept out of every total above, because
+   asking for money nobody has been invoiced for is how a statement stops
+   being believed. #}
+<h2 class="stmt-h">Not yet invoiced · {{ period }}</h2>
+<div class="card" style="border-color:#d9b45a;background:#fdf6e9;margin-bottom:10px">
+  <b>{{ pending.sessions }} session{{ 's' if pending.sessions != 1 }} worth
+    {{ peso(pending.total) }} {{ 'has' if pending.sessions == 1 else 'have' }}
+    not been invoiced yet.</b>
+  <p class="muted small" style="margin:4px 0 0">
+    {% if pending.months %}{{ pending.months|join(', ') }}
+    {{ 'is' if pending.months|length == 1 else 'are' }} still open.
+    Closing {{ 'that month' if pending.months|length == 1 else 'those months' }}
+    on the run raises the invoice and moves {{ 'it' if pending.sessions == 1 else 'them' }}
+    into the account above.{% endif %}
+    Nothing here counts towards the amount due.</p>
+</div>
+<table class="stmt act">
+  <thead><tr><th style="width:110px">Date</th><th>Description</th>
+    <th class="n" style="width:150px">Amount</th></tr></thead>
+  <tbody>
+  {% for it in pending['items'] %}
+  <tr {% if it.ot %}class="ot"{% endif %}>
+    <td class="day">{{ it.on.strftime('%d %b %Y') if it.on }}</td>
+    <td class="{{ 'subot' if it.ot else 'sub' }}">{{ it.text }}{% if it.note %}
+      <span class="muted small"> · {{ it.note }}</span>{% endif %}
+      {% if it.ref %}<span class="mono muted small"> · {{ it.ref }}</span>{% endif %}</td>
+    <td class="n">{{ peso(it.amount) }}</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td colspan="2">{{ pending.sessions }} session{{ 's' if pending.sessions != 1 }}
+    · not billed</td><td class="n">{{ peso(pending.total) }}</td></tr></tfoot>
+</table>
+{% endif %}
 
 <div class="stmt-sum">
   <div><span>Total invoiced</span><b>{{ peso(ledger.invoiced) }}</b></div>

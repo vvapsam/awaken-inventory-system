@@ -2307,6 +2307,49 @@ def register(app, deps):
             out.append({"label": "Everything", "start": lo, "end": hi})
         return out
 
+    def _uninvoiced(db: Session, did: int, start: date, end: date) -> dict:
+        """Sessions that have happened and that no invoice covers yet.
+
+        Almost always because the month has not been closed. They are shown —
+        itemised, in their own block, with their own total — and kept out of
+        the amount due, because nobody has been billed for them.
+
+        Leaving them off entirely was a mistake worth naming: a delegator with
+        nothing but open months got a statement that was blank, which reads as
+        "you owe nothing and did nothing" rather than "the month is not closed".
+        """
+        rows = (db.query(CommissionBooking)
+                .join(CommissionRun, CommissionRun.id == CommissionBooking.run_id)
+                .filter(CommissionRun.status != RUN_SUPERSEDED,
+                        CommissionBooking.delegator_id == did,
+                        CommissionBooking.dropped_reason.is_(None),
+                        CommissionBooking.voided.is_(False),
+                        CommissionBooking.appointment_date >= start,
+                        CommissionBooking.appointment_date <= end)
+                .all())
+        billed = billed_line_map(db, did)
+        live = sorted((b for b in rows
+                       if b.is_commissionable and b.id not in billed),
+                      key=lambda b: (b.appointment_date or date.min,
+                                     b.booking_ref or ""))
+        items = []
+        for b in live:
+            items.append({"on": b.appointment_date, "ref": b.booking_ref or "",
+                          "text": (b.customer or "").strip() or "—",
+                          "note": b.coach or b.staff_raw or "", "ot": False,
+                          "amount": Decimal(str(b.delegation_charge or 0))})
+            if b.ot_hours:
+                items.append({"on": b.appointment_date, "ref": b.booking_ref or "",
+                              "text": _ot_line_text(b), "note": "", "ot": True,
+                              "amount": b.overtime})
+        fees = sum((Decimal(str(b.delegation_charge or 0)) for b in live), Decimal(0))
+        ot = sum((b.overtime for b in live), Decimal(0))
+        months = sorted({(b.appointment_date.year, b.appointment_date.month)
+                         for b in live if b.appointment_date})
+        return {"rows": live, "items": items, "sessions": len(live),
+                "fees": fees, "ot": ot, "total": fees + ot,
+                "months": [date(y, m, 1).strftime("%B %Y") for y, m in months]}
+
     def _statement_data(db: Session, did: int, start: date, end: date,
                         as_at: date) -> dict:
         """Everything both the screen and the PDF are drawn from.
@@ -2411,6 +2454,7 @@ def register(app, deps):
                                     end.strftime("%d %b %Y")))
 
         return {
+            "pending": _uninvoiced(db, did, start, end),
             "as_at": as_at, "stmt_no": _stmt_no(as_at), "period": period,
             "start": start, "end": end,
             "due_by": as_at + timedelta(days=1), "ledger": led,
