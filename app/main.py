@@ -694,6 +694,20 @@ def startup():
                 "  nudged_at TIMESTAMPTZ; "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  last_call_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  slot_no INTEGER; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  slot_time VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  slot_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
+            # Start times handed out at the door: two waves and a cap on the
+            # first. Nulls everywhere means the event does not use them.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS slot_a_time VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS slot_a_cap INTEGER; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS slot_b_time VARCHAR; "
                 "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
