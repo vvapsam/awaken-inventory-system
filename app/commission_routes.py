@@ -535,6 +535,14 @@ def account_ledger(db: Session, delegator_id: int) -> dict:
     }
 
 
+def _months_back(first_of_month: date, n: int) -> date:
+    """The first of the month N months before this one."""
+    y, m = first_of_month.year, first_of_month.month - n
+    while m < 1:
+        y, m = y - 1, m + 12
+    return date(y, m, 1)
+
+
 def _span_label(a: date, b: date) -> str:
     """How a statement names the stretch it covers."""
     if a == b:
@@ -2247,26 +2255,90 @@ def register(app, deps):
                         "amount": Decimal(str(ln.amount or 0))})
         return out
 
-    def _statement_data(db: Session, did: int, as_at: date) -> dict:
+    def _service_span(charge, fallback: date):
+        """The stretch of time an invoice's sessions actually fall in."""
+        a = charge.period_start
+        b = charge.period_end
+        if a and b:
+            return a, b
+        when = to_local(charge.created_at).date() if charge.created_at else fallback
+        return a or when, b or when
+
+    def _stmt_range(db: Session, did: int, start: str, end: str, today: date):
+        """The months to itemise, defaulting to everything on the account.
+
+        Defaulting to the whole history rather than the current month, because
+        the first thing anybody does with a statement is send the lot — and a
+        screen that opens showing one month reads as though that is all there
+        is.
+        """
+        def parse(text, fallback):
+            try:
+                return datetime.strptime((text or "").strip(), "%Y-%m-%d").date()
+            except ValueError:
+                return fallback
+
+        rows = (db.query(func.min(CommissionCharge.period_start),
+                         func.max(CommissionCharge.period_end))
+                .filter(CommissionCharge.delegator_id == did,
+                        CommissionCharge.voided_at.is_(None)).one())
+        lo, hi = rows[0] or date(today.year, 1, 1), rows[1] or today
+        a, b = parse(start, lo), parse(end, hi)
+        return (b, a) if b < a else (a, b)
+
+    def _stmt_spans(db: Session, did: int, today: date) -> list:
+        """Quick picks, built from the months this delegator actually has."""
+        first = date(today.year, today.month, 1)
+        prev_end = first - timedelta(days=1)
+        out = [{"label": "This month", "start": first,
+                "end": date(today.year + (today.month == 12),
+                            (today.month % 12) + 1, 1) - timedelta(days=1)},
+               {"label": "Last month",
+                "start": date(prev_end.year, prev_end.month, 1), "end": prev_end},
+               {"label": "Last 3 months",
+                "start": _months_back(first, 2), "end": prev_end},
+               {"label": "Year to date", "start": date(today.year, 1, 1),
+                "end": today}]
+        lo, hi = (db.query(func.min(CommissionCharge.period_start),
+                           func.max(CommissionCharge.period_end))
+                  .filter(CommissionCharge.delegator_id == did,
+                          CommissionCharge.voided_at.is_(None)).one())
+        if lo and hi:
+            out.append({"label": "Everything", "start": lo, "end": hi})
+        return out
+
+    def _statement_data(db: Session, did: int, start: date, end: date,
+                        as_at: date) -> dict:
         """Everything both the screen and the PDF are drawn from.
 
         One builder, so the paper and the page cannot disagree — which matters
         most here, because the paper is the copy that gets argued with after
         the screen has been closed.
+
+        The range picks which months are *itemised*, not which are counted.
+        Every invoice and every payment stays in the arithmetic, because the
+        figure at the top has to be what this delegator actually owes — a
+        statement whose total quietly excludes an old unpaid month is a
+        statement that gets sent, believed, and then argued about. What the
+        range changes is how much detail each invoice is shown in: inside it,
+        the whole conduction log; outside it, one line and its balance.
         """
         led = account_ledger(db, did)
-        month_start = date(as_at.year, as_at.month, 1)
 
-        # Current charges are the invoices raised in the month the statement is
-        # dated; everything older is balance forward. That is the rule the
-        # handwritten statements already used — a month is closed in the month
-        # after it, so July's invoice, raised in August, is what August's
-        # statement calls current.
-        current, forward = [], []
+        # Three buckets by when the *sessions* happened, not when the invoice
+        # was raised. "May to July" is a question about training, and a July
+        # invoice cut on 4 August is still July's training.
+        inside, before, after = [], [], []
         for r in led["charges"]:
             raised = to_local(r["c"].created_at).date() if r["c"].created_at else as_at
-            r = dict(r, raised=raised)
-            (current if raised >= month_start else forward).append(r)
+            a, b = _service_span(r["c"], as_at)
+            r = dict(r, raised=raised, span_start=a, span_end=b)
+            if b < start:
+                before.append(r)
+            elif a > end:
+                after.append(r)
+            else:
+                inside.append(r)
 
         # ---- breakdown, one row per invoice under a category heading -------
         #
@@ -2275,23 +2347,28 @@ def register(app, deps):
         # been applied oldest first, so summing balances gives exactly the
         # amount due, and an invoice that has been settled quietly leaves the
         # table instead of sitting there contradicting the total above it.
-        rows = []
-        for r in sorted(forward, key=lambda r: r["raised"]):
-            if r["balance"] <= 0:
-                continue
+        def row(r, column, suffix=""):
             label = r["c"].period_label or r["c"].dates_label or ""
-            rows.append({"label": "%s%s" % (label, " (remaining balance)"
-                                            if r["part"] else ""),
-                         "forward": r["balance"], "current": Decimal(0),
-                         "charge": r["c"]})
-        for r in sorted(current, key=lambda r: r["raised"]):
-            if r["balance"] <= 0:
-                continue
-            label = r["c"].period_label or r["c"].dates_label or ""
-            rows.append({"label": "%s%s" % (label, " (remaining balance)"
-                                            if r["part"] else ""),
-                         "forward": Decimal(0), "current": r["balance"],
-                         "charge": r["c"]})
+            if r["part"]:
+                label += " (remaining balance)"
+            return {"label": label + suffix, "charge": r["c"],
+                    "forward": r["balance"] if column == "forward" else Decimal(0),
+                    "current": r["balance"] if column == "current" else Decimal(0)}
+
+        rows = [row(r, "forward")
+                for r in sorted(before, key=lambda r: r["span_start"])
+                if r["balance"] > 0]
+        rows += [row(r, "current")
+                 for r in sorted(inside, key=lambda r: r["span_start"])
+                 if r["balance"] > 0]
+        # Anything still owed for months *after* the range sits in the first
+        # column too — it is outstanding, so leaving it out would make the two
+        # columns disagree with the total above them. It is labelled with its
+        # own month, and the column is renamed, so nobody reads it as old debt.
+        later = [row(r, "forward", " — outside this period")
+                 for r in sorted(after, key=lambda r: r["span_start"])
+                 if r["balance"] > 0]
+        rows += later
         fwd_total = sum((x["forward"] for x in rows), Decimal(0))
         cur_total = sum((x["current"] for x in rows), Decimal(0))
         breakdown = [{
@@ -2302,16 +2379,22 @@ def register(app, deps):
         }] if rows else []
 
         # ---- account activity, newest first --------------------------------
+        seen = {r["c"].id for r in inside}
         acts = []
         for r in led["charges"]:
             raised = to_local(r["c"].created_at).date() if r["c"].created_at else as_at
+            detailed = r["c"].id in seen
             acts.append({"kind": "invoice", "on": raised, "id": r["c"].id,
                          "ref": r["c"].number or "",
                          "heading": "%s — %s" % (
                              STATEMENT_LINE,
                              r["c"].period_label or r["c"].dates_label or ""),
                          "sessions": r["c"].sessions or 0,
-                         "items": _charge_lines(r["c"]),
+                         "detailed": detailed,
+                         # Outside the chosen range an invoice is one line and
+                         # its total. It still counts; it is just not the
+                         # subject of this statement.
+                         "items": _charge_lines(r["c"]) if detailed else [],
                          "amount": r["due"], "charge": r["c"]})
         for p in led["payments"]:
             acts.append({"kind": "payment", "on": p.paid_on, "id": p.id,
@@ -2320,26 +2403,22 @@ def register(app, deps):
         acts.sort(key=lambda a: (a["on"], 0 if a["kind"] == "payment" else 1),
                   reverse=True)
 
-        # ---- the service period the invoices cover -------------------------
-        starts = [c["c"].period_start for c in led["charges"] if c["c"].period_start]
-        ends = [c["c"].period_end for c in led["charges"] if c["c"].period_end]
         # Zero-padded and spelled out the way the house statement writes it:
-        # "01 May - 31 Jul 2026". Not _span_label, which is the app's own
-        # shorthand and collapses a whole month to its name.
-        period = ""
-        if starts and ends:
-            a, b = min(starts), max(ends)
-            period = ("%s \u2013 %s" % (a.strftime("%d %b"), b.strftime("%d %b %Y"))
-                      if a.year == b.year else
-                      "%s \u2013 %s" % (a.strftime("%d %b %Y"),
-                                    b.strftime("%d %b %Y")))
+        # "01 May - 31 Jul 2026".
+        period = ("%s – %s" % (start.strftime("%d %b"), end.strftime("%d %b %Y"))
+                  if start.year == end.year else
+                  "%s – %s" % (start.strftime("%d %b %Y"),
+                                    end.strftime("%d %b %Y")))
 
-        due_by = as_at + timedelta(days=1)
         return {
             "as_at": as_at, "stmt_no": _stmt_no(as_at), "period": period,
-            "due_by": due_by, "ledger": led,
+            "start": start, "end": end,
+            "due_by": as_at + timedelta(days=1), "ledger": led,
             "forward": fwd_total, "current": cur_total,
-            "current_rows": current, "forward_rows": forward,
+            "has_later": bool(later),
+            "in_range": len(inside), "out_range": len(before) + len(after),
+            "sessions_shown": sum(r["c"].sessions or 0 for r in inside),
+            "spans": _stmt_spans(db, did, as_at),
             "breakdown": breakdown, "activity": acts,
             "amount_due": led["balance"], "credit": led["credit"],
             "voided": (db.query(CommissionCharge)
@@ -2356,7 +2435,8 @@ def register(app, deps):
             return datetime.now(tz()).date()
 
     @app.get("/commissions/delegation/{did}/statement", response_class=HTMLResponse)
-    def delegation_statement(request: Request, did: int, as_at: str = "",
+    def delegation_statement(request: Request, did: int, start: str = "",
+                             end: str = "", as_at: str = "",
                              db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
@@ -2364,14 +2444,17 @@ def register(app, deps):
         delegator = db.get(CommissionDelegator, did)
         if not delegator:
             return RedirectResponse("/commissions/delegation", status_code=303)
+        today = _as_at(as_at)
+        a, b = _stmt_range(db, did, start, end, today)
         return render(request, "delegation_statement.html", db, staff,
                       active="delegation", delegator=delegator,
                       is_admin=(staff.role == "admin"),
                       saved=request.session.pop("pay_saved", None),
-                      **_statement_data(db, did, _as_at(as_at)))
+                      **_statement_data(db, did, a, b, today))
 
     @app.get("/commissions/delegation/{did}/statement.pdf")
-    def delegation_statement_pdf(request: Request, did: int, as_at: str = "",
+    def delegation_statement_pdf(request: Request, did: int, start: str = "",
+                                 end: str = "", as_at: str = "",
                                  download: str = "",
                                  db: Session = Depends(get_db)):
         from fastapi.responses import Response
@@ -2383,7 +2466,9 @@ def register(app, deps):
         delegator = db.get(CommissionDelegator, did)
         if not delegator:
             return RedirectResponse("/commissions/delegation", status_code=303)
-        data = _statement_data(db, did, _as_at(as_at))
+        today = _as_at(as_at)
+        a, b = _stmt_range(db, did, start, end, today)
+        data = _statement_data(db, did, a, b, today)
         pdf = commission_invoice_pdf.statement(delegator, data)
         name = "statement-%s-%s.pdf" % (
             re.sub(r"[^A-Za-z0-9]+", "-", delegator.name or "").strip("-").lower(),

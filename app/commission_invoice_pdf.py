@@ -511,8 +511,9 @@ def statement(delegator, data, *, company: str = "") -> bytes:
     flow.append(Paragraph("STATEMENT BREAKDOWN", st["s_h"]))
     cols = [_W * 0.37, _W * 0.21, _W * 0.21, _W * 0.21]
     rows = [[Paragraph("", st["s_th"]),
-             Paragraph("Balance Forward", st["s_thr"]),
-             Paragraph("Current Charges", st["s_thr"]),
+             Paragraph("Other Periods" if data.get("has_later")
+                       else "Balance Forward", st["s_thr"]),
+             Paragraph("Charges &middot; %s" % _pdfsafe(data["period"]), st["s_thr"]),
              Paragraph("Total", st["s_thr"])]]
     style = [("BACKGROUND", (0, 0), (-1, 0), S_TEAL)]
     n = 1
@@ -563,6 +564,12 @@ def statement(delegator, data, *, company: str = "") -> bytes:
     # ---- full detail -----------------------------------------------------
     flow.append(PageBreak())
     flow.append(Paragraph("FULL DETAIL — ACCOUNT ACTIVITY (BY DATE)", st["s_h"]))
+    if data.get("out_range"):
+        flow.append(Paragraph(
+            "Sessions are itemised for %s. Invoices outside that period are "
+            "shown as a single line each — they still count towards the amount "
+            "due." % _pdfsafe(data["period"]), st["s_payl"]))
+        flow.append(Spacer(1, 5))
     acols = [_W * 0.16, _W * 0.62, _W * 0.22]
     arows = [[Paragraph("Date", st["s_th"]), Paragraph("Description", st["s_th"]),
               Paragraph("Amount", st["s_thr"])]]
@@ -582,13 +589,22 @@ def statement(delegator, data, *, company: str = "") -> bytes:
                       Paragraph("", st["s_r"])])
         astyle.append(("BACKGROUND", (0, n), (-1, n), S_TINT))
         n += 1
-        # What the invoice is for, once, then every conduction under it.
-        arows.append(["", Paragraph("%s &nbsp;·&nbsp; %d session%s" % (
+        # What the invoice is for, once, then every conduction under it —
+        # unless it falls outside the chosen period, in which case the heading
+        # carries the total and there is nothing under it at all.
+        detailed = a.get("detailed", True)
+        arows.append(["", Paragraph("%s &nbsp;·&nbsp; %d session%s%s" % (
             _pdfsafe(a["heading"]), a["sessions"],
-            "" if a["sessions"] == 1 else "s"), st["s_head"]),
-            Paragraph("", st["s_r"])])
-        astyle.append(("LINEBELOW", (0, n), (-1, n), 0.5, S_RULE))
+            "" if a["sessions"] == 1 else "s",
+            "" if detailed else " &nbsp;·&nbsp; outside this period"),
+            st["s_head"]),
+            Paragraph(_pesos(a["amount"]) if not detailed else "", st["s_catr"])])
+        astyle.append(("LINEBELOW", (0, n), (-1, n),
+                       0.8 if not detailed else 0.5,
+                       S_INK if not detailed else S_RULE))
         n += 1
+        if not detailed:
+            continue
         for it in a["items"]:
             on = it["on"].strftime("%d %b") if it["on"] else ""
             cell = [Paragraph(_pdfsafe(it["text"]),

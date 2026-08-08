@@ -17,14 +17,9 @@
     <p class="muted small" style="margin:2px 0 0">{{ stmt_no }} ·
       {{ as_at.strftime('%d %b %Y') }}{% if period %} · period {{ period }}{% endif %}</p>
   </div>
+  {% set qs = 'start=' ~ start.isoformat() ~ '&end=' ~ end.isoformat() %}
   <div class="hdact">
-    <form method="get" style="margin:0;display:flex;gap:6px;align-items:center">
-      <input type="date" name="as_at" value="{{ as_at.isoformat() }}"
-             style="width:auto;padding:7px 10px;font-family:inherit"
-             title="Statement date — invoices raised this month count as current charges">
-      <button class="btn">Show</button>
-    </form>
-    <a class="btn primary" href="/commissions/delegation/{{ delegator.id }}/statement.pdf?as_at={{ as_at.isoformat() }}"
+    <a class="btn primary" href="/commissions/delegation/{{ delegator.id }}/statement.pdf?{{ qs }}"
        target="_blank" rel="noopener">Print / PDF</a>
     <a class="btn" href="/commissions/delegation/{{ delegator.id }}">← {{ delegator.name }}</a>
   </div>
@@ -39,6 +34,27 @@
 </div>
 {% endif %}
 
+<form method="get" class="card" style="margin:14px 0 0">
+  <div class="rangepick">
+    <label>Period from<input type="date" name="start" value="{{ start.isoformat() }}"></label>
+    <label>to<input type="date" name="end" value="{{ end.isoformat() }}"></label>
+    <button class="btn primary" type="submit">Generate</button>
+    <span style="flex:1"></span>
+    <span class="muted small" style="margin:0">Quick pick:</span>
+    {% for s in spans %}
+    <a class="btn small {{ 'on' if s.start == start and s.end == end }}"
+       href="?start={{ s.start.isoformat() }}&end={{ s.end.isoformat() }}">{{ s.label }}</a>
+    {% endfor %}
+  </div>
+  <p class="muted small" style="margin:9px 0 0">The period picks which months are
+    itemised — {{ in_range }} invoice{{ 's' if in_range != 1 }},
+    {{ sessions_shown }} session{{ 's' if sessions_shown != 1 }} shown in full below.
+    {% if out_range %}The other {{ out_range }} still count towards the amount due;
+    they appear as a single line each.{% endif %}
+    Nothing is left out of the total — that figure is what {{ delegator.name }}
+    owes today.</p>
+</form>
+
 <div class="stmt-due">
   <div>
     <div class="l">Total amount due</div>
@@ -50,8 +66,8 @@
 
 <h2 class="stmt-h">Statement breakdown</h2>
 <table class="stmt">
-  <thead><tr><th></th><th class="n">Balance forward</th>
-    <th class="n">Current charges</th><th class="n">Total</th></tr></thead>
+  <thead><tr><th></th><th class="n">{{ 'Other periods' if has_later else 'Balance forward' }}</th>
+    <th class="n">Charges · {{ period }}</th><th class="n">Total</th></tr></thead>
   <tbody>
   {% if not breakdown %}
   <tr><td class="muted">Nothing outstanding — the account is clear.</td>
@@ -113,8 +129,9 @@
       <td class="n"></td>
     </tr>
     <tr class="head"><td></td>
-      <td>{{ a.heading }} · {{ a.sessions }} session{{ 's' if a.sessions != 1 }}</td>
-      <td></td></tr>
+      <td>{{ a.heading }} · {{ a.sessions }} session{{ 's' if a.sessions != 1 }}
+        {%- if not a.detailed %} <span class="muted">· outside this period, not itemised</span>{% endif %}</td>
+      <td class="n">{{ peso(a.amount) if not a.detailed }}</td></tr>
     {% for it in a['items'] %}
     <tr {% if it.ot %}class="ot"{% endif %}>
       <td class="day">{{ it.on.strftime('%d %b') if it.on }}</td>
@@ -123,8 +140,10 @@
         {% if it.ref %}<span class="mono muted small"> · {{ it.ref }}</span>{% endif %}</td>
       <td class="n">{{ peso(it.amount) }}</td></tr>
     {% endfor %}
+    {% if a.detailed %}
     <tr class="sub-t"><td></td><td>Invoice subtotal</td>
       <td class="n">{{ peso(a.amount) }}</td></tr>
+    {% endif %}
     {% endif %}
   {% endfor %}
   {% if not activity %}
@@ -184,6 +203,12 @@
 {% endif %}
 
 <style>
+.rangepick{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.rangepick label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0}
+.rangepick input[type=date]{width:auto;padding:7px 10px;font-family:inherit}
+.rangepick .btn.small{padding:5px 10px;font-size:.79rem}
+.rangepick .btn.small.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .stmt-due{display:flex;justify-content:space-between;align-items:center;gap:16px;
   background:#2e8b9e;color:#fff;border-radius:8px;padding:16px 20px;margin:16px 0 4px}
 .stmt-due .l{font-size:1rem;font-weight:700;letter-spacing:.01em}
