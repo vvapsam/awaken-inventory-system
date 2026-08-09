@@ -350,7 +350,22 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
     </div>
     {% endif %}
     {{ detail_card(p, ev) }}
-    {{ reel_howto(ev) }}
+    {# No point rehearsing how to post a Reel while submissions are shut. #}
+    {% if not ev.reels_paused %}{{ reel_howto(ev) }}{% endif %}
+  </div>
+
+  {# ---------------------------------------------------------- paused ----- #}
+  {# The class was called off. They still have the link and they will still tap
+     it, so this has to answer the question they came with rather than show a
+     form that would take a Reel of a class nobody ran. #}
+  {% elif stage == 'paused' %}
+  <div class="body">
+    <div class="hi">Not open yet</div>
+    <p>Reel submissions for {{ ev.name }} aren't open — the class was called off.</p>
+    <div class="alert warn">{{ ev.sponsor or 'Our sponsor' }} and AWAKEN will reschedule your
+      slot. You don't need to do anything: we'll email you the new date, and this same link
+      will open again when it does.</div>
+    {{ detail_card(p, ev) }}
   </div>
 
   {# ---------------------------------------------------------- submit ----- #}

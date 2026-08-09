@@ -217,7 +217,16 @@
     <div><label class="small" style="font-weight:600">Hashtag</label>
       <input name="hashtag" value="{{ ev.hashtag or '' }}" placeholder="#FuelledByKennyRogers"></div>
     <div><label class="small" style="font-weight:600">Reel window (hours after the class)</label>
-      <input name="reel_hours" value="{{ ev.reel_hours }}" style="width:90px"></div>
+      <input name="reel_hours" value="{{ ev.reel_hours }}" style="width:90px">
+      <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0 0">
+        <input type="checkbox" name="reels_paused" style="width:auto;margin:3px 0 0"
+               {{ 'checked' if ev.reels_paused }}>
+        <span><b>Hold submissions shut</b>
+          <span class="muted" style="display:block">For a class that was called off. Anyone
+            opening their link is told it isn't open yet and that their slot will be
+            rescheduled — instead of the window opening by itself a few hours after the end
+            time still sitting in the diary. Untick it when the new date is set.</span></span>
+      </label></div>
     <div><label class="small" style="font-weight:600">Answer by</label>
       <input type="datetime-local" name="confirm_by"
         value="{{ ev.confirm_by|local_dt if ev.confirm_by }}">

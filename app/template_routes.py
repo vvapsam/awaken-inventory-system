@@ -192,7 +192,10 @@ def register(app, deps):
         # routes instead, and it is the same file either way.
         html = html.replace("cid:%s" % event_routes.LOGO_CID,
                             "/static/email-logo.png")
-        html = html.replace("cid:%s" % event_routes.SPONSOR_CID, "")
+        lender = event_routes.sample_sponsor(db)
+        html = html.replace(
+            "cid:%s" % event_routes.SPONSOR_CID,
+            "/events/%d/sponsor-logo" % lender.id if lender else "")
         html = html.replace("cid:%s" % event_routes.PASS_CID,
                             "/static/email-logo.png")
         return HTMLResponse(html)
