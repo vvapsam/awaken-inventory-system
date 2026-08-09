@@ -699,6 +699,23 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 /* Undo is the only control on the receipt, and it must not look like the
    primary action — nobody should tap it by momentum after a scan. */
 .ckundo{padding:11px 22px;color:#8c2c20}
+/* The start time a scan just handed out, on the page a phone's own camera
+   lands on. Same weight as the one in the in-app scanner: it is read out
+   across a queue, so it is the biggest thing on the card. */
+.ckslot{margin:18px auto 0;padding:14px 18px;border-radius:12px;max-width:280px;
+  background:var(--teal-tint);border:1px solid var(--teal)}
+.ckslot .l{font-size:.63rem;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--teal-dark)}
+.ckslot .v{font-size:2.6rem;font-weight:700;letter-spacing:-.03em;line-height:1.1;
+  margin-top:2px;color:var(--teal-dark);font-variant-numeric:tabular-nums}
+.ckslot .s{font-size:.8rem;color:var(--muted);margin-top:2px}
+.ckslot.again{background:#fdf4e3;border-color:#d9b45a}
+.ckslot.again .l,.ckslot.again .v{color:#8a6414}
+.cknext{display:block;width:100%;margin-top:20px;padding:15px;font-size:1.05rem}
+.ckwaves{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+.ckwaves span{background:var(--bg);border:1px solid var(--line);border-radius:999px;
+  padding:3px 12px;font-size:.8rem;white-space:nowrap}
+.ckwaves b{font-size:.92rem}
 
 /* ---- the scanner ------------------------------------------------------ */
 /* A phone held at arm's length in a doorway: the frame is as big as the
