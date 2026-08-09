@@ -455,15 +455,18 @@ def register(app, deps):
         # Confirmed from here on.
         if p.posted:
             return "rewarded"
+        # Before the clock, not after it. A class called off on the morning
+        # still has its end time in the diary, so reading the hold below that
+        # line meant the people who most needed telling — the ones tapping the
+        # link right now, hours before the class was due to end — were handed a
+        # pass to a class that isn't happening, and the hold only bit later.
+        # Anyone already holding a Reel link lands here too, which is the one
+        # place that can answer the question they arrived with.
+        if ev.reels_paused:
+            return "paused"
         ends = _aware(ev.ends_at)
         if not ends or now < ends:
             return "ready"          # confirmed, class hasn't happened yet
-        # A class called off on the morning still has an end time in the diary,
-        # so a few hours later the window would open by itself and start asking
-        # people to post about something that never happened. Held shut here
-        # rather than at the form, so the page and the POST agree.
-        if ev.reels_paused:
-            return "paused"
         deadline = _aware(ev.reel_deadline)
         if deadline and now > deadline:
             return "late"           # window shut, still no Reel
