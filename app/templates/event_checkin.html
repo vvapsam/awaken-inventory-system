@@ -47,15 +47,39 @@
     {% endif %}
   </div>
 
-  {# The only button, and it exists because the cost of scanning the wrong
-     screen is somebody standing at a door while you find a way to reverse it. #}
-  <form method="post" action="/i/{{ who.token }}" style="margin-top:20px">
+  {% if who.slot_time %}
+  {# The start time they just earned. Set large because it is read out loud
+     across a queue, and because it is the one thing on this page the person
+     standing there needs to leave with. #}
+  <div class="ckslot {{ '' if fresh else 'again' }}">
+    <div class="l">{{ 'Start time' if fresh else 'Already has a start time' }}</div>
+    <div class="v">{{ who.slot_time }}</div>
+    <div class="s">Number {{ who.slot_no }}</div>
+  </div>
+  {% endif %}
+
+  {# A phone's own camera app cannot be reopened from a web page, so "scan
+     next" hands them the in-app camera instead — which then stays on between
+     people and never comes back here. #}
+  <a class="btn primary cknext" href="/events/{{ ev.id }}/scan">Scan next</a>
+
+  {# And the undo, because the cost of scanning the wrong screen is somebody
+     standing at a door while you find a way to reverse it. #}
+  <form method="post" action="/i/{{ who.token }}" style="margin-top:12px">
     <input type="hidden" name="undo" value="1">
     <button class="btn ckundo">Undo — wrong person</button>
   </form>
 </div>
 
+{% if waves %}
+<div class="ckwaves">
+  {% for w in waves.waves %}
+  <span>{{ w.time }} <b>{{ w.n }}</b>{% if w.cap %}/{{ w.cap }}{% endif %}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
 <p class="muted small" style="text-align:center;margin-top:16px">
-  Scanning one at a time? <a href="/events/{{ ev.id }}/scan">Open the scanner</a>
-  and it stays on between people.</p>
+  Scanning a few in a row? <a href="/events/{{ ev.id }}/scan">The in-app scanner</a>
+  stays on between people, so you never come back to this page.</p>
 {% endblock %}
