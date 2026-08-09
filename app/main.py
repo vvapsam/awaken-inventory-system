@@ -711,6 +711,14 @@ def startup():
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS slot_a_cap INTEGER; "
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS slot_b_time VARCHAR; "
                 "END IF; END $$;"))
+            # Reel submissions held shut by hand. A cancelled class still
+            # has an end time in the diary, so without this the window
+            # opens on its own and asks for a Reel of a class nobody ran.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  reels_paused BOOLEAN NOT NULL DEFAULT FALSE; "
+                "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
             # visible and reversible.

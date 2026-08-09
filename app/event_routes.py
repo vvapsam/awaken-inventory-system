@@ -458,6 +458,12 @@ def register(app, deps):
         ends = _aware(ev.ends_at)
         if not ends or now < ends:
             return "ready"          # confirmed, class hasn't happened yet
+        # A class called off on the morning still has an end time in the diary,
+        # so a few hours later the window would open by itself and start asking
+        # people to post about something that never happened. Held shut here
+        # rather than at the form, so the page and the POST agree.
+        if ev.reels_paused:
+            return "paused"
         deadline = _aware(ev.reel_deadline)
         if deadline and now > deadline:
             return "late"           # window shut, still no Reel
@@ -1136,6 +1142,7 @@ def register(app, deps):
             capacity: str = Form("30"), bring: str = Form(""), perk: str = Form(""),
             handles: str = Form(""), hashtag: str = Form(""),
             reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
+            reels_paused: str = Form(""),
             confirm_by: str = Form(""),
             mode: str = Form(EVENT_INVITE), signup_open: str = Form(""),
             signup_closes: str = Form(""), slug: str = Form(""),
@@ -1194,6 +1201,7 @@ def register(app, deps):
         ev.bring, ev.perk = bring.strip(), perk.strip()
         ev.handles, ev.hashtag = handles.strip(), hashtag.strip()
         ev.reel_hours = num(reel_hours, 48) or 48
+        ev.reels_paused = (reels_paused == "on")
         # Zero is a real answer here — it switches the rolling clock off and
         # hands the whole job to the fixed date below.
         ev.confirm_hours = num(confirm_hours, 48)
@@ -2298,6 +2306,23 @@ def _window_note(html) -> str:
             % (BLACK, PANEL, html))
 
 
+def _warn_note(html) -> str:
+    """The same callout, in amber, for the one email you hope never to send.
+
+    _window_note is deliberately neutral because "we're holding your slot" is
+    not a warning. A cancellation is: the reader has to change their morning,
+    and the line that tells them so should be the first thing their eye lands
+    on. Amber is the only place in these emails that colour carries meaning,
+    which is exactly why it is kept for this.
+    """
+    return ('<table width="100%%" cellpadding="0" cellspacing="0" '
+            'style="margin:18px 0 20px"><tr>'
+            '<td width="3" style="background:#e0a010;border-radius:2px 0 0 2px"></td>'
+            '<td style="background:#fdf5e0;padding:13px 16px;font-size:14px;'
+            'color:#5c4708;border-radius:0 8px 8px 0">%s</td></tr></table>'
+            % html)
+
+
 def _rewards_block(ev, title) -> str:
     """The reward, or the choice of rewards.
 
@@ -2439,7 +2464,8 @@ def _mail_blocks(ev, p, url, key) -> tuple:
         "block.checklist": lambda *a: _checklist(ev, p),
         "block.qr": lambda *a: _qr_block(ev, p),
     }
-    pairs = {"block.note": lambda inner, *a: _window_note(inner)}
+    pairs = {"block.note": lambda inner, *a: _window_note(inner),
+             "block.warn": lambda inner, *a: _warn_note(inner)}
     return blocks, pairs
 
 def _compose(db, ev, p, url, key, src=None) -> tuple:
@@ -2571,6 +2597,19 @@ def _sample_pair():
     return ev, p
 
 
+def sample_sponsor(db):
+    """A real sponsor logo for the stand-in event to wear, if there is one.
+
+    The template editor's preview had the sponsor's name set but no artwork,
+    so it drew the fallback text where a live send draws the mark. That made
+    the preview quietly wrong about the one thing people check it for. The
+    newest event that has a logo lends it — the picture in the editor is then
+    the picture that goes out.
+    """
+    return (db.query(Event).filter(Event.sponsor_logo.isnot(None))
+            .order_by(Event.id.desc()).first())
+
+
 def sample_email(db, key, subject_src, body_src) -> tuple:
     """(subject, html) for one template source, rendered off the stand-in.
 
@@ -2579,6 +2618,11 @@ def sample_email(db, key, subject_src, body_src) -> tuple:
     than no preview at all.
     """
     ev, p = _sample_pair()
+    lender = sample_sponsor(db)
+    if lender is not None:
+        ev.sponsor = lender.sponsor or ev.sponsor
+        ev.sponsor_logo = lender.sponsor_logo
+        ev.sponsor_logo_mime = lender.sponsor_logo_mime
     url = "https://awakengym.com/e/7Kq2f9"
     src = (subject_src, body_src)
     if key == "shell":

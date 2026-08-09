@@ -1429,6 +1429,11 @@ class Event(Base):
 
     #: Hours after the class within which a Reel has to be posted.
     reel_hours = Column(Integer, nullable=False, default=48)
+    #: Reel submissions held shut, whatever the clock says. A class
+    #: called off on the morning still has an end time in the diary, so
+    #: the window would open on its own a few hours later and start
+    #: asking people for a Reel of a class that never happened.
+    reels_paused = Column(Boolean, nullable=False, default=False)
     #: Hours from *their own* invitation within which somebody has to answer.
     #: Counted per person rather than from one fixed date, because somebody
     #: added to the list on the Thursday would otherwise inherit a deadline
