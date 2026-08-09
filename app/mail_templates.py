@@ -88,6 +88,16 @@ ${if record.review_note}${block.note}<b>${record.review_note}</b>${/block.note}$
    your details and your place in the queue are exactly where you left them.</p>
 ${block.button "Pick up where I left off →" "Takes a minute"}"""
 
+#: The one nobody wants to send. Shortest of the lot on purpose: somebody
+#: reading "cancelled" has stopped taking in sentences, so it says the thing,
+#: says what happens next, and gets out of the way. No button, because there is
+#: nothing for them to do — and a call-to-action under a cancellation reads as
+#: though the class is still on.
+CANCELLED_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">Today\u2019s class is cancelled \u26a0\ufe0f</h1>
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">Today\u2019s <b>${event.name}</b>${if event.sponsor} with ${event.sponsor}${/if} is cancelled due to the weather.</p>
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">We\u2019ll announce the new schedule as soon as it\u2019s confirmed \u2014 you don\u2019t need to do anything, and your slot is safe.</p>
+${block.note}Stay safe out there, everyone. See you soon! \U0001f64f\u2614${/block.note}"""
+
 REEL_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 4px">Thank you, ${record.first_name} 🙌</h1>
 <p style="color:#6b7683;font-size:14px;margin:0 0 16px">${event.name}</p>
 <p style="font-size:15px;margin:0 0 16px;color:#2b3642">You turned up and worked —
@@ -176,6 +186,17 @@ TEMPLATES = [
         "blocks": {"block.button": "the teal call-to-action"},
         "pairs": {"block.note": "the bordered callout"},
         "body": RETURNED_BODY,
+    },
+    {
+        "key": "cancelled", "name": "Called off",
+        "blurb": "\u201cToday\u2019s class is cancelled.\u201d Weather, or anything else.",
+        "where": "every event",
+        "subject": "${event.name}${if event.sponsor} x ${event.sponsor}${/if} "
+                   "Update \u26a0\ufe0f",
+        "values": dict(EVENT_VALUES, **PERSON_VALUES),
+        "blocks": {"block.facts": "When \u00b7 Where \u00b7 Bring \u00b7 After"},
+        "pairs": {"block.note": "the bordered callout"},
+        "body": CANCELLED_BODY,
     },
     {
         "key": "reel", "name": "The Reel email",

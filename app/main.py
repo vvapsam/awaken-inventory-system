@@ -695,6 +695,8 @@ def startup():
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  last_call_at TIMESTAMPTZ; "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  cancel_email_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  slot_no INTEGER; "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  slot_time VARCHAR; "

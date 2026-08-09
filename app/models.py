@@ -1668,6 +1668,10 @@ class EventParticipant(Base):
     #: When they were scanned in at the door. The QR on their page is the
     #: fast path; the tracker has a button for the phone that died on the way.
     arrived_at = Column(DateTime(timezone=True))
+    #: When they were told the class was called off. Stamped so a second send
+    #: defaults to whoever has not had it — a cancellation that arrives twice
+    #: reads as a second cancellation, and somebody rings to ask which.
+    cancel_email_at = Column(DateTime(timezone=True))
     #: Their place in the arrival order, and the start time it earned them.
     #: The number is kept as well as the time because it is what makes the
     #: assignment checkable — "why am I in the second wave" has an answer.

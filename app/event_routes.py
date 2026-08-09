@@ -840,10 +840,17 @@ def register(app, deps):
         fresh = not p.arrived_at
         if fresh:
             p.arrived_at = datetime.now(timezone.utc)
+            # The same assignment the in-app scanner does. This is the path a
+            # phone's own camera app takes — point it at a code and it opens
+            # this URL — so it is the one most arrivals actually come through.
+            # Leaving the slot logic only in the other scanner meant most
+            # people got checked in with no start time at all.
+            _assign_slot(db, p.event, p)
             db.commit()
         return render(request, "event_checkin.html", db, staff, active="events",
                       ev=p.event, who=p, stage=_stage(p), c=counts(p.event),
-                      fresh=fresh)
+                      fresh=fresh, waves=_wave_counts(p.event)
+                      if p.event.slot_a_time else None)
 
     @app.post("/i/{token}")
     def event_checkin_mark(request: Request, token: str,
@@ -1649,7 +1656,8 @@ def register(app, deps):
                    else "%s/e/%s" % (base, p.token))
             build = {"reel": _reel_mail, "finish": _finish_mail,
                      "returned": _returned_mail,
-                     "lastcall": _lastcall_mail}.get(kind, _invite_mail)
+                     "lastcall": _lastcall_mail,
+                     "cancelled": _cancelled_mail}.get(kind, _invite_mail)
             subject, text, html = build(db, ev, p, url)
             ok, detail = mailer.send(p.email, subject, text, html=html,
                                      inline=inline or None)
@@ -1661,6 +1669,8 @@ def register(app, deps):
                     p.nudged_at = now
                 elif kind == "reel":
                     p.reel_email_at = now
+                elif kind == "cancelled":
+                    p.cancel_email_at = now
                 elif kind == "lastcall":
                     # Not invited_at: that is "when we first asked", and the
                     # per-person confirm clock is counted from it. Restarting
@@ -1720,6 +1730,10 @@ def register(app, deps):
              "blurb": "Carries your reason for sending one back, when there is "
                       "one on the row.",
              "ok": True, "why": "usually from To review"},
+            {"key": "cancelled", "name": "Called off",
+             "blurb": "\u201cToday's class is cancelled.\u201d Goes to everyone "
+                      "who thinks they're coming, and everyone still deciding.",
+             "ok": True, "why": "check the wording first"},
         ]
 
     def mail_lists(ev) -> dict:
@@ -1773,6 +1787,13 @@ def register(app, deps):
             "unfinished": [p for p in mailable
                            if p.pay_status == PAY_DRAFT and not p.nudged_at],
             "unfinished_all": [p for p in mailable if p.pay_status == PAY_DRAFT],
+            # Called off. Everybody who thinks they are coming, plus everybody
+            # still deciding — a cancellation is the one email that has to
+            # reach people who never replied, because they are the ones most
+            # likely to turn up at a locked door. Declined people are left out:
+            # they already said they weren't coming.
+            "cancelled": [p for p in askable if not p.cancel_email_at],
+            "cancelled_all": askable,
             # Not a send list — a to-do for you. Their link still works; it
             # just has to reach them some other way.
             "no_email": [p for p in live if not looks_like_email(p.email or "")],
@@ -1825,6 +1846,9 @@ def register(app, deps):
         elif kind == "lastcall":
             pool = (lists["lastcall_all"] if who == "all"
                     else lists["lastcall"])
+        elif kind == "cancelled":
+            pool = (lists["cancelled_all"] if who == "all"
+                    else lists["cancelled"])
         elif kind == "returned":
             # There is no sensible "everyone" for this one — it carries a reason
             # written about one payment. Reachable only by ticking names, which
@@ -1874,7 +1898,8 @@ def register(app, deps):
                else "%s/e/%s" % (base, who.token))
         build = {"reel": _reel_mail, "finish": _finish_mail,
                  "returned": _returned_mail,
-                 "lastcall": _lastcall_mail}.get(kind, _invite_mail)
+                 "lastcall": _lastcall_mail,
+                 "cancelled": _cancelled_mail}.get(kind, _invite_mail)
         subject, _text, html = build(db, ev, who, url)
         # The inline marks are Content-IDs in a real message; a browser needs
         # the routes instead, so the preview swaps them.
@@ -2447,6 +2472,10 @@ def _lastcall_mail(db, ev, p, url):
 
 def _reel_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "reel")
+
+
+def _cancelled_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "cancelled")
 
 
 def _shell(db, ev, body, src=None) -> str:
