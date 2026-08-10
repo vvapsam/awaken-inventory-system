@@ -601,6 +601,21 @@ def register(app, deps):
                         func.lower(EventParticipant.email) == email.lower())
                 .first())
         if seen:
+            # Somebody put on the list by hand, now registering themselves.
+            # Their row has a name and an email and nothing else — no rate, no
+            # pay_status — so without this it would bounce them back to a page
+            # that has no amount to ask for, forever. Adopt the row: it keeps
+            # one person as one row, and keeps whatever was already true of
+            # them (their slot, their place in the order).
+            if seen.pay_status is None:
+                seen.first_name, seen.last_name = first, last
+                seen.name = "%s %s" % (first, last)
+                seen.mobile, seen.sex = mobile, sex
+                seen.tier = picked["key"]
+                seen.amount = picked["price"]
+                seen.pay_status = PAY_DRAFT
+                seen.submitted_at = None
+                db.commit()
             resp = RedirectResponse("/r/%s/%s" % (slug, seen.token), status_code=303)
             resp.set_cookie("reg_%d" % ev.id, seen.token, max_age=60 * 60 * 24 * 60,
                             httponly=True, samesite="lax")
@@ -618,8 +633,17 @@ def register(app, deps):
         return resp
 
     def _reg(db, slug, token):
+        """Their row on this event's registration, at whatever stage.
+
+        Deliberately not `p.registering`. That property means "has a
+        pay_status", which somebody added to the list by hand does not — and
+        they are exactly the person most likely to be holding one of these
+        links, because the finish-your-registration email hands them one. A
+        list that could be sent an email to a page that then denied knowing
+        them was the bug; the row exists, so the page exists.
+        """
         p = _participant(db, token)
-        if not p or not p.registering or p.event.slug != slug:
+        if not p or p.event.slug != slug or p.event.mode != EVENT_OPEN:
             return None
         return p
 
@@ -639,10 +663,22 @@ def register(app, deps):
             step = 4
         elif p.pay_status == PAY_RETURNED:
             step = 3
+        elif p.pay_status is None:
+            # Added to the list by hand and never registered. The payment step
+            # cannot draw for them — there is no rate on the row, so there is
+            # no amount to ask for — so they get the details form with what we
+            # already know filled in. Submitting it adopts this row rather than
+            # making a second one; see signup_start.
+            step = 0
         elif ev.external_url and not p.external_done_at:
             step = 2
         else:
             step = 3
+        if step == 0:
+            salt, challenge, (qa, qb) = _mint_pow(request, ev)
+            return templates.TemplateResponse("event_signup.html", _signup_ctx(
+                request, ev, p, step=0, salt=salt, challenge=challenge,
+                qa=qa, qb=qb, err=request.query_params.get("err", "")))
         return templates.TemplateResponse("event_signup.html", _signup_ctx(
             request, ev, p, step=step, tier=_tier(ev, p.tier),
             err=request.query_params.get("err", "")))
