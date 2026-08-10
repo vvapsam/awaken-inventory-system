@@ -1807,3 +1807,125 @@ class EmailTemplate(Base):
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
     updated_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     updated_by = relationship("Staff", foreign_keys=[updated_by_id])
+
+
+# ---------------------------------------------------------------------------
+# Event planning
+#
+# A corporate enquiry is not an event yet. It is weeks of scope, budget
+# options, equipment lists and a run sheet, argued over with somebody on the
+# client's side who does not have a login here and never will. That is a
+# different object from an Event, which assumes a date, a slug and a list of
+# participants — so it lives in its own table rather than as fifteen nullable
+# columns bolted onto one.
+#
+# The whole editable pack is kept as one JSON document. It is deliberate. The
+# alternative is a table per section — scope lines, checklist tasks, budget
+# rows, stations, staffing, run sheet — which is a dozen tables and a dozen
+# migrations to add one column to a planning document nobody queries across.
+# Nothing here is reported on, summed across plans or joined to; it is read and
+# written whole, by one person at a time. The two numbers that *are* worth
+# asking about across plans — the headcount and the chosen total — are lifted
+# out into their own columns so the list screen never has to open the document.
+# ---------------------------------------------------------------------------
+
+#: How long an external planning link stays good for. Longer than a sponsor's
+#: roster because planning runs for months, not the week around a class.
+PLAN_LINK_DAYS = 120
+
+
+class EventPlan(Base):
+    """One planning pack, for one client, with its own external link."""
+    __tablename__ = "event_plans"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    #: Who it is for — "San Miguel". Kept as free text rather than a link to a
+    #: person or a delegator, because at the point somebody starts planning
+    #: there is often nothing in the system to point at yet.
+    client = Column(String)
+    #: The whole editable document. See plan_seed.py for the shape.
+    data = Column(Text, nullable=False, default="{}")
+    #: Lifted out of the document so the list screen can show them without
+    #: parsing every plan. Written by the same save that writes `data`, and
+    #: treated as a cache of it — the document is what is true.
+    headcount = Column(Integer)
+    chosen_option = Column(String)
+    chosen_total = Column(Numeric(12, 2))
+    archived_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    updated_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+
+    #: The external link. One live link per plan, guarded the same way a
+    #: sponsor's roster is: the token stops it being found, the password stops
+    #: a forwarded link working for whoever it was forwarded to.
+    token = Column(String, unique=True)
+    pass_hash = Column(String)
+    pass_salt = Column(String)
+    link_made_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True))
+    revoked_at = Column(DateTime(timezone=True))
+    first_opened_at = Column(DateTime(timezone=True))
+    last_opened_at = Column(DateTime(timezone=True))
+    opens = Column(Integer, nullable=False, default=0)
+
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+    updated_by = relationship("Staff", foreign_keys=[updated_by_id])
+    comments = relationship(
+        "EventPlanComment", back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="EventPlanComment.created_at")
+
+    @property
+    def is_expired(self):
+        return bool(self.expires_at and self.expires_at < now_utc())
+
+    @property
+    def has_link(self):
+        return bool(self.token)
+
+    @property
+    def is_live(self):
+        return bool(self.token) and not self.revoked_at and not self.is_expired
+
+    @property
+    def open_comments(self):
+        return [c for c in self.comments if not c.resolved_at]
+
+    @property
+    def title(self):
+        return "%s — %s" % (self.name, self.client) if self.client else self.name
+
+
+class EventPlanComment(Base):
+    """Something the other side wanted to say, pinned to where they said it.
+
+    The anchor is a string the page understands — "budget:addon:3",
+    "checklist:12", "tab:Scope" — rather than a foreign key, because the thing
+    being commented on lives inside a JSON document and may be deleted by the
+    next edit. A comment whose anchor no longer resolves is not lost: it falls
+    back to the section it was left in, which is still enough to answer "what
+    were they objecting to".
+    """
+    __tablename__ = "event_plan_comments"
+    id = Column(Integer, primary_key=True)
+    plan_id = Column(Integer, ForeignKey("event_plans.id", ondelete="CASCADE"),
+                     nullable=False)
+    #: Where on the page. Free-form on purpose — see the class docstring.
+    anchor = Column(String, nullable=False, default="")
+    #: A human-readable version of the anchor, captured when the comment was
+    #: written. The row it pointed at may be gone by the time you read it.
+    anchor_label = Column(String)
+    #: They type their name once and the page remembers it. No accounts.
+    author = Column(String, nullable=False, default="")
+    body = Column(Text, nullable=False, default="")
+    #: True when it came from inside the portal rather than off the link, so a
+    #: reply from AWAKEN reads differently from the client's own note.
+    from_staff = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    resolved_at = Column(DateTime(timezone=True))
+    resolved_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+
+    plan = relationship("EventPlan", back_populates="comments")
+    resolved_by = relationship("Staff", foreign_keys=[resolved_by_id])

@@ -3531,3 +3531,18 @@ template_routes.register(app, {
     "render": render,
     "require_admin": require_admin,
 })
+
+
+# ================= Event planning =================
+# The weeks before there is an event: scope, budget options, equipment,
+# staffing and a run sheet, with one password-gated link the client reads and
+# comments on. Same registration pattern again.
+from . import plan_routes  # noqa: E402
+
+plan_routes.register(app, {
+    "render": render,
+    "require": require,
+    "require_admin": require_admin,
+    # The client's copy is public — there is no login on that side.
+    "templates": templates,
+})
