@@ -1743,6 +1743,24 @@ class EventParticipant(Base):
         both = " ".join(x for x in (self.first_name, self.last_name) if x)
         return both or (self.name or "")
 
+    #: First and last for a form to pre-fill, whichever way the row was made.
+    #: A self-registration fills first_name/last_name; a row added by hand off
+    #: a list has only `name`. Splitting on the last space is a guess, but it
+    #: is a guess the person can correct in the box, which is better than
+    #: handing them two empty fields and their own name in the greeting.
+    @property
+    def given(self) -> str:
+        if self.first_name:
+            return self.first_name
+        return (self.name or "").strip().split(" ")[0] if self.name else ""
+
+    @property
+    def family(self) -> str:
+        if self.last_name:
+            return self.last_name
+        bits = (self.name or "").strip().split(" ")
+        return " ".join(bits[1:]) if len(bits) > 1 else ""
+
     @property
     def registering(self) -> bool:
         """A self-registration, at any stage."""
