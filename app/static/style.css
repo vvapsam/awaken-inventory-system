@@ -787,3 +787,20 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 .waves span{background:var(--panel);border:1px solid var(--line);border-radius:999px;
   padding:2px 10px;font-size:.78rem;white-space:nowrap}
 .waves b{font-size:.9rem}
+
+/* --- Proof of payment, over the page ---------------------------------------
+   Checking a receipt happens while you are looking at the row it belongs to.
+   A new tab loses your place in a list of sixty, and the answer is usually
+   "yes, fine" within a second of seeing it. */
+.proofbox{position:fixed;inset:0;z-index:90;background:rgba(12,18,24,.72);
+  display:flex;align-items:center;justify-content:center;padding:22px}
+.proofbox[hidden]{display:none}
+.proofcard{background:var(--bg);border-radius:14px;max-width:560px;width:100%;
+  max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 22px 60px rgba(8,14,20,.4)}
+.proofhd{display:flex;align-items:center;gap:10px;padding:13px 16px;
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+/* The picture scrolls inside the card rather than the card growing past the
+   window — a tall receipt screenshot is the normal case, not the exception. */
+.proofscroll{flex:1;overflow:auto;background:#0d1116;min-height:120px}
+.proofcard img{display:block;width:100%;height:auto}

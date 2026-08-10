@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ plan.name }}{% if plan.client %} — {{ plan.client }}{% endif %}</title>
+<style>
+
+  :root{
+    --bg:#f4f6fb; --panel:#ffffff; --panel2:#f4f7fb; --line:#e4e9f1; --line2:#d3dbe7;
+    --ink:#1f2a37; --muted:#5c6b7e; --faint:#8a97a8;
+    --a:#0a7ea4; --aSoft:#e6f4f9; --b:#c81e78; --bSoft:#fcebf4;
+    --good:#0f9d63; --goodSoft:#e2f5ec; --warn:#c07a10; --warnSoft:#fbf1dd; --bad:#d64545;
+    --edit:#f7f9fc;
+    --shadow:0 1px 2px rgba(20,40,80,.06), 0 10px 30px rgba(20,40,80,.07);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:22px 16px 70px; line-height:1.45;
+  }
+  .wrap{max-width:1200px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 3px;letter-spacing:.2px;color:#16202c}
+  .sub{color:var(--muted);font-size:13px}
+  .note{color:var(--faint);font-size:12px;font-style:italic}
+  h2.tabtitle{font-size:17px;margin:2px 0 4px;color:#16202c}
+  .lead{color:var(--muted);font-size:13.5px;margin:0 0 16px;max-width:900px}
+
+  /* tab nav */
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 20px;border-bottom:1px solid var(--line);padding-bottom:0}
+  .tab{
+    border:1px solid transparent;border-bottom:none;background:transparent;color:var(--muted);
+    padding:9px 14px;font-size:13.5px;border-radius:10px 10px 0 0;cursor:pointer;position:relative;top:1px;
+  }
+  .tab:hover{color:var(--ink);background:#eaeff6}
+  .tab.active{color:var(--a);background:var(--panel);border-color:var(--line);border-bottom-color:var(--panel);font-weight:650;box-shadow:0 -2px 0 var(--a) inset}
+  .tab .badge{font-size:11px;color:var(--faint);margin-left:5px;font-variant-numeric:tabular-nums}
+  .tab.active .badge{color:var(--a)}
+
+  section.page{display:none;animation:fade .2s}
+  section.page.show{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
+  .card .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fbfcfe}
+  .card .hd .t{font-weight:650;font-size:14px}
+  .card .hd .d{color:var(--faint);font-size:12px}
+  .card .bd{padding:4px 0}
+
+  table{border-collapse:collapse;width:100%;font-size:13.3px}
+  thead th{background:#f1f5fa;color:var(--muted);font-size:11.5px;font-weight:700;text-align:left;
+    padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;letter-spacing:.3px}
+  thead th.r{text-align:right} thead th.c{text-align:center}
+  tbody td{padding:7px 12px;border-bottom:1px solid #eef2f7;vertical-align:top}
+  tbody tr:hover{background:#f7fafd}
+  td.c{text-align:center} td.r{text-align:right;font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)} .faint{color:var(--faint);font-size:12px}
+
+  /* editable cells */
+  [contenteditable]{outline:none;border-radius:5px;padding:1px 4px;margin:-1px -4px;transition:.12s}
+  [contenteditable]:hover{background:#eef3f9}
+  [contenteditable]:focus{background:#fff;box-shadow:inset 0 0 0 1.5px var(--a)}
+  input.f, select.f{
+    background:var(--edit);border:1px solid var(--line2);color:var(--ink);border-radius:8px;
+    padding:6px 9px;font:inherit;font-size:13px;
+  }
+  input.f:focus,select.f:focus{outline:none;border-color:var(--a);box-shadow:0 0 0 3px var(--aSoft)}
+  input.num{text-align:right;font-variant-numeric:tabular-nums}
+
+  /* status selects */
+  select.status{border:1px solid transparent;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:650;cursor:pointer;-webkit-appearance:none;appearance:none;text-align:center}
+  select.status.s0{background:#eef1f5;color:#5c6b7e;border-color:#e0e5ec}
+  select.status.s1{background:var(--warnSoft);color:var(--warn);border-color:#f0dcb4}
+  select.status.s2{background:var(--goodSoft);color:var(--good);border-color:#c3e8d5}
+
+  .chk{width:17px;height:17px;accent-color:var(--good);cursor:pointer}
+  tr.done td{background:#fbfdfc}
+  tr.done td .name{text-decoration:line-through;color:var(--faint)}
+
+  /* phase / group header rows */
+  tr.phase td{background:var(--aSoft);border-top:1px solid #cfe7f0;border-bottom:1px solid #cfe7f0}
+  tr.phase .pt{font-size:12px;letter-spacing:.5px;text-transform:uppercase;font-weight:800;color:var(--a)}
+  tr.grp td{background:var(--warnSoft)}
+  tr.grp .gt{font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;font-weight:800;color:var(--warn)}
+
+  /* progress bar */
+  .prog{display:flex;align-items:center;gap:10px;min-width:220px}
+  .bar{flex:1;height:9px;background:#e7ecf3;border-radius:20px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,#12b06e,#0f9d63);width:0;transition:.3s;border-radius:20px}
+  .prog .pct{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+
+  /* overview decisions */
+  .kv{display:grid;grid-template-columns:200px 1fr 260px;gap:0}
+  .kv > div{padding:10px 12px;border-bottom:1px solid #eef2f7}
+  .kv .k{font-weight:650}
+  .kv .hdr{background:#f1f5fa;color:var(--muted);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .kv input.f{width:100%}
+  @media(max-width:720px){.kv{grid-template-columns:1fr}}
+
+  /* scope */
+  .scopegrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.scopegrid{grid-template-columns:1fr}}
+  .scard{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .scard.full{grid-column:1 / -1}
+  .scard .sh{padding:11px 15px;border-bottom:1px solid var(--line);background:#fbfcfe;font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:8px}
+  .scard .sh .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .dot.in{background:var(--good)} .dot.out{background:var(--bad)} .dot.del{background:var(--a)}
+  .dot.asm{background:var(--warn)} .dot.con{background:#7c5cf0} .dot.suc{background:var(--good)} .dot.obj{background:var(--a)}
+  .scard .sb{padding:8px 10px}
+  ul.slist{list-style:none;margin:0;padding:0}
+  ul.slist li{display:flex;gap:8px;align-items:flex-start;padding:5px 6px;border-radius:8px}
+  ul.slist li:hover{background:#f7fafd}
+  ul.slist li .mk{color:var(--faint);flex:none;line-height:1.5}
+  ul.slist li .tx{flex:1;font-size:13.4px}
+  ul.slist li .rm{opacity:0;transition:.12s}
+  ul.slist li:hover .rm{opacity:1}
+  .objtext{padding:12px 15px;font-size:14px;line-height:1.55}
+  .addlist{padding:6px 12px 12px}
+  .addlist button{font-size:12.5px}
+  .about{background:linear-gradient(180deg,#fbfdff,#f6f9fd);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:18px;box-shadow:var(--shadow)}
+  .about h3{margin:0 0 6px;font-size:14px}
+  .about p{margin:0;color:var(--muted);font-size:13.5px}
+  .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .pill{background:var(--aSoft);border:1px solid #cfe7f0;border-radius:20px;padding:5px 11px;font-size:12px;color:var(--a);font-weight:600}
+
+  /* buttons */
+  button.btn{font:inherit;cursor:pointer;border-radius:9px;border:1px solid var(--line2);
+    background:#fff;color:var(--ink);padding:8px 13px;font-size:13px;transition:.15s;box-shadow:0 1px 1px rgba(20,40,80,.04)}
+  button.btn:hover{border-color:var(--a);color:var(--a);background:var(--aSoft)}
+  button.btn.ghost{background:transparent;box-shadow:none}
+  .rm{border:none;background:transparent;color:var(--faint);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px}
+  .rm:hover{color:var(--bad);background:#fdeaea}
+  .addmini{border:1px solid var(--line2);background:#fff;color:var(--muted);border-radius:6px;font-size:11px;padding:2px 9px;cursor:pointer;margin-left:10px;font-weight:600;vertical-align:middle}
+  .addmini:hover{border-color:var(--a);color:var(--a);background:var(--aSoft)}
+  .addrow{padding:10px 12px}
+
+  /* ===== budget-specific ===== */
+  .bar2{display:flex;flex-wrap:wrap;gap:14px;align-items:center;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:14px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .bar2 label{font-size:13px;color:var(--muted)}
+  .bar2 input[type=number]{width:88px;background:var(--edit);border:1px solid var(--line2);color:var(--ink);
+    border-radius:8px;padding:7px 9px;font-size:14px;font-variant-numeric:tabular-nums}
+  .bar2 input[type=number]:focus{outline:none;border-color:var(--a);box-shadow:0 0 0 3px var(--aSoft)}
+  .spacer{flex:1}
+  .chooser{display:flex;gap:10px;flex-wrap:wrap}
+  .choose-btn{display:flex;flex-direction:column;gap:2px;min-width:150px;text-align:left;padding:9px 13px;
+    border-radius:11px;border:1.5px solid var(--line2);background:#fff;cursor:pointer;transition:.15s}
+  .choose-btn:hover{border-color:var(--line2);box-shadow:0 2px 8px rgba(20,40,80,.06)}
+  .choose-btn .k{font-size:12px;color:var(--muted)}
+  .choose-btn .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+  .choose-btn.a.sel{border-color:var(--a);background:var(--aSoft)}
+  .choose-btn.b.sel{border-color:var(--b);background:var(--bSoft)}
+  .choose-btn .tag{color:var(--good);display:none;font-size:11px;font-weight:700}
+  .choose-btn.sel .tag{display:inline}
+  .accentA{color:var(--a)} .accentB{color:var(--b)}
+  thead.grp2 th{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--faint);background:#f1f5fa;
+    padding:9px 10px;text-align:center;border-bottom:1px solid var(--line);font-weight:700}
+  thead.grp2 th.a-h{color:var(--a)} thead.grp2 th.b-h{color:var(--b)}
+  .colsep{border-left:1px solid var(--line)}
+  input.cell{width:92px;background:var(--edit);border:1px solid var(--line);color:var(--ink);border-radius:7px;
+    padding:5px 7px;font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+  input.cell.cnt{width:60px}
+  input.cell:hover{border-color:var(--line2)}
+  input.cell:focus{outline:none;border-color:var(--a);background:#fff;box-shadow:0 0 0 3px var(--aSoft)}
+  .b-col input.cell:focus{border-color:var(--b);box-shadow:0 0 0 3px var(--bSoft)}
+  .sub-a{color:#0a7ea4;font-weight:600} .sub-b{color:#c81e78;font-weight:600}
+  tr.section2 td{background:var(--warnSoft);padding:11px 10px;border-bottom:1px solid #f0dcb4;border-top:1px solid #f0dcb4}
+  tr.section2 .st{font-size:12px;letter-spacing:.6px;text-transform:uppercase;font-weight:800;color:var(--warn)}
+  tr.section2 .sd{font-size:11.5px;color:#a98328;font-weight:400;text-transform:none;letter-spacing:0}
+  tr.subtotal td{background:#f5f8fc;font-weight:700;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  tr.off{opacity:.45} tr.off input.cell{opacity:.6}
+  .inc input{width:16px;height:16px;accent-color:var(--good);cursor:pointer}
+  .totals{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.totals{grid-template-columns:1fr}}
+  .tcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+  .tcard.a{border-top:3px solid var(--a)} .tcard.b{border-top:3px solid var(--b)}
+  .tcard.a.sel{box-shadow:0 0 0 2px var(--a), var(--shadow)}
+  .tcard.b.sel{box-shadow:0 0 0 2px var(--b), var(--shadow)}
+  .tcard h3{margin:0 0 10px;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+  .tcard h3 .p2{font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--good);border:1px solid var(--good);border-radius:20px;padding:2px 8px;opacity:0;transition:.2s}
+  .tcard.sel h3 .p2{opacity:1}
+  .trow{display:flex;justify-content:space-between;padding:5px 0;font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .trow.big{border-top:1px solid var(--line);margin-top:6px;padding-top:10px;color:var(--ink);font-size:17px;font-weight:800}
+  .trow.head{color:var(--ink);font-weight:600}
+  .cph{font-size:12.5px;color:var(--faint);margin-top:2px}
+  .coreonly{margin-top:8px;font-size:12px;color:var(--faint);border-top:1px dashed var(--line2);padding-top:8px;display:flex;justify-content:space-between}
+  .banner{background:linear-gradient(90deg,var(--aSoft),#f6f9fd);border:1px solid #cfe7f0;border-radius:14px;
+    padding:16px 20px;margin-bottom:18px;display:flex;flex-wrap:wrap;align-items:center;gap:18px;box-shadow:var(--shadow)}
+  .banner .lg{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .banner .plan{font-size:20px;font-weight:800}
+  .banner .amt{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;color:#16202c}
+  .banner .cph2{font-size:13px;color:var(--muted)}
+  .banner .delta{font-size:12.5px;color:var(--muted);margin-left:auto;text-align:right}
+  input.cont{width:50px}
+
+  @media print{
+    body{background:#fff;color:#000;padding:0}
+    .tabs,button,.rm,.addrow,.note{display:none!important}
+    section.page{display:block!important;page-break-before:always}
+    section.page:first-of-type{page-break-before:avoid}
+    .card,.tcard,.banner,.about{box-shadow:none;border-color:#ccc;break-inside:avoid}
+  }
+
+  /* ---- portal chrome added around the pack ---- */
+  .topbar{position:sticky;top:0;z-index:40;background:#111820;color:#fff;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:10px 16px;margin:-22px -16px 18px}
+  .topbar a{color:#9fd7e6;text-decoration:none;font-size:13px}
+  .topbar a:hover{text-decoration:underline}
+  .topbar .who{font-weight:650;font-size:14px}
+  .topbar .cl{color:#9aa7b6;font-size:13px}
+  .topbar .sp{flex:1}
+  .topbar .save{font-size:12px;color:#9aa7b6;min-width:96px;text-align:right}
+  .topbar .save.on{color:#7fd7a8}
+  .topbar .save.err{color:#ffb4a8}
+  .tbtn{background:#25303c;border:1px solid #36434f;color:#e8eef5;font:inherit;
+    font-size:12.5px;padding:6px 11px;border-radius:8px;cursor:pointer}
+  .tbtn:hover{background:#31404f}
+  .tbtn.hot{background:var(--b);border-color:var(--b);color:#fff}
+  .ro-note{background:var(--warnSoft);border:1px solid #ecd9ae;color:#6a5313;
+    border-radius:10px;padding:9px 13px;font-size:12.5px;margin:0 0 16px}
+
+  /* ---- comments ---- */
+  .cbtn{border:none;background:transparent;color:var(--faint);cursor:pointer;
+    font-size:12px;padding:1px 5px;border-radius:6px;opacity:0;transition:.12s}
+  tr:hover .cbtn,li:hover .cbtn,.cbtn.has{opacity:1}
+  .cbtn:hover{background:var(--aSoft);color:var(--a)}
+  .cbtn.has{color:var(--b);font-weight:650}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:100%;
+    background:var(--panel);border-left:1px solid var(--line2);z-index:60;
+    box-shadow:-14px 0 40px rgba(20,40,80,.13);display:flex;flex-direction:column;
+    transform:translateX(100%);transition:transform .18s ease}
+  .drawer.open{transform:none}
+  .drawer .dh{padding:13px 16px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:9px}
+  .drawer .dh .t{font-weight:650;font-size:14px;flex:1}
+  .drawer .dl{flex:1;overflow:auto;padding:10px 14px}
+  .drawer .df{border-top:1px solid var(--line);padding:12px 14px;background:#fbfcfe}
+  .cm{border:1px solid var(--line);border-radius:11px;padding:9px 11px;margin:0 0 9px;
+    background:var(--panel2)}
+  .cm.staff{background:var(--aSoft);border-color:#cfe7ef}
+  .cm.res{opacity:.55}
+  .cm .who{font-weight:650;font-size:12.5px}
+  .cm .at{color:var(--faint);font-size:11px}
+  .cm .anch{color:var(--a);font-size:11.5px;margin:2px 0 4px;cursor:pointer}
+  .cm .bd2{font-size:13px;white-space:pre-wrap}
+  .cm .acts{margin-top:6px;display:flex;gap:8px}
+  .cm .acts button{border:none;background:transparent;color:var(--faint);
+    font-size:11.5px;cursor:pointer;padding:0}
+  .cm .acts button:hover{color:var(--a);text-decoration:underline}
+  .drawer textarea,.drawer input.nm{width:100%;font:inherit;font-size:13px;
+    border:1px solid var(--line2);border-radius:9px;padding:8px 10px;background:#fff}
+  .drawer textarea{min-height:74px;resize:vertical}
+  .drawer .about{font-size:11.5px;color:var(--faint);margin:0 0 6px}
+  .scrim{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:55;display:none}
+  .scrim.open{display:block}
+  .cflag{display:inline-block;background:var(--bSoft);color:var(--b);border-radius:20px;
+    padding:1px 7px;font-size:11px;font-weight:650;margin-left:6px}
+  @media print{.topbar,.drawer,.scrim,.cbtn,.addrow,.addlist,.rm{display:none!important}}
+
+</style>
+</head>
+<body>
+<div class="topbar">
+  {% if readonly %}
+  <span class="who">{{ plan.name }}</span>
+  <span class="cl">{% if plan.client %}for {{ plan.client }}{% endif %}</span>
+  <span class="sp"></span>
+  <button class="tbtn hot" id="cCount" onclick="openDrawer('','')">Comments</button>
+  {% else %}
+  <a href="/planning">← Event planning</a>
+  <span class="who">{{ plan.name }}</span>
+  <span class="cl">{% if plan.client %}{{ plan.client }}{% endif %}</span>
+  <span class="sp"></span>
+  <span class="save" id="saveState">Saved</span>
+  <button class="tbtn" id="cCount" onclick="openDrawer('','')">Comments</button>
+  <button class="tbtn" onclick="document.getElementById('setup').scrollIntoView()">Share &amp; settings</button>
+  {% endif %}
+</div>
+
+
+<div class="wrap">
+  <header>
+    <h1>{{ plan.name }}</h1>
+    <div class="sub">{% if plan.client %}{{ plan.client }} · {% endif %}{% if readonly %}Amounts in ₱ (PHP). Last updated {{ plan.updated_at|when if plan.updated_at }}.{% else %}Everything is editable; amounts in ₱ (PHP).{% endif %}</div>
+  </header>
+  {% if readonly %}
+  <div class="ro-note"><b>You're reading this, not editing it.</b> Numbers and lists are
+    AWAKEN's to change — but you can leave a note on any row: hover it and press 💬.
+    We see every note and reply here.</div>
+  {% endif %}
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <!-- ================= OVERVIEW ================= -->
+  <section class="page" data-tab="Overview">
+    <div class="about">
+      <h3>What this event is</h3>
+      <p>A Mini HYROX event for San Miguel: a scaled, team-based adaptation of the HYROX fitness race (running + functional-fitness stations), delivered as a corporate team-building activity that promotes wellness, collaboration and friendly competition.</p>
+      <div class="pills">
+        <span class="pill">Teams of 4, relay format</span>
+        <span class="pill">~30 teams for 120 people</span>
+        <span class="pill">Wave / heat starts</span>
+        <span class="pill">RX / scaled / walk options</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hd"><span class="t">Key decisions to lock first</span><span class="d">fill in your answers — these drive everything else</span></div>
+      <div class="kv" id="decisions">
+        <div class="hdr k">Decision</div><div class="hdr">Notes / options</div><div class="hdr">Your answer</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SCOPE ================= -->
+  <section class="page" data-tab="Scope">
+    <h2 class="tabtitle">Project scope</h2>
+    <p class="lead">Define what this event is — and isn't — so everyone's aligned before spending.{% if not readonly %} Every field is editable; add or remove points as needed.{% endif %}</p>
+    <div class="scard full">
+      <div class="sh"><span class="dot obj"></span>Objective / purpose</div>
+      <div class="objtext"{% if not readonly %} contenteditable{% endif %} id="scopeObj"></div>
+    </div>
+    <div class="scopegrid" style="margin-top:16px">
+      <div class="scard"><div class="sh"><span class="dot in"></span>In scope</div><div class="sb"><ul class="slist" id="sc-inscope"></ul></div>{% if not readonly %}<div class="addlist"><button class="btn ghost" onclick="addScope('inscope')">+ Add</button></div>{% endif %}</div>
+      <div class="scard"><div class="sh"><span class="dot out"></span>Out of scope</div><div class="sb"><ul class="slist" id="sc-outscope"></ul></div>{% if not readonly %}<div class="addlist"><button class="btn ghost" onclick="addScope('outscope')">+ Add</button></div>{% endif %}</div>
+      <div class="scard"><div class="sh"><span class="dot del"></span>Key deliverables</div><div class="sb"><ul class="slist" id="sc-deliverables"></ul></div>{% if not readonly %}<div class="addlist"><button class="btn ghost" onclick="addScope('deliverables')">+ Add</button></div>{% endif %}</div>
+      <div class="scard"><div class="sh"><span class="dot suc"></span>Success criteria</div><div class="sb"><ul class="slist" id="sc-success"></ul></div>{% if not readonly %}<div class="addlist"><button class="btn ghost" onclick="addScope('success')">+ Add</button></div>{% endif %}</div>
+      <div class="scard"><div class="sh"><span class="dot asm"></span>Assumptions</div><div class="sb"><ul class="slist" id="sc-assumptions"></ul></div>{% if not readonly %}<div class="addlist"><button class="btn ghost" onclick="addScope('assumptions')">+ Add</button></div>{% endif %}</div>
+      <div class="scard"><div class="sh"><span class="dot con"></span>Constraints</div><div class="sb"><ul class="slist" id="sc-constraints"></ul></div>{% if not readonly %}<div class="addlist"><button class="btn ghost" onclick="addScope('constraints')">+ Add</button></div>{% endif %}</div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="hd"><span class="t">Key stakeholders</span><span class="d">who's involved and what they own</span></div>
+      <div class="bd"><table>
+        <thead><tr><th style="width:190px">Stakeholder / group</th><th style="width:200px">Who</th><th>Responsibility</th><th style="width:30px"></th></tr></thead>
+        <tbody id="sc-stake"></tbody>
+      </table></div>
+      {% if not readonly %}<div class="addrow"><button class="btn ghost" onclick="addStake()">+ Add stakeholder</button></div>{% endif %}
+    </div>
+    <div class="card">
+      <div class="hd"><span class="t">Milestones</span><span class="d">key checkpoints on the path to event day</span></div>
+      <div class="bd"><table>
+        <thead><tr><th>Milestone</th><th style="width:180px">Target</th><th style="width:30px"></th></tr></thead>
+        <tbody id="sc-miles"></tbody>
+      </table></div>
+      {% if not readonly %}<div class="addrow"><button class="btn ghost" onclick="addMile()">+ Add milestone</button></div>{% endif %}
+    </div>
+  </section>
+
+  <!-- ================= CHECKLIST ================= -->
+  <section class="page" data-tab="Checklist">
+    <h2 class="tabtitle">Master checklist</h2>
+    <p class="lead">Every task by phase, with owner, deadline and status.{% if not readonly %} Change a status and the progress bar updates live.{% endif %}</p>
+    <div class="card">
+      <div class="hd">
+        <span class="t">Progress</span>
+        <div class="prog" style="flex:1;max-width:420px">
+          <div class="bar"><i id="clBar"></i></div>
+          <span class="pct" id="clPct">0 / 0 done</span>
+        </div>
+      </div>
+      <div class="bd">
+        <table>
+          <thead><tr>
+            <th style="width:26px"></th><th>Task</th><th>Details / tips</th>
+            <th style="width:150px">Owner</th><th style="width:90px">Due</th><th style="width:130px">Status</th><th style="width:34px"></th>
+          </tr></thead>
+          <tbody id="clBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FORMAT & STATIONS ================= -->
+  <section class="page" data-tab="Format">
+    <h2 class="tabtitle">Format &amp; stations</h2>
+    <p class="lead">Teams of 4 complete the circuit relay-style. Between each station the team runs a short lap together; at each station members share the required reps (e.g. 100 wall balls split across the team). Everyone finishes together. Offer RX / scaled / walk options at every station, and stagger team starts in waves so no station bottlenecks.</p>
+    <div class="card">
+      <div class="hd"><span class="t">Option 1 — full circuit</span><span class="d">RX / scaled / walk variants at every station</span></div>
+      <div class="bd">
+        <table>
+          <thead><tr><th>Station</th><th>Standard (RX)</th><th>Scaled</th><th>Walk / easy option</th><th style="width:34px"></th></tr></thead>
+          <tbody id="fmt1"></tbody>
+        </table>
+      </div>
+      {% if not readonly %}<div class="addrow"><button class="btn ghost" onclick="addFmt1()">+ Add station</button></div>{% endif %}
+    </div>
+    <div class="card">
+      <div class="hd"><span class="t">Option 2 — leaner circuit</span><span class="d">fewer stations, single standard target</span></div>
+      <div class="bd">
+        <table>
+          <thead><tr><th>Station</th><th>Standard</th><th style="width:34px"></th></tr></thead>
+          <tbody id="fmt2"></tbody>
+        </table>
+      </div>
+      {% if not readonly %}<div class="addrow"><button class="btn ghost" onclick="addFmt2()">+ Add station</button></div>{% endif %}
+    </div>
+  </section>
+
+  <!-- ================= EQUIPMENT ================= -->
+  <section class="page" data-tab="Equipment">
+    <h2 class="tabtitle">Equipment &amp; supplies</h2>
+    <p class="lead">Quantity guide.{% if readonly %} The ticks show what is already secured.{% else %} Tick “Got it?” as items are secured — the progress bar tracks how ready you are.{% endif %}</p>
+    <div class="card">
+      <div class="hd">
+        <span class="t">Readiness</span>
+        <div class="prog" style="flex:1;max-width:420px">
+          <div class="bar"><i id="eqBar"></i></div>
+          <span class="pct" id="eqPct">0 / 0 secured</span>
+        </div>
+      </div>
+      <div class="bd">
+        <table>
+          <thead><tr>
+            <th>Item</th><th style="width:110px">Qty guide</th><th style="width:150px">Source</th>
+            <th style="width:130px">Assigned to</th><th class="c" style="width:70px">Got it?</th><th style="width:34px"></th>
+          </tr></thead>
+          <tbody id="eqBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STAFFING ================= -->
+  <section class="page" data-tab="Staffing">
+    <h2 class="tabtitle">Staffing &amp; roles</h2>
+    <p class="lead">Day-of team. For 120 people plan roughly 15–20 crew total — a mix of hired coaches and internal volunteers works well.</p>
+    <div class="card">
+      <div class="bd">
+        <table>
+          <thead><tr>
+            <th style="width:180px">Role</th><th>Responsibilities</th>
+            <th style="width:150px">How many</th><th style="width:150px">Assigned to</th><th style="width:30px"></th>
+          </tr></thead>
+          <tbody id="stBody"></tbody>
+        </table>
+      </div>
+      {% if not readonly %}<div class="addrow"><button class="btn ghost" onclick="addStaff()">+ Add role</button></div>{% endif %}
+    </div>
+  </section>
+
+  <!-- ================= BUDGET ================= -->
+  <section class="page" data-tab="Budget">
+    <h2 class="tabtitle">Budget estimate</h2>
+    <p class="lead">{% if readonly %}Two costed options. Option {{ chosen }} is the one we are working to; the add-ons are the levers if the number needs to come down. Anything you want changed, leave a note on the line.{% else %}Edit any unit cost, count, contingency % or headcount. Untick add-ons to trim. Click Option A or B to set your chosen plan.{% endif %}</p>
+    <div class="bar2">
+      <div><label for="head">Headcount </label><input type="number" id="head" min="1" step="1" value="120"> <span class="faint">participants</span></div>
+      <div class="spacer"></div>
+      <div class="chooser">
+        <button class="choose-btn a" id="pickA" onclick="pick('A')"><span class="k">Option A <span class="tag">✓ chosen</span></span><span class="v accentA" id="pa-total">₱0</span></button>
+        <button class="choose-btn b sel" id="pickB" onclick="pick('B')"><span class="k">Option B <span class="tag">✓ chosen</span></span><span class="v accentB" id="pb-total">₱0</span></button>
+      </div>
+    </div>
+    <div class="banner">
+      <div><div class="lg">Selected plan</div><div class="plan" id="selPlan">Option B</div></div>
+      <div><div class="lg">Total budget</div><div class="amt" id="selAmt">₱0</div><div class="cph2" id="selCph">₱0 per head</div></div>
+      <div class="delta" id="delta"></div>
+    </div>
+    <div class="card">
+      <table id="btbl">
+        <thead class="grp2"><tr><th></th><th colspan="3" class="a-h colsep">OPTION A</th><th colspan="3" class="b-h colsep">OPTION B</th><th></th></tr></thead>
+        <thead><tr>
+          <th class="l">Item</th>
+          <th class="r colsep">Unit cost ₱</th><th class="r">Count</th><th class="r">Subtotal</th>
+          <th class="r colsep">Unit cost ₱</th><th class="r">Count</th><th class="r">Subtotal</th><th></th>
+        </tr></thead>
+        <tbody id="bBody"></tbody>
+      </table>
+      {% if not readonly %}<div class="addrow">
+        <button class="btn ghost" onclick="addBRow('must')">+ Add must-have</button>
+        <button class="btn ghost" onclick="addBRow('addon')">+ Add add-on</button>
+      </div>{% endif %}
+    </div>
+    <div class="totals">
+      <div class="tcard a" id="card-A">
+        <h3>Option A <span class="p2">Selected</span></h3>
+        <div class="trow"><span>Must-haves subtotal</span><span id="A-must">₱0</span></div>
+        <div class="trow"><span>Add-ons subtotal</span><span id="A-add">₱0</span></div>
+        <div class="trow head"><span>Base subtotal</span><span id="A-base">₱0</span></div>
+        <div class="trow"><span>Contingency (<input type="number" class="cell cont" data-opt="A" value="5" step="0.5">%)</span><span id="A-cont">₱0</span></div>
+        <div class="trow big"><span>Total estimate</span><span id="A-total">₱0</span></div>
+        <div class="cph" id="A-cph">₱0 per head</div>
+        <div class="coreonly"><span>Core only (drop add-ons, incl. contingency)</span><span id="A-core">₱0</span></div>
+      </div>
+      <div class="tcard b sel" id="card-B">
+        <h3>Option B <span class="p2">Selected</span></h3>
+        <div class="trow"><span>Must-haves subtotal</span><span id="B-must">₱0</span></div>
+        <div class="trow"><span>Add-ons subtotal</span><span id="B-add">₱0</span></div>
+        <div class="trow head"><span>Base subtotal</span><span id="B-base">₱0</span></div>
+        <div class="trow"><span>Contingency (<input type="number" class="cell cont" data-opt="B" value="5" step="0.5">%)</span><span id="B-cont">₱0</span></div>
+        <div class="trow big"><span>Total estimate</span><span id="B-total">₱0</span></div>
+        <div class="cph" id="B-cph">₱0 per head</div>
+        <div class="coreonly"><span>Core only (drop add-ons, incl. contingency)</span><span id="B-core">₱0</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= RUN SHEET ================= -->
+  <section class="page" data-tab="Run Sheet">
+    <h2 class="tabtitle">Run sheet — event-day timeline</h2>
+    <p class="lead">Sample hour-by-hour timeline. Adjust times and owners to your venue and wave plan.</p>
+    <div class="card">
+      <div class="bd">
+        <table>
+          <thead><tr><th style="width:110px">Time</th><th>What's happening</th><th style="width:180px">Owner</th><th style="width:30px"></th></tr></thead>
+          <tbody id="rsBody"></tbody>
+        </table>
+      </div>
+      {% if not readonly %}<div class="addrow"><button class="btn ghost" onclick="addRun()">+ Add timeline row</button></div>{% endif %}
+    </div>
+  </section>
+
+  <div class="bar2" style="margin-top:6px">
+    <button class="btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+    <div class="spacer"></div>
+    <span class="note">Figures and timings are estimates — {% if readonly %}ask us about anything that looks off{% else %}edit freely{% endif %}.</span>
+  </div>
+</div>
+
+
+{% if not readonly %}
+<div class="wrap" id="setup">
+  <div class="card">
+    <div class="hd"><span class="t">Share &amp; settings</span><span class="d">rename the plan, and hand it to the client</span></div>
+    <div class="bd" style="padding:14px 16px">
+      <form method="post" action="/planning/{{ plan.id }}/rename"
+            style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:0 0 18px">
+        <div><label class="note">Plan name</label><br>
+          <input class="f" name="name" value="{{ plan.name }}" style="min-width:260px"></div>
+        <div><label class="note">Client</label><br>
+          <input class="f" name="client" value="{{ plan.client or '' }}" style="min-width:200px"></div>
+        <button class="btn">Save name</button>
+      </form>
+
+      {% if plan.is_live %}
+      <div style="background:var(--goodSoft);border:1px solid #bfe6d4;border-radius:11px;padding:12px 14px">
+        <div style="font-weight:650;font-size:13.5px;margin-bottom:5px">The client's link is live</div>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;word-break:break-all">{{ link_url }}</div>
+        <div class="note" style="margin-top:6px">
+          They need the password you set. Expires {{ plan.expires_at|when if plan.expires_at }}.
+          Opened {{ plan.opens }}×{% if plan.last_opened_at %}, last {{ plan.last_opened_at|when }}{% endif %}.
+        </div>
+      </div>
+      <form method="post" action="/planning/{{ plan.id }}/link/revoke" style="margin-top:10px">
+        <button class="btn ghost">Revoke this link</button>
+      </form>
+      {% elif plan.token %}
+      <div class="ro-note" style="margin:0 0 12px"><b>The old link no longer works.</b>
+        {% if plan.revoked_at %}You revoked it{% else %}It expired{% endif %}. Make a new one below.</div>
+      {% endif %}
+
+      <form method="post" action="/planning/{{ plan.id }}/link"
+            style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+        <div><label class="note">Password for the client</label><br>
+          <input class="f" name="password" value="{{ default_pass }}" style="min-width:200px"></div>
+        <button class="btn">{% if plan.token %}Make a new link{% else %}Create the client link{% endif %}</button>
+        <span class="note" style="align-self:center">
+          {% if plan.token %}This replaces the address as well as the password — the old one stops working.
+          {% else %}A secret address plus a password. They can read and comment; they can't change a number.{% endif %}</span>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer">
+  <div class="dh">
+    <span class="t">Comments</span>
+    <button class="tbtn" onclick="openDrawer('','')">All</button>
+    <button class="tbtn" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="dl" id="cList"></div>
+  <div class="df">
+    <div class="about" id="cAbout">About the plan in general</div>
+    {% if readonly %}
+    <input class="nm" id="cName" placeholder="Your name" value="{{ author }}"
+           style="margin-bottom:7px">
+    {% endif %}
+    <textarea id="cBody" placeholder="Leave a note…"></textarea>
+    <div style="margin-top:7px;display:flex;gap:8px">
+      <button class="btn" id="cSend" onclick="postComment()">Send</button>
+    </div>
+  </div>
+</aside>
+
+<script>
+window.__RO__ = {% if readonly %}true{% else %}false{% endif %};
+window.__SAVE_URL__ = {% if readonly %}""{% else %}"/planning/{{ plan.id }}/save"{% endif %};
+window.__COMMENT_URL__ = {% if readonly %}"/p/{{ token }}/comment"{% else %}"/planning/{{ plan.id }}/comment"{% endif %};
+window.__RESOLVE_URL__ = {% if readonly %}""{% else %}"/planning/comments/{id}/resolve"{% endif %};
+window.__DOC__ = {{ doc_json|safe }};
+window.__COMMENTS__ = {{ comments_json|safe }};
+window.__AUTHOR__ = {{ author|tojson }};
+</script>
+<script>
+/* ===================================================================
+   The pack, wired to a saved document.
+
+   The original was a file: everything lived in consts and every edit
+   died with the tab. Two things change here and nothing else does.
+
+   One, the document is the state. Every editable cell writes back into
+   D — not just into the DOM — so what is on screen and what gets saved
+   cannot drift. That is why the render functions below all bind an
+   input handler, and why every remove splices the array rather than
+   dropping a row out of the table.
+
+   Two, readonly is enforced by not drawing the controls at all, not by
+   hiding them. A disabled input you can re-enable in devtools is not a
+   permission.
+   =================================================================== */
+
+const RO = window.__RO__;
+const SAVE_URL = window.__SAVE_URL__;
+const COMMENT_URL = window.__COMMENT_URL__;
+const RESOLVE_URL = window.__RESOLVE_URL__;
+let D = window.__DOC__;
+let COMMENTS = window.__COMMENTS__;
+let AUTHOR = window.__AUTHOR__ || '';
+
+const DECISIONS = D.decisions, CHECKLIST = D.checklist, FMT1 = D.fmt1,
+      FMT2 = D.fmt2, EQUIP = D.equip, STAFF = D.staff, RUNSHEET = D.runsheet,
+      SCOPE = D.scope, bdata = D.budget;
+
+const esc = s => String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+/* Only drawn when editing. In readonly the attribute is simply absent. */
+const ED = RO ? '' : ' contenteditable';
+const RMB = (attr) => RO ? '' : `<button class="rm" ${attr} title="Remove">✕</button>`;
+
+/* =================== SAVING =================== */
+let saveT = null, dirty = false;
+const saveEl = () => document.getElementById('saveState');
+function mark(txt, cls){
+  const el = saveEl(); if(!el) return;
+  el.textContent = txt; el.className = 'save' + (cls ? ' ' + cls : '');
+}
+function touch(){
+  if(RO || !SAVE_URL) return;
+  dirty = true; mark('Saving…');
+  clearTimeout(saveT);
+  saveT = setTimeout(flush, 900);
+}
+async function flush(){
+  if(RO || !SAVE_URL || !dirty) return;
+  dirty = false;
+  try{
+    const r = await fetch(SAVE_URL, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({doc: D})});
+    if(!r.ok){
+      // Do not clear the flag: the next edit tries again, and a session
+      // that expired mid-sentence must not read as saved.
+      dirty = true;
+      mark(r.status === 401 ? 'Signed out — not saved' : 'Not saved', 'err');
+      return;
+    }
+    const j = await r.json();
+    const t = new Date(j.at || Date.now());
+    mark('Saved ' + t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 'on');
+  }catch(e){ dirty = true; mark('Not saved — offline?', 'err'); }
+}
+/* A tab closed mid-debounce would otherwise lose the last edit. */
+window.addEventListener('beforeunload', () => {
+  if(dirty && SAVE_URL && navigator.sendBeacon){
+    navigator.sendBeacon(SAVE_URL,
+      new Blob([JSON.stringify({doc: D})], {type:'application/json'}));
+  }
+});
+
+/* =================== TABS =================== */
+const TABS=["Overview","Scope","Checklist","Format","Equipment","Staffing","Budget","Run Sheet"];
+const LABELS={Format:"Format & Stations","Run Sheet":"Run sheet"};
+function buildTabs(){
+  const nav=document.getElementById('tabs');
+  TABS.forEach((name,i)=>{
+    const b=document.createElement('button');
+    b.className='tab'+(i===0?' active':'');
+    b.dataset.tab=name;
+    let badge='';
+    if(name==='Checklist') badge=' <span class="badge" id="tabCl"></span>';
+    if(name==='Equipment') badge=' <span class="badge" id="tabEq"></span>';
+    if(name==='Budget') badge=' <span class="badge" id="tabBg"></span>';
+    b.innerHTML=(LABELS[name]||name)+badge;
+    b.onclick=()=>showTab(name);
+    nav.appendChild(b);
+  });
+}
+function showTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('show',p.dataset.tab===name));
+}
+
+/* =================== OVERVIEW =================== */
+function renderDecisions(){
+  const box=document.getElementById('decisions');
+  box.querySelectorAll('.drow').forEach(n=>n.remove());
+  DECISIONS.forEach((d,i)=>{
+    const k=document.createElement('div');k.className='k drow';k.textContent=d[0];
+    const n=document.createElement('div');n.className='faint drow';n.textContent=d[1];
+    const a=document.createElement('div');a.className='drow';
+    a.dataset.anchor='decision:'+i; a.dataset.label=d[0];
+    if(RO){
+      const v=document.createElement('span');
+      v.textContent=d[2]||'—';
+      if(!d[2]) v.className='faint';
+      a.appendChild(v);
+    }else{
+      const inp=document.createElement('input');
+      inp.className='f';inp.placeholder='Your answer…';inp.value=d[2]||'';
+      inp.addEventListener('input',()=>{DECISIONS[i][2]=inp.value;touch();});
+      a.appendChild(inp);
+    }
+    box.append(k,n,a);
+  });
+}
+
+/* =================== SCOPE =================== */
+function scopeLi(key,text,i){
+  const li=document.createElement('li');
+  li.dataset.anchor='scope:'+key+':'+i;
+  li.dataset.label=text.slice(0,60);
+  li.innerHTML=`<span class="mk">•</span><span class="tx"${ED}>${esc(text)}</span>`+
+    (RO?'':`<button class="rm">✕</button>`);
+  if(!RO){
+    li.querySelector('.tx').addEventListener('input',e=>{
+      SCOPE[key][i]=e.target.textContent;touch();});
+    li.querySelector('.rm').onclick=()=>{SCOPE[key].splice(i,1);renderScope();touch();};
+  }
+  return li;
+}
+const SCOPE_LISTS=['inscope','outscope','deliverables','success','assumptions','constraints'];
+function renderScope(){
+  const o=document.getElementById('scopeObj');
+  o.textContent=SCOPE.objective||'';
+  if(!RO && !o.dataset.bound){
+    o.dataset.bound='1';
+    o.addEventListener('input',()=>{SCOPE.objective=o.textContent;touch();});
+  }
+  SCOPE_LISTS.forEach(key=>{
+    const ul=document.getElementById('sc-'+key);ul.innerHTML='';
+    (SCOPE[key]||[]).forEach((t,i)=>ul.appendChild(scopeLi(key,t,i)));
+  });
+  const st=document.getElementById('sc-stake');st.innerHTML='';
+  (SCOPE.stakeholders||[]).forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.dataset.anchor='stake:'+i; tr.dataset.label=r[0];
+    tr.innerHTML=`<td style="font-weight:600"${ED} data-c="0">${esc(r[0])}</td>`+
+      `<td${ED} data-c="1">${esc(r[1])}</td>`+
+      `<td class="muted"${ED} data-c="2">${esc(r[2])}</td>`+
+      `<td>${RMB('')}</td>`;
+    bindRow(tr,SCOPE.stakeholders,i,renderScope);
+    st.appendChild(tr);
+  });
+  const ms=document.getElementById('sc-miles');ms.innerHTML='';
+  (SCOPE.milestones||[]).forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.dataset.anchor='mile:'+i; tr.dataset.label=r[0];
+    tr.innerHTML=`<td style="font-weight:550"${ED} data-c="0">${esc(r[0])}</td>`+
+      `<td class="muted"${ED} data-c="1">${esc(r[1])}</td>`+
+      `<td>${RMB('')}</td>`;
+    bindRow(tr,SCOPE.milestones,i,renderScope);
+    ms.appendChild(tr);
+  });
+  decorate();
+}
+/* One binder for every plain array-of-arrays table. */
+function bindRow(tr,arr,i,rerender){
+  if(RO) return;
+  tr.querySelectorAll('[data-c]').forEach(td=>{
+    td.addEventListener('input',()=>{arr[i][+td.dataset.c]=td.textContent;touch();});
+  });
+  const rm=tr.querySelector('.rm');
+  if(rm) rm.onclick=()=>{arr.splice(i,1);rerender();touch();};
+}
+function addScope(key){
+  SCOPE[key].push('');renderScope();touch();
+  const ul=document.getElementById('sc-'+key);
+  const last=ul.lastElementChild; if(last) last.querySelector('.tx').focus();
+}
+function addStake(){SCOPE.stakeholders.push(["New stakeholder","",""]);renderScope();touch();}
+function addMile(){SCOPE.milestones.push(["New milestone",""]);renderScope();touch();}
+
+/* =================== CHECKLIST =================== */
+const SL=["Not started","In progress","Done"];
+function renderChecklist(){
+  const b=document.getElementById('clBody');b.innerHTML='';
+  let num=0;
+  CHECKLIST.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    if(r.phase){
+      tr.className='phase';
+      tr.innerHTML=`<td colspan="7"><span class="pt">${esc(r.phase)}</span>`+
+        (RO?'':`<button class="addmini" data-add="${i}">+ task</button>`)+`</td>`;
+      b.appendChild(tr);return;
+    }
+    num++;
+    tr.className = r.s===2?'done':'';
+    tr.dataset.anchor='checklist:'+i; tr.dataset.label=r.t;
+    tr.innerHTML=`
+      <td class="c muted">${num}</td>
+      <td><span class="name" style="font-weight:600"${ED} data-i="${i}" data-f="t">${esc(r.t)}</span></td>
+      <td class="faint"${ED} data-i="${i}" data-f="d">${esc(r.d)}</td>
+      <td><span${ED} data-i="${i}" data-f="o">${esc(r.o||'')}</span></td>
+      <td class="faint"${ED} data-i="${i}" data-f="due">${esc(r.due)}</td>
+      <td>${RO
+        ? `<span class="status s${r.s}" style="padding:2px 8px;border-radius:20px">${SL[r.s]}</span>`
+        : `<select class="status s${r.s}" data-i="${i}">`+
+          SL.map((s,si)=>`<option value="${si}" ${si===r.s?'selected':''}>${s}</option>`).join('')+
+          `</select>`}</td>
+      <td class="c">${RMB('data-rm="'+i+'"')}</td>`;
+    b.appendChild(tr);
+  });
+  if(!RO){
+    b.querySelectorAll('select.status').forEach(sel=>{
+      sel.onchange=()=>{
+        const i=+sel.dataset.i,v=+sel.value;
+        CHECKLIST[i].s=v;
+        sel.className='status s'+v;
+        sel.closest('tr').classList.toggle('done',v===2);
+        updateChecklistProg();touch();
+      };
+    });
+    b.querySelectorAll('[contenteditable][data-f]').forEach(el=>{
+      el.addEventListener('input',()=>{
+        CHECKLIST[+el.dataset.i][el.dataset.f]=el.textContent;touch();});
+    });
+    b.querySelectorAll('button[data-rm]').forEach(bt=>{
+      bt.onclick=()=>{CHECKLIST.splice(+bt.dataset.rm,1);renderChecklist();touch();};
+    });
+    b.querySelectorAll('button[data-add]').forEach(bt=>{
+      bt.onclick=()=>addTaskAfterPhase(+bt.dataset.add);
+    });
+  }
+  updateChecklistProg();decorate();
+}
+function addTaskAfterPhase(pi){
+  let j=pi+1;
+  while(j<CHECKLIST.length && !CHECKLIST[j].phase) j++;
+  CHECKLIST.splice(j,0,{t:"New task",d:"",o:"",due:"",s:0});
+  renderChecklist();touch();
+}
+function updateChecklistProg(){
+  const tasks=CHECKLIST.filter(r=>!r.phase);
+  const done=tasks.filter(r=>r.s===2).length;
+  const pct=tasks.length?Math.round(done/tasks.length*100):0;
+  document.getElementById('clBar').style.width=pct+'%';
+  document.getElementById('clPct').textContent=`${done} / ${tasks.length} done · ${pct}%`;
+  document.getElementById('tabCl').textContent=`${done}/${tasks.length}`;
+}
+
+/* =================== FORMAT =================== */
+function renderFmt(id,arr,cols,prefix){
+  const b=document.getElementById(id);b.innerHTML='';
+  arr.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.dataset.anchor=prefix+':'+i; tr.dataset.label=r[0]||'';
+    let cells='';
+    for(let c=0;c<cols;c++){
+      const cls=c===0?'style="font-weight:600"':(c>=2?'class="muted"':'');
+      cells+=`<td ${cls}${ED} data-c="${c}">${esc(r[c]||'')}</td>`;
+    }
+    cells+=`<td class="c">${RMB('')}</td>`;
+    tr.innerHTML=cells;
+    bindRow(tr,arr,i,()=>renderFmt(id,arr,cols,prefix));
+    b.appendChild(tr);
+  });
+  decorate();
+}
+function renderFormat(){ renderFmt('fmt1',FMT1,4,'fmt1'); renderFmt('fmt2',FMT2,2,'fmt2'); }
+function addFmt1(){ FMT1.push(["","","",""]); renderFormat(); touch(); }
+function addFmt2(){ FMT2.push(["",""]); renderFormat(); touch(); }
+
+/* =================== EQUIPMENT =================== */
+function renderEquip(){
+  const b=document.getElementById('eqBody');b.innerHTML='';
+  EQUIP.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    if(r.grp){tr.className='grp';
+      tr.innerHTML=`<td colspan="6"><span class="gt">${esc(r.grp)}</span>`+
+        (RO?'':`<button class="addmini" data-add="${i}">+ item</button>`)+`</td>`;
+      b.appendChild(tr);return;}
+    tr.dataset.anchor='equip:'+i; tr.dataset.label=r.t;
+    tr.innerHTML=`
+      <td style="font-weight:550"${ED} data-i="${i}" data-f="t">${esc(r.t)}</td>
+      <td class="muted"${ED} data-i="${i}" data-f="q">${esc(r.q)}</td>
+      <td class="faint"${ED} data-i="${i}" data-f="src">${esc(r.src)}</td>
+      <td${ED} data-i="${i}" data-f="a">${esc(r.a||'')}</td>
+      <td class="c"><input type="checkbox" class="chk" data-i="${i}" ${r.got?'checked':''} ${RO?'disabled':''}></td>
+      <td class="c">${RMB('data-rm="'+i+'"')}</td>`;
+    b.appendChild(tr);
+  });
+  if(!RO){
+    b.querySelectorAll('input.chk').forEach(c=>{
+      c.onchange=()=>{EQUIP[+c.dataset.i].got=c.checked;updateEquipProg();touch();};
+    });
+    b.querySelectorAll('[contenteditable][data-f]').forEach(el=>{
+      el.addEventListener('input',()=>{
+        EQUIP[+el.dataset.i][el.dataset.f]=el.textContent;touch();});
+    });
+    b.querySelectorAll('button[data-rm]').forEach(bt=>{
+      bt.onclick=()=>{EQUIP.splice(+bt.dataset.rm,1);renderEquip();touch();};
+    });
+    b.querySelectorAll('button[data-add]').forEach(bt=>{
+      bt.onclick=()=>addItemToGroup(+bt.dataset.add);
+    });
+  }
+  updateEquipProg();decorate();
+}
+function addItemToGroup(gi){
+  let j=gi+1;
+  while(j<EQUIP.length && !EQUIP[j].grp) j++;
+  EQUIP.splice(j,0,{t:"New item",q:"",src:"",a:"",got:false});
+  renderEquip();touch();
+}
+function updateEquipProg(){
+  const items=EQUIP.filter(r=>!r.grp);
+  const got=items.filter(r=>r.got).length;
+  const pct=items.length?Math.round(got/items.length*100):0;
+  document.getElementById('eqBar').style.width=pct+'%';
+  document.getElementById('eqPct').textContent=`${got} / ${items.length} secured · ${pct}%`;
+  document.getElementById('tabEq').textContent=`${got}/${items.length}`;
+}
+
+/* =================== STAFFING / RUN SHEET =================== */
+function renderStaff(){
+  const b=document.getElementById('stBody');b.innerHTML='';
+  STAFF.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.dataset.anchor='staff:'+i; tr.dataset.label=r[0];
+    tr.innerHTML=`
+      <td style="font-weight:600"${ED} data-c="0">${esc(r[0])}</td>
+      <td class="muted"${ED} data-c="1">${esc(r[1])}</td>
+      <td${ED} data-c="2">${esc(r[2])}</td>
+      <td${ED} data-c="3">${esc(r[3])}</td>
+      <td>${RMB('')}</td>`;
+    bindRow(tr,STAFF,i,renderStaff);
+    b.appendChild(tr);
+  });
+  decorate();
+}
+function addStaff(){STAFF.push(["New role","","1",""]);renderStaff();touch();}
+function renderRun(){
+  const b=document.getElementById('rsBody');b.innerHTML='';
+  RUNSHEET.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.dataset.anchor='run:'+i; tr.dataset.label=(r[0]||'')+' '+(r[1]||'');
+    tr.innerHTML=`<td style="font-weight:700;white-space:nowrap"${ED} data-c="0">${esc(r[0])}</td>`+
+      `<td${ED} data-c="1">${esc(r[1])}</td>`+
+      `<td class="muted"${ED} data-c="2">${esc(r[2])}</td>`+
+      `<td>${RMB('')}</td>`;
+    bindRow(tr,RUNSHEET,i,renderRun);
+    b.appendChild(tr);
+  });
+  decorate();
+}
+function addRun(){RUNSHEET.push(["—:—","New item",""]);renderRun();touch();}
+
+/* =================== BUDGET =================== */
+let selected = D.selected || 'B';
+const peso=n=>'₱'+Math.round(n).toLocaleString('en-PH');
+const pesoP=n=>'₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+function bRow(r,kind,idx){
+  const off=(kind==='addon'&&!r.on)?' off':'';
+  const toggle=kind==='addon'
+    ? `<span class="inc"><input type="checkbox" data-kind="addon" data-idx="${idx}" data-f="on" ${r.on?'checked':''} ${RO?'disabled':''}></span> ` : '';
+  const cell=(f,v,cls)=>RO
+    ? `<td class="r ${cls}">${esc(v)}</td>`
+    : `<td class="r ${cls}"><input class="cell${f[0]==='c'?' cnt':''}" data-kind="${kind}" data-idx="${idx}" data-f="${f}" value="${esc(v)}"></td>`;
+  return `<tr class="line${off}" data-anchor="budget:${kind}:${idx}" data-label="${esc(r.name)}">
+    <td>${toggle}<span${ED} data-kind="${kind}" data-idx="${idx}" data-f="name" style="font-weight:600">${esc(r.name)}</span>
+      <div class="faint"${ED} data-kind="${kind}" data-idx="${idx}" data-f="notes">${esc(r.notes||'')}</div></td>
+    ${cell('ua',r.ua,'colsep')}${cell('ca',r.ca,'')}
+    <td class="r sub-a" id="sa-${kind}-${idx}">₱0</td>
+    ${cell('ub',r.ub,'colsep b-col')}${cell('cb',r.cb,'b-col')}
+    <td class="r sub-b" id="sb-${kind}-${idx}">₱0</td>
+    <td>${RO?'':`<button class="rm" onclick="removeBRow('${kind}',${idx})">✕</button>`}</td></tr>`;
+}
+function renderBudget(){
+  let h=`<tr class="section2"><td colspan="8"><span class="st">Must-haves</span> <span class="sd">— necessary to run the event</span></td></tr>`;
+  bdata.must.forEach((r,i)=>h+=bRow(r,'must',i));
+  h+=`<tr class="subtotal"><td>Must-haves subtotal</td><td class="colsep"></td><td></td><td class="r sub-a" id="st-must-a">₱0</td><td class="colsep"></td><td></td><td class="r sub-b" id="st-must-b">₱0</td><td></td></tr>`;
+  h+=`<tr class="section2"><td colspan="8"><span class="st">Possible add-ons</span> <span class="sd">— optional; untick to trim toward budget</span></td></tr>`;
+  bdata.addon.forEach((r,i)=>h+=bRow(r,'addon',i));
+  h+=`<tr class="subtotal"><td>Add-ons subtotal</td><td class="colsep"></td><td></td><td class="r sub-a" id="st-add-a">₱0</td><td class="colsep"></td><td></td><td class="r sub-b" id="st-add-b">₱0</td><td></td></tr>`;
+  document.getElementById('bBody').innerHTML=h;
+  bindBudget();compute();decorate();
+}
+function bindBudget(){
+  if(RO) return;
+  document.querySelectorAll('#bBody input.cell').forEach(el=>el.addEventListener('input',onBEdit));
+  document.querySelectorAll('#bBody input[type=checkbox]').forEach(el=>el.addEventListener('change',onBEdit));
+  document.querySelectorAll('#bBody [contenteditable]').forEach(el=>el.addEventListener('input',()=>{
+    bdata[el.dataset.kind][+el.dataset.idx][el.dataset.f]=el.textContent;touch();}));
+}
+function onBEdit(e){
+  const el=e.target,k=el.dataset.kind,i=+el.dataset.idx,f=el.dataset.f;
+  if(f==='on'){bdata[k][i].on=el.checked;el.closest('tr').classList.toggle('off',!el.checked);}
+  else bdata[k][i][f]=parseFloat(el.value)||0;
+  compute();touch();
+}
+const lsub=(r,o)=>(parseFloat(r['u'+o])||0)*(parseFloat(r['c'+o])||0);
+function compute(){
+  const headEl=document.getElementById('head');
+  const head=parseFloat(headEl.value||headEl.textContent)||1;
+  const res={};
+  ['A','B'].forEach(O=>{
+    const o=O.toLowerCase();let must=0,add=0;
+    bdata.must.forEach((r,i)=>{const s=lsub(r,o);must+=s;const c=document.getElementById('s'+o+'-must-'+i);if(c)c.textContent=peso(s);});
+    bdata.addon.forEach((r,i)=>{const s=r.on?lsub(r,o):0;add+=s;const c=document.getElementById('s'+o+'-addon-'+i);if(c)c.textContent=r.on?peso(lsub(r,o)):'—';});
+    const base=must+add,cont=base*(bdata['cont'+O]/100),total=base+cont,core=must+must*(bdata['cont'+O]/100);
+    res[O]={must,add,base,cont,total,core};
+    document.getElementById('st-must-'+o).textContent=peso(must);
+    document.getElementById('st-add-'+o).textContent=peso(add);
+    document.getElementById(O+'-must').textContent=peso(must);
+    document.getElementById(O+'-add').textContent=peso(add);
+    document.getElementById(O+'-base').textContent=peso(base);
+    document.getElementById(O+'-cont').textContent=peso(cont);
+    document.getElementById(O+'-total').textContent=peso(total);
+    document.getElementById(O+'-cph').textContent=pesoP(total/head)+' per head';
+    document.getElementById(O+'-core').textContent=peso(core);
+  });
+  document.getElementById('pa-total').textContent=peso(res.A.total);
+  document.getElementById('pb-total').textContent=peso(res.B.total);
+  const S=res[selected];
+  document.getElementById('selPlan').textContent='Option '+selected;
+  document.getElementById('selPlan').className='plan '+(selected==='A'?'accentA':'accentB');
+  document.getElementById('selAmt').textContent=peso(S.total);
+  document.getElementById('selCph').textContent=pesoP(S.total/head)+' per head';
+  document.getElementById('tabBg').textContent=peso(S.total);
+  const other=selected==='A'?'B':'A',diff=res[selected].total-res[other].total,cheaper=diff<=0;
+  document.getElementById('delta').innerHTML=`vs Option ${other}: <strong>${peso(res[other].total)}</strong><br>Option ${selected} is <strong style="color:${cheaper?'var(--good)':'var(--warn)'}">${cheaper?peso(Math.abs(diff))+' cheaper':peso(diff)+' more'}</strong>`;
+}
+function pick(o){
+  if(RO && o!==selected) return;
+  selected=o; D.selected=o;
+  document.getElementById('pickA').classList.toggle('sel',o==='A');
+  document.getElementById('pickB').classList.toggle('sel',o==='B');
+  document.getElementById('card-A').classList.toggle('sel',o==='A');
+  document.getElementById('card-B').classList.toggle('sel',o==='B');
+  compute();
+}
+function addBRow(kind){
+  bdata[kind].push(kind==='addon'?{name:"New add-on",notes:"",ua:0,ca:1,ub:0,cb:1,on:true}:{name:"New item",notes:"",ua:0,ca:1,ub:0,cb:1});
+  renderBudget();touch();
+}
+function removeBRow(kind,idx){bdata[kind].splice(idx,1);renderBudget();touch();}
+
+/* =================== COMMENTS =================== */
+/* Anchors are strings the page understands, not foreign keys — the thing
+   being commented on lives in a JSON document and the next edit may delete
+   it. The label captured at write time is what keeps an orphaned note
+   readable. */
+function countFor(anchor){
+  return COMMENTS.filter(c=>c.anchor===anchor && !c.resolved).length;
+}
+function decorate(){
+  document.querySelectorAll('[data-anchor]').forEach(el=>{
+    if(el.querySelector(':scope > .cbtn, :scope > td:last-child > .cbtn')) return;
+    const n=countFor(el.dataset.anchor);
+    const b=document.createElement('button');
+    b.className='cbtn'+(n?' has':'');
+    b.title='Comment on this';
+    b.innerHTML=n?('💬 '+n):'💬';
+    b.onclick=(e)=>{e.stopPropagation();openDrawer(el.dataset.anchor,el.dataset.label||'');};
+    const host=el.tagName==='TR'?el.lastElementChild:el;
+    if(host) host.appendChild(b);
+  });
+}
+function redecorate(){
+  document.querySelectorAll('.cbtn').forEach(b=>b.remove());
+  decorate();
+  const n=COMMENTS.filter(c=>!c.resolved).length;
+  const t=document.getElementById('cCount');
+  if(t) t.textContent=n?('Comments '+n):'Comments';
+}
+let curAnchor='', curLabel='';
+function openDrawer(anchor,label){
+  curAnchor=anchor||''; curLabel=label||'';
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('scrim').classList.add('open');
+  document.getElementById('cAbout').textContent =
+    curAnchor ? ('About: ' + (curLabel || curAnchor)) : 'About the plan in general';
+  drawList();
+  const ta=document.getElementById('cBody'); if(ta) ta.focus();
+}
+function closeDrawer(){
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('scrim').classList.remove('open');
+}
+function fmtAt(s){
+  if(!s) return '';
+  const d=new Date(s);
+  return d.toLocaleDateString([], {day:'numeric', month:'short'})+' '+
+         d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+function drawList(){
+  const box=document.getElementById('cList');
+  const rows = curAnchor ? COMMENTS.filter(c=>c.anchor===curAnchor) : COMMENTS;
+  if(!rows.length){
+    box.innerHTML='<div class="note" style="padding:8px 2px">Nothing here yet.</div>';
+    return;
+  }
+  box.innerHTML=rows.map(c=>`
+    <div class="cm${c.staff?' staff':''}${c.resolved?' res':''}">
+      <div><span class="who">${esc(c.author)}</span> <span class="at">${fmtAt(c.at)}</span></div>
+      ${(!curAnchor && c.label)?`<div class="anch" onclick="openDrawer('${esc(c.anchor)}','${esc(c.label)}')">${esc(c.label)}</div>`:''}
+      <div class="bd2">${esc(c.body)}</div>
+      ${RESOLVE_URL?`<div class="acts"><button onclick="toggleResolve(${c.id})">${c.resolved?'Reopen':'Mark handled'}</button></div>`:''}
+    </div>`).join('');
+}
+async function postComment(){
+  const ta=document.getElementById('cBody');
+  const body=(ta.value||'').trim();
+  if(!body) return;
+  const fd=new FormData();
+  fd.append('anchor',curAnchor); fd.append('label',curLabel); fd.append('body',body);
+  const nm=document.getElementById('cName');
+  if(nm){ AUTHOR=(nm.value||'').trim(); fd.append('author',AUTHOR); }
+  const btn=document.getElementById('cSend'); btn.disabled=true;
+  try{
+    const r=await fetch(COMMENT_URL,{method:'POST',body:fd});
+    const j=await r.json();
+    if(j && j.ok && j.comment){
+      COMMENTS.push(j.comment);
+      ta.value='';
+      drawList(); redecorate();
+    }else{
+      alert("That didn't send. Try again, or reload the page.");
+    }
+  }catch(e){ alert("That didn't send — check your connection."); }
+  btn.disabled=false;
+}
+async function toggleResolve(id){
+  if(!RESOLVE_URL) return;
+  const r=await fetch(RESOLVE_URL.replace('{id}',id),{method:'POST'});
+  const j=await r.json();
+  if(j && j.ok){
+    const c=COMMENTS.find(x=>x.id===id);
+    if(c) c.resolved=j.resolved;
+    drawList(); redecorate();
+  }
+}
+
+/* =================== INIT =================== */
+buildTabs();
+renderDecisions();
+renderScope();
+renderChecklist();
+renderFormat();
+renderEquip();
+renderStaff();
+renderRun();
+/* The contingency inputs live in the markup, so they are filled from the
+   document rather than the other way round. */
+document.querySelectorAll('input.cont').forEach(el=>{
+  el.value=bdata['cont'+el.dataset.opt];
+  if(RO){ el.disabled=true; return; }
+  el.addEventListener('input',()=>{
+    bdata['cont'+el.dataset.opt]=parseFloat(el.value)||0;compute();touch();});
+});
+const headEl=document.getElementById('head');
+if(headEl.tagName==='INPUT'){
+  headEl.value=D.head||120;
+  if(RO) headEl.disabled=true;
+  else headEl.addEventListener('input',()=>{D.head=parseFloat(headEl.value)||0;compute();touch();});
+}else{ headEl.textContent=D.head||120; }
+renderBudget();
+pick(D.selected||'B');
+showTab('Overview');
+redecorate();
+
+</script>
+</body>
+</html>

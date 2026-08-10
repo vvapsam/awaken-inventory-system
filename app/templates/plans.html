@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block body %}
+{#
+  The list is deliberately thin. A planning pack is a thing you open and work
+  inside for weeks, not a row you scan — so this screen answers only the two
+  questions you have before opening one: how far along is it, and is the client
+  waiting on us.
+#}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Event planning</h1>
+    <p class="muted small" style="margin:2px 0 0">The weeks before there is an event. Scope, budget
+      options, equipment, staffing and a run sheet — with one link the client can read and comment on.</p>
+  </div>
+  <div class="hdact">
+    <button class="btn primary" onclick="document.getElementById('newplan').hidden=false;
+      document.getElementById('newname').focus()">+ New plan</button>
+  </div>
+</div>
+
+<div class="card" id="newplan" {{ 'hidden' if rows }}>
+  <form method="post" action="/planning/new"
+        style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:0">
+    <div><label class="small" style="font-weight:600">Plan name</label>
+      <input id="newname" name="name" value="{{ template_name }}" style="min-width:280px"></div>
+    <div><label class="small" style="font-weight:600">Client</label>
+      <input name="client" placeholder="San Miguel" style="min-width:200px"></div>
+    <button class="btn primary">Start planning</button>
+  </form>
+  <p class="muted small" style="margin:10px 0 0">Starts as a copy of <b>{{ template_name }}</b> —
+    {{ template_blurb }} Everything in it is yours to change, and changing it here never touches
+    another plan.</p>
+</div>
+
+{% if rows %}
+<div class="card" style="margin-top:14px">
+  <table>
+    <thead><tr>
+      <th>Plan</th><th style="width:110px">Headcount</th><th style="width:140px">Chosen budget</th>
+      <th style="width:170px">Progress</th><th style="width:120px">Client link</th>
+      <th style="width:150px">Last change</th><th style="width:90px"></th>
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>
+          <a href="/planning/{{ r.p.id }}" style="font-weight:600">{{ r.p.name }}</a>
+          {% if r.p.client %}<div class="muted small">{{ r.p.client }}</div>{% endif %}
+          {% if r.open_comments %}
+          <div class="small" style="color:#b0392b;margin-top:2px">
+            {{ r.open_comments }} comment{{ 's' if r.open_comments != 1 }} waiting on you</div>
+          {% endif %}
+        </td>
+        <td>{{ r.p.headcount or '—' }}</td>
+        <td>{% if r.p.chosen_total %}{{ peso(r.p.chosen_total) }}
+          <div class="muted small">Option {{ r.p.chosen_option }}</div>{% else %}—{% endif %}</td>
+        <td class="small">
+          {{ r.tasks_done }}/{{ r.tasks_total }} tasks
+          <div class="muted">{{ r.kit_got }}/{{ r.kit_total }} kit secured</div>
+        </td>
+        <td class="small">
+          {% if r.p.is_live %}<span class="pill ok">Live</span>
+            <div class="muted">opened {{ r.p.opens }}×</div>
+          {% elif r.p.token %}<span class="muted">{{ 'Revoked' if r.p.revoked_at else 'Expired' }}</span>
+          {% else %}<span class="muted">Not shared</span>{% endif %}
+        </td>
+        <td class="small muted">{{ r.p.updated_at|when if r.p.updated_at }}
+          {% if r.p.updated_by %}<div>{{ r.p.updated_by.name }}</div>{% endif %}</td>
+        <td>
+          <form method="post" action="/planning/{{ r.p.id }}/archive" style="margin:0">
+            <button class="btn ghost small">Archive</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if archived %}
+<details style="margin-top:16px">
+  <summary class="muted small" style="cursor:pointer">Archived ({{ archived|length }})</summary>
+  <div class="card" style="margin-top:8px">
+    <table>
+      <tbody>
+        {% for r in archived %}
+        <tr>
+          <td><a href="/planning/{{ r.p.id }}">{{ r.p.name }}</a>
+            {% if r.p.client %}<span class="muted small"> · {{ r.p.client }}</span>{% endif %}</td>
+          <td class="small muted" style="width:170px">{{ r.p.updated_at|when if r.p.updated_at }}</td>
+          <td style="width:110px">
+            <form method="post" action="/planning/{{ r.p.id }}/archive" style="margin:0">
+              <button class="btn ghost small">Put back</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+{% endblock %}

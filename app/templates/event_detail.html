@@ -293,7 +293,8 @@
 <table id="ppl">
   <thead><tr>
     <th style="width:34px"><input type="checkbox" class="chk selall" title="Select everyone"></th>
-    <th>Participant</th><th>Emails</th><th>Instagram</th><th>Confirmed</th>
+    <th>Participant</th>{% if ev.mode == 'open' %}<th>Payment</th>{% endif %}<th>Emails</th>
+    <th>Instagram</th><th>Confirmed</th>
     <th>Acknowledged</th><th>Reel</th><th>Reward</th><th>Link</th>
     <th style="width:1%"></th>
   </tr></thead>
@@ -305,6 +306,34 @@
     <td><div class="primary">{{ p.name }}</div>
       <div class="sub">{{ p.email or 'No email on record' }}</div>
       {% if p.opens %}<div class="sub">Opened {{ p.opens }}×</div>{% endif %}</td>
+    {# What they paid, and the screenshot they paid it with. Only on open
+       registration — an invited person never pays, so the column would be a
+       row of dashes on every other event.
+
+       It lives here rather than only in the review queue because the moment
+       you approve somebody they leave that queue, and the receipt goes with
+       them. The one time you need to find it again is afterwards: a bank
+       statement that doesn't add up, or somebody saying they paid twice. #}
+    {% if ev.mode == 'open' %}
+    <td style="white-space:nowrap">
+      {% if p.amount %}<div class="primary">{{ money(p.amount) }}</div>{% endif %}
+      {% if p.pay_status %}
+        <div class="sub">{% if p.pay_status == 'approved' %}<span class="tag">Approved</span>
+          {% elif p.pay_status == 'submitted' %}<span class="tag amber">Waiting on us</span>
+          {% elif p.pay_status == 'returned' %}<span class="tag bad">Sent back</span>
+          {% else %}<span class="tag grey">Not finished</span>{% endif %}</div>
+      {% endif %}
+      {% if p.proof %}
+      <button type="button" class="btn" style="padding:4px 9px;font-size:.74rem;margin-top:4px"
+              data-proof="/events/{{ ev.id }}/people/{{ p.id }}/proof"
+              data-who="{{ p.full_name or p.name }}"
+              data-amt="{{ money(p.amount) if p.amount }}"
+              data-ref="{{ p.proof_ref or '' }}">View payment</button>
+      {% elif p.pay_status %}
+      <div class="muted small" style="margin-top:3px">No screenshot</div>
+      {% endif %}
+    </td>
+    {% endif %}
     {# Which of the two emails this person has had. Two ticks means they were
        asked to come and asked to post; one means the second is still owed. #}
     <td style="white-space:nowrap">
@@ -347,7 +376,7 @@
      full width of the table and a long email address is readable. Kept out of
      the picking form above — a form cannot nest. #}
   <tr class="editrow" id="edit-{{ p.id }}" hidden>
-    <td colspan="10">
+    <td colspan="{{ 11 if ev.mode == 'open' else 10 }}">
       <div class="editgrid">
         <div>
           <label class="small" style="font-weight:600;margin:0 0 4px">Name</label>
@@ -462,7 +491,12 @@
     <td><div class="primary">{{ money(p.amount) }}</div>
       <div class="sub">{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label) or '—' }}</div></td>
     <td>{% if p.proof %}
-      <a href="/events/{{ ev.id }}/people/{{ p.id }}/proof" target="_blank" rel="noopener">
+      {# Same viewer as the main list, so a receipt behaves the same way
+         wherever you meet it. #}
+      <a href="/events/{{ ev.id }}/people/{{ p.id }}/proof"
+         data-proof="/events/{{ ev.id }}/people/{{ p.id }}/proof"
+         data-who="{{ p.full_name }}" data-amt="{{ money(p.amount) if p.amount }}"
+         data-ref="{{ p.proof_ref or '' }}">
         <img src="/events/{{ ev.id }}/people/{{ p.id }}/proof" alt="Receipt"
              style="height:54px;width:44px;object-fit:cover;border-radius:5px;
                     border:1px solid var(--line);vertical-align:middle"></a>
@@ -949,6 +983,57 @@ document.addEventListener('click', function(e){
     var search = document.querySelector('input[data-filter="#' + table.id + '"]');
     if(search) search.addEventListener('input', function(){ setTimeout(sync, 0); });
     sync();
+  });
+})();
+</script>
+
+{# ------------------------------------------------------------------ proof --
+   The receipt, over the page rather than in a new tab. Checking a payment is
+   something you do while looking at the row it belongs to — a new tab loses
+   your place in a list of sixty, and the answer is usually "yes, fine" within
+   a second of seeing it. #}
+<div class="proofbox" id="proofbox" hidden>
+  <div class="proofcard" role="dialog" aria-modal="true" aria-label="Proof of payment">
+    <div class="proofhd">
+      <div>
+        <div class="primary" id="proofWho"></div>
+        <div class="sub" id="proofSub"></div>
+      </div>
+      <a class="btn" id="proofOpen" target="_blank" rel="noopener"
+         style="margin-left:auto">Open full size ↗</a>
+      <button type="button" class="btn" id="proofClose">Close</button>
+    </div>
+    <div class="proofscroll"><img id="proofImg" alt="Proof of payment"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var box = document.getElementById('proofbox');
+  if(!box) return;
+  var img = document.getElementById('proofImg'),
+      who = document.getElementById('proofWho'),
+      sub = document.getElementById('proofSub'),
+      open = document.getElementById('proofOpen');
+  function show(btn){
+    var url = btn.getAttribute('data-proof');
+    img.src = url; open.href = url;
+    who.textContent = btn.getAttribute('data-who') || 'Proof of payment';
+    var amt = btn.getAttribute('data-amt') || '',
+        ref = btn.getAttribute('data-ref') || '';
+    sub.textContent = [amt, ref ? ('Ref ' + ref) : 'No reference']
+      .filter(Boolean).join(' · ');
+    box.hidden = false;
+  }
+  function hide(){ box.hidden = true; img.src = ''; }
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-proof]');
+    if(btn){ e.preventDefault(); show(btn); return; }
+    // Clicking the backdrop closes it; clicking the card must not.
+    if(e.target === box) hide();
+  });
+  document.getElementById('proofClose').addEventListener('click', hide);
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !box.hidden) hide();
   });
 })();
 </script>
