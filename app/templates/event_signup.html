@@ -159,7 +159,9 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     Follow {{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }} — the
     next one goes up there first.</p>
   {% else %}
-  <div class="hi">Reserve your slot</div>
+  <div class="hi">{% if p %}Finish your registration{% else %}Reserve your slot{% endif %}</div>
+  {% if p %}<p class="note grey" style="margin-top:0">You're on our list already —
+    we just need the rest of your details and your payment.</p>{% endif %}
   <p>{% if ev.starts_at %}{{ ev.when_text }}{% endif %}{%
      if ev.venue %} · {{ ev.venue }}{% endif %}</p>
 
@@ -213,23 +215,29 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     <div class="hp"><label>Website<input type="text" name="website" tabindex="-1"
       autocomplete="off"></label></div>
 
+    {# Pre-filled when we already have a row for them — somebody put on the
+       list by hand, following the link in their email. Asking a person to
+       retype the name you already addressed the email to reads as not having
+       been expected. #}
     <div class="lbl">Name<span class="req">*</span></div>
     <div class="row2">
       <input type="text" name="first_name" placeholder="First" required
-             autocomplete="given-name">
+             autocomplete="given-name" value="{{ p.given if p }}">
       <input type="text" name="last_name" placeholder="Last" required
-             autocomplete="family-name">
+             autocomplete="family-name" value="{{ p.family if p }}">
     </div>
     <div class="lbl">Email<span class="req">*</span></div>
     <input type="email" name="email" placeholder="you@example.com" required
-           autocomplete="email" autocapitalize="none">
+           autocomplete="email" autocapitalize="none"
+           value="{{ p.email or '' if p }}">
     <div class="lbl">Mobile<span class="req">*</span></div>
     <input type="tel" name="mobile" placeholder="0917 000 0000" required
-           autocomplete="tel">
+           autocomplete="tel" value="{{ p.mobile or '' if p }}">
     <div class="lbl">Category<span class="req">*</span></div>
     <div class="seg">
       {% for k, label in sexes %}
-      <label><input type="radio" name="sex" value="{{ k }}" required>{{ label }}</label>
+      <label><input type="radio" name="sex" value="{{ k }}" required
+        {{ 'checked' if p and p.sex == k }}>{{ label }}</label>
       {% endfor %}
     </div>
     {% if tiers %}
