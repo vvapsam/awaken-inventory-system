@@ -1,42 +1,77 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="row-between">
-  <h1>Adjustments</h1>
-  {% if can(staff, 'adjust.create') %}
-  <a class="btn primary" href="/movement/new?type=adjustment">+ New adjustment</a>
-  {% endif %}
-</div>
-<p class="muted small" style="margin:2px 0 12px">Stock waste, missing, and manual adjustments. Restocks live under Stocks.</p>
+{#
+  Everything that has moved stock. This page used to be adjustments only, which
+  meant a delivery you had just booked in appeared nowhere — the honest answer
+  to "where did my restock go" was "under Records, mixed in with sales". So the
+  page covers every movement type now and the chips are what narrow it.
 
-<form method="get" action="/adjustments" class="sortbar">
-  <label class="muted small" style="margin:0">Type</label>
-  <select name="type" onchange="this.form.submit()">
-    <option value="all" {% if ftype == 'all' %}selected{% endif %}>All types</option>
-    {% for t in ADJUST_TYPES %}
-    <option value="{{ t }}" {% if ftype == t %}selected{% endif %}>{{ t|capitalize }}</option>
-    {% endfor %}
-  </select>
-</form>
+  Received and adjusted are still coloured apart, because ₱15,000 of stock
+  arriving and a spilled bottle of water are not the same kind of event and a
+  list that reads them the same way is a list you stop reading.
+#}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Stock movements</h1>
+    <p class="muted small" style="margin:2px 0 0">Everything that has changed a
+      stock level — deliveries and returns in, waste, missing and manual
+      corrections out.</p>
+  </div>
+  <div class="hdact">
+    {% if can(staff, 'receive.create') %}
+    <a class="btn" href="/movement/new?type=restock">+ Receive stock</a>
+    {% endif %}
+    {% if can(staff, 'adjust.create') %}
+    <a class="btn primary" href="/movement/new?type=adjustment">+ New adjustment</a>
+    {% endif %}
+  </div>
+</div>
+
+{# Links rather than buttons: the filter is done on the server, so it belongs
+   in the URL where it can be bookmarked and where the back button works. #}
+<div class="fxbar" style="margin-top:14px">
+  <a class="fxchip {{ 'on' if ftype == 'all' }}" href="/adjustments">All
+    <span class="n">{{ shown_total }}</span></a>
+  {% for t in types %}
+  <a class="fxchip {{ 'on' if ftype == t }}" href="/adjustments?type={{ t }}">
+    {{ t|capitalize }}<span class="n">{{ counts.get(t, 0) }}</span></a>
+  {% endfor %}
+</div>
+
+{% if capped %}
+<div class="alert warn" style="margin-bottom:12px"><b>Showing the most recent
+  {{ movements|length }}.</b>
+  <span class="muted">There are older ones — narrow it with a filter to reach them.</span></div>
+{% endif %}
 
 <table class="dt">
   <tr><th>When</th><th>Type</th><th>Product</th><th>Qty</th><th>By</th><th>Note</th><th></th></tr>
   {% for m in movements %}
+  {# Which module a row belongs to decides both how it reads and who may
+     change it. Editing a delivery is a receiving permission, not an
+     adjusting one — before this page carried both, that distinction never
+     came up here. #}
+  {% set incoming = m.movement_type in RECEIVE_TYPES %}
+  {% set mod = 'receive' if incoming else 'adjust' %}
   <tr>
     <td>{{ m.occurred_at.strftime('%Y-%m-%d %H:%M') if m.occurred_at else '' }}</td>
-    <td>{{ m.movement_type|capitalize }}</td>
+    <td><span class="tag {{ '' if incoming else 'amber' }}">{{ m.movement_type|capitalize }}</span></td>
     <td>{{ m.product.name if m.product else '—' }}</td>
     <td><strong>{{ m.quantity }}</strong></td>
     <td>{{ m.staff.name if m.staff else '' }}</td>
     <td>{{ m.note or '' }}</td>
     <td class="actions-cell">
-      {% if can(staff, 'adjust.edit') %}<a href="/movement/{{ m.id }}/edit">Edit</a>{% endif %}
-      {% if can(staff, 'adjust.delete') %}
+      {% if can(staff, mod ~ '.edit') %}<a href="/movement/{{ m.id }}/edit">Edit</a>{% endif %}
+      {% if can(staff, mod ~ '.delete') %}
       <form method="post" action="/movement/{{ m.id }}/delete" style="display:inline"
-            onsubmit="return confirm('Delete this adjustment? Stock will be recalculated.');">
+            onsubmit="return confirm('Delete this movement? Stock will be recalculated.');">
         <button type="submit" class="link-danger">Delete</button></form>
       {% endif %}
     </td>
   </tr>
-  {% else %}<tr><td colspan="7" class="muted">No adjustments yet.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="7" class="muted">
+    {% if ftype == 'all' %}Nothing has moved stock yet.
+    {% else %}No {{ ftype }} movements.
+      <a href="/adjustments">Show everything</a>.{% endif %}</td></tr>{% endfor %}
 </table>
 {% endblock %}

@@ -70,7 +70,7 @@
 {% if staff %}
 {% set p = request.url.path %}
 {% set ns = namespace(title='AWAKEN System') %}
-{% for pre,label in [('/dashboard','Dashboard'),('/sales','Transactions'),('/invoices','Transactions'),('/payments','Transactions'),('/stock','Stock'),('/orders','Retail Orders'),('/walkins','Walk-ins & Sign-ups'),('/adjustments','Adjustments'),('/movement','Adjustments'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/coaches/members','Members'),('/coaches/billing','Corkage billing'),('/customer','Customers'),('/records','Records'),('/admin/pricing','Pricing'),('/admin/order-settings','Payment settings'),('/admin/product-images','Product photos'),('/admin/roles','Roles'),('/admin/staff','Relationships'),('/commissions','Commissions'),('/admin/commission-rates','Coach rates'),('/admin/commission-delegators','Delegators'),('/admin/commission-settings','Rules & rates')] %}
+{% for pre,label in [('/dashboard','Dashboard'),('/sales','Transactions'),('/invoices','Transactions'),('/payments','Transactions'),('/stock','Stock'),('/orders','Retail Orders'),('/walkins','Walk-ins & Sign-ups'),('/adjustments','Stock movements'),('/movement','Stock movements'),('/admin/products','Items'),('/admin/inventory-value','Inventory Value'),('/admin/reports','Reports'),('/coaches','Coaches'),('/coaches/members','Members'),('/coaches/billing','Corkage billing'),('/customer','Customers'),('/records','Records'),('/admin/pricing','Pricing'),('/admin/order-settings','Payment settings'),('/admin/product-images','Product photos'),('/admin/roles','Roles'),('/admin/staff','Relationships'),('/commissions','Commissions'),('/admin/commission-rates','Coach rates'),('/admin/commission-delegators','Delegators'),('/admin/commission-settings','Rules & rates')] %}
   {% if p.startswith(pre) %}{% set ns.title = label %}{% endif %}
 {% endfor %}
 {% set parts = staff.name.split() %}
@@ -121,7 +121,11 @@
       {% endif %}
 
       {# ---- Transactions ---- #}
-      {% set can_adjust_view = can_any(staff, ['view_reports','adjust.create','adjust.edit','adjust.delete']) %}
+      {# The page carries receiving as well as adjusting now, so somebody
+         who only receives stock has a reason to be in it — and would
+         otherwise have no way to reach a list of their own deliveries. #}
+      {% set can_adjust_view = can_any(staff, ['view_reports','adjust.create','adjust.edit','adjust.delete',
+                                               'receive.create','receive.edit','receive.delete']) %}
       {% if can_any(staff, ['sales.create','sales.edit','view_reports']) or can_adjust_view %}
       {% set tx_active = p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments') or p.startswith('/orders') or p.startswith('/walkins') or p.startswith('/adjustments') or p.startswith('/movement') %}
       <div class="nav-group" data-title="Transactions">
@@ -135,7 +139,7 @@
           {% call flyitem('/sales', 'Sales', p.startswith('/sales') or p.startswith('/invoices') or p.startswith('/payments')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 4H8zM4 6h16l-1.5 14.5a2 2 0 0 1-2 1.8H7.5a2 2 0 0 1-2-1.8z"/></svg>{% endcall %}
           {% if can(staff, 'sales.create') or staff.role == 'admin' %}{% call flyitem('/orders', 'Retail Orders', p.startswith('/orders')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M9 12h6"/></svg>{% endcall %}
           {% call flyitem('/walkins', 'Walk-ins & Sign-ups', p.startswith('/walkins')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>{% endcall %}{% endif %}
-          {% if can_adjust_view %}{% call flyitem('/adjustments', 'Adjustments', p.startswith('/adjustments') or p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
+          {% if can_adjust_view %}{% call flyitem('/adjustments', 'Stock movements', p.startswith('/adjustments') or p.startswith('/movement')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3 21 7l-4 4M21 7H8M7 21 3 17l4-4M3 17h13"/></svg>{% endcall %}{% endif %}
         </div>
       </div>
       {% endif %}
