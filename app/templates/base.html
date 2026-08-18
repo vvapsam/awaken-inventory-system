@@ -361,7 +361,12 @@
       for(var i = 0; i < rows.length; i++){
         var row = rows[i];
         total++;
-        var hit = !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+        // A row a chip filter has already ruled out stays out, whatever the
+        // search says. Both narrow the list, so a row has to survive both —
+        // and keeping one place in charge of `display` stops the two fighting
+        // over it and leaving rows stuck hidden.
+        var hit = (!q || row.textContent.toLowerCase().indexOf(q) !== -1)
+                  && !row.hasAttribute('data-fx-off');
         row.style.display = hit ? '' : 'none';
         if(!hit) continue;
         shown++;

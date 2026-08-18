@@ -286,6 +286,27 @@
 
 {{ searchbar('ppl', 'Search name, email, handle…') }}
 
+{% if ev.mode == 'open' %}
+{# Paid or not, on an event where everybody is expected to pay. Chips rather
+   than a dropdown: there are three of them, the counts are the useful part,
+   and a filter you can see the state of is a filter you don't forget you left
+   on. They narrow the same list the search box does, so the two combine.
+
+   "Unpaid" is everyone not approved — the ones still waiting on you, the ones
+   sent back, the ones who never finished, and anybody added by hand who has
+   not registered. That is deliberately one bucket: the question this answers
+   is "who still owes us", and every one of them does. #}
+<div class="fxbar" data-fx="ppl">
+  <button type="button" class="fxchip on" data-fx-val="all">All
+    <span class="n">{{ people|length }}</span></button>
+  <button type="button" class="fxchip" data-fx-val="paid">Paid
+    <span class="n">{{ people|selectattr('paid')|list|length }}</span></button>
+  <button type="button" class="fxchip" data-fx-val="unpaid"
+          title="Waiting on us, sent back, never finished, or never registered">Unpaid
+    <span class="n">{{ people|rejectattr('paid')|list|length }}</span></button>
+</div>
+{% endif %}
+
 <form method="post" action="/events/{{ ev.id }}/send" id="pickform">
 <input type="hidden" name="who" value="selected">
 {{ sendbar('ppl') }}
@@ -302,7 +323,8 @@
   </tr></thead>
   <tbody>
   {% for p in people %}
-  <tr {% if p.qualified %}style="background:var(--teal-tint)"{% endif %}>
+  <tr data-paid="{{ 1 if p.paid else 0 }}"
+      {% if p.qualified %}style="background:var(--teal-tint)"{% endif %}>
     <td><input type="checkbox" class="chk pick" name="pick" value="{{ p.id }}"
                data-mail="{{ 1 if p.email else 0 }}"></td>
     <td><div class="primary">{{ p.name }}</div>
@@ -1051,6 +1073,51 @@ document.addEventListener('click', function(e){
   document.getElementById('proofClose').addEventListener('click', hide);
   document.addEventListener('keydown', function(e){
     if(e.key === 'Escape' && !box.hidden) hide();
+  });
+})();
+</script>
+
+{# ------------------------------------------------------------ paid/unpaid --
+   The chips mark rows with data-fx-off and then hand visibility back to the
+   search, which is the one thing allowed to touch `display`. The edit row
+   under each person follows whatever its person does, or it would be left
+   floating under somebody else's name. #}
+<script>
+(function(){
+  var bar = document.querySelector('.fxbar[data-fx="ppl"]');
+  if(!bar) return;
+  var table = document.getElementById('ppl');
+  var search = document.querySelector('input[data-filter="#ppl"]');
+  if(!table) return;
+  function want(row, val){
+    if(val === 'all') return true;
+    var paid = row.getAttribute('data-paid') === '1';
+    return val === 'paid' ? paid : !paid;
+  }
+  function apply(val){
+    var rows = table.tBodies[0].rows;
+    var keep = true;
+    for(var i = 0; i < rows.length; i++){
+      var row = rows[i];
+      if(row.hasAttribute('data-paid')) keep = want(row, val);
+      // An .editrow belongs to the person above it and has no state of its
+      // own, so it inherits the decision rather than making one.
+      if(keep) row.removeAttribute('data-fx-off');
+      else row.setAttribute('data-fx-off', '');
+    }
+    // Re-run the search so both filters land in one place.
+    if(search) search.dispatchEvent(new Event('input'));
+    else for(var j = 0; j < rows.length; j++){
+      rows[j].style.display = rows[j].hasAttribute('data-fx-off') ? 'none' : '';
+    }
+  }
+  bar.addEventListener('click', function(e){
+    var chip = e.target.closest('.fxchip');
+    if(!chip) return;
+    Array.prototype.forEach.call(bar.querySelectorAll('.fxchip'), function(c){
+      c.classList.toggle('on', c === chip);
+    });
+    apply(chip.getAttribute('data-fx-val'));
   });
 })();
 </script>
