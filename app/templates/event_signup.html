@@ -292,6 +292,12 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
   <div class="hi">Pay{% if p.amount %} {{ money(p.amount) }}{% endif %} and send the receipt</div>
   <p>{% if tier %}{{ tier.label }} rate. {% endif %}Scan with your banking app, or transfer.</p>
 
+  {% if pay_due_text %}
+  {# The deadline the email quoted. Shown here too, because a cut-off somebody
+     can only find in their inbox is a cut-off they will argue about. #}
+  <div class="note warn"><b>Pay by {{ pay_due_text }} to keep your slot.</b>
+    After that it goes to the next person waiting.</div>
+  {% endif %}
   {% if p.pay_status == 'returned' and p.review_note %}
   <div class="note bad"><b>We need another look.</b><br>{{ p.review_note }}</div>
   {% endif %}
