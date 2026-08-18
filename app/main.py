@@ -2413,23 +2413,67 @@ def records(request: Request, db: Session = Depends(get_db)):
 
 
 ADJUST_VIEW_PERMS = ["view_reports", "adjust.create", "adjust.edit", "adjust.delete"]
+RECEIVE_VIEW_PERMS = ["view_reports", "receive.create", "receive.edit",
+                      "receive.delete"]
+
+#: How many rows the page will draw before it starts leaving some out.
+MOVEMENT_LIMIT = 500
+
+
+def movement_types_for(staff):
+    """Which kinds of stock movement this person is allowed to look at.
+
+    Receiving and adjusting are separate permissions and always have been, so
+    widening this page to cover both must not quietly hand somebody with only
+    "Receive Inventory" a list of everything that has been written off. They
+    each see their own half; anybody with reports sees all of it.
+    """
+    if can(staff, "view_reports"):
+        return list(MOVEMENT_TYPES)
+    out = []
+    if can_any(staff, RECEIVE_VIEW_PERMS):
+        out += RECEIVE_TYPES
+    if can_any(staff, ADJUST_VIEW_PERMS):
+        out += ADJUST_TYPES
+    # Keep them in the order the constant declares, not the order granted.
+    return [t for t in MOVEMENT_TYPES if t in out]
 
 
 @app.get("/adjustments", response_class=HTMLResponse)
 def adjustments_list(request: Request, db: Session = Depends(get_db)):
+    """Everything that has moved stock — received and written off alike.
+
+    It used to show only waste, missing and manual adjustments, which meant
+    restocks appeared nowhere except buried in Records. "Where did my delivery
+    go" is not a question a stock page should leave you asking, so the page now
+    covers every movement type and the filter is what narrows it.
+    """
     staff, redir = require(request, db)
     if redir:
         return redir
-    if not can_any(staff, ADJUST_VIEW_PERMS):
+    allowed = movement_types_for(staff)
+    if not allowed:
         return RedirectResponse("/dashboard", status_code=303)
     ftype = request.query_params.get("type") or "all"
-    q = db.query(Transaction).filter(Transaction.type == TX_INVENTORY,
-                                     Transaction.subtype.in_(ADJUST_TYPES))
-    if ftype in ADJUST_TYPES:
+    if ftype != "all" and ftype not in allowed:
+        ftype = "all"
+    base = db.query(Transaction).filter(Transaction.type == TX_INVENTORY,
+                                        Transaction.subtype.in_(allowed))
+    # Counted across everything they may see, not across what is on screen —
+    # a filter whose numbers change when you use it cannot be used to compare.
+    counts = dict(
+        base.with_entities(Transaction.subtype, func.count(Transaction.id))
+        .group_by(Transaction.subtype).all())
+    q = base
+    if ftype in allowed:
         q = q.filter(Transaction.subtype == ftype)
-    movements = q.order_by(Transaction.occurred_at.desc()).limit(500).all()
+    movements = (q.order_by(Transaction.occurred_at.desc())
+                 .limit(MOVEMENT_LIMIT).all())
     return render(request, "adjustments.html", db, staff, movements=movements,
-                  ftype=ftype, ADJUST_TYPES=ADJUST_TYPES)
+                  ftype=ftype, types=allowed, counts=counts,
+                  shown_total=sum(counts.get(t, 0) for t in allowed),
+                  capped=len(movements) >= MOVEMENT_LIMIT,
+                  RECEIVE_TYPES=RECEIVE_TYPES)
 
 
 # keep the old path working
