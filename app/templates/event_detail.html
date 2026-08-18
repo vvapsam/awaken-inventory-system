@@ -37,6 +37,18 @@
       {% if t.why %}<span class="n">{{ t.why }}</span>{% endif %}
     </label>
     {% endfor %}
+    {# The last call names a moment, so you get to choose the moment. Shown
+       only when that template is picked, because on every other one it is a
+       field with no meaning. Left blank it falls back to 24 hours from now,
+       which is what the wording promises by default. #}
+    <div class="payby" hidden>
+      <label class="small" style="font-weight:600;display:block;margin:0 0 4px">
+        Pay by</label>
+      <input type="datetime-local" name="pay_by" style="width:auto">
+      <div class="muted small" style="margin:3px 0 0">Gym time. The email quotes
+        this exact moment, their page repeats it, and anyone still unpaid after
+        it has their slot released. Leave blank for 24 hours from now.</div>
+    </div>
     <div class="sendrow">
       <button class="btn primary" data-picksend disabled>✉ Send to
         <span class="seln">0</span></button>
@@ -1001,6 +1013,8 @@ document.addEventListener('click', function(e){
         all.indeterminate = on.length > 0 && on.length < every;
       }
       var k = box.querySelector('input[name=kind]:checked');
+      var payby = box.querySelector('.payby');
+      if(payby) payby.hidden = !k || k.value !== 'payby';
       go.disabled = !k || on.length === 0;
       prev.hidden = !k;
       if(k) prev.href = '/events/' + evid + '/preview/' + k.value;
