@@ -804,3 +804,15 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
    window — a tall receipt screenshot is the normal case, not the exception. */
 .proofscroll{flex:1;overflow:auto;background:#0d1116;min-height:120px}
 .proofcard img{display:block;width:100%;height:auto}
+
+/* --- Paid / unpaid chips -------------------------------------------------
+   Next to the search box, above the table they narrow. Visible state on
+   purpose: a filter you can see is a filter you don't forget you left on. */
+.fxbar{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 10px}
+.fxchip{background:var(--bg);border:1px solid var(--line);color:var(--muted);
+  font:inherit;font-size:.8rem;padding:5px 12px;border-radius:20px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px}
+.fxchip:hover{border-color:var(--line2, var(--line));color:var(--ink)}
+.fxchip .n{font-variant-numeric:tabular-nums;font-size:.72rem;opacity:.75}
+.fxchip.on{background:var(--side-bg);border-color:var(--side-bg);color:#fff;font-weight:600}
+.fxchip.on .n{opacity:.85}
