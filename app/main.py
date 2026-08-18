@@ -726,6 +726,13 @@ def startup():
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  edited_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
+            # When an unpaid slot stops being held. Written by the last call
+            # to pay and nothing else.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  pay_due_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
             # visible and reversible.

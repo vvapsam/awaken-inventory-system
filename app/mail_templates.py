@@ -80,6 +80,16 @@ ${block.checklist}
 ${block.button "Pick up where I left off →" "Everything you typed is still there"}
 ${block.note}<b>Nothing is held for you yet.</b> A slot is only yours once we've checked the payment${if event.closes} — and registration closes ${event.closes}${/if}.${/block.note}"""
 
+#: The one with a clock on it. Deliberately short and free of anything that
+#: could read as a threat — the slot is going to somebody else either way, and
+#: saying so plainly once is fairer than saying it three times gently.
+PAYBY_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 12px">Last 24 hours, ${record.first_name}</h1>
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">Your place at <b>${event.name}</b> is still unpaid, so it isn\u2019t reserved yet. Confirm and pay and it\u2019s yours.</p>
+${block.warn}<b>Pay by ${record.pay_deadline}</b> to keep your slot. After that it goes to the next person waiting.${/block.warn}
+${block.button "Confirm and pay \u2192" "Takes about two minutes"}
+${block.facts}
+<p style="font-size:14px;margin:16px 0 0;color:#6b7683">Already paid? Ignore this \u2014 we may not have checked your receipt yet, and we\u2019ll email you the moment we do.</p>"""
+
 RETURNED_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">One more thing, ${record.first_name}</h1>
 <p style="font-size:15px;margin:0 0 6px;color:#2b3642">We had a look at your
    payment and need another go at it.</p>
@@ -174,6 +184,20 @@ TEMPLATES = [
                    "block.facts": "When · Where · Bring · After"},
         "pairs": {"block.note": "the bordered callout"},
         "body": FINISH_BODY,
+    },
+    {
+        "key": "payby", "name": "Last call to pay",
+        "blurb": "\u201c24 hours to pay, or the slot goes to the next person.\u201d",
+        "where": "open registration",
+        "subject": "Last 24 hours to reserve your ${event.name} slot",
+        "values": dict(EVENT_VALUES, **PERSON_VALUES, **PAY_VALUES, **{
+            "record.pay_deadline": "Tue 19 Aug, 9:00 AM",
+        }),
+        "blocks": {"block.button": "the teal call-to-action",
+                   "block.facts": "When \u00b7 Where \u00b7 Bring \u00b7 After"},
+        "pairs": {"block.note": "the bordered callout",
+                  "block.warn": "the same callout, in amber"},
+        "body": PAYBY_BODY,
     },
     {
         "key": "returned", "name": "Ask for a better receipt",

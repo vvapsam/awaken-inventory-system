@@ -54,7 +54,8 @@ from . import mail_templates
 from .models import (
     EVENT_CLOSED, EVENT_DRAFT, EVENT_INVITE, EVENT_MODES, EVENT_OPEN,
     EVENT_RUNNING, EVENT_STATUSES,
-    HANDLE_MAX, PAY_APPROVED, PAY_DRAFT, PAY_LABELS, PAY_RETURNED,
+    HANDLE_MAX, PAY_APPROVED, PAY_DRAFT, PAY_GRACE_HOURS, PAY_LABELS,
+    PAY_RETURNED,
     PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
     Event, EventParticipant, EventOrganiserLink,
@@ -501,6 +502,11 @@ def register(app, deps):
 
     def _signup_ctx(request, ev, p=None, **kw):
         ctx = {"request": request, "ev": ev, "p": p, "tiers": _tiers(ev),
+               # Formatted here, with the same function the email uses. The
+               # page and the email are quoting one deadline; spelling it two
+               # ways is how somebody ends up believing there are two.
+               "pay_due_text": _fmt_when(p.pay_due_at) if p and p.pay_due_at
+               else "",
                "sexes": SEXES, "money": money, "shut": ev.signups_shut(),
                "closes_left": left_until(ev.signup_closes),
                "pow_bits": POW_BITS, "step": kw.pop("step", 1)}
@@ -1147,7 +1153,23 @@ def register(app, deps):
         now = datetime.now(timezone.utc)
         n = 0
         for p in ev.participants:
-            if p.rsvp != RSVP_NONE or p.released_at or p.waitlist:
+            if p.released_at or p.waitlist:
+                continue
+            # An unpaid slot past the deadline we put in writing. Only ever
+            # somebody who was actually told — pay_due_at is written by the
+            # last-call email and by nothing else — so this can no more
+            # release an unwarned person than the confirm clock below can.
+            #
+            # Released rather than deleted, and rather than marked declined:
+            # they did not say no, they ran out of time, and those read
+            # differently to whoever picks this up next. It is also the state
+            # the tracker already knows how to show and how to reverse.
+            if (p.pay_due_at and not p.paid and now > _aware(p.pay_due_at)
+                    and p.pay_status != PAY_SUBMITTED):
+                p.released_at = now
+                n += 1
+                continue
+            if p.rsvp != RSVP_NONE:
                 continue
             # Each person's own clock. Somebody we have not written to yet has
             # a deadline quoted from now, so they can never lapse unasked.
@@ -1673,7 +1695,7 @@ def register(app, deps):
 
     # -------------------------------------------------------------- mail ----
 
-    def _send(db, ev, people, kind, base):
+    def _send(db, ev, people, kind, base, pay_by=""):
         """Send one kind of email to a list. Returns a receipt for the banner.
 
         Best-effort per person: one bad address must not stop the other
@@ -1693,6 +1715,17 @@ def register(app, deps):
             inline[LOGO_CID] = logo
         if ev.sponsor_logo:
             inline[SPONSOR_CID] = ev.sponsor_logo
+        # The deadline you typed, read as gym time — whoever fills that box is
+        # looking at a clock on a wall in Pasig. Parsed once for the whole
+        # send, so twenty people get one deadline rather than twenty that
+        # differ by the time it took to loop.
+        chosen_due = None
+        if kind == "payby" and (pay_by or "").strip():
+            try:
+                chosen_due = from_local(
+                    datetime.fromisoformat(pay_by.strip()))
+            except ValueError:
+                chosen_due = None
         for p in people:
             if not looks_like_email(p.email or ""):
                 skipped.append({"name": p.name, "detail": "no email on record"})
@@ -1702,12 +1735,20 @@ def register(app, deps):
             # have not got yet. Same for a receipt we've sent back: the whole
             # ask is "do the payment step again".
             url = ("%s/r/%s/%s" % (base, ev.slug, p.token)
-                   if kind in ("finish", "returned")
+                   if kind in ("finish", "returned", "payby")
                    else "%s/e/%s" % (base, p.token))
             build = {"reel": _reel_mail, "finish": _finish_mail,
                      "returned": _returned_mail,
-                     "lastcall": _lastcall_mail,
+                     "lastcall": _lastcall_mail, "payby": _payby_mail,
                      "cancelled": _cancelled_mail}.get(kind, _invite_mail)
+            if kind == "payby":
+                # Set here rather than after a successful send, because the
+                # sentence in the email is this value. Deciding it afterwards
+                # would let the email and the row disagree about the one thing
+                # the email is for.
+                p.pay_due_at = chosen_due or (datetime.now(timezone.utc)
+                                              + timedelta(hours=PAY_GRACE_HOURS))
+                db.flush()
             subject, text, html = build(db, ev, p, url)
             ok, detail = mailer.send(p.email, subject, text, html=html,
                                      inline=inline or None)
@@ -1721,6 +1762,11 @@ def register(app, deps):
                     p.reel_email_at = now
                 elif kind == "cancelled":
                     p.cancel_email_at = now
+                elif kind == "payby":
+                    # Already stamped, before the send — the email quotes this
+                    # exact moment, so it has to be decided before the words
+                    # are built rather than after they have gone.
+                    pass
                 elif kind == "lastcall":
                     # Not invited_at: that is "when we first asked", and the
                     # per-person confirm clock is counted from it. Restarting
@@ -1780,6 +1826,10 @@ def register(app, deps):
              "blurb": "Carries your reason for sending one back, when there is "
                       "one on the row.",
              "ok": True, "why": "usually from To review"},
+            {"key": "payby", "name": "Last call to pay",
+             "blurb": "\u201c24 hours to pay, or the slot goes to the next "
+                      "person.\u201d Stamps the deadline it quotes.",
+             "ok": True, "why": "usually Not finished"},
             {"key": "cancelled", "name": "Called off",
              "blurb": "\u201cToday's class is cancelled.\u201d Goes to everyone "
                       "who thinks they're coming, and everyone still deciding.",
@@ -1837,6 +1887,16 @@ def register(app, deps):
             "unfinished": [p for p in mailable
                            if p.pay_status == PAY_DRAFT and not p.nudged_at],
             "unfinished_all": [p for p in mailable if p.pay_status == PAY_DRAFT],
+            # The last call to pay. Everybody holding an unpaid slot — the
+            # ones who started and stopped, and the ones we sent back for a
+            # better receipt, because both are people whose place is not yet
+            # theirs. Not the ones waiting on us: their money is in, and
+            # telling them to hurry up would be our mistake, not theirs.
+            "payby": [p for p in mailable
+                      if p.pay_status in (PAY_DRAFT, PAY_RETURNED)
+                      and not p.pay_due_at],
+            "payby_all": [p for p in mailable
+                          if p.pay_status in (PAY_DRAFT, PAY_RETURNED)],
             # Called off. Everybody who thinks they are coming, plus everybody
             # still deciding — a cancellation is the one email that has to
             # reach people who never replied, because they are the ones most
@@ -1852,6 +1912,7 @@ def register(app, deps):
     @app.post("/events/{eid}/send")
     def event_send(request: Request, eid: int, kind: str = Form("invite"),
                    who: str = Form(""), pick: list[int] = Form(default=[]),
+                   pay_by: str = Form(""),
                    db: Session = Depends(get_db)):
         """Send one of the two emails.
 
@@ -1885,7 +1946,7 @@ def register(app, deps):
             chosen = set(pick)
             pool = [p for p in ev.participants if p.id in chosen]
             request.session["event_mail"] = _send(
-                db, ev, pool, kind, base_url(request))
+                db, ev, pool, kind, base_url(request), pay_by=pay_by)
             return RedirectResponse(f"/events/{eid}", status_code=303)
         if kind == "reel":
             pool = lists["nudge"] if who == "nudge" else (
@@ -1896,6 +1957,8 @@ def register(app, deps):
         elif kind == "lastcall":
             pool = (lists["lastcall_all"] if who == "all"
                     else lists["lastcall"])
+        elif kind == "payby":
+            pool = lists["payby_all"] if who == "all" else lists["payby"]
         elif kind == "cancelled":
             pool = (lists["cancelled_all"] if who == "all"
                     else lists["cancelled"])
@@ -1908,7 +1971,7 @@ def register(app, deps):
         else:
             pool = lists["invite_all"] if who == "all" else lists["invite"]
         request.session["event_mail"] = _send(
-            db, ev, pool, kind, base_url(request))
+            db, ev, pool, kind, base_url(request), pay_by=pay_by)
         return RedirectResponse(f"/events/{eid}", status_code=303)
 
     @app.get("/events/{eid}/preview/{kind}", response_class=HTMLResponse)
@@ -1934,6 +1997,7 @@ def register(app, deps):
         pool = {"finish": lists["unfinished_all"],
                 "reel": lists["reel_all"],
                 "lastcall": lists["lastcall_all"],
+                "payby": lists["payby_all"],
                 "returned": [p for p in ev.participants
                              if (p.review_note or "").strip()]}.get(
                     kind, lists["invite_all"])
@@ -1944,11 +2008,11 @@ def register(app, deps):
                 "to preview against yet.</p>")
         base = base_url(request)
         url = ("%s/r/%s/%s" % (base, ev.slug, who.token)
-               if kind in ("finish", "returned")
+               if kind in ("finish", "returned", "payby")
                else "%s/e/%s" % (base, who.token))
         build = {"reel": _reel_mail, "finish": _finish_mail,
                  "returned": _returned_mail,
-                 "lastcall": _lastcall_mail,
+                 "lastcall": _lastcall_mail, "payby": _payby_mail,
                  "cancelled": _cancelled_mail}.get(kind, _invite_mail)
         subject, _text, html = build(db, ev, who, url)
         # The inline marks are Content-IDs in a real message; a browser needs
@@ -2435,6 +2499,11 @@ def _mail_values(ev, p, url, key) -> dict:
                         else ev.tier_b_label) or "",
         "record.amount": money(p.amount),
         "record.deadline": _fmt_when(confirm_deadline(p)),
+        # Not yet sent means not yet stamped, and a preview reading "Pay by ."
+        # would be worse than useless. What it will be is the honest stand-in.
+        "record.pay_deadline": _fmt_when(
+            p.pay_due_at or (datetime.now(timezone.utc)
+                             + timedelta(hours=PAY_GRACE_HOURS))),
         "record.reel_deadline": _fmt_when(ev.reel_deadline),
         "record.review_note": p.review_note or "",
     }
@@ -2540,6 +2609,10 @@ def _lastcall_mail(db, ev, p, url):
 
 def _reel_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "reel")
+
+
+def _payby_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "payby")
 
 
 def _cancelled_mail(db, ev, p, url):

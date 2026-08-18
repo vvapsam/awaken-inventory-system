@@ -1351,6 +1351,9 @@ PAY_DRAFT = "draft"
 PAY_SUBMITTED = "submitted"
 PAY_APPROVED = "approved"
 PAY_RETURNED = "returned"
+#: How long somebody gets to pay once you have sent the last call.
+PAY_GRACE_HOURS = 24
+
 PAY_LABELS = {
     PAY_DRAFT: "Not finished",
     PAY_SUBMITTED: "Waiting on us",
@@ -1730,6 +1733,10 @@ class EventParticipant(Base):
     redeemed_at = Column(DateTime(timezone=True))
 
     created_at = Column(DateTime(timezone=True), default=now_utc)
+    #: The moment their unpaid slot stops being held. Written when you send
+    #: the last-call-to-pay email and not before, because a deadline nobody has
+    #: been told about is not a deadline — it is a reason to argue later.
+    pay_due_at = Column(DateTime(timezone=True))
     #: When somebody last changed this row by hand from the tracker.
     #:
     #: Deliberately not a SQLAlchemy `onupdate`. Every time a participant opens
@@ -1778,6 +1785,7 @@ class EventParticipant(Base):
             (self.reel_email_at, "Reel email sent"),
             (self.pass_email_at, "Pass sent"),
             (self.invited_at, "Invited"),
+            (self.pay_due_at, "Last call to pay sent"),
             (self.edited_at, "Edited"),
         )
         best = None
