@@ -1730,6 +1730,13 @@ class EventParticipant(Base):
     redeemed_at = Column(DateTime(timezone=True))
 
     created_at = Column(DateTime(timezone=True), default=now_utc)
+    #: When somebody last changed this row by hand from the tracker.
+    #:
+    #: Deliberately not a SQLAlchemy `onupdate`. Every time a participant opens
+    #: their own link we bump their view counter, which is an UPDATE — so an
+    #: onupdate column would read "last updated" and mean "last looked at",
+    #: which is the wrong answer to the question the column is asked.
+    edited_at = Column(DateTime(timezone=True))
 
     event = relationship("Event", back_populates="participants")
     reviewed_by = relationship("Staff", foreign_keys=[reviewed_by_id])
@@ -1748,6 +1755,48 @@ class EventParticipant(Base):
     #: a list has only `name`. Splitting on the last space is a guess, but it
     #: is a guess the person can correct in the box, which is better than
     #: handing them two empty fields and their own name in the greeting.
+    #: Everything that can happen to a participant, newest first when read.
+    #: Used to answer "when did this last move, and what moved" without
+    #: keeping a second copy of the truth in an updated_at column.
+    @property
+    def last_touch(self):
+        marks = (
+            (self.redeemed_at, "Reward redeemed"),
+            (self.reward_at, "Reward issued"),
+            (self.reel_at, "Reel posted"),
+            (self.arrived_at, "Checked in"),
+            (self.slot_at, "Start time assigned"),
+            (self.reviewed_at, "Payment reviewed"),
+            (self.submitted_at, "Receipt sent"),
+            (self.external_done_at, "Organiser step done"),
+            (self.acknowledged_at, "Agreed to the terms"),
+            (self.rsvp_at, "Answered"),
+            (self.released_at, "Slot released"),
+            (self.cancel_email_at, "Cancellation sent"),
+            (self.last_call_at, "Last call sent"),
+            (self.nudged_at, "Nudged"),
+            (self.reel_email_at, "Reel email sent"),
+            (self.pass_email_at, "Pass sent"),
+            (self.invited_at, "Invited"),
+            (self.edited_at, "Edited"),
+        )
+        best = None
+        for when, what in marks:
+            if when is not None and (best is None or when > best[0]):
+                best = (when, what)
+        return best
+
+    @property
+    def changed_at(self):
+        """When anything about this row last moved. Falls back to when it was made."""
+        t = self.last_touch
+        return t[0] if t else self.created_at
+
+    @property
+    def changed_what(self) -> str:
+        t = self.last_touch
+        return t[1] if t else "Added"
+
     @property
     def given(self) -> str:
         if self.first_name:

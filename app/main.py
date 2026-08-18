@@ -719,6 +719,13 @@ def startup():
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  reels_paused BOOLEAN NOT NULL DEFAULT FALSE; "
                 "END IF; END $$;"))
+            # When somebody last changed a participant row by hand. Only set
+            # by the edit screen — see the note on the column.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  edited_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
             # visible and reversible.

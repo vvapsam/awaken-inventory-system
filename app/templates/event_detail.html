@@ -295,7 +295,9 @@
     <th style="width:34px"><input type="checkbox" class="chk selall" title="Select everyone"></th>
     <th>Participant</th>{% if ev.mode == 'open' %}<th>Payment</th>{% endif %}<th>Emails</th>
     <th>Instagram</th><th>Confirmed</th>
-    <th>Acknowledged</th><th>Reel</th><th>Reward</th><th>Link</th>
+    <th>Acknowledged</th><th>Reel</th><th>Reward</th>
+    <th style="width:130px">Added</th><th style="width:150px">Last update</th>
+    <th>Link</th>
     <th style="width:1%"></th>
   </tr></thead>
   <tbody>
@@ -364,6 +366,21 @@
     <td>{% if p.reward_code %}<span class="mono">{{ p.reward_code }}</span>
         <div class="muted small" style="margin:0">{{ (ev.reward(p.reward_key) or {}).get('name', '') }}</div>
       {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {# When it appeared, and when it last moved. Two questions that used to
+       have no answer on this screen at all: you could see that somebody was
+       approved but not when, and not whether the row had been touched since.
+
+       "Last update" is derived from the stamps already on the row rather than
+       an updated_at column, because participants open their own links and that
+       is an UPDATE — a column that bumped on every view would say "updated"
+       and mean "looked at". Naming what moved is the other half of the answer;
+       a bare timestamp tells you when and leaves you guessing what. #}
+    <td class="sub" style="white-space:nowrap">
+      {{ (p.created_at|local).strftime('%d %b, %H:%M') if p.created_at else '—' }}</td>
+    <td class="sub" style="white-space:nowrap">
+      {% if p.changed_at %}{{ (p.changed_at|local).strftime('%d %b, %H:%M') }}
+        <div class="muted small" style="margin:0">{{ p.changed_what }}</div>
+      {% else %}—{% endif %}</td>
     <td><button class="btn" style="padding:4px 10px;font-size:.76rem"
         data-copy="{{ base }}/e/{{ p.token }}">Copy</button></td>
     <td style="white-space:nowrap">
@@ -376,7 +393,7 @@
      full width of the table and a long email address is readable. Kept out of
      the picking form above — a form cannot nest. #}
   <tr class="editrow" id="edit-{{ p.id }}" hidden>
-    <td colspan="{{ 11 if ev.mode == 'open' else 10 }}">
+    <td colspan="{{ 13 if ev.mode == 'open' else 12 }}">
       <div class="editgrid">
         <div>
           <label class="small" style="font-weight:600;margin:0 0 4px">Name</label>

@@ -1616,6 +1616,9 @@ def register(app, deps):
         # Same cleaning as the participant's own page, so a handle typed here
         # and a handle typed there end up stored identically.
         p.instagram = clean_handle(instagram)
+        # Stamped here rather than by an onupdate, so "last update" means
+        # somebody changed something and not "a participant opened their link".
+        p.edited_at = datetime.now(timezone.utc)
         db.commit()
         return RedirectResponse(back + "?edit=ok", status_code=303)
 
