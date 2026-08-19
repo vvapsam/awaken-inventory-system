@@ -36,7 +36,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, parse_qsl, urlencode
 
 import qrcode
 
@@ -1127,7 +1127,7 @@ def register(app, deps):
                       ev=ev, tab=tab, people=people, waiting=waiting,
                       gone=gone, review=review, unfinished=unfinished,
                       templates=sendable_templates(ev), money=money,
-                      pay_labels=PAY_LABELS,
+                      pay_labels=PAY_LABELS, status_moves=STATUS_MOVES,
                       upload=request.session.pop("event_upload", None),
                       c=counts(ev),
                       lists={k: len(v) for k, v in mail_lists(ev).items()},
@@ -1501,6 +1501,81 @@ def register(app, deps):
         db.commit()
         return RedirectResponse(f"/events/{eid}?tab=gone&back={pid}",
                                 status_code=303)
+
+    #: What you can move somebody to by hand, and what each one means. Kept
+    #: here rather than spread through the handler so the page and the route
+    #: are reading the same list, and so adding one is one edit.
+    STATUS_MOVES = {
+        "declined": "Can't make it",
+        "released": "Slot released",
+        "waitlist": "Waitlist",
+        "back": "Back on the list",
+    }
+
+    @app.post("/events/{eid}/people/{pid}/status")
+    def event_set_status(request: Request, eid: int, pid: int,
+                         to: str = Form(""), db: Session = Depends(get_db)):
+        """Move somebody by hand, without deleting them.
+
+        Until now the only action on a row was Remove, which throws away their
+        link, their answer and their history to record a fact as ordinary as
+        "they messaged me, they can't come". People tell you things off the
+        system — a DM, at the door, in person — and the tracker has to be able
+        to hold that.
+
+        Every move is reversible, and none of them writes an email: this
+        records something you already know, it does not announce it.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        p = db.get(EventParticipant, pid)
+        if not ev or not p or p.event_id != eid or to not in STATUS_MOVES:
+            return RedirectResponse(f"/events/{eid}", status_code=303)
+        now = datetime.now(timezone.utc)
+        if to == "declined":
+            # Their own no, recorded on their behalf. Also clears a release:
+            # somebody who ran out of time and then told you they can't come
+            # has said something, and that is the truer of the two.
+            p.rsvp, p.rsvp_at = RSVP_NO, now
+            p.released_at = None
+            p.waitlist = False
+        elif to == "released":
+            # They did not say no; the slot is simply free again. Kept
+            # separate from a decline because those read differently to
+            # whoever picks this up next month.
+            p.released_at = now
+            p.waitlist = False
+        elif to == "waitlist":
+            # Off the count and out of every send until you give them a slot
+            # back. Their answer is cleared with them: a yes to a slot they no
+            # longer hold would be counted, and it would be wrong.
+            p.waitlist = True
+            p.released_at = None
+            p.rsvp, p.rsvp_at = RSVP_NONE, None
+        else:
+            # Back on the list, with a fresh window — whatever deadline
+            # applied has almost certainly passed by now.
+            p.rsvp, p.rsvp_at = RSVP_NONE, None
+            p.released_at = None
+            p.waitlist = False
+            p.confirm_due = now + timedelta(hours=ev.confirm_hours or 24)
+        p.edited_at = now
+        name = p.name
+        db.commit()
+        # Back to the tab you were looking at, not to the top of the page. The
+        # referer is rebuilt rather than appended to: moving three people in a
+        # row otherwise stacks three ?moved= on the end of the URL, and only
+        # the path and query are kept so a referer from anywhere else cannot
+        # bounce us off site.
+        ref = urlsplit(request.headers.get("referer") or "")
+        q = [(k, v) for k, v in parse_qsl(ref.query)
+             if k not in ("moved", "who")]
+        q += [("moved", to), ("who", name or "")]
+        path = ref.path if ref.path.startswith("/events/%d" % eid) \
+            else "/events/%d" % eid
+        return RedirectResponse("%s?%s" % (path, urlencode(q)), status_code=303)
 
     @app.post("/events/{eid}/people/{pid}/approve")
     def event_approve_payment(request: Request, eid: int, pid: int,
