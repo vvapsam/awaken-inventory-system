@@ -820,3 +820,16 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 /* The last call's deadline field, inside the send picker. */
 .picker .payby{border-top:1px solid var(--line);margin:10px 0 0;padding:11px 0 0}
 .picker .payby[hidden]{display:none}
+
+/* Move-to control in the participant edit row. Its own line under the name and
+   email fields rather than another button in the action strip: it is a
+   different kind of act — Save keeps the row where it is, this one sends it to
+   another tab — and a select sat between two buttons reads as a third button. */
+.movebox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:10px 0 0;padding:9px 11px;border:1px solid var(--line,#e2e2e2);
+  border-radius:8px;background:#fafafa}
+.movebox label{display:inline-block;margin:0}
+.movebox select{flex:0 0 auto;width:auto;min-width:190px;max-width:280px;
+  padding:5px 8px;font-size:.84rem}
+@media (max-width:640px){.movebox{align-items:stretch;flex-direction:column}
+  .movebox select{width:100%}}

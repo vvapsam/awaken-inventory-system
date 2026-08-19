@@ -246,6 +246,18 @@
     from the table and DM it to them.</span></div>
 {% endif %}
 
+{# Says who moved and where to, because the row itself has just left the tab
+   you were looking at — without this the only feedback is a person quietly
+   vanishing. #}
+{% set moved = request.query_params.get('moved') %}
+{% if moved in status_moves %}
+<div class="alert" style="margin-top:10px"><b>{{ request.query_params.get('who') or 'They' }}
+  → {{ status_moves[moved] }}.</b>
+  <span class="muted">Nothing was emailed. Move them back any time from the
+    {{ 'Waitlist' if moved == 'waitlist' else ("Can't make it" if moved in ('declined', 'released') else 'Participants') }}
+    tab.</span></div>
+{% endif %}
+
 <div class="tfilter" style="margin-top:14px">
   <a href="?tab=people" class="{{ 'on' if tab not in ('reels','waitlist','gone','door','review','unfinished','organiser') }}">Participants · {{ c.inplay }}</a>
   <a href="?tab=reels" class="{{ 'on' if tab == 'reels' }}">Reels · {{ c.posted }}</a>
@@ -449,6 +461,23 @@
           {% endif %}
         </div>
       </div>
+      {# Moving somebody is not removing them. Removing burns their link and
+         loses the history; "can't make it" keeps both and shows up under the
+         right heading, which is what you actually wanted nine times in ten.
+         The option they are already in is left out — a menu offering you
+         where you already are is a menu you have to read twice. #}
+      {% set cur = 'waitlist' if p.waitlist else ('declined' if p.declined
+                   else ('released' if p.released_at else 'back')) %}
+      <div class="movebox">
+        <label class="small" for="mv-{{ p.id }}" style="font-weight:600;margin:0">Move to</label>
+        <select id="mv-{{ p.id }}" form="st-{{ p.id }}" name="to">
+          {% for key, label in status_moves.items() %}
+          {% if key != cur %}<option value="{{ key }}">{{ label }}</option>{% endif %}
+          {% endfor %}
+        </select>
+        <button class="btn" form="st-{{ p.id }}" style="margin:0">Move</button>
+        <span class="muted small" style="margin:0">Reversible, and nothing is emailed.</span>
+      </div>
       <div class="muted small" style="margin:7px 0 0">A pasted profile URL or a leading @ is
         fine — we tidy the handle up. Their link, confirmation and Reel are untouched.</div>
     </td>
@@ -462,6 +491,7 @@
    inputs above point at these by id. #}
 {% for p in people %}
 <form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/edit" id="ed-{{ p.id }}" hidden></form>
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/status" id="st-{{ p.id }}" hidden></form>
 {% if not p.posted %}
 <form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/remove" id="rm-{{ p.id }}" hidden
       onsubmit="return confirm('Remove {{ p.name }} from this event? Their link stops working.')"></form>
