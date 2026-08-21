@@ -7,6 +7,45 @@
   <span class="tsearch-note" id="{{ target }}-note"></span>
 </div>
 {% endmacro %}
+{#
+  Which columns one table shows. Per event and per tab, not per person
+  looking: a fitness test scored by category needs Gender on screen for
+  everybody who opens it, and a sponsor class never needs it at all.
+
+  A macro because the same panel now sits above two different tables that
+  hold different questions — one copy means the two can never drift into
+  behaving differently.
+
+  Nothing here is a new field. Every one of these is already collected and
+  already stored, it just had nowhere to appear. Folded away by default
+  because it is a setup decision, not something you touch twice a day.
+#}
+{% macro colpick(scope, options, chosen, saved) %}
+<details class="colpick">
+  <summary>Columns<span class="n">{{ chosen|length }}</span></summary>
+  <form method="post" action="/events/{{ ev.id }}/columns">
+    <input type="hidden" name="scope" value="{{ scope }}">
+    <div class="grid">
+      {% for key, label, on in options %}
+      <label><input type="checkbox" name="col" value="{{ key }}"
+             {{ 'checked' if on }}> {{ label }}</label>
+      {% endfor %}
+    </div>
+    <div class="acts">
+      <button class="btn primary" style="margin:0">Save columns</button>
+      <span class="muted small" style="margin:0">Name and the row buttons always
+        stay. This is for this tab on this event — nothing else changes.</span>
+    </div>
+  </form>
+  {% if saved is not none %}
+  <form method="post" action="/events/{{ ev.id }}/columns/reset" style="margin:8px 0 0">
+    <input type="hidden" name="scope" value="{{ scope }}">
+    <button class="btn ghost small" style="margin:0">Back to the standard columns</button>
+  </form>
+  {% endif %}
+</details>
+{% endmacro %}
+
 {% macro sendbar(tid) %}
 {# Tick names, then choose what those people get. Two clicks: opening the list
    is not sending, and picking a template is not sending either — the count and
@@ -252,6 +291,15 @@
     from the table and DM it to them.</span></div>
 {% endif %}
 
+{# Above the tab strip rather than inside one tab's block: the panel folds
+   itself away on save, so without a line here the only feedback on the
+   Can't make it tab was the columns silently changing. #}
+{% if request.query_params.get('cols') == 'ok' %}
+<div class="notice">Columns saved for this tab.</div>
+{% elif request.query_params.get('cols') == 'reset' %}
+<div class="notice">Back to the standard columns.</div>
+{% endif %}
+
 {# Says who moved and where to, because the row itself has just left the tab
    you were looking at — without this the only feedback is a person quietly
    vanishing. #}
@@ -314,42 +362,9 @@
   <span class="muted">It's how you'll find them on the day.</span></div>
 {% endif %}
 
-{% if request.query_params.get('cols') == 'ok' %}
-<div class="notice">Columns saved for this event.</div>
-{% elif request.query_params.get('cols') == 'reset' %}
-<div class="notice">Back to the standard columns.</div>
-{% endif %}
-
 {{ searchbar('ppl', 'Search name, email, handle…') }}
 
-{# Which columns this event shows. Per event, not per person looking: a
-   fitness test scored by category needs Gender on screen for everybody who
-   opens it, and a sponsor class never needs it at all.
-
-   Nothing here is a new field — every one of these is already collected and
-   already stored, it just had nowhere to appear. Folded away by default
-   because it is a setup decision, not something you touch twice a day. #}
-<details class="colpick">
-  <summary>Columns<span class="n">{{ cols|length }}</span></summary>
-  <form method="post" action="/events/{{ ev.id }}/columns">
-    <div class="grid">
-      {% for key, label, on in col_list %}
-      <label><input type="checkbox" name="col" value="{{ key }}"
-             {{ 'checked' if on }}> {{ label }}</label>
-      {% endfor %}
-    </div>
-    <div class="acts">
-      <button class="btn primary" style="margin:0">Save columns</button>
-      <span class="muted small" style="margin:0">Name and the row buttons always
-        stay. This is per event — other events are untouched.</span>
-    </div>
-  </form>
-  {% if ev.cols is not none %}
-  <form method="post" action="/events/{{ ev.id }}/columns/reset" style="margin:8px 0 0">
-    <button class="btn ghost small" style="margin:0">Back to the standard columns</button>
-  </form>
-  {% endif %}
-</details>
+{{ colpick('people', col_list, cols, ev.cols) }}
 
 {% if ev.mode == 'open' %}
 {# Paid or not, on an event where everybody is expected to pay. Chips rather
@@ -390,6 +405,7 @@
     {% if 'entry' in cols %}<th style="width:120px">Entry</th>{% endif %}
     {% if 'payment' in cols %}<th>Payment</th>{% endif %}
     {% if 'slot' in cols %}<th style="width:110px">Slot</th>{% endif %}
+    {% if 'heat' in cols %}<th style="width:118px">Heat</th>{% endif %}
     {% if 'emails' in cols %}<th>Emails</th>{% endif %}
     {% if 'instagram' in cols %}<th>Instagram</th>{% endif %}
     {% if 'confirmed' in cols %}<th>Confirmed</th>{% endif %}
@@ -457,6 +473,16 @@
     {% if 'slot' in cols %}
     <td>{% if p.slot_time %}<span class="tag">{{ p.slot_time }}</span>
         <div class="sub">Number {{ p.slot_no }}</div>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {# Their heat, and whether they have been told it. Amber is the same
+       amber as the timetable's own chips: somebody holding a time nobody has
+       sent them is the one state you need to spot from the roster. #}
+    {% if 'heat' in cols %}
+    <td style="white-space:nowrap">
+      {% if p.heat_time %}<span class="tag {{ '' if p.heat_email_at else 'amber' }}"
+        title="{{ 'Told' if p.heat_email_at else 'Not told yet' }}">{{ p.heat_time }}</span>
+        {% if not p.heat_email_at %}<div class="muted small" style="margin:0">not told</div>{% endif %}
       {% else %}<span class="muted small">—</span>{% endif %}</td>
     {% endif %}
     {# Which of the two emails this person has had. Two ticks means they were
@@ -833,23 +859,106 @@
 </div>
 
 {{ searchbar('gn', 'Search name, email, handle…') }}
+
+{# The same chooser as the participant list, over its own saved set. What you
+   want to see about somebody who dropped out is not what you want to see
+   about somebody who is coming — most often what they had paid, and how to
+   reach them — so the two tabs keep their choices apart. #}
+{{ colpick('gone', gone_col_list, gone_cols, ev.gone_cols) }}
+
 <table id="gn">
-  <thead><tr><th>Not coming</th><th>What happened</th><th>Instagram</th>
-    <th style="width:1%"></th></tr></thead>
+  <thead><tr>
+    <th>Not coming</th>
+    {% if 'gender' in gone_cols %}<th style="width:90px">Gender</th>{% endif %}
+    {% if 'mobile' in gone_cols %}<th style="width:130px">Mobile</th>{% endif %}
+    {% if 'entry' in gone_cols %}<th style="width:120px">Entry</th>{% endif %}
+    {% if 'payment' in gone_cols %}<th>Payment</th>{% endif %}
+    {% if 'heat' in gone_cols %}<th style="width:110px">Heat</th>{% endif %}
+    <th>What happened</th>
+    {% if 'emails' in gone_cols %}<th>Emails</th>{% endif %}
+    {% if 'instagram' in gone_cols %}<th>Instagram</th>{% endif %}
+    {% if 'added' in gone_cols %}<th style="width:130px">Added</th>{% endif %}
+    {% if 'updated' in gone_cols %}<th style="width:150px">Last update</th>{% endif %}
+    {% if 'link' in gone_cols %}<th>Link</th>{% endif %}
+    <th style="width:1%"></th>
+  </tr></thead>
   <tbody>
   {% for p in gone %}
   <tr class="low">
     <td><div class="primary">{{ p.name }}</div>
       <div class="sub">{{ p.email or 'No email on record' }}</div></td>
+    {% if 'gender' in gone_cols %}
+    <td>{% if p.sex %}{{ 'Male' if p.sex == 'm' else 'Female' }}
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'mobile' in gone_cols %}
+    <td style="white-space:nowrap">{% if p.mobile %}<span class="mono">{{ p.mobile }}</span>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'entry' in gone_cols %}
+    <td class="sub">{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label)
+      if p.tier else '—' }}</td>
+    {% endif %}
+    {# Money is the reason this tab most often needs more than three columns:
+       somebody who paid and then dropped out is a refund, not a free slot. #}
+    {% if 'payment' in gone_cols %}
+    <td style="white-space:nowrap">
+      {% if p.amount %}<div class="primary">{{ money(p.amount) }}</div>{% endif %}
+      {% if p.pay_status %}
+        <div class="sub">{% if p.pay_status == 'approved' %}<span class="tag">Approved</span>
+          {% elif p.pay_status == 'submitted' %}<span class="tag amber">Waiting on us</span>
+          {% elif p.pay_status == 'returned' %}<span class="tag bad">Sent back</span>
+          {% else %}<span class="tag grey">Not finished</span>{% endif %}</div>
+      {% elif not p.amount %}<span class="muted small">—</span>{% endif %}
+      {% if p.proof %}
+      <button type="button" class="btn" style="padding:4px 9px;font-size:.74rem;margin-top:4px"
+              data-proof="/events/{{ ev.id }}/people/{{ p.id }}/proof"
+              data-who="{{ p.full_name or p.name }}"
+              data-amt="{{ money(p.amount) if p.amount }}"
+              data-ref="{{ p.proof_ref or '' }}">View payment</button>
+      {% endif %}
+    </td>
+    {% endif %}
+    {% if 'heat' in gone_cols %}
+    <td>{% if p.heat_time %}<span class="tag grey">{{ p.heat_time }}</span>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
     <td>{% if p.declined %}<span class="tag grey">Said they can't make it</span>
         {% if p.rsvp_at %}<div class="sub">{{ (p.rsvp_at|local).strftime('%d %b, %H:%M') }}</div>{% endif %}
       {% else %}<span class="tag grey">Didn't answer in time</span>
         {% if p.released_at %}<div class="sub">{{ (p.released_at|local).strftime('%d %b, %H:%M') }}</div>{% endif %}
       {% endif %}</td>
-    <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>{% else %}—{% endif %}</td>
+    {% if 'emails' in gone_cols %}
+    <td style="white-space:nowrap">
+      {% if p.invited_at %}<span class="tag" title="Invitation sent {{ (p.invited_at|local).strftime('%d %b, %H:%M') }}">1</span>
+      {% else %}<span class="tag grey" title="Invitation not sent">1</span>{% endif %}
+      {% if p.reel_email_at %}<span class="tag" title="Reel email sent">2</span>
+      {% else %}<span class="tag grey" title="Not sent">2</span>{% endif %}
+    </td>
+    {% endif %}
+    {% if 'instagram' in gone_cols %}
+    <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'added' in gone_cols %}
+    <td class="sub" style="white-space:nowrap">
+      {{ (p.created_at|local).strftime('%d %b, %H:%M') if p.created_at else '—' }}</td>
+    {% endif %}
+    {% if 'updated' in gone_cols %}
+    <td class="sub" style="white-space:nowrap">
+      {% if p.changed_at %}{{ (p.changed_at|local).strftime('%d %b, %H:%M') }}
+        <div class="muted small" style="margin:0">{{ p.changed_what }}</div>
+      {% else %}—{% endif %}</td>
+    {% endif %}
+    {% if 'link' in gone_cols %}
+    <td><button class="btn" style="padding:4px 10px;font-size:.76rem"
+        data-copy="{{ base }}/e/{{ p.token }}">Copy</button></td>
+    {% endif %}
     <td style="white-space:nowrap">
       <button class="btn" form="ud-{{ p.id }}" style="margin:0">Put them back</button></td>
   </tr>
+  {% else %}
+  <tr><td colspan="{{ 3 + gone_cols|length }}" class="muted">Nobody has dropped out.</td></tr>
   {% endfor %}
   </tbody>
 </table>
