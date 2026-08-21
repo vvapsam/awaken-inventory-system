@@ -1451,6 +1451,12 @@ class Event(Base):
     #: sex needs that column for everybody who opens it; a sponsor class never
     #: needs it at all.
     cols = Column(Text)
+    #: The same, for the Can't make it tab. Its own column rather than a share
+    #: of the one above: the two tables answer different questions — "who is
+    #: coming and what do they still owe me" against "who dropped out, and
+    #: what were they holding" — so one saved set would mean tuning one tab
+    #: quietly wrecks the other.
+    gone_cols = Column(Text)
     #: Hours from *their own* invitation within which somebody has to answer.
     #: Counted per person rather than from one fixed date, because somebody
     #: added to the list on the Thursday would otherwise inherit a deadline
