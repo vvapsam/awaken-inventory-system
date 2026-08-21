@@ -1,0 +1,27 @@
+{% extends "coach_base.html" %}
+{% block title %}Pick an event{% endblock %}
+{% block body %}
+<div class="bar">
+  <div class="mid"><h1>Coach</h1><div class="sub">{{ staff.name }}</div></div>
+</div>
+<div class="wrap">
+  {% if events %}
+    <div class="hd">Events with a race set up</div>
+    {% for e in events %}
+      <a class="row" href="/race/e/{{ e.id }}">
+        <div class="g">
+          <div class="t">{{ e.name }}</div>
+          <div class="s">{{ e.starts_at.strftime('%a %-d %b') if e.starts_at else 'No date' }}</div>
+        </div>
+        <div class="r">{{ e.stations|length }} stations</div>
+      </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      No event has stations set up yet.<br>
+      Ask for them to be added on the event page first — there is nothing to
+      count until then.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{# The coach app's own shell.
+
+   Deliberately not the desktop chrome and deliberately not style.css: this is
+   held one-handed, at arm's length, by somebody watching a person do burpees.
+   Every rule here exists to make a target bigger or a number more readable, and
+   sharing a stylesheet with the admin tables would mean one of the two is
+   always compromised. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0d1114">
+<title>{% block title %}Coach{% endblock %} · AWAKEN</title>
+<style>
+:root{
+  --bg:#0d1114; --card:#161c21; --line:#242c33; --ink:#eef3f5; --dim:#8d97a2;
+  --teal:#1fb6b6; --teal-d:#0f8a8a; --teal-ink:#062626;
+  --warn:#e0a458; --ok:#2f9e6b;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:16px;line-height:1.4;
+  padding-bottom:env(safe-area-inset-bottom);
+  -webkit-user-select:none;user-select:none}
+a{color:var(--teal);text-decoration:none}
+.wrap{max-width:520px;margin:0 auto;padding:0 14px 28px}
+
+/* --- top bar: nothing important in the corners, per the wireframe --- */
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);
+  border-bottom:1px solid var(--line);padding:12px 14px 10px;
+  padding-top:calc(12px + env(safe-area-inset-top));
+  display:flex;align-items:center;gap:12px}
+.bar .back{flex:0 0 auto;width:40px;height:40px;border-radius:10px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink);
+  font-size:1.2rem;display:flex;align-items:center;justify-content:center}
+.bar .mid{flex:1 1 auto;min-width:0}
+.bar h1{margin:0;font-size:1.05rem;font-weight:700;letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .sub{font-size:.78rem;color:var(--dim);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.pill{flex:0 0 auto;font-size:.68rem;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;padding:5px 9px;border-radius:999px;
+  background:#1d2429;color:var(--dim);border:1px solid var(--line)}
+.pill.live{background:#12312f;color:#5fd0d0;border-color:#1c4a47}
+.pill.done{background:#122a1f;color:#5fc98f;border-color:#1c4433}
+
+/* --- lists --- */
+.row{display:block;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;padding:14px 15px;margin-top:10px;color:var(--ink);
+  display:flex;align-items:center;gap:12px;min-height:62px}
+.row .g{flex:1 1 auto;min-width:0}
+.row .t{font-size:1.05rem;font-weight:700;letter-spacing:-.01em}
+.row .s{font-size:.78rem;color:var(--dim);margin-top:2px}
+.row .r{flex:0 0 auto;text-align:right;font-size:.78rem;color:var(--dim)}
+.row.off{opacity:.5}
+.row.mine{border-color:var(--teal-d);background:#10201f}
+form.inline{margin:0}
+.grab{border:0;border-radius:11px;background:var(--teal);color:var(--teal-ink);
+  font-weight:800;font-size:.85rem;padding:11px 15px;min-height:44px}
+.grab.ghost{background:#222a30;color:var(--dim)}
+.hd{font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--dim);font-weight:800;margin:22px 0 2px}
+.empty{background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:22px 16px;text-align:center;color:var(--dim);margin-top:12px}
+.note{font-size:.75rem;color:var(--dim);line-height:1.45;margin-top:12px}
+.warnbox{background:#2a2116;border:1px solid #4a3a20;color:#e8c98f;
+  border-radius:12px;padding:11px 13px;font-size:.82rem;margin-top:12px}
+</style>
+</head>
+<body>
+{% block body %}{% endblock %}
+</body>
+</html>

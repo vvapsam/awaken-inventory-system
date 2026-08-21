@@ -1,0 +1,359 @@
+{% extends "coach_base.html" %}
+{% block title %}{{ p.full_name }}{% endblock %}
+{% block body %}
+<div class="bar">
+  <a class="back" href="/race/e/{{ ev.id }}/h/{{ (p.heat_time or '')|replace(':','') }}">‹</a>
+  <div class="mid"><h1>{{ p.full_name }}</h1>
+    <div class="sub">{{ p.heat_time }} heat{% if p.sex %} · {{ 'Female' if p.sex == 'f' else 'Male' }}{% endif %}</div></div>
+  <div class="pill {% if phase == 'done' %}done{% else %}live{% endif %}">{{ 'Done' if phase == 'done' else 'Live' }}</div>
+</div>
+
+<div class="wrap">
+
+{% if not mine %}
+  <div class="warnbox">
+    {% if coach %}{{ coach }} has this athlete.{% else %}Nobody has this athlete.{% endif %}
+    You can watch, but the buttons belong to whoever grabbed them.
+  </div>
+{% endif %}
+
+{# ---- the race clock. Biggest thing on the screen, above the fold, because
+       it is the number the coach shouts across the floor. ---- #}
+<div class="runwrap {% if phase == 'done' %}fin{% endif %}">
+  <div class="k">{{ 'Final race time' if phase == 'done' else 'Running time' }}</div>
+  <div class="v" id="runv">{{ mmss(race_secs if phase == 'done' else run_secs) }}</div>
+  <div class="s" id="runs">
+    {% if start_ms %}Heat start {{ p.heat_time }}:00{% else %}No heat time set{% endif %}
+  </div>
+</div>
+
+{% if phase == 'done' %}
+  <div class="hd">Where the time went</div>
+  {% for s in splits %}
+    <div class="split">
+      <div class="g"><div class="t">{{ s.name }}</div>
+        <div class="s">{{ s.count }} {{ s.unit }}</div></div>
+      <div class="tm">{{ mmss(s.secs) }}</div>
+    </div>
+  {% endfor %}
+  <div class="note">
+    Every split is that station's own stopwatch. They will not add up to the
+    total — the gaps between stations are the difference, and that gap is real
+    time spent in the race.
+  </div>
+  {% if mine %}
+    <div class="quietrow">
+      <form method="post" action="/race/p/{{ p.id }}/reopen"
+            onsubmit="return confirm('Put the last station back into counting? The finish time is cleared.')">
+        <button class="quiet" type="submit">Reopen the last station</button>
+      </form>
+    </div>
+  {% endif %}
+
+{% elif not stations %}
+  <div class="empty">This event has no stations set up.</div>
+
+{% elif phase in ('open', 'pre') %}
+  {# ---- counting ---- #}
+  <div class="dots">
+    {% for s in stations %}
+      <i class="{% if loop.index0 < index %}on{% elif loop.index0 == index %}now{% endif %}"></i>
+    {% endfor %}
+  </div>
+  <div class="stephd">
+    <div class="n">{{ show_st.name }}</div>
+    <div class="c">Station {{ index + 1 }} of {{ stations|length }}</div>
+  </div>
+
+  <div class="count">
+    <span class="big" id="cnow">{{ count }}</span>
+    <span class="of">/ {{ show_st.target }} {{ show_st.unit }}</span>
+  </div>
+  <div class="pb"><i id="pbi"></i></div>
+  <div class="stimer"><span id="stim">This station 0:00</span>
+    <span class="sv" id="sv" hidden>saving…</span></div>
+
+  <div id="counting">
+    <div class="taps">
+      <button class="minus" id="minus" type="button" {% if not mine %}disabled{% endif %}>−</button>
+      <button class="plus" id="plus" type="button" {% if not mine %}disabled{% endif %}>
+        +{{ show_st.increment }} {{ show_st.unit }}</button>
+    </div>
+  </div>
+
+  {# Once the station closes there is nothing left to count, so the plus and
+     minus go away and one big button takes their place. #}
+  <form id="closed" method="post" action="/race/p/{{ p.id }}/next" hidden>
+    <button class="next" type="submit">Next station →</button>
+  </form>
+
+  <div class="note" id="tnote">
+    {% if phase == 'pre' %}Station one is already running — it starts at the
+    heat, not at your first tap. {% endif %}The clock above counts from
+    {{ p.heat_time or 'the heat' }} and nothing on this screen can move it.
+  </div>
+
+  {% if mine %}
+  <div class="quietrow">
+    <form method="post" action="/race/p/{{ p.id }}/reopen" id="reopenf" hidden
+          onsubmit="return confirm('Put this station back into counting? The stamped end time is cleared.')">
+      <button class="quiet" type="submit">Wrong count — reopen</button>
+    </form>
+    {% if phase == 'open' %}<form method="post" action="/race/p/{{ p.id }}/stop" id="stopf"
+          onsubmit="return confirm('End this station where it stands? The count is kept as it is.')">
+      <button class="quiet" type="submit">End station early</button>
+    </form>{% endif %}
+  </div>
+  {% endif %}
+
+{% else %}
+  {# ---- between stations: one closed, the next not yet opened ---- #}
+  <div class="dots">
+    {% for s in stations %}
+      <i class="{% if loop.index0 < index %}on{% endif %}"></i>
+    {% endfor %}
+  </div>
+  {% if splits %}
+    <div class="split last">
+      <div class="g"><div class="t">{{ splits[-1].name }} done</div>
+        <div class="s">{{ splits[-1].count }} {{ splits[-1].unit }}</div></div>
+      <div class="tm">{{ mmss(splits[-1].secs) }}</div>
+    </div>
+  {% endif %}
+  <div class="between">
+    <div class="k">Between stations</div>
+    <div class="v" id="btw">{{ mmss(between or 0) }}</div>
+    <div class="s">Walking, water, waiting for kit. It belongs to nobody's split.</div>
+  </div>
+  <div class="stephd">
+    <div class="n">{{ next_st.name }}</div>
+    <div class="c">Station {{ index + 1 }} of {{ stations|length }} · next</div>
+  </div>
+  {% if mine %}
+    <form method="post" action="/race/p/{{ p.id }}/next">
+      <button class="next" type="submit">Next station →</button>
+    </form>
+    <div class="quietrow">
+      <form method="post" action="/race/p/{{ p.id }}/reopen"
+            onsubmit="return confirm('Put the last station back into counting? The stamped end time is cleared.')">
+        <button class="quiet" type="submit">Wrong count — reopen</button>
+      </form>
+    </div>
+  {% endif %}
+{% endif %}
+
+</div>
+
+<style>
+/* --- the race clock --- */
+.runwrap{background:#141b1f;border:1px solid var(--line);border-radius:16px;
+  padding:14px 16px 15px;margin-top:14px;text-align:center}
+.runwrap.fin{background:#10201f;border-color:#1c4a47}
+.runwrap .k{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--dim);font-weight:800}
+.runwrap.fin .k{color:#5fd0d0}
+.runwrap .v{font-size:3.4rem;line-height:1.02;font-weight:800;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin:3px 0 2px}
+.runwrap.fin .v{color:#5fd0d0}
+.runwrap .s{font-size:.72rem;color:var(--dim)}
+
+/* --- progress through the race --- */
+.dots{display:flex;gap:6px;margin:18px 0 12px}
+.dots i{flex:1 1 0;height:5px;border-radius:3px;background:#232b31}
+.dots i.on{background:var(--teal-d)}
+.dots i.now{background:var(--teal)}
+
+.stephd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.stephd .n{font-size:1.5rem;font-weight:800;letter-spacing:-.02em}
+.stephd .c{font-size:.74rem;color:var(--dim);white-space:nowrap}
+
+.count{text-align:center;margin:10px 0 6px}
+.count .big{font-size:4.6rem;line-height:1;font-weight:800;letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums}
+.count .of{font-size:1.05rem;color:var(--dim);font-weight:700;margin-left:6px}
+.pb{height:8px;border-radius:5px;background:#232b31;overflow:hidden}
+.pb i{display:block;height:100%;width:0;background:var(--teal);
+  transition:width .12s linear}
+.pb.full i{background:var(--ok)}
+.stimer{display:flex;justify-content:space-between;font-size:.76rem;
+  color:var(--dim);margin:7px 2px 14px;font-variant-numeric:tabular-nums}
+.sv{color:var(--warn)}
+
+/* --- the buttons. Plus and minus are not the same size, because they are
+       used about fifty to one. --- */
+.taps{display:flex;gap:10px}
+.minus{flex:0 0 84px;height:104px;border-radius:16px;border:1px solid var(--line);
+  background:#1b2227;color:var(--ink);font-size:2.4rem;font-weight:700}
+.plus{flex:1 1 auto;height:104px;border-radius:16px;border:0;
+  background:var(--teal);color:var(--teal-ink);font-size:1.6rem;font-weight:800;
+  letter-spacing:-.01em}
+.plus:active{background:var(--teal-d)}
+.minus:disabled,.plus:disabled{opacity:.4}
+.next{width:100%;height:104px;border-radius:16px;border:0;background:var(--ok);
+  color:#04160e;font-size:1.5rem;font-weight:800;letter-spacing:-.01em}
+.next:active{filter:brightness(.92)}
+
+.between{background:#141b1f;border:1px solid var(--line);border-radius:14px;
+  padding:12px 14px;margin:12px 0;text-align:center}
+.between .k{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--dim);font-weight:800}
+.between .v{font-size:2rem;font-weight:800;font-variant-numeric:tabular-nums;
+  margin:2px 0}
+.between .s{font-size:.72rem;color:var(--dim)}
+
+.split{display:flex;align-items:center;gap:12px;background:var(--card);
+  border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-top:8px}
+.split .g{flex:1 1 auto;min-width:0}
+.split .t{font-weight:700;font-size:.95rem}
+.split .s{font-size:.74rem;color:var(--dim)}
+.split .tm{font-size:1.15rem;font-weight:800;font-variant-numeric:tabular-nums}
+.split.last{border-color:var(--teal-d)}
+
+/* Reopening is possible but quiet — not a button anybody hits by accident. */
+.quietrow{display:flex;gap:16px;justify-content:center;margin-top:16px}
+.quiet{background:none;border:0;color:var(--dim);font-size:.78rem;
+  text-decoration:underline;padding:10px 4px}
+</style>
+
+{% if phase in ('open', 'pre') %}
+<script>
+(function(){
+  var TARGET  = {{ show_st.target|int }},
+      INC     = {{ show_st.increment|int }},
+      PID     = {{ p.id }},
+      MINE    = {{ 'true' if mine else 'false' }},
+      START   = {{ start_ms if start_ms else 'null' }},
+      SRVNOW  = {{ now_ms }},
+      STOPEN  = {{ st_ms if st_ms else 'null' }};
+
+  /* Server time without trusting the phone's clock: anchor once at load and
+     move forward on a monotonic counter. A phone two minutes fast must not be
+     able to invent two minutes of race. */
+  var base = performance.now();
+  function srvNow(){ return SRVNOW + (performance.now() - base); }
+
+  function clk(s){
+    s = Math.max(0, Math.floor(s));
+    var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), x = s%60;
+    return h ? h + ':' + String(m).padStart(2,'0') + ':' + String(x).padStart(2,'0')
+             : m + ':' + String(x).padStart(2,'0');
+  }
+
+  var count  = {{ count|int }},
+      closed = false,
+      closedAt = null;
+
+  var elC = document.getElementById('cnow'),
+      elP = document.getElementById('pbi'),
+      elPB = elP.parentNode,
+      elS = document.getElementById('stim'),
+      elR = document.getElementById('runv'),
+      elSV = document.getElementById('sv'),
+      counting = document.getElementById('counting'),
+      closedF  = document.getElementById('closed'),
+      reopenF  = document.getElementById('reopenf'),
+      stopF    = document.getElementById('stopf');
+
+  function paint(){
+    elC.textContent = count;
+    var pct = TARGET ? Math.min(100, count / TARGET * 100) : 0;
+    elP.style.width = pct + '%';
+    elPB.classList.toggle('full', count >= TARGET);
+    if (closed){
+      counting.hidden = true;
+      closedF.hidden = false;
+      if (reopenF) reopenF.hidden = false;
+      if (stopF) stopF.hidden = true;
+      /* The note has to change too: what it said on the way in — that this
+         station is running — stops being true the moment it closes. */
+      var n = document.getElementById('tnote');
+      if (n) n.textContent = 'Ended at ' + elS.textContent.replace('This station ', '')
+        + '. From here until you press Next station is between-stations time, '
+        + 'and it belongs to nobody\'s split.';
+    }
+  }
+
+  function tick(){
+    var now = srvNow();
+    if (START !== null) elR.textContent = clk((now - START)/1000);
+    if (STOPEN !== null){
+      var end = closed && closedAt !== null ? closedAt : now;
+      elS.textContent = 'This station ' + clk((end - STOPEN)/1000);
+    }
+  }
+  setInterval(tick, 250); tick(); paint();
+
+  /* --- saving ---------------------------------------------------------
+     Every save carries the absolute count, so a request that arrives late is
+     simply superseded by the next one. There is no queue to get out of order,
+     and a dead signal costs a spinner rather than a rep. */
+  var inflight = false, dirty = false, pending = null, fails = 0;
+
+  function save(){
+    if (!MINE) return;
+    if (inflight){ dirty = true; return; }
+    inflight = true;
+    var body = {count: count};
+    if (pending !== null) body.at_ms = Math.round(pending);
+    fetch('/race/p/' + PID + '/tap', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    }).then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function(){
+        fails = 0; elSV.hidden = true; inflight = false;
+        if (dirty){ dirty = false; save(); }
+      })
+      .catch(function(){
+        fails++; elSV.hidden = false; inflight = false;
+        setTimeout(save, Math.min(8000, 500 * fails));
+      });
+  }
+
+  function bump(d){
+    if (!MINE || closed) return;
+    var was = count;
+    count = Math.max(0, Math.min(TARGET, count + d));
+    if (count === was) return;
+    if (count >= TARGET){
+      /* The station closes itself at the target, and the end time is the
+         instant the last rep landed — not whenever the network gets round
+         to agreeing. */
+      closed = true;
+      closedAt = srvNow();
+      pending = closedAt;
+      if (navigator.vibrate) navigator.vibrate([40, 60, 120]);
+    }
+    paint(); tick(); save();
+  }
+
+  document.getElementById('plus').addEventListener('click', function(){ bump(INC); });
+  document.getElementById('minus').addEventListener('click', function(){ bump(-INC); });
+  /* A half-saved count must not leave with the coach. */
+  window.addEventListener('beforeunload', function(e){
+    if (inflight || dirty || fails){ e.preventDefault(); e.returnValue = ''; }
+  });
+})();
+</script>
+{% elif phase == 'between' %}
+<script>
+(function(){
+  /* Same monotonic anchor as the counting screen: the race clock must not
+     stop just because nobody is at a station. */
+  var SRVNOW = {{ now_ms }}, START = {{ start_ms if start_ms else 'null' }},
+      base = performance.now(), s = {{ between|int }},
+      btw = document.getElementById('btw'), run = document.getElementById('runv');
+  function clk(x){
+    x = Math.max(0, Math.floor(x));
+    var h = Math.floor(x/3600), m = Math.floor((x%3600)/60), y = x%60;
+    return h ? h + ':' + String(m).padStart(2,'0') + ':' + String(y).padStart(2,'0')
+             : m + ':' + String(y).padStart(2,'0');
+  }
+  setInterval(function(){
+    s++;
+    btw.textContent = clk(s);
+    if (START !== null) run.textContent = clk((SRVNOW + (performance.now() - base) - START)/1000);
+  }, 1000);
+})();
+</script>
+{% endif %}
+{% endblock %}
