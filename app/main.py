@@ -725,6 +725,7 @@ def startup():
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS cols TEXT; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS gone_cols TEXT; "
                 "END IF; END $$;"))
             # The heat timetable: the shape of the day on the event, and which
             # heat each person is in on the participant. heat_first empty means

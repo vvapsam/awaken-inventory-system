@@ -468,55 +468,74 @@ def gap_text(minutes: int) -> str:
     return out if not r else "%s %d minute%s" % (out, r, "" if r == 1 else "s")
 
 
-#: The optional columns on the participant table: key, heading, on by
-#: default, and whether the column only makes sense on an open-registration
-#: event. Everything here reads a field the system already collects — this is
-#: about what is *shown*, not about inventing new data to store.
+#: The optional columns on the participant tables: key, heading, whether the
+#: column only makes sense on an open-registration event, and which tabs may
+#: show it — with its default on each.
 #:
-#: Name, the tickbox and the row actions are not in this list on purpose.
-#: A table you can switch the names off in is not a table.
+#: Everything here reads a field the system already collects. This is about
+#: what is *shown*, not about inventing new data to store.
 #:
-#: The last flag is what stops the chooser lying. Sex, mobile and entry are
-#: only ever filled in by somebody registering themselves; offering them on an
-#: invite-only event would tick a box that produces a column of dashes.
+#: A tab a key does not name cannot show that column and is not offered it.
+#: "Confirmed" is the clearest case: on Can't make it, the What-happened column
+#: already says whether somebody declined or ran out of time, so offering a
+#: second column to say it again is offering a way to make the table worse.
+#:
+#: The name, the row actions and each tab's own subject column are not in this
+#: list on purpose. A table you can switch the names off in is not a table.
+#:
+#: `open_only` is what stops the chooser lying. Sex, mobile, entry and payment
+#: are only ever filled in by somebody registering themselves; offering them on
+#: an invite-only event would tick a box that produces a column of dashes.
 EVENT_COLUMNS = [
-    ("payment",   "Payment",      True,  True),
-    ("emails",    "Emails",       True,  False),
-    ("instagram", "Instagram",    True,  False),
-    ("confirmed", "Confirmed",    True,  False),
-    ("ack",       "Acknowledged", True,  False),
-    ("reel",      "Reel",         True,  False),
-    ("reward",    "Reward",       True,  False),
-    ("added",     "Added",        True,  False),
-    ("updated",   "Last update",  True,  False),
-    ("link",      "Link",         True,  False),
-    ("gender",    "Gender",       False, True),
-    ("mobile",    "Mobile",       False, True),
-    ("entry",     "Entry",        False, True),
-    ("slot",      "Slot",         False, False),
+    # key          label           open_only  default, per tab
+    ("payment",   "Payment",       True,  {"people": True,  "gone": False}),
+    ("emails",    "Emails",        False, {"people": True,  "gone": False}),
+    ("instagram", "Instagram",     False, {"people": True,  "gone": True}),
+    ("confirmed", "Confirmed",     False, {"people": True}),
+    ("ack",       "Acknowledged",  False, {"people": True}),
+    ("reel",      "Reel",          False, {"people": True}),
+    ("reward",    "Reward",        False, {"people": True}),
+    ("added",     "Added",         False, {"people": True,  "gone": False}),
+    ("updated",   "Last update",   False, {"people": True,  "gone": False}),
+    ("link",      "Link",          False, {"people": True,  "gone": False}),
+    ("gender",    "Gender",        True,  {"people": False, "gone": False}),
+    ("mobile",    "Mobile",        True,  {"people": False, "gone": False}),
+    ("entry",     "Entry",         True,  {"people": False, "gone": False}),
+    ("slot",      "Slot",          False, {"people": False}),
+    ("heat",      "Heat",          False, {"people": False, "gone": False}),
 ]
 
+#: Which column of the event row each tab's choice is kept in. Separate
+#: columns rather than one shared list, because the two tabs are answering
+#: different questions: the participant list is "who is coming and what do
+#: they still owe me", and Can't make it is "who dropped out, and what were
+#: they holding". One saved set would mean tuning one tab quietly wrecks the
+#: other.
+COLUMN_SCOPES = {"people": "cols", "gone": "gone_cols"}
 
-def columns_for(event: Event) -> list:
-    """The columns this event could show, in table order.
+
+def columns_for(event: Event, scope: str = "people") -> list:
+    """The columns this tab could show, in table order.
 
     Returns (key, label, on) so the chooser and the table read the same list
     and neither can drift from the other.
     """
-    chosen = None if event.cols is None else {
-        x for x in event.cols.split(",") if x}
+    raw = getattr(event, COLUMN_SCOPES.get(scope, "cols"), None)
+    chosen = None if raw is None else {x for x in raw.split(",") if x}
     out = []
-    for key, label, default_on, open_only in EVENT_COLUMNS:
+    for key, label, open_only, defaults in EVENT_COLUMNS:
+        if scope not in defaults:
+            continue
         if open_only and event.mode != "open":
             continue
         out.append((key, label,
-                    default_on if chosen is None else key in chosen))
+                    defaults[scope] if chosen is None else key in chosen))
     return out
 
 
-def visible_cols(event: Event) -> set:
+def visible_cols(event: Event, scope: str = "people") -> set:
     """Just the keys that are on — what the table actually tests against."""
-    return {k for k, _label, on in columns_for(event) if on}
+    return {k for k, _label, on in columns_for(event, scope) if on}
 
 
 def counts(event: Event) -> dict:
@@ -1276,6 +1295,8 @@ def register(app, deps):
                       templates=sendable_templates(ev), money=money,
                       pay_labels=PAY_LABELS, status_moves=STATUS_MOVES,
                       col_list=columns_for(ev), cols=visible_cols(ev),
+                      gone_col_list=columns_for(ev, "gone"),
+                      gone_cols=visible_cols(ev, "gone"),
                       upload=request.session.pop("event_upload", None),
                       c=counts(ev),
                       lists={k: len(v) for k, v in mail_lists(ev).items()},
@@ -1806,8 +1827,9 @@ def register(app, deps):
 
     @app.post("/events/{eid}/columns")
     async def event_set_columns(request: Request, eid: int,
+                                scope: str = Form("people"),
                                 db: Session = Depends(get_db)):
-        """Choose which columns this event's participant table shows.
+        """Choose which columns one of this event's tables shows.
 
         Saved as a list of the columns that are *on*, not of the ones that are
         off, so a column added to the system later does not silently turn
@@ -1829,28 +1851,34 @@ def register(app, deps):
         # event. A posted key for a column this event cannot show would sit in
         # the row forever, doing nothing, until the mode changed and it
         # suddenly did something nobody asked for.
+        if scope not in COLUMN_SCOPES:
+            return RedirectResponse("/events/%d" % eid, status_code=303)
         # getlist, because a set of tickboxes posts one repeated field and
         # anything that reads only the first value would quietly save one
         # column and drop the rest.
         ticked = set((await request.form()).getlist("col"))
-        ev.cols = ",".join(k for k, _label, _on in columns_for(ev)
-                           if k in ticked)
+        setattr(ev, COLUMN_SCOPES[scope],
+                ",".join(k for k, _label, _on in columns_for(ev, scope)
+                         if k in ticked))
         db.commit()
-        return RedirectResponse("/events/%d?cols=ok" % eid, status_code=303)
+        return RedirectResponse("/events/%d?%s" % (
+            eid, urlencode({"tab": scope, "cols": "ok"})), status_code=303)
 
     @app.post("/events/{eid}/columns/reset")
     def event_reset_columns(request: Request, eid: int,
+                            scope: str = Form("people"),
                             db: Session = Depends(get_db)):
         """Back to the defaults — and back to *following* the defaults."""
         staff, redir = guard(request, db)
         if redir:
             return redir
         ev = db.get(Event, eid)
-        if not ev:
+        if not ev or scope not in COLUMN_SCOPES:
             return RedirectResponse("/events", status_code=303)
-        ev.cols = None
+        setattr(ev, COLUMN_SCOPES[scope], None)
         db.commit()
-        return RedirectResponse("/events/%d?cols=reset" % eid, status_code=303)
+        return RedirectResponse("/events/%d?%s" % (
+            eid, urlencode({"tab": scope, "cols": "reset"})), status_code=303)
 
     @app.post("/events/{eid}/people/{pid}/status")
     def event_set_status(request: Request, eid: int, pid: int,
