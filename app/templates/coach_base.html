@@ -29,8 +29,12 @@ a{color:var(--teal);text-decoration:none}
 .wrap{max-width:520px;margin:0 auto;padding:0 14px 28px}
 
 /* --- top bar: nothing important in the corners, per the wireframe --- */
+/* The bar's background runs edge to edge so the sticky header covers what
+   scrolls under it, but its contents sit in the same 520px column as the list
+   — on a laptop a full-width header above a centred list reads as broken. */
 .bar{position:sticky;top:0;z-index:5;background:var(--bg);
-  border-bottom:1px solid var(--line);padding:12px 14px 10px;
+  border-bottom:1px solid var(--line);
+  padding:12px max(14px, calc(50% - 246px)) 10px;
   padding-top:calc(12px + env(safe-area-inset-top));
   display:flex;align-items:center;gap:12px}
 .bar .back{flex:0 0 auto;width:40px;height:40px;border-radius:10px;
