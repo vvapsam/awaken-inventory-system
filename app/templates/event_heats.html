@@ -20,8 +20,13 @@
       {{ total }} {{ 'person' if total == 1 else 'people' }} to place.</p>
   </div>
   <div class="hdact" style="align-items:center">
+    {# No timetable, nothing to save — and a Save button beside an amber
+       unsaved dot on a page with no rows in it reads as something already
+       broken before you have touched anything. #}
+    {% if rows %}
     <div class="saveline" id="saveline"><span class="dot"></span><span id="savetxt"></span></div>
     <button class="btn" id="save" form="planform">Save timetable</button>
+    {% endif %}
     <a class="btn" href="/events/{{ ev.id }}">← The event</a>
   </div>
 </div>
