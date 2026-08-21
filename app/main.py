@@ -749,6 +749,19 @@ def startup():
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  heat_email_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
+            # Who is coaching them, and when their last station closed.
+            # event_stations and station_runs are new tables, so create_all
+            # makes those — only the columns on an existing table need this.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  coach_id INTEGER; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  grabbed_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  finished_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
             # When somebody last changed a participant row by hand. Only set
             # by the edit screen — see the note on the column.
             conn.execute(text(

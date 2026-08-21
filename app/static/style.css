@@ -977,3 +977,25 @@ body.picking .tt .lane .hint::after{content:"Put them here"}
 .q{border-left:3px solid var(--teal);padding:2px 0 2px 13px;margin:10px 0 14px;
   color:var(--muted);font-size:.87rem}
 .q b{color:var(--ink)}
+
+/* ================= WORKOUT STATIONS ================= */
+/* The taps preview is the point of this table — what one tap adds is a
+   coaching decision about how fast the work comes, and "15 taps" says that
+   better than "+5" does. */
+table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
+.st th,.st td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);
+  vertical-align:middle}
+.st th{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+  font-weight:600;background:var(--panel)}
+.st tr:last-child td{border-bottom:0}
+.st input,.st select{padding:5px 8px;font-size:.85rem;width:100%}
+.st input[disabled],.st select[disabled]{background:var(--panel);color:var(--muted)}
+.st .num{width:92px}
+.st .ord{color:var(--muted);font-variant-numeric:tabular-nums;width:30px;
+  text-align:center}
+.st .x{border:0;background:none;color:#9aa5b1;cursor:pointer;font-size:1rem;
+  font-family:inherit;width:auto;padding:0 4px}
+.st .x:hover{color:#b0392b}
+.pv{font-size:.78rem;color:var(--teal-dark);background:var(--teal-tint);
+  border-radius:6px;padding:3px 8px;display:inline-block;font-weight:600;
+  white-space:nowrap}

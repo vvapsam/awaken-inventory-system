@@ -1673,6 +1673,83 @@ class EventOrganiserLink(Base):
         return not self.revoked_at and not self.is_expired
 
 
+class EventStation(Base):
+    """One workout station on an event, in the order it is raced.
+
+    The whole station is configuration rather than code: a fitness test with
+    different stations next month is rows in this table, not a deploy. The one
+    field that is not obvious is `increment` — it is the size of the button a
+    coach taps on their phone, so it is a coaching decision about how fast the
+    reps come, not a unit conversion. 100 wall balls at +1 is a hundred taps
+    while watching somebody's depth; at +5 it is twenty.
+    """
+
+    __tablename__ = "event_stations"
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"),
+                      nullable=False)
+    #: Race order. Gaps are fine — the list is always read sorted.
+    position = Column(Integer, nullable=False, default=0)
+    name = Column(String, nullable=False)
+    #: 'distance' or 'reps'. Only changes the unit shown; everything
+    #: downstream compares two plain numbers, so there is no second code path.
+    measure = Column(String, nullable=False, default="reps")
+    target = Column(Integer, nullable=False, default=0)
+    increment = Column(Integer, nullable=False, default=1)
+
+    event = relationship("Event", backref=backref(
+        "stations", cascade="all, delete-orphan",
+        order_by="EventStation.position"))
+
+    @property
+    def unit(self) -> str:
+        return "m" if self.measure == "distance" else "reps"
+
+    @property
+    def taps(self) -> int:
+        """How many times a coach will press the button to finish this."""
+        inc = max(1, self.increment or 1)
+        return max(0, -(-(self.target or 0) // inc))
+
+
+class StationRun(Base):
+    """One person's attempt at one station: the count, and when it opened and
+    closed.
+
+    `ended_at` is stamped the instant the target is reached, not when the coach
+    presses anything — a coach who looks up, says well done, and takes four
+    seconds to reach for the phone should not cost the athlete four seconds.
+    The gap between one station ending and the next opening is transition time
+    and belongs to nobody's split.
+    """
+
+    __tablename__ = "station_runs"
+    __table_args__ = (UniqueConstraint("participant_id", "station_id",
+                                       name="uq_run_person_station"),)
+
+    id = Column(Integer, primary_key=True)
+    participant_id = Column(Integer,
+                            ForeignKey("event_participants.id",
+                                       ondelete="CASCADE"), nullable=False)
+    station_id = Column(Integer, ForeignKey("event_stations.id",
+                                            ondelete="CASCADE"), nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+    started_at = Column(DateTime(timezone=True))
+    ended_at = Column(DateTime(timezone=True))
+
+    participant = relationship("EventParticipant", backref=backref(
+        "runs", cascade="all, delete-orphan"))
+    station = relationship("EventStation")
+
+    @property
+    def seconds(self):
+        """How long this station took, or None while it is still open."""
+        if not self.started_at or not self.ended_at:
+            return None
+        return int((self.ended_at - self.started_at).total_seconds())
+
+
 class EventParticipant(Base):
     """One person's slot, and the whole trail of what they did with it.
 
@@ -1737,10 +1814,53 @@ class EventParticipant(Base):
     #: mean the door quietly overwriting a time twenty people already have in
     #: their inbox.
     heat_time = Column(String)
+    #: Which coach has them on their phone. Exclusive: one coach, one athlete,
+    #: one screen — a coach juggling two timers will lose reps on both.
+    coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    grabbed_at = Column(DateTime(timezone=True))
+    #: When the last station closed. The official time is this minus the heat
+    #: start, which is one subtraction between two fixed points and survives a
+    #: coach being late to press anything.
+    finished_at = Column(DateTime(timezone=True))
     #: When they were last told it. Cleared whenever they are moved, because a
     #: time somebody was told is only true until you move them — see
     #: EventParticipant.heat_told.
     heat_email_at = Column(DateTime(timezone=True))
+
+    def heat_start(self):
+        """Their heat as an actual moment, or None.
+
+        The event's date plus their heat's clock time, read in gym time. This
+        is the fixed point everything else is measured from — it never moves,
+        whatever a coach does.
+        """
+        if not self.heat_time or not self.event or not self.event.starts_at:
+            return None
+        try:
+            h, m = int(self.heat_time[:2]), int(self.heat_time[3:])
+        except (ValueError, IndexError):
+            return None
+        day = to_local(self.event.starts_at)
+        return from_local(day.replace(hour=h, minute=m, second=0, microsecond=0))
+
+    @property
+    def race_seconds(self):
+        """Official time in seconds, or None until the last station closes."""
+        start = self.heat_start()
+        if not start or not self.finished_at:
+            return None
+        return int((self.finished_at - start).total_seconds())
+
+    def running_seconds(self, now=None):
+        """Time on the clock right now. Always now minus the heat start —
+        nothing a coach does is allowed to touch it."""
+        start = self.heat_start()
+        if not start:
+            return None
+        if self.finished_at:
+            return int((self.finished_at - start).total_seconds())
+        now = now or datetime.now(timezone.utc)
+        return max(0, int((now - start).total_seconds()))
 
     @property
     def heat_told(self) -> bool:
