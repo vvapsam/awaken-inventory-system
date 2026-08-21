@@ -372,6 +372,153 @@ def base_url(request: Request) -> str:
     return "%s://%s" % (proto, host)
 
 
+#: How long a day of heats may be. Not a limit anybody should ever reach —
+#: it is there so a fat-fingered "every 1 minute" from 6am to 10pm cannot ask
+#: the page to draw a thousand rows.
+HEAT_MAX = 200
+
+
+def hhmm(raw) -> str:
+    """Any way somebody writes a time, as 24-hour "HH:MM", or "".
+
+    Accepts "10:00 AM", "10am", "1400", "2:05 pm". Returns "" for anything it
+    cannot read rather than guessing — a heat at a time nobody meant is worse
+    than a heat that refuses to be created.
+    """
+    t = (raw or "").strip().lower().replace(".", "")
+    if not t:
+        return ""
+    pm = t.endswith("pm")
+    am = t.endswith("am")
+    if pm or am:
+        t = t[:-2].strip()
+    if ":" in t:
+        parts = t.split(":", 1)
+    elif t.isdigit() and len(t) == 4:
+        parts = [t[:2], t[2:]]
+    else:
+        parts = [t, "0"]
+    try:
+        h, m = int(parts[0]), int(parts[1] or 0)
+    except ValueError:
+        return ""
+    if pm and h < 12:
+        h += 12
+    if am and h == 12:
+        h = 0
+    if not (0 <= h < 24 and 0 <= m < 60):
+        return ""
+    return "%02d:%02d" % (h, m)
+
+
+def clock12(t: str) -> str:
+    """"14:20" as "2:20 PM" — how everybody at the gym says it."""
+    t = hhmm(t)
+    if not t:
+        return ""
+    h, m = int(t[:2]), int(t[3:])
+    return "%d:%02d %s" % (((h + 11) % 12) + 1, m, "AM" if h < 12 else "PM")
+
+
+def shift(t: str, minutes: int) -> str:
+    """A time this many minutes earlier, clamped to the same day."""
+    t = hhmm(t)
+    if not t:
+        return ""
+    v = int(t[:2]) * 60 + int(t[3:]) - minutes
+    v = max(0, min(v, 24 * 60 - 1))
+    return "%02d:%02d" % (v // 60, v % 60)
+
+
+def heat_times(ev) -> list:
+    """Every heat on this event, in order, as "HH:MM".
+
+    Empty when the event has no first heat set — which is how an event opts
+    out, and how every event that existed before heats did keeps behaving
+    exactly as it always has.
+    """
+    first, last = hhmm(ev.heat_first), hhmm(ev.heat_last)
+    every = max(1, ev.heat_every or 10)
+    if not first:
+        return []
+    start = int(first[:2]) * 60 + int(first[3:])
+    end = (int(last[:2]) * 60 + int(last[3:])) if last else start
+    if end < start:
+        end = start
+    out = []
+    v = start
+    while v <= end and len(out) < HEAT_MAX:
+        out.append("%02d:%02d" % (v // 60, v % 60))
+        v += every
+    return out
+
+
+def arrive_at(ev, t: str) -> str:
+    """When somebody in this heat has to be in the building."""
+    return shift(t, ev.heat_arrive or 0)
+
+
+def gap_text(minutes: int) -> str:
+    """"30 minutes", "1 hour", "1 hour 15 minutes"."""
+    m = max(0, int(minutes or 0))
+    if m < 60:
+        return "%d minute%s" % (m, "" if m == 1 else "s")
+    h, r = divmod(m, 60)
+    out = "%d hour%s" % (h, "" if h == 1 else "s")
+    return out if not r else "%s %d minute%s" % (out, r, "" if r == 1 else "s")
+
+
+#: The optional columns on the participant table: key, heading, on by
+#: default, and whether the column only makes sense on an open-registration
+#: event. Everything here reads a field the system already collects — this is
+#: about what is *shown*, not about inventing new data to store.
+#:
+#: Name, the tickbox and the row actions are not in this list on purpose.
+#: A table you can switch the names off in is not a table.
+#:
+#: The last flag is what stops the chooser lying. Sex, mobile and entry are
+#: only ever filled in by somebody registering themselves; offering them on an
+#: invite-only event would tick a box that produces a column of dashes.
+EVENT_COLUMNS = [
+    ("payment",   "Payment",      True,  True),
+    ("emails",    "Emails",       True,  False),
+    ("instagram", "Instagram",    True,  False),
+    ("confirmed", "Confirmed",    True,  False),
+    ("ack",       "Acknowledged", True,  False),
+    ("reel",      "Reel",         True,  False),
+    ("reward",    "Reward",       True,  False),
+    ("added",     "Added",        True,  False),
+    ("updated",   "Last update",  True,  False),
+    ("link",      "Link",         True,  False),
+    ("gender",    "Gender",       False, True),
+    ("mobile",    "Mobile",       False, True),
+    ("entry",     "Entry",        False, True),
+    ("slot",      "Slot",         False, False),
+]
+
+
+def columns_for(event: Event) -> list:
+    """The columns this event could show, in table order.
+
+    Returns (key, label, on) so the chooser and the table read the same list
+    and neither can drift from the other.
+    """
+    chosen = None if event.cols is None else {
+        x for x in event.cols.split(",") if x}
+    out = []
+    for key, label, default_on, open_only in EVENT_COLUMNS:
+        if open_only and event.mode != "open":
+            continue
+        out.append((key, label,
+                    default_on if chosen is None else key in chosen))
+    return out
+
+
+def visible_cols(event: Event) -> set:
+    """Just the keys that are on — what the table actually tests against."""
+    return {k for k, _label, on in columns_for(event) if on}
+
+
 def counts(event: Event) -> dict:
     """Every headline number on the tracker, from one pass over the list."""
     # The waitlist is not in the room. Counting them in "confirmed 4 of 30"
@@ -1128,6 +1275,7 @@ def register(app, deps):
                       gone=gone, review=review, unfinished=unfinished,
                       templates=sendable_templates(ev), money=money,
                       pay_labels=PAY_LABELS, status_moves=STATUS_MOVES,
+                      col_list=columns_for(ev), cols=visible_cols(ev),
                       upload=request.session.pop("event_upload", None),
                       c=counts(ev),
                       lists={k: len(v) for k, v in mail_lists(ev).items()},
@@ -1512,6 +1660,198 @@ def register(app, deps):
         "back": "Back on the list",
     }
 
+    # ------------------------------------------------------------- heats ----
+
+    @app.get("/events/{eid}/heats", response_class=HTMLResponse)
+    def event_heats(request: Request, eid: int, db: Session = Depends(get_db)):
+        """The timetable: every heat down the page, who is in each one."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        times = heat_times(ev)
+        known = set(times)
+        everyone = sorted(
+            [p for p in ev.participants
+             if not (p.waitlist or p.declined or p.released_at)],
+            key=lambda p: (p.name or "").lower())
+        # A heat that no longer exists is not a heat. Rebuilding the day
+        # shorter, or on a different interval, strands whoever was in the rows
+        # that went — and silently dropping them is how somebody arrives on
+        # Saturday to find they were never on the list. They come back to the
+        # unassigned tray, where you cannot miss them.
+        rows = [{"t": t, "arrive": arrive_at(ev, t),
+                 "people": [p for p in everyone if p.heat_time == t]}
+                for t in times]
+        free = [p for p in everyone if p.heat_time not in known]
+        return render(request, "event_heats.html", db, staff, active="events",
+                      ev=ev, rows=rows, free=free, times=times,
+                      total=len(everyone),
+                      room=len(times) * max(1, ev.heat_cap or 1),
+                      arrive_gap=gap_text(ev.heat_arrive or 0),
+                      told=len([p for p in everyone
+                                if p.heat_time in known and p.heat_email_at]),
+                      waiting=len([p for p in everyone
+                                   if p.heat_time in known
+                                   and not p.heat_email_at]),
+                      clock12=clock12,
+                      mail_ready=Mailer().cfg.configured,
+                      mail=request.session.pop("event_mail", None),
+                      base=base_url(request))
+
+    @app.post("/events/{eid}/heats/day")
+    def event_heat_day(request: Request, eid: int,
+                       first: str = Form(""), last: str = Form(""),
+                       every: str = Form("10"), cap: str = Form("3"),
+                       arrive: str = Form("30"),
+                       db: Session = Depends(get_db)):
+        """The shape of the day. Rebuilding it never moves anybody by itself.
+
+        Whoever is left standing on a time that no longer exists shows up in
+        the unassigned tray on the next screen, which is the honest answer:
+        the software cannot know whether you meant to move them earlier or
+        later, and guessing would put somebody in a heat nobody chose.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+
+        def num(raw, lo, hi, fallback):
+            try:
+                return max(lo, min(hi, int((raw or "").strip())))
+            except ValueError:
+                return fallback
+
+        ev.heat_first = hhmm(first)
+        ev.heat_last = hhmm(last)
+        ev.heat_every = num(every, 1, 240, 10)
+        ev.heat_cap = num(cap, 1, 99, 3)
+        ev.heat_arrive = num(arrive, 0, 240, 30)
+        # No first heat means the event is not running heats at all, and a
+        # last heat on its own would draw a timetable of one row at a time
+        # nobody typed.
+        if not ev.heat_first:
+            ev.heat_last = None
+        db.commit()
+        return RedirectResponse("/events/%d/heats?day=ok" % eid, status_code=303)
+
+    @app.post("/events/{eid}/heats/save")
+    async def event_heat_save(request: Request, eid: int,
+                              db: Session = Depends(get_db)):
+        """Save the whole timetable in one go.
+
+        The page posts every assignment, not a diff, because the thing on
+        screen is the thing you mean — a diff would have to guess at rows two
+        people edited in different tabs, and quietly lose one of them.
+
+        Moving somebody clears their sent stamp. The time in their inbox is
+        wrong the instant you move them, and a tick that survives the move is
+        how a person turns up an hour early with an email proving they were
+        told to.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        form = await request.form()
+        known = set(heat_times(ev))
+        # "<participant id>:<HH:MM>", one per assigned person.
+        want = {}
+        for raw in form.getlist("at"):
+            pid, _sep, t = (raw or "").partition(":")
+            t = hhmm(t)
+            if pid.isdigit() and t in known:
+                want[int(pid)] = t
+        moved = 0
+        for p in ev.participants:
+            new = want.get(p.id)
+            if (p.heat_time or None) == (new or None):
+                continue
+            p.heat_time = new
+            p.heat_email_at = None
+            p.edited_at = datetime.now(timezone.utc)
+            moved += 1
+        db.commit()
+        return RedirectResponse("/events/%d/heats?saved=%d" % (eid, moved),
+                                status_code=303)
+
+    @app.post("/events/{eid}/heats/send")
+    def event_heat_send(request: Request, eid: int, pid: str = Form(""),
+                        db: Session = Depends(get_db)):
+        """Their heat time, to one person or to everyone still owed it."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        known = set(heat_times(ev))
+        if (pid or "").strip().isdigit():
+            p = db.get(EventParticipant, int(pid))
+            # A heat that no longer exists is not a time worth emailing.
+            pool = ([p] if p and p.event_id == eid and p.heat_time in known
+                    else [])
+        else:
+            pool = mail_lists(ev)["heat"]
+        request.session["event_mail"] = _send(
+            db, ev, pool, "heat", base_url(request))
+        return RedirectResponse("/events/%d/heats" % eid, status_code=303)
+
+    @app.post("/events/{eid}/columns")
+    async def event_set_columns(request: Request, eid: int,
+                                db: Session = Depends(get_db)):
+        """Choose which columns this event's participant table shows.
+
+        Saved as a list of the columns that are *on*, not of the ones that are
+        off, so a column added to the system later does not silently turn
+        itself on for an event somebody has already made a decision about.
+
+        The empty string is stored deliberately when nothing is ticked. NULL
+        would mean "never chose", and an event where you have switched every
+        optional column off is not the same as an event you have never
+        touched — the first should stay bare, the second should keep picking
+        up the defaults.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        # Only keys that exist, and only ones that mean something on this
+        # event. A posted key for a column this event cannot show would sit in
+        # the row forever, doing nothing, until the mode changed and it
+        # suddenly did something nobody asked for.
+        # getlist, because a set of tickboxes posts one repeated field and
+        # anything that reads only the first value would quietly save one
+        # column and drop the rest.
+        ticked = set((await request.form()).getlist("col"))
+        ev.cols = ",".join(k for k, _label, _on in columns_for(ev)
+                           if k in ticked)
+        db.commit()
+        return RedirectResponse("/events/%d?cols=ok" % eid, status_code=303)
+
+    @app.post("/events/{eid}/columns/reset")
+    def event_reset_columns(request: Request, eid: int,
+                            db: Session = Depends(get_db)):
+        """Back to the defaults — and back to *following* the defaults."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        ev.cols = None
+        db.commit()
+        return RedirectResponse("/events/%d?cols=reset" % eid, status_code=303)
+
     @app.post("/events/{eid}/people/{pid}/status")
     def event_set_status(request: Request, eid: int, pid: int,
                          to: str = Form(""), db: Session = Depends(get_db)):
@@ -1815,7 +2155,8 @@ def register(app, deps):
             build = {"reel": _reel_mail, "finish": _finish_mail,
                      "returned": _returned_mail,
                      "lastcall": _lastcall_mail, "payby": _payby_mail,
-                     "cancelled": _cancelled_mail}.get(kind, _invite_mail)
+                     "cancelled": _cancelled_mail,
+                     "heat": _heat_mail}.get(kind, _invite_mail)
             if kind == "payby":
                 # Set here rather than after a successful send, because the
                 # sentence in the email is this value. Deciding it afterwards
@@ -1842,6 +2183,8 @@ def register(app, deps):
                     # exact moment, so it has to be decided before the words
                     # are built rather than after they have gone.
                     pass
+                elif kind == "heat":
+                    p.heat_email_at = now
                 elif kind == "lastcall":
                     # Not invited_at: that is "when we first asked", and the
                     # per-person confirm clock is counted from it. Restarting
@@ -1905,6 +2248,10 @@ def register(app, deps):
              "blurb": "\u201c24 hours to pay, or the slot goes to the next "
                       "person.\u201d Stamps the deadline it quotes.",
              "ok": True, "why": "usually Not finished"},
+            {"key": "heat", "name": "Your heat time",
+             "blurb": "\u201cArrive at 9:50, your heat is 10:20.\u201d Only says "
+                      "anything to somebody who has a heat.",
+             "ok": True, "why": "usually from the timetable"},
             {"key": "cancelled", "name": "Called off",
              "blurb": "\u201cToday's class is cancelled.\u201d Goes to everyone "
                       "who thinks they're coming, and everyone still deciding.",
@@ -1926,6 +2273,9 @@ def register(app, deps):
         # one more person and never can. They get their own number instead.
         mailable = [p for p in live if looks_like_email(p.email or "")]
         confirmed = [p for p in mailable if p.confirmed]
+        # The heats that currently exist. A row can hold a heat_time the day
+        # no longer contains — see the "heat" list below.
+        live_heats = set(heat_times(ev))
         # Somebody who has told you they can't come is not somebody to invite
         # again. "Re-send to all" reaching them is the exact message that makes
         # a person stop reading anything you send.
@@ -1979,6 +2329,19 @@ def register(app, deps):
             # they already said they weren't coming.
             "cancelled": [p for p in askable if not p.cancel_email_at],
             "cancelled_all": askable,
+            # Heat times. Only people whose heat is still on the timetable —
+            # an email whose entire content is a time is worse than silence
+            # when that time is wrong. Rebuilding the day shorter leaves a
+            # stale heat_time on the row (deliberately: the timetable shows
+            # those people in the unassigned tray so you cannot miss them),
+            # and without this check the next send would post it to them.
+            #
+            # "Not yet told" also catches anybody moved since, because moving
+            # somebody clears the stamp: the time in their inbox is wrong and
+            # they are owed the corrected one.
+            "heat": [p for p in mailable
+                     if p.heat_time in live_heats and not p.heat_email_at],
+            "heat_all": [p for p in mailable if p.heat_time in live_heats],
             # Not a send list — a to-do for you. Their link still works; it
             # just has to reach them some other way.
             "no_email": [p for p in live if not looks_like_email(p.email or "")],
@@ -2037,6 +2400,8 @@ def register(app, deps):
         elif kind == "cancelled":
             pool = (lists["cancelled_all"] if who == "all"
                     else lists["cancelled"])
+        elif kind == "heat":
+            pool = lists["heat_all"] if who == "all" else lists["heat"]
         elif kind == "returned":
             # There is no sensible "everyone" for this one — it carries a reason
             # written about one payment. Reachable only by ticking names, which
@@ -2073,6 +2438,7 @@ def register(app, deps):
                 "reel": lists["reel_all"],
                 "lastcall": lists["lastcall_all"],
                 "payby": lists["payby_all"],
+                "heat": lists["heat_all"] or lists["heat"],
                 "returned": [p for p in ev.participants
                              if (p.review_note or "").strip()]}.get(
                     kind, lists["invite_all"])
@@ -2088,7 +2454,8 @@ def register(app, deps):
         build = {"reel": _reel_mail, "finish": _finish_mail,
                  "returned": _returned_mail,
                  "lastcall": _lastcall_mail, "payby": _payby_mail,
-                 "cancelled": _cancelled_mail}.get(kind, _invite_mail)
+                 "cancelled": _cancelled_mail,
+                 "heat": _heat_mail}.get(kind, _invite_mail)
         subject, _text, html = build(db, ev, who, url)
         # The inline marks are Content-IDs in a real message; a browser needs
         # the routes instead, so the preview swaps them.
@@ -2581,6 +2948,9 @@ def _mail_values(ev, p, url, key) -> dict:
                              + timedelta(hours=PAY_GRACE_HOURS))),
         "record.reel_deadline": _fmt_when(ev.reel_deadline),
         "record.review_note": p.review_note or "",
+        "record.heat": clock12(p.heat_time),
+        "record.arrive": clock12(arrive_at(ev, p.heat_time)) if p.heat_time else "",
+        "record.arrive_gap": gap_text(ev.heat_arrive or 0),
     }
     if key == "finish":
         v["record.headline"], v["record.lede"] = _finish_lines(ev, p, first)
@@ -2641,6 +3011,32 @@ def _qr_block(ev, p) -> str:
             '</td></tr></table>'
             % (PASS_CID, _esc(p.full_name or p.name), _esc(ev.name)))
 
+def _heat_block(ev, p) -> str:
+    """The two times, side by side, arrival first and in teal.
+
+    Arrival leads because it is the only one they have to act on; the heat
+    time is the reason for it. A table rather than flexbox because half of
+    these are read in Outlook.
+    """
+    if not p.heat_time:
+        return ""
+    def cell(label, value, sub, colour):
+        return ('<td style="padding:0 22px 0 0;vertical-align:top">'
+                '<div style="font-size:11px;text-transform:uppercase;'
+                'letter-spacing:.08em;color:#6b7683;font-weight:600">%s</div>'
+                '<div style="font-size:23px;font-weight:650;color:%s;'
+                'line-height:1.15">%s</div>'
+                '<div style="font-size:12px;color:#6b7683">%s</div></td>'
+                % (_esc(label), colour, _esc(value), _esc(sub)))
+    return ('<table cellpadding="0" cellspacing="0" style="background:#f3f5f7;'
+            'border-radius:8px;padding:16px 18px;width:100%%;margin:0 0 18px">'
+            '<tr>%s%s</tr></table>'
+            % (cell("Arrive by", clock12(arrive_at(ev, p.heat_time)),
+                    "Check in & warm up", "#008080"),
+               cell("Your heat", clock12(p.heat_time), ev.when_text or "",
+                    "#1a232e")))
+
+
 def _mail_blocks(ev, p, url, key) -> tuple:
     """The pieces the system builds, and the one you wrap your own words in."""
     blocks = {
@@ -2649,6 +3045,7 @@ def _mail_blocks(ev, p, url, key) -> tuple:
         "block.rewards": lambda title="What you get": _rewards_block(ev, title),
         "block.checklist": lambda *a: _checklist(ev, p),
         "block.qr": lambda *a: _qr_block(ev, p),
+        "block.heat": lambda *a: _heat_block(ev, p),
     }
     pairs = {"block.note": lambda inner, *a: _window_note(inner),
              "block.warn": lambda inner, *a: _warn_note(inner)}
@@ -2688,6 +3085,10 @@ def _reel_mail(db, ev, p, url):
 
 def _payby_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "payby")
+
+
+def _heat_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "heat")
 
 
 def _cancelled_mail(db, ev, p, url):

@@ -719,6 +719,35 @@ def startup():
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  reels_paused BOOLEAN NOT NULL DEFAULT FALSE; "
                 "END IF; END $$;"))
+            # Which columns this event's participant table shows. Nullable on
+            # purpose: NULL means "the defaults", which is how every existing
+            # event keeps working and keeps picking up new default columns.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS cols TEXT; "
+                "END IF; END $$;"))
+            # The heat timetable: the shape of the day on the event, and which
+            # heat each person is in on the participant. heat_first empty means
+            # the event never opted in, so every existing event is untouched.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS heat_first VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS heat_last VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  heat_every INTEGER NOT NULL DEFAULT 10; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  heat_cap INTEGER NOT NULL DEFAULT 3; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  heat_arrive INTEGER NOT NULL DEFAULT 30; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  heat_time VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  heat_email_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
             # When somebody last changed a participant row by hand. Only set
             # by the edit screen — see the note on the column.
             conn.execute(text(

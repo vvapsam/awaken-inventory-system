@@ -70,6 +70,12 @@
       {{ ev.capacity }} slots{% if ev.hashtag %} · {{ ev.hashtag }}{% endif %}</p>
   </div>
   <div class="hdact">
+    {# Heats are their own screen: a day of them is a page-length thing and it
+       has nothing to say on an event that doesn't run them. The label carries
+       the count so you can tell at a glance whether anybody is still
+       unplaced. #}
+    <a class="btn" href="/events/{{ ev.id }}/heats">🕘 Heat timetable{%
+      if ev.heat_first %} · {{ ev.participants|selectattr('heat_time')|list|length }}/{{ c.inplay }}{% endif %}</a>
     <a class="btn" href="/events/{{ ev.id }}/report.csv">⤓ Sponsor report</a>
     <a class="btn" href="/events/{{ ev.id }}/settings">⚙ Settings</a>
     <a class="btn" href="/events">← All events</a>
@@ -308,7 +314,42 @@
   <span class="muted">It's how you'll find them on the day.</span></div>
 {% endif %}
 
+{% if request.query_params.get('cols') == 'ok' %}
+<div class="notice">Columns saved for this event.</div>
+{% elif request.query_params.get('cols') == 'reset' %}
+<div class="notice">Back to the standard columns.</div>
+{% endif %}
+
 {{ searchbar('ppl', 'Search name, email, handle…') }}
+
+{# Which columns this event shows. Per event, not per person looking: a
+   fitness test scored by category needs Gender on screen for everybody who
+   opens it, and a sponsor class never needs it at all.
+
+   Nothing here is a new field — every one of these is already collected and
+   already stored, it just had nowhere to appear. Folded away by default
+   because it is a setup decision, not something you touch twice a day. #}
+<details class="colpick">
+  <summary>Columns<span class="n">{{ cols|length }}</span></summary>
+  <form method="post" action="/events/{{ ev.id }}/columns">
+    <div class="grid">
+      {% for key, label, on in col_list %}
+      <label><input type="checkbox" name="col" value="{{ key }}"
+             {{ 'checked' if on }}> {{ label }}</label>
+      {% endfor %}
+    </div>
+    <div class="acts">
+      <button class="btn primary" style="margin:0">Save columns</button>
+      <span class="muted small" style="margin:0">Name and the row buttons always
+        stay. This is per event — other events are untouched.</span>
+    </div>
+  </form>
+  {% if ev.cols is not none %}
+  <form method="post" action="/events/{{ ev.id }}/columns/reset" style="margin:8px 0 0">
+    <button class="btn ghost small" style="margin:0">Back to the standard columns</button>
+  </form>
+  {% endif %}
+</details>
 
 {% if ev.mode == 'open' %}
 {# Paid or not, on an event where everybody is expected to pay. Chips rather
@@ -335,14 +376,29 @@
 <input type="hidden" name="who" value="selected">
 {{ sendbar('ppl') }}
 
+{# The tickbox, the name and the row actions are not switchable — a roster
+   you can turn the names off in is not a roster. Everything between them is
+   a key in `cols`, and the count is worked out here rather than written by
+   hand so the edit row underneath can never span the wrong width. #}
+{% set span = 3 + cols|length %}
 <table id="ppl">
   <thead><tr>
     <th style="width:34px"><input type="checkbox" class="chk selall" title="Select everyone"></th>
-    <th>Participant</th>{% if ev.mode == 'open' %}<th>Payment</th>{% endif %}<th>Emails</th>
-    <th>Instagram</th><th>Confirmed</th>
-    <th>Acknowledged</th><th>Reel</th><th>Reward</th>
-    <th style="width:130px">Added</th><th style="width:150px">Last update</th>
-    <th>Link</th>
+    <th>Participant</th>
+    {% if 'gender' in cols %}<th style="width:90px">Gender</th>{% endif %}
+    {% if 'mobile' in cols %}<th style="width:130px">Mobile</th>{% endif %}
+    {% if 'entry' in cols %}<th style="width:120px">Entry</th>{% endif %}
+    {% if 'payment' in cols %}<th>Payment</th>{% endif %}
+    {% if 'slot' in cols %}<th style="width:110px">Slot</th>{% endif %}
+    {% if 'emails' in cols %}<th>Emails</th>{% endif %}
+    {% if 'instagram' in cols %}<th>Instagram</th>{% endif %}
+    {% if 'confirmed' in cols %}<th>Confirmed</th>{% endif %}
+    {% if 'ack' in cols %}<th>Acknowledged</th>{% endif %}
+    {% if 'reel' in cols %}<th>Reel</th>{% endif %}
+    {% if 'reward' in cols %}<th>Reward</th>{% endif %}
+    {% if 'added' in cols %}<th style="width:130px">Added</th>{% endif %}
+    {% if 'updated' in cols %}<th style="width:150px">Last update</th>{% endif %}
+    {% if 'link' in cols %}<th>Link</th>{% endif %}
     <th style="width:1%"></th>
   </tr></thead>
   <tbody>
@@ -362,7 +418,23 @@
        you approve somebody they leave that queue, and the receipt goes with
        them. The one time you need to find it again is afterwards: a bank
        statement that doesn't add up, or somebody saying they paid twice. #}
-    {% if ev.mode == 'open' %}
+    {# Sex, mobile and entry are collected at registration and were, until
+       now, only ever visible one person at a time. A fitness test is scored
+       by category, so a roster you cannot read the categories off is a
+       roster you end up copying into a spreadsheet. #}
+    {% if 'gender' in cols %}
+    <td>{% if p.sex %}{{ 'Male' if p.sex == 'm' else 'Female' }}
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'mobile' in cols %}
+    <td style="white-space:nowrap">{% if p.mobile %}<span class="mono">{{ p.mobile }}</span>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'entry' in cols %}
+    <td class="sub">{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label)
+      if p.tier else '—' }}</td>
+    {% endif %}
+    {% if 'payment' in cols %}
     <td style="white-space:nowrap">
       {% if p.amount %}<div class="primary">{{ money(p.amount) }}</div>{% endif %}
       {% if p.pay_status %}
@@ -382,8 +454,14 @@
       {% endif %}
     </td>
     {% endif %}
+    {% if 'slot' in cols %}
+    <td>{% if p.slot_time %}<span class="tag">{{ p.slot_time }}</span>
+        <div class="sub">Number {{ p.slot_no }}</div>
+      {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
     {# Which of the two emails this person has had. Two ticks means they were
        asked to come and asked to post; one means the second is still owed. #}
+    {% if 'emails' in cols %}
     <td style="white-space:nowrap">
       {% if p.invited_at %}<span class="tag" title="Invitation sent {{ (p.invited_at|local).strftime('%d %b, %H:%M') }}">1</span>
       {% else %}<span class="tag grey" title="Invitation not sent">1</span>{% endif %}
@@ -391,8 +469,12 @@
       {% elif p.confirmed %}<span class="tag amber" title="Reel email still owed">2</span>
       {% else %}<span class="tag grey" title="Not confirmed yet">2</span>{% endif %}
     </td>
+    {% endif %}
+    {% if 'instagram' in cols %}
     <td>{% if p.handle %}<span class="mono">{{ p.handle }}</span>
       {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'confirmed' in cols %}
     <td>
       {% if p.released_at %}<span class="tag bad">Window closed</span>
         <div class="muted small" style="margin:0">Slot released</div>
@@ -403,15 +485,22 @@
         <div class="muted small" style="margin:0">Invited {{ (p.invited_at|local).strftime('%d %b') }}</div>
       {% else %}<span class="muted small">Not invited</span>{% endif %}
     </td>
+    {% endif %}
+    {% if 'ack' in cols %}
     <td>{% if p.acknowledged_at %}<span class="tag">Agreed</span>
       {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'reel' in cols %}
     <td>{% if p.posted %}<a class="tag" style="text-decoration:none" href="{{ p.reel_url }}"
         target="_blank" rel="noopener">Posted ↗</a>
       {% elif p.confirmed %}<span class="tag amber">Not yet</span>
       {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'reward' in cols %}
     <td>{% if p.reward_code %}<span class="mono">{{ p.reward_code }}</span>
         <div class="muted small" style="margin:0">{{ (ev.reward(p.reward_key) or {}).get('name', '') }}</div>
       {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
     {# When it appeared, and when it last moved. Two questions that used to
        have no answer on this screen at all: you could see that somebody was
        approved but not when, and not whether the row had been touched since.
@@ -421,14 +510,20 @@
        is an UPDATE — a column that bumped on every view would say "updated"
        and mean "looked at". Naming what moved is the other half of the answer;
        a bare timestamp tells you when and leaves you guessing what. #}
+    {% if 'added' in cols %}
     <td class="sub" style="white-space:nowrap">
       {{ (p.created_at|local).strftime('%d %b, %H:%M') if p.created_at else '—' }}</td>
+    {% endif %}
+    {% if 'updated' in cols %}
     <td class="sub" style="white-space:nowrap">
       {% if p.changed_at %}{{ (p.changed_at|local).strftime('%d %b, %H:%M') }}
         <div class="muted small" style="margin:0">{{ p.changed_what }}</div>
       {% else %}—{% endif %}</td>
+    {% endif %}
+    {% if 'link' in cols %}
     <td><button class="btn" style="padding:4px 10px;font-size:.76rem"
         data-copy="{{ base }}/e/{{ p.token }}">Copy</button></td>
+    {% endif %}
     <td style="white-space:nowrap">
       <button type="button" class="btn" style="padding:5px 9px" data-edit="{{ p.id }}"
               title="Edit their details">✎</button>
@@ -439,7 +534,7 @@
      full width of the table and a long email address is readable. Kept out of
      the picking form above — a form cannot nest. #}
   <tr class="editrow" id="edit-{{ p.id }}" hidden>
-    <td colspan="{{ 13 if ev.mode == 'open' else 12 }}">
+    <td colspan="{{ span }}">
       <div class="editgrid">
         <div>
           <label class="small" style="font-weight:600;margin:0 0 4px">Name</label>

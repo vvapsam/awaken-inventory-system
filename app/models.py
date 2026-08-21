@@ -1437,6 +1437,20 @@ class Event(Base):
     #: the window would open on its own a few hours later and start
     #: asking people for a Reel of a class that never happened.
     reels_paused = Column(Boolean, nullable=False, default=False)
+
+    #: Which columns the participant table shows, as a comma-separated list of
+    #: keys. NULL means "whatever the defaults are" — which is not the same as
+    #: the empty string, and the difference matters: an event set up before
+    #: this existed should pick up a new default column when one is added,
+    #: while an event somebody has actually chosen columns for should not have
+    #: our choices pushed back onto it. Empty string is a real answer too:
+    #: every optional column off.
+    #:
+    #: Stored per event rather than per user because the question is about the
+    #: event, not about who is looking. A fitness test that records everyone's
+    #: sex needs that column for everybody who opens it; a sponsor class never
+    #: needs it at all.
+    cols = Column(Text)
     #: Hours from *their own* invitation within which somebody has to answer.
     #: Counted per person rather than from one fixed date, because somebody
     #: added to the list on the Thursday would otherwise inherit a deadline
@@ -1472,6 +1486,28 @@ class Event(Base):
     slot_a_time = Column(String)                 # "10:00 AM"
     slot_a_cap = Column(Integer)                 # 15
     slot_b_time = Column(String)                 # "11:00 AM"
+
+    # ---------------------------------------------------------------- heats
+    # A fitness test is not a class. People go through it a few at a time on a
+    # fixed clock, and every one of them has to be told their own time days
+    # beforehand — which the two waves above cannot do, because they are
+    # decided at the door on the day.
+    #
+    # These five hold the shape of the day; who is in which heat lives on the
+    # participant. A first heat time is the switch: an event that leaves it
+    # empty behaves exactly as it always did.
+    heat_first = Column(String)                  # "10:00"  (24h, gym time)
+    heat_last = Column(String)                   # "12:00"
+    #: Minutes between heats. Ten is the HYROX PFT default.
+    heat_every = Column(Integer, nullable=False, default=10)
+    #: How many people are meant to be in one heat. A limit that warns rather
+    #: than blocks — on the day you will want a fourth person in the 10:30 and
+    #: the software should not be arguing with you about it.
+    heat_cap = Column(Integer, nullable=False, default=3)
+    #: How far before their heat they have to be in the building. Check-in and
+    #: the warm-up both happen in this window, so it is the number that
+    #: actually governs their morning — their heat time is the reason for it.
+    heat_arrive = Column(Integer, nullable=False, default=30)
     #: The sponsor's own logo, stored on the row rather than dropped in the
     #: static folder. A sponsor is a property of one event, not of the app, and
     #: the next one should be an upload rather than a deploy. It rides inside
@@ -1688,6 +1724,22 @@ class EventParticipant(Base):
     slot_no = Column(Integer)
     slot_time = Column(String)
     slot_at = Column(DateTime(timezone=True))
+
+    #: Which heat they are in, as "HH:MM" in gym time. Deliberately not the
+    #: same field as slot_time: that one is written by the scanner on the day
+    #: and this one is decided by hand a week before, and a single column would
+    #: mean the door quietly overwriting a time twenty people already have in
+    #: their inbox.
+    heat_time = Column(String)
+    #: When they were last told it. Cleared whenever they are moved, because a
+    #: time somebody was told is only true until you move them — see
+    #: EventParticipant.heat_told.
+    heat_email_at = Column(DateTime(timezone=True))
+
+    @property
+    def heat_told(self) -> bool:
+        """Do they hold a heat time we have actually sent them?"""
+        return bool(self.heat_time and self.heat_email_at)
     # --- self-registration (mode == open) ---
     first_name = Column(String)
     last_name = Column(String)

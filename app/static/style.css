@@ -420,6 +420,9 @@ tr.struck td .sub{text-decoration:none}
 .alert{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 13px;margin:10px 0;
   border-radius:var(--radius-sm);font-size:.88rem;border:1px solid}
 .alert.warn{background:var(--low);border-color:var(--low-line);color:#4a3a12}
+/* display:flex above outranks the hidden attribute, so a JS-toggled alert
+   shows as an empty coloured bar until something is put in it. */
+.alert[hidden]{display:none}
 .alert.bad{background:#fdecea;border-color:#e6a49b;color:#9c2c1e;display:block}
 .alert a{margin-left:auto}
 details.alert>summary{cursor:pointer;list-style:none;display:flex;align-items:center;
@@ -833,3 +836,144 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
   padding:5px 8px;font-size:.84rem}
 @media (max-width:640px){.movebox{align-items:stretch;flex-direction:column}
   .movebox select{width:100%}}
+
+/* The per-event column chooser. A <details> because it is a setup decision,
+   not a control you reach for twice a day — open it, decide, and it folds
+   itself away again. The count in the summary is what stops it reading as a
+   dead label: "Columns 11" says there is something here to change. */
+.colpick{margin:10px 0 14px;border:1px solid var(--line);border-radius:10px;
+  background:#fff}
+.colpick>summary{cursor:pointer;padding:9px 13px;font-weight:600;font-size:.85rem;
+  list-style:none;display:flex;align-items:center;gap:8px}
+.colpick>summary::-webkit-details-marker{display:none}
+.colpick>summary::before{content:"▸";color:var(--muted);font-size:.8rem}
+.colpick[open]>summary::before{content:"▾"}
+.colpick>summary .n{background:var(--panel);color:var(--muted);border-radius:999px;
+  padding:1px 8px;font-size:.74rem;font-weight:600}
+.colpick form{padding:0 13px 13px}
+.colpick .grid{display:grid;gap:8px 20px;margin:4px 0 12px;
+  grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.colpick .grid label{display:flex;align-items:center;justify-content:flex-start;
+  gap:8px;font-size:.86rem;cursor:pointer;margin:0;white-space:nowrap}
+/* width:auto is load-bearing: the sheet sets inputs to full width, which on a
+   tickbox means one box stretching the width of the cell and shoving its own
+   label to the far side. */
+.colpick .grid input[type=checkbox]{width:auto;flex:0 0 auto;margin:0}
+.colpick .acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* ================= HEAT TIMETABLE ================= */
+/* Times run down the page because that is the order the day happens in. A
+   grid of cards makes you hunt for 11:20, and the block of empty morning at
+   the bottom is the thing you most need to see at a glance. */
+.daybar{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin:0}
+.daybar .f{display:flex;flex-direction:column;gap:3px}
+.daybar label{font-size:.76rem;font-weight:600;color:var(--muted);margin:0}
+.daybar input,.daybar select{width:auto;min-width:112px;padding:6px 9px;font-size:.86rem}
+.daybar .vr{width:1px;align-self:stretch;background:var(--line);margin:0 2px}
+
+.heatboard{display:grid;grid-template-columns:1fr 268px;gap:18px;align-items:start;
+  margin-top:12px}
+@media (max-width:900px){.heatboard{grid-template-columns:1fr}}
+
+.tt{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.tt .hd{display:grid;grid-template-columns:118px 1fr 92px;background:var(--panel);
+  border-bottom:1px solid var(--line)}
+.tt .hd span{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);font-weight:600;padding:7px 13px}
+.tt .hd span:last-child{text-align:right}
+.tt .slot{display:grid;grid-template-columns:118px 1fr 92px;align-items:stretch;
+  border-bottom:1px solid var(--line);min-height:58px}
+.tt .slot:last-child{border-bottom:0}
+.tt .time{padding:9px 13px;border-right:1px solid var(--line);background:#fcfdfd;
+  white-space:nowrap}
+.tt .time b{font-weight:650;font-size:.95rem;font-variant-numeric:tabular-nums}
+.tt .time .mer{font-size:.68rem;font-weight:600;color:var(--muted);margin-left:2px}
+.tt .time .arr{display:block;font-size:.7rem;color:var(--muted);margin-top:1px;
+  font-variant-numeric:tabular-nums}
+.tt .lane{padding:9px 12px;display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;
+  align-content:flex-start}
+.tt .end{padding:9px 11px;display:flex;align-items:flex-start;justify-content:flex-end;gap:7px}
+.tt .n{font-size:.75rem;color:var(--muted);font-variant-numeric:tabular-nums;
+  white-space:nowrap;padding-top:3px}
+/* The hour is the landmark you navigate a long timetable by. */
+.tt .slot.hour{border-top:2px solid #d5dde5}
+.tt .slot.hour .time{background:var(--panel)}
+.tt .slot.full{background:#f4fafa}
+.tt .slot.full .n{color:var(--teal-dark);font-weight:600}
+.tt .slot.over{background:#fdf9ef}
+.tt .slot.over .n{color:#8a6a14;font-weight:600}
+.tt .slot.target{cursor:pointer}
+.tt .slot.target:hover,.tt .slot.dragover{background:var(--teal-tint)}
+.tt .slot.target:hover .time,.tt .slot.dragover .time{background:var(--teal-tint)}
+.tt .slot.dragover{box-shadow:inset 0 0 0 2px var(--teal)}
+.tt .lane .hint::after{content:"\2014";color:#c3ccd6;font-size:.8rem}
+body.dragging .tt .lane .hint::after,
+body.picking .tt .lane .hint::after{content:"Put them here"}
+
+.tt .chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);
+  border:1px solid transparent;border-radius:999px;padding:3px 5px 3px 4px;
+  font-size:.81rem;max-width:220px;cursor:grab}
+.tt .chip:active{cursor:grabbing}
+.tt .chip.dragging{opacity:.35}
+.tt .chip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tt .chip.untold{background:var(--low);border-color:#ecdcb4}
+.tt .chip .x,.tt .chip .send{border:0;background:none;color:#9aa5b1;cursor:pointer;
+  line-height:1;padding:0 3px;font-family:inherit;width:auto}
+.tt .chip .x{font-size:.9rem}
+.tt .chip .send{font-size:.76rem}
+.tt .chip .x:hover{color:#b0392b}
+.tt .chip .send:hover{color:var(--teal-dark)}
+.tt .chip.told .send{color:#bcc6d0}
+.tt .chip .send[disabled]{opacity:.4;cursor:not-allowed}
+
+.add{border:1px dashed #cfd7df;background:#fff;color:var(--muted);border-radius:6px;
+  width:24px;height:24px;line-height:1;font-size:.95rem;cursor:pointer;padding:0;
+  font-family:inherit;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.add:hover{border-color:var(--teal);color:var(--teal-dark);border-style:solid}
+
+.tray{position:sticky;top:14px}
+.tray.dragover{border-color:var(--teal);box-shadow:0 0 0 2px rgba(0,128,128,.2)}
+.tray .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+.tray .head strong{font-size:.88rem}
+.traylist{display:flex;flex-direction:column;gap:5px;max-height:52vh;overflow:auto;
+  padding-right:2px;min-height:44px}
+.tray .empty{color:var(--muted);font-size:.85rem;padding:18px 4px;text-align:center}
+.trayfoot{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
+.who{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;
+  border-radius:7px;padding:6px 9px;cursor:grab;font-size:.85rem;text-align:left;
+  width:100%;font-family:inherit;color:var(--ink)}
+.who:active{cursor:grabbing}
+.who.dragging{opacity:.35}
+.who:hover{border-color:var(--teal);background:var(--teal-tint)}
+.who.on{border-color:var(--teal);background:var(--teal-tint);box-shadow:0 0 0 2px rgba(0,128,128,.16)}
+.who .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-weight:500}
+
+.sx{font-size:.66rem;font-weight:700;border-radius:999px;padding:1px 5px;flex:0 0 auto}
+.sx.f{background:#f4e8f2;color:#8a3f7a}
+.sx.m{background:#e5eefa;color:#2c5a94}
+
+.picker{position:absolute;z-index:60;background:#fff;border:1px solid var(--line);
+  border-radius:8px;box-shadow:0 8px 26px rgba(20,35,55,.16);width:240px;padding:8px}
+.picker input{width:100%;padding:6px 9px;font-size:.84rem;margin-bottom:6px}
+.picker .ttl{font-size:.72rem;color:var(--muted);font-weight:600;padding:1px 3px 6px}
+.picker .list{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:3px}
+.picker .empty{color:var(--muted);font-size:.82rem;padding:10px 4px;text-align:center}
+.picker button.p{display:flex;align-items:center;gap:7px;border:0;background:none;
+  width:100%;text-align:left;padding:5px 7px;border-radius:6px;cursor:pointer;
+  font-size:.84rem;font-family:inherit;color:var(--ink)}
+.picker button.p:hover{background:var(--teal-tint)}
+
+/* A timetable you have rearranged but not saved is the one state where every
+   other control on the page is lying to you, so it gets its own dot. */
+.saveline{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted);
+  margin-right:2px}
+.saveline .dot{width:7px;height:7px;border-radius:50%;background:var(--low-line);flex:0 0 auto}
+.saveline.clean .dot{background:var(--teal)}
+
+.legend{display:flex;gap:15px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin:11px 0 0}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;
+  vertical-align:-1px;border:1px solid #dfe5ea}
+.q{border-left:3px solid var(--teal);padding:2px 0 2px 13px;margin:10px 0 14px;
+  color:var(--muted);font-size:.87rem}
+.q b{color:var(--ink)}
