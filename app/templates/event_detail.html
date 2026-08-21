@@ -119,6 +119,9 @@
        without you opening anything. #}
     <a class="btn" href="/events/{{ ev.id }}/stations">🏋 Stations{%
       if ev.stations %} · {{ ev.stations|length }}{% endif %}</a>
+    {# Only once there is a race to count. A link to an empty coach app on an
+       event with no stations is a link that teaches people it's broken. #}
+    {% if ev.stations %}<a class="btn" href="/race/e/{{ ev.id }}">📱 Coach app</a>{% endif %}
     <a class="btn" href="/events/{{ ev.id }}/report.csv">⤓ Sponsor report</a>
     <a class="btn" href="/events/{{ ev.id }}/settings">⚙ Settings</a>
     <a class="btn" href="/events">← All events</a>

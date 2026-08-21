@@ -1,0 +1,44 @@
+{% extends "coach_base.html" %}
+{% block title %}{{ heat }} heat{% endblock %}
+{% block body %}
+<div class="bar">
+  <a class="back" href="/race/e/{{ ev.id }}">‹</a>
+  <div class="mid"><h1>{{ heat }} heat</h1>
+    <div class="sub">{{ people|length }} racing · {{ ev.name }}</div></div>
+</div>
+<div class="wrap">
+  {% if request.query_params.get('taken') %}
+    <div class="warnbox">Somebody else got there first — that athlete is on
+      another coach's phone now.</div>
+  {% endif %}
+  {% for x in people %}
+    <div class="row {% if x.mine %}mine{% elif x.p.coach_id %}off{% endif %}">
+      <div class="g">
+        <div class="t">{{ x.p.full_name }}</div>
+        <div class="s">
+          {%- if x.done %}Finished
+          {%- elif x.mine %}Yours{% if x.started %} · station {{ x.pos }} of {{ x.total }}{% endif %}
+          {%- elif x.coach %}{{ x.coach }}
+          {%- else %}Free{% endif -%}
+          {%- if x.p.sex %} · {{ 'Female' if x.p.sex == 'f' else 'Male' }}{% endif %}
+        </div>
+      </div>
+      {% if x.mine %}
+        <a class="grab" href="/race/p/{{ x.p.id }}">Open →</a>
+      {% elif x.p.coach_id %}
+        <span class="grab ghost">Taken</span>
+      {% else %}
+        <form class="inline" method="post" action="/race/p/{{ x.p.id }}/grab">
+          <button class="grab" type="submit">Grab</button>
+        </form>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="empty">Nobody is in this heat.</div>
+  {% endfor %}
+  <div class="note">
+    One coach, one athlete, one screen. The moment somebody is taken, every
+    other phone greys them out.
+  </div>
+</div>
+{% endblock %}

@@ -3623,6 +3623,15 @@ event_routes.register(app, {
     "templates": templates,
 })
 
+# ================= Coach app =================
+# The phone on the floor on race day: pick a heat, grab a client, count. Three
+# screens and no more — the leaderboard and the finisher board are admin-side,
+# on a laptop or a wall, never in the hand of somebody watching a person race.
+from . import coach_routes  # noqa: E402
+
+coach_routes.register(app, {"templates": templates})
+
+
 # The words those emails are made of, editable under the gear rather than in a
 # release. Registered after the events section because it renders its preview
 # through exactly the same builders a real send uses.
