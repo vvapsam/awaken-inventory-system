@@ -58,7 +58,7 @@ from .models import (
     PAY_RETURNED,
     PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
-    Event, EventParticipant, EventOrganiserLink,
+    Event, EventParticipant, EventOrganiserLink, EventStation, StationRun,
     ORGANISER_LINK_DAYS, ORGANISER_DEFAULT_PASS,
     from_local, to_local,
 )
@@ -1680,6 +1680,84 @@ def register(app, deps):
         "waitlist": "Waitlist",
         "back": "Back on the list",
     }
+
+    # ---------------------------------------------------------- stations ----
+
+    MEASURES = {"distance": "m", "reps": "reps"}
+
+    @app.get("/events/{eid}/stations", response_class=HTMLResponse)
+    def event_stations(request: Request, eid: int, db: Session = Depends(get_db)):
+        """The workout stations, in the order they are raced."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        rows = sorted(ev.stations, key=lambda s: (s.position, s.id))
+        # A station cannot change under somebody who is already racing it —
+        # their count would suddenly mean something else, and there is no way
+        # to tell afterwards which taps were against which target.
+        racing = db.query(StationRun).join(EventStation).filter(
+            EventStation.event_id == eid,
+            StationRun.started_at.isnot(None)).count()
+        return render(request, "event_stations.html", db, staff, active="events",
+                      ev=ev, rows=rows, measures=MEASURES, locked=bool(racing),
+                      taps=sum(r.taps for r in rows))
+
+    @app.post("/events/{eid}/stations")
+    async def event_stations_save(request: Request, eid: int,
+                                  db: Session = Depends(get_db)):
+        """Save the whole list in one go — order, names, targets, increments."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        started = db.query(StationRun).join(EventStation).filter(
+            EventStation.event_id == eid,
+            StationRun.started_at.isnot(None)).count()
+        if started:
+            return RedirectResponse("/events/%d/stations?locked=1" % eid,
+                                    status_code=303)
+        form = await request.form()
+        ids = form.getlist("sid")
+        names = form.getlist("name")
+        measures = form.getlist("measure")
+        targets = form.getlist("target")
+        incs = form.getlist("inc")
+
+        def num(raw, lo, hi, fallback):
+            try:
+                return max(lo, min(hi, int(str(raw).strip())))
+            except (TypeError, ValueError):
+                return fallback
+
+        keep = set()
+        for i, raw_id in enumerate(ids):
+            name = (names[i] if i < len(names) else "").strip()
+            if not name:
+                continue                      # a nameless row is a deleted row
+            row = (db.get(EventStation, int(raw_id))
+                   if str(raw_id).isdigit() else None)
+            if row is None or row.event_id != eid:
+                row = EventStation(event_id=eid)
+                db.add(row)
+            row.position = i
+            row.name = name[:80]
+            m = measures[i] if i < len(measures) else "reps"
+            row.measure = m if m in MEASURES else "reps"
+            row.target = num(targets[i] if i < len(targets) else 0, 1, 100000, 1)
+            row.increment = num(incs[i] if i < len(incs) else 1, 1, 10000, 1)
+            db.flush()
+            keep.add(row.id)
+        for row in list(ev.stations):
+            if row.id not in keep:
+                db.delete(row)
+        db.commit()
+        return RedirectResponse("/events/%d/stations?saved=1" % eid,
+                                status_code=303)
 
     # ------------------------------------------------------------- heats ----
 
