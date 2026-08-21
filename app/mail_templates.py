@@ -90,6 +90,19 @@ ${block.button "Confirm and pay \u2192" "Takes about two minutes"}
 ${block.facts}
 <p style="font-size:14px;margin:16px 0 0;color:#6b7683">Already paid? Ignore this \u2014 we may not have checked your receipt yet, and we\u2019ll email you the moment we do.</p>"""
 
+#: The one email whose whole job is a number. Two numbers, in fact — and the
+#: order they are in is the message: arrival is the only one they have to act
+#: on, their heat time is the reason for it. Naming the consequence beats
+#: repeating the instruction: "arrive 30 minutes early" is a line everybody has
+#: read before and half of them have got away with ignoring.
+HEAT_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">Your heat time, ${record.first_name} \U0001f3c1</h1>
+<p style="font-size:15px;margin:0 0 18px;color:#2b3642">You\u2019re all set for <b>${event.name}</b>. Here are your two times \u2014 the one that matters most is when to walk in.</p>
+${block.heat}
+<p style="font-size:14px;margin:0 0 16px;color:#2b3642">That\u2019s <b>${record.arrive_gap} before</b> your heat. Check-in and your warm-up both happen in that window, so arriving on the dot of ${record.heat} means missing your heat.</p>
+${block.facts}
+${block.button "Show my QR pass \u2192" "The same link you registered with"}
+${block.warn}<b>Miss your heat and we can\u2019t guarantee you a rescheduled time.</b>${/block.warn}"""
+
 RETURNED_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">One more thing, ${record.first_name}</h1>
 <p style="font-size:15px;margin:0 0 6px;color:#2b3642">We had a look at your
    payment and need another go at it.</p>
@@ -169,6 +182,23 @@ TEMPLATES = [
                    "block.button": "the teal call-to-action"},
         "pairs": {"block.note": "the bordered callout"},
         "body": PASS_BODY,
+    },
+    {
+        "key": "heat", "name": "Your heat time",
+        "blurb": "\u201cArrive at 9:50, your heat is 10:20.\u201d",
+        "where": "events running heats",
+        "subject": "Your heat time \u2014 ${event.name}",
+        "values": dict(EVENT_VALUES, **PERSON_VALUES, **{
+            "record.heat": "10:20 AM",
+            "record.arrive": "9:50 AM",
+            "record.arrive_gap": "30 minutes",
+        }),
+        "blocks": {"block.heat": "the two times, side by side",
+                   "block.facts": "When \u00b7 Where \u00b7 Bring \u00b7 After",
+                   "block.button": "the teal call-to-action"},
+        "pairs": {"block.note": "the bordered callout",
+                  "block.warn": "the amber callout"},
+        "body": HEAT_BODY,
     },
     {
         "key": "finish", "name": "Finish your registration",
