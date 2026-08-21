@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+{% block body %}
+{#
+  The heat timetable. One column of times running down the page, because that
+  is the order the day happens in — a grid of cards makes you hunt for 11:20,
+  and the block of empty morning at the bottom is the thing you most need to
+  see at a glance.
+
+  Everything here is a client-side arrangement until you press Save. Twenty
+  drags should not be twenty round trips, and a timetable half-written to the
+  database is a timetable nobody can trust. The cost of that choice is the
+  unsaved state, which is why it is stated plainly at the top and why sending
+  is switched off until it clears: an emailed heat time you then discard is
+  worse than no email at all.
+#}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Heat timetable</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }} —
+      {{ total }} {{ 'person' if total == 1 else 'people' }} to place.</p>
+  </div>
+  <div class="hdact" style="align-items:center">
+    <div class="saveline" id="saveline"><span class="dot"></span><span id="savetxt"></span></div>
+    <button class="btn" id="save" form="planform">Save timetable</button>
+    <a class="btn" href="/events/{{ ev.id }}">← The event</a>
+  </div>
+</div>
+
+{% if request.query_params.get('saved') is not none %}
+{% set n = request.query_params.get('saved')|int %}
+<div class="notice">{% if n %}Timetable saved — {{ n }}
+  {{ 'person' if n == 1 else 'people' }} moved.
+  <span class="muted">Anybody who was already told their time needs sending
+    again; they're back in the count below.</span>
+  {% else %}Timetable saved. Nothing had moved.{% endif %}</div>
+{% elif request.query_params.get('day') == 'ok' %}
+<div class="notice">The day is set.</div>
+{% endif %}
+
+{% if mail %}
+{% if mail.setup %}
+<div class="alert bad"><b>Nothing was sent.</b> <span class="muted">{{ mail.setup }}</span></div>
+{% else %}
+{% if mail.sent %}
+<div class="notice">Sent <b>their heat time</b> to {{ mail.sent|length }}
+  {{ 'person' if mail.sent|length == 1 else 'people' }} —
+  {% for s in mail.sent %}{{ s.name }}{{ ', ' if not loop.last }}{% endfor %}.</div>
+{% endif %}
+{% if mail.skipped %}
+<div class="alert warn"><b>{{ mail.skipped|length }} skipped.</b>
+  <span class="muted">{% for s in mail.skipped %}{{ s.name }} ({{ s.detail }}){{ '; ' if not loop.last }}{% endfor %}</span></div>
+{% endif %}
+{% if mail.failed %}
+<div class="alert bad"><b>Not sent.</b>
+  <span class="muted">{% for s in mail.failed %}{{ s.name }} — {{ s.detail }}{{ '; ' if not loop.last }}{% endfor %}</span></div>
+{% endif %}
+{% endif %}
+{% endif %}
+
+{# The shape of the day. Its own form and its own submit: changing the
+   interval rebuilds every row, so it cannot ride along with the arrangement
+   you are in the middle of making. #}
+<h2>The day</h2>
+<div class="card">
+  <form method="post" action="/events/{{ ev.id }}/heats/day" class="daybar">
+    <div class="f"><label>First heat</label>
+      <input name="first" value="{{ clock12(ev.heat_first) }}" placeholder="10:00 AM"></div>
+    <div class="f"><label>Last heat</label>
+      <input name="last" value="{{ clock12(ev.heat_last) }}" placeholder="12:00 PM"></div>
+    <div class="f"><label>Every</label>
+      <select name="every">
+        {% for m in [5, 10, 15, 20, 30, 45, 60] %}
+        <option value="{{ m }}" {{ 'selected' if ev.heat_every == m }}>{{ m }} minutes</option>
+        {% endfor %}
+      </select></div>
+    <div class="f"><label>Per heat</label>
+      <input name="cap" value="{{ ev.heat_cap }}" style="width:64px"></div>
+    <div class="vr"></div>
+    <div class="f"><label>Arrive before</label>
+      <select name="arrive">
+        {% for m in [0, 10, 15, 20, 30, 45, 60] %}
+        <option value="{{ m }}" {{ 'selected' if ev.heat_arrive == m }}>
+          {{ 'No earlier' if m == 0 else (m ~ ' minutes' if m < 60 else '1 hour') }}</option>
+        {% endfor %}
+      </select></div>
+    <button class="btn">Rebuild the timetable</button>
+  </form>
+  {% if rows %}
+  <div class="muted small" style="margin:10px 0 0">{{ rows|length }} heats ·
+    room for {{ room }}{% if ev.heat_arrive %} · first arrival
+    <b>{{ clock12(rows[0].arrive) }}</b>, first heat
+    <b>{{ clock12(rows[0].t) }}</b>{% endif %}</div>
+  {% else %}
+  <div class="muted small" style="margin:10px 0 0">Set a first heat and the
+    timetable appears. Leave it empty and this event doesn't run heats.</div>
+  {% endif %}
+</div>
+
+{% if rows %}
+<h2>The timetable</h2>
+<div class="alert warn" id="warn" hidden></div>
+<p class="q"><b>Drag</b> a name onto a heat — from the list on the right, or
+  from one heat to another. Drag it back to the list to take it off.
+  <b>+</b> adds without dragging, <b>×</b> removes, <b>✉</b> sends that one
+  person their time. On a phone, tap a name then tap a heat.</p>
+
+<form method="post" action="/events/{{ ev.id }}/heats/save" id="planform"></form>
+
+<div class="heatboard">
+  <div>
+    <div class="tt">
+      <div class="hd"><span>Heat{% if ev.heat_arrive %} · arrive{% endif %}</span>
+        <span>Who is on</span><span>No.</span></div>
+      <div id="rows"></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:#fff"></i>Room left</span>
+      <span><i style="background:#f4fafa"></i>Full</span>
+      <span><i style="background:#fdf9ef;border-color:var(--low-line)"></i>Over the limit</span>
+      <span><i style="background:var(--low);border-color:#ecdcb4"></i>Not told their time yet</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="card tray" id="tray">
+      <div class="head"><strong>No heat yet</strong>
+        <span class="tag amber" id="leftn">0</span></div>
+      <div class="traylist" id="traylist"></div>
+      <div class="trayfoot">
+        <button type="button" class="btn small" style="width:100%;justify-content:center"
+                onclick="autofill()">Fill the gaps in order</button>
+        <div class="muted small" style="margin-top:6px;text-align:center;line-height:1.4">
+          Drops everyone left into the earliest free heats. You can still move
+          them afterwards.</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div style="font-weight:650;font-size:.86rem;margin-bottom:6px">Telling them</div>
+      <div class="muted small" style="margin:0 0 10px;line-height:1.45">
+        Each person gets their own time — never the whole list. Moving somebody
+        puts them back in this count, because the time in their inbox is wrong
+        the moment you do.</div>
+      <form method="post" action="/events/{{ ev.id }}/heats/send" id="sendall">
+        <button class="btn primary" style="width:100%;justify-content:center"
+                {{ 'disabled' if not mail_ready or not waiting }}
+                title="{% if not mail_ready %}Mail isn't set up on the server yet{%
+                  elif not waiting %}Nobody is waiting on a time{% endif %}">
+          {% if waiting %}✉ Send to the {{ waiting }} not yet told
+          {% else %}✉ Everyone has been told{% endif %}</button>
+      </form>
+      <div class="muted small" style="margin-top:8px">
+        {{ told }} told · {{ waiting }} waiting</div>
+      <a class="small" href="/events/{{ ev.id }}/preview/heat" target="_blank"
+         style="display:inline-block;margin-top:6px">See the email →</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function(){
+  var ROWS = {{ rows|map(attribute='t')|list|tojson }};
+  var ARRIVE = {{ rows|map(attribute='arrive')|list|tojson }};
+  var CAP = {{ ev.heat_cap or 1 }};
+  var MAIL = {{ 'true' if mail_ready else 'false' }};
+  var PEOPLE = {
+  {%- for r in rows %}{% for p in r.people %}
+    "{{ p.id }}": {n: {{ (p.name or '')|tojson }}, s: {{ (p.sex or '')|tojson }},
+      at: "{{ r.t }}", told: {{ 'true' if p.heat_email_at else 'false' }}},
+  {%- endfor %}{% endfor %}
+  {%- for p in free %}
+    "{{ p.id }}": {n: {{ (p.name or '')|tojson }}, s: {{ (p.sex or '')|tojson }},
+      at: null, told: false},
+  {%- endfor %}
+  };
+  if (!ROWS.length) return;
+
+  var dirty = false, picked = null, dragId = null, openPicker = null;
+  var form = document.getElementById("planform");
+
+  function ids(){ return Object.keys(PEOPLE).map(Number); }
+  function at(i){ return ids().filter(function(id){ return PEOPLE[id].at === ROWS[i]; }); }
+  function free(){ return ids().filter(function(id){ return PEOPLE[id].at === null; }); }
+  function waiting(){
+    return ids().filter(function(id){ return PEOPLE[id].at && !PEOPLE[id].told; }).length;
+  }
+  function c12(t){
+    var h = +t.slice(0, 2), m = t.slice(3);
+    return ((h + 11) % 12 + 1) + ":" + m + " " + (h < 12 ? "AM" : "PM");
+  }
+  function sx(p){
+    return p.s ? '<span class="sx ' + p.s + '">' + (p.s === "f" ? "F" : "M") +
+      '</span>' : '';
+  }
+
+  function put(id, i){
+    var p = PEOPLE[id], from = p.at;
+    if (from === ROWS[i]) return;
+    p.at = ROWS[i];
+    // A time somebody was told is only true until you move them. Dropping the
+    // tick here means they come back in the "not yet told" count on their own
+    // rather than keeping a promise the timetable no longer makes.
+    if (p.told){
+      p.told = false;
+      flag(p.n + " was already told " + c12(from) + " — they need sending again.");
+    } else if (at(i).length > CAP){
+      flag("That heat is over the limit you set — " + at(i).length +
+           " people at " + c12(ROWS[i]) + ". Allowed, but worth a look.");
+    }
+    dirty = true;
+  }
+  function take(id){
+    PEOPLE[id].at = null;
+    PEOPLE[id].told = false;
+    dirty = true;
+  }
+
+  /* ---- drag and drop ---- */
+  function dragify(el, id){
+    el.draggable = true;
+    el.addEventListener("dragstart", function(e){
+      dragId = id;
+      el.classList.add("dragging");
+      document.body.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(id));
+    });
+    el.addEventListener("dragend", function(){
+      dragId = null;
+      el.classList.remove("dragging");
+      document.body.classList.remove("dragging");
+      Array.prototype.forEach.call(document.querySelectorAll(".dragover"),
+        function(x){ x.classList.remove("dragover"); });
+    });
+  }
+  function dropzone(el, onDrop){
+    el.addEventListener("dragover", function(e){
+      if (dragId === null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      el.classList.add("dragover");
+    });
+    el.addEventListener("dragleave", function(e){
+      if (!el.contains(e.relatedTarget)) el.classList.remove("dragover");
+    });
+    el.addEventListener("drop", function(e){
+      e.preventDefault();
+      el.classList.remove("dragover");
+      var id = Number(e.dataTransfer.getData("text/plain"));
+      if (PEOPLE[id]){ onDrop(id); draw(); }
+    });
+  }
+
+  /* ---- the + picker ---- */
+  function closePicker(){
+    if (openPicker){ openPicker.remove(); openPicker = null; }
+  }
+  document.addEventListener("click", function(e){
+    if (openPicker && !openPicker.contains(e.target)) closePicker();
+  });
+  function showPicker(btn, i){
+    closePicker();
+    var box = document.createElement("div");
+    box.className = "picker";
+    var ttl = document.createElement("div");
+    ttl.className = "ttl";
+    ttl.textContent = "Add to the " + c12(ROWS[i]) + " heat";
+    var q = document.createElement("input");
+    q.placeholder = "Search a name…";
+    var list = document.createElement("div");
+    list.className = "list";
+    function redraw(){
+      var term = q.value.trim().toLowerCase();
+      var opts = free().filter(function(id){
+        return !term || PEOPLE[id].n.toLowerCase().indexOf(term) >= 0;
+      });
+      list.innerHTML = "";
+      if (!opts.length){
+        list.innerHTML = '<div class="empty">' +
+          (term ? "Nobody by that name is free." : "Everybody has a heat.") +
+          '</div>';
+        return;
+      }
+      opts.forEach(function(id){
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "p";
+        b.innerHTML = sx(PEOPLE[id]) + "<span></span>";
+        b.lastChild.textContent = PEOPLE[id].n;
+        b.onclick = function(ev){
+          ev.stopPropagation(); put(id, i); closePicker(); draw();
+        };
+        list.appendChild(b);
+      });
+    }
+    q.oninput = redraw;
+    redraw();
+    box.appendChild(ttl); box.appendChild(q); box.appendChild(list);
+    document.body.appendChild(box);
+    var r = btn.getBoundingClientRect();
+    box.style.top = (r.bottom + window.pageYOffset + 6) + "px";
+    box.style.left = Math.max(8, Math.min(r.left + window.pageXOffset - 200,
+      window.innerWidth - 252 + window.pageXOffset)) + "px";
+    openPicker = box;
+    q.focus();
+  }
+
+  function flag(msg){
+    var w = document.getElementById("warn");
+    w.textContent = msg;
+    w.hidden = false;
+    clearTimeout(flag.t);
+    flag.t = setTimeout(function(){ w.hidden = true; }, 5000);
+  }
+
+  window.autofill = function(){
+    var i = 0;
+    free().forEach(function(id){
+      while (i < ROWS.length && at(i).length >= CAP) i++;
+      if (i >= ROWS.length) return;
+      PEOPLE[id].at = ROWS[i];
+      dirty = true;
+    });
+    picked = null;
+    draw();
+  };
+
+  function draw(){
+    document.body.classList.toggle("picking", picked !== null);
+
+    // The whole arrangement, as the form will post it. Rebuilt every draw so
+    // what is on screen and what would be saved cannot drift apart.
+    form.innerHTML = "";
+    ids().forEach(function(id){
+      if (!PEOPLE[id].at) return;
+      var h = document.createElement("input");
+      h.type = "hidden"; h.name = "at";
+      h.value = id + ":" + PEOPLE[id].at;
+      form.appendChild(h);
+    });
+
+    var sl = document.getElementById("saveline");
+    sl.className = "saveline" + (dirty ? "" : " clean");
+    document.getElementById("savetxt").textContent =
+      dirty ? "Unsaved changes" : "All saved";
+    var sv = document.getElementById("save");
+    sv.className = "btn" + (dirty ? " primary" : "");
+    sv.disabled = !dirty;
+
+    // Sending is switched off while there are unsaved changes. An emailed
+    // heat time you then discard is worse than no email at all.
+    var sa = document.querySelector("#sendall button");
+    if (sa){
+      var n = waiting();
+      sa.textContent = n ? "✉ Send to the " + n + " not yet told"
+                         : "✉ Everyone has been told";
+      sa.disabled = dirty || !n || !MAIL;
+      sa.title = dirty ? "Save the timetable first" : "";
+    }
+
+    var list = document.getElementById("traylist");
+    var left = free();
+    list.innerHTML = "";
+    document.getElementById("leftn").textContent = left.length;
+    if (!left.length)
+      list.innerHTML = '<div class="empty">Everyone has a heat.</div>';
+    left.forEach(function(id){
+      var p = PEOPLE[id];
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "who" + (picked === id ? " on" : "");
+      b.innerHTML = sx(p) + '<span class="nm"></span>';
+      b.querySelector(".nm").textContent = p.n;
+      b.onclick = function(){ picked = (picked === id ? null : id); draw(); };
+      dragify(b, id);
+      list.appendChild(b);
+    });
+
+    var box = document.getElementById("rows");
+    box.innerHTML = "";
+    ROWS.forEach(function(t, i){
+      var here = at(i);
+      var row = document.createElement("div");
+      var cls = "slot";
+      if (t.slice(3) === "00" && i > 0) cls += " hour";
+      if (here.length > CAP) cls += " over";
+      else if (here.length === CAP) cls += " full";
+      if (picked !== null) cls += " target";
+      row.className = cls;
+
+      var time = document.createElement("div");
+      time.className = "time";
+      var h = +t.slice(0, 2);
+      time.innerHTML = '<b></b><span class="mer">' + (h < 12 ? "AM" : "PM") +
+        '</span>' + (ARRIVE[i] && ARRIVE[i] !== t
+          ? '<span class="arr">arrive ' + c12(ARRIVE[i]).replace(/ [AP]M$/, "") +
+            '</span>' : '');
+      time.querySelector("b").textContent = c12(t).replace(/ [AP]M$/, "");
+
+      var lane = document.createElement("div");
+      lane.className = "lane";
+      here.forEach(function(id){
+        var p = PEOPLE[id];
+        var c = document.createElement("span");
+        c.className = "chip" + (p.told ? " told" : " untold");
+        c.innerHTML = sx(p) + '<span class="nm"></span>';
+        c.querySelector(".nm").textContent = p.n;
+        if (MAIL){
+          var send = document.createElement("button");
+          send.type = "submit";
+          send.className = "send";
+          send.textContent = "✉";
+          send.name = "pid";
+          send.value = String(id);
+          send.setAttribute("form", "sendall");
+          send.disabled = dirty;
+          send.title = dirty ? "Save the timetable first"
+            : (p.told ? "Already told — send it again"
+                      : "Send " + p.n + " their heat time");
+          send.onclick = function(ev){ ev.stopPropagation(); };
+          c.appendChild(send);
+        }
+        var x = document.createElement("button");
+        x.type = "button";
+        x.className = "x";
+        x.textContent = "×";
+        x.title = "Take them out of this heat";
+        x.onclick = function(ev){ ev.stopPropagation(); take(id); draw(); };
+        c.appendChild(x);
+        dragify(c, id);
+        lane.appendChild(c);
+      });
+      if (!here.length){
+        var hint = document.createElement("span");
+        hint.className = "hint";
+        lane.appendChild(hint);
+      }
+
+      var end = document.createElement("div");
+      end.className = "end";
+      var n = document.createElement("span");
+      n.className = "n";
+      n.textContent = here.length + " / " + CAP;
+      var plus = document.createElement("button");
+      plus.type = "button";
+      plus.className = "add";
+      plus.textContent = "+";
+      plus.title = "Add somebody to this heat";
+      plus.onclick = function(ev){ ev.stopPropagation(); showPicker(plus, i); };
+      end.appendChild(n); end.appendChild(plus);
+
+      row.appendChild(time); row.appendChild(lane); row.appendChild(end);
+      row.onclick = function(){
+        if (picked === null) return;
+        put(picked, i); picked = null; draw();
+      };
+      dropzone(row, function(id){ put(id, i); });
+      box.appendChild(row);
+    });
+  }
+
+  dropzone(document.getElementById("tray"), function(id){ take(id); });
+  // Closing the tab mid-arrangement is the one way to lose work here, so say
+  // so rather than letting it happen quietly.
+  window.addEventListener("beforeunload", function(e){
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+  document.getElementById("save").addEventListener("click", function(){
+    dirty = false;   // stops the leave-the-page warning firing on our own post
+  });
+  draw();
+})();
+</script>
+{% endblock %}
