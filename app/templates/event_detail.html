@@ -115,6 +115,10 @@
        unplaced. #}
     <a class="btn" href="/events/{{ ev.id }}/heats">🕘 Heat timetable{%
       if ev.heat_first %} · {{ ev.participants|selectattr('heat_time')|list|length }}/{{ c.inplay }}{% endif %}</a>
+    {# Counts on the buttons, so the event page says what is still unset
+       without you opening anything. #}
+    <a class="btn" href="/events/{{ ev.id }}/stations">🏋 Stations{%
+      if ev.stations %} · {{ ev.stations|length }}{% endif %}</a>
     <a class="btn" href="/events/{{ ev.id }}/report.csv">⤓ Sponsor report</a>
     <a class="btn" href="/events/{{ ev.id }}/settings">⚙ Settings</a>
     <a class="btn" href="/events">← All events</a>

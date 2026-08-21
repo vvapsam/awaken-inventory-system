@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block body %}
+{#
+  The stations, in race order. Everything about a station is configuration
+  rather than code, so a fitness test with different stations next month is
+  rows in a table and not a deploy.
+
+  The column that earns its place is the last one. What one tap adds is a
+  coaching decision about how fast the reps come, not a unit conversion — and
+  the taps figure is the honest way to say it. 100 wall balls at +1 is a
+  hundred taps while watching somebody's depth; at +5 it is twenty. Better to
+  know that here than to find out mid-race.
+#}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Workout stations</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }} — the order here
+      is the order they race in.</p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}">← The event</a>
+  </div>
+</div>
+
+{% if request.query_params.get('saved') %}
+<div class="notice">Stations saved.</div>
+{% elif request.query_params.get('locked') %}
+<div class="alert bad"><b>Nothing was changed.</b>
+  <span class="muted">Somebody is already racing these stations.</span></div>
+{% endif %}
+
+{% if locked %}
+{# Changing a target under somebody mid-race would make their count mean
+   something else, and afterwards there is no way to tell which taps were
+   against which target. #}
+<div class="alert warn"><b>Locked — a race has started.</b>
+  <span class="muted">Someone is already being counted against these stations,
+    so they can't change now. They're editable again once the event is
+    over.</span></div>
+{% endif %}
+
+<form method="post" action="/events/{{ ev.id }}/stations">
+<div class="card" style="padding:0;overflow:auto;margin-top:12px">
+  <table class="st">
+    <thead><tr>
+      <th style="width:30px">#</th>
+      <th>Station</th>
+      <th style="width:140px">Measured in</th>
+      <th style="width:118px">Target</th>
+      <th style="width:126px">Each tap adds</th>
+      <th style="width:160px">On the coach's phone</th>
+      <th style="width:40px"></th>
+    </tr></thead>
+    <tbody id="strows">
+      {% for r in rows %}
+      <tr>
+        <td class="ord">{{ loop.index }}</td>
+        <td><input name="name" value="{{ r.name }}" {{ 'disabled' if locked }}>
+          <input type="hidden" name="sid" value="{{ r.id }}"></td>
+        <td><select name="measure" {{ 'disabled' if locked }}>
+          {% for k, u in measures.items() %}
+          <option value="{{ k }}" {{ 'selected' if r.measure == k }}>{{ k|capitalize }}</option>
+          {% endfor %}</select></td>
+        <td><input class="num" name="target" value="{{ r.target }}" {{ 'disabled' if locked }}></td>
+        <td><input class="num" name="inc" value="{{ r.increment }}" {{ 'disabled' if locked }}></td>
+        <td><span class="pv">+{{ r.increment }} {{ r.unit }} · {{ r.taps }} taps</span></td>
+        <td>{% if not locked %}<button type="button" class="x" title="Remove">×</button>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr id="empty"><td colspan="7" class="muted" style="padding:16px">
+        No stations yet. Add the first one below.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if not locked %}
+<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+  <button type="button" class="btn" id="addst">+ Add a station</button>
+  <button class="btn primary">Save stations</button>
+  <span class="muted small" id="tot">{{ rows|length }} stations ·
+    {{ taps }} taps for a full race</span>
+</div>
+{% endif %}
+</form>
+
+<div class="card" style="margin-top:20px;max-width:760px">
+  <div style="font-weight:650;font-size:.88rem;margin-bottom:8px">A note on the increment</div>
+  <p class="muted small" style="margin:0">It is the size of the button a coach
+    taps, so pick it by how fast the work comes rather than by the maths.
+    Burpees do not come in fives; wall balls do. A row is easier counted in
+    hundreds of metres than in ones. Whatever you set here is what appears on
+    the phone — <span class="mono">+1 rep</span>,
+    <span class="mono">+5 reps</span>, <span class="mono">+100 m</span> — and
+    the station closes itself the moment the target is reached.</p>
+</div>
+
+<script>
+(function(){
+  var add = document.getElementById("addst");
+  if (!add) return;
+  var body = document.getElementById("strows");
+  function renumber(){
+    var rows = body.querySelectorAll("tr[data-st]");
+    var taps = 0;
+    rows.forEach(function(tr, i){
+      tr.querySelector(".ord").textContent = i + 1;
+      var t = +tr.querySelector("[name=target]").value || 0;
+      var n = +tr.querySelector("[name=inc]").value || 1;
+      var u = tr.querySelector("[name=measure]").value === "distance" ? "m" : "reps";
+      var k = Math.ceil(t / Math.max(1, n));
+      tr.querySelector(".pv").textContent = "+" + n + " " + u + " · " + k + " taps";
+      taps += k;
+    });
+    var tot = document.getElementById("tot");
+    if (tot) tot.textContent = rows.length + " stations · " + taps +
+      " taps for a full race";
+    var e = document.getElementById("empty");
+    if (e) e.hidden = rows.length > 0;
+  }
+  // Mark what is already there so the same code handles old rows and new.
+  Array.prototype.forEach.call(body.querySelectorAll("tr"), function(tr){
+    if (tr.id !== "empty") tr.setAttribute("data-st", "1");
+  });
+  body.addEventListener("input", renumber);
+  body.addEventListener("change", renumber);
+  body.addEventListener("click", function(e){
+    var b = e.target.closest(".x");
+    if (!b) return;
+    b.closest("tr").remove();
+    renumber();
+  });
+  add.onclick = function(){
+    var tr = document.createElement("tr");
+    tr.setAttribute("data-st", "1");
+    tr.innerHTML =
+      '<td class="ord"></td>' +
+      '<td><input name="name" placeholder="Station name">' +
+        '<input type="hidden" name="sid" value="new"></td>' +
+      '<td><select name="measure">' +
+        '<option value="reps">Reps</option>' +
+        '<option value="distance">Distance</option></select></td>' +
+      '<td><input class="num" name="target" value="20"></td>' +
+      '<td><input class="num" name="inc" value="1"></td>' +
+      '<td><span class="pv"></span></td>' +
+      '<td><button type="button" class="x" title="Remove">×</button></td>';
+    body.appendChild(tr);
+    renumber();
+    tr.querySelector("[name=name]").focus();
+  };
+  renumber();
+})();
+</script>
+{% endblock %}
