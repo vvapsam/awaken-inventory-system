@@ -151,11 +151,6 @@ h2.band.hot{color:var(--amber)}
   background:var(--card);border:1px solid var(--line);border-radius:11px;
   padding:18px 12px;text-align:center;color:var(--dim);font-size:.84rem;
 }
-.foot{
-  margin-top:22px;color:var(--dim);font-size:.74rem;text-align:center;
-  line-height:1.65;
-}
-
 /* The sponsors, along the bottom.
  *
  * Sized by a single scale on each mark's native width, the way the finisher
@@ -167,14 +162,27 @@ h2.band.hot{color:var(--amber)}
  * so they read without competing with a race.
  */
 .sponsors{
+  /* Pinned to the bottom of the screen rather than to the bottom of the page.
+     A field of thirty pushes a footer a long way down, and a sponsor mark that
+     is only visible if somebody scrolls to it is a sponsor mark nobody sees.
+     The board scrolls underneath; this does not move. */
   --sp:0.9;
+  position:fixed;left:0;right:0;bottom:0;z-index:5;
   display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
-  gap:14px 26px;margin-top:26px;padding-top:22px;
-  border-top:1px solid var(--line);opacity:.72;
+  gap:12px 26px;padding:14px 16px;
+  background:var(--bg);border-top:1px solid var(--line);
 }
-.sponsors img{display:block;height:auto}
-@media (min-width:1200px){ .sponsors{--sp:1.15;gap:16px 34px} }
-@media (max-width:559px){ .sponsors{--sp:0.66;gap:11px 18px;margin-top:20px} }
+/* Dimmed on the marks themselves, never on the bar: opacity on the bar makes
+   its own background see-through, and the board scrolls up behind it. */
+.sponsors img{display:block;height:auto;opacity:.82}
+/* The ten marks are 973px across at native size. The scale and the gap are
+ * tuned per band so they sit on ONE line wherever the screen can hold one -
+ * two lines of sponsors eat a fifth of a wall screen for no extra sponsor.
+ * Below 900px they wrap, which is the right answer on a phone. */
+@media (min-width:900px){  .sponsors{--sp:0.76;gap:12px 12px} }
+@media (min-width:1200px){ .sponsors{--sp:0.98;gap:14px 18px;padding:16px 20px} }
+@media (min-width:1500px){ .sponsors{--sp:1.15;gap:14px 28px} }
+@media (max-width:559px){  .sponsors{--sp:0.6;gap:9px 16px;padding:10px 10px} }
 
 /* ---- the room ---- */
 @media (min-width:1200px){
@@ -249,8 +257,6 @@ h2.band.hot{color:var(--amber)}
 
   <div class="cols" id="cols"></div>
 
-  <div class="foot" id="foot"></div>
-
   <div class="sponsors">
     {% for file, w in sponsors %}
     <img src="/static/card/sp/{{ file }}" alt=""
@@ -270,8 +276,7 @@ h2.band.hot{color:var(--amber)}
   var floorBox = document.getElementById('floor'),
       noFloor  = document.getElementById('nofloor'),
       nFloor   = document.getElementById('nfloor'),
-      colsBox  = document.getElementById('cols'),
-      foot     = document.getElementById('foot');
+      colsBox  = document.getElementById('cols');
 
   function mmss(s){
     s = Math.max(0, Math.floor(s));
@@ -348,12 +353,9 @@ h2.band.hot{color:var(--amber)}
   function render(){
     /* One pass over the data, splitting it the way the page is laid out:
        everybody racing into the strip, everybody else into their column. */
-    var floor = [], later = 0;
+    var floor = [];
     cols.forEach(function(c){
-      c.rows.forEach(function(r){
-        if (r.racing) { floor.push(r); }
-        else if (!r.out && r.status !== 'finished') { later++; }
-      });
+      c.rows.forEach(function(r){ if (r.racing) { floor.push(r); } });
     });
     floor.sort(function(a, b){
       return (b.done - a.done) || ((b.on || 0) - (a.on || 0))
@@ -378,13 +380,6 @@ h2.band.hot{color:var(--amber)}
            + '<span class="n">' + fin.length + ' finished</span></h2>'
            + body + '</div>';
     }).join('');
-
-    foot.innerHTML =
-      (later ? later + (later === 1 ? ' athlete has' : ' athletes have')
-             + ' not started yet.<br>' : '')
-      + 'Finishers are ranked by time. Nobody still racing carries a placing '
-      + '&mdash; it would change after you photographed it.<br>'
-      + 'This page updates on its own.';
   }
 
   function tick(){
@@ -406,7 +401,18 @@ h2.band.hot{color:var(--amber)}
       .catch(function(){ /* a dropped phone signal is not an error state */ });
   }
 
+  /* Keep the page clear of the pinned sponsor bar. Measured, not guessed:
+     the bar wraps onto two or three lines on a narrow screen, and a guessed
+     number hides the last row of the board on somebody's phone. */
+  var bar = document.querySelector('.sponsors');
+  function clear(){
+    document.body.style.paddingBottom = (bar.offsetHeight + 18) + 'px';
+  }
+
   render();
+  clear();
+  window.addEventListener('resize', clear);
+  window.addEventListener('load', clear);
   setInterval(tick, 1000);
   setInterval(poll, 5000);
 })();
