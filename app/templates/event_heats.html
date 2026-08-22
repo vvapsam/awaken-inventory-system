@@ -31,6 +31,81 @@
   </div>
 </div>
 
+{# The versions. One is live — the times the emails, the public link, the
+   door and the coach app all read — and the rest are drafts you can build
+   without anybody seeing them. #}
+<div class="vstrip">
+  {% for pv in versions %}
+    <a class="vtab {{ 'on' if pv.id == plan.id }} {{ 'live' if pv.is_active }}"
+       href="/events/{{ ev.id }}/heats?v={{ pv.id }}">
+      {{ pv.name }}
+      {% if pv.is_active %}<i>live</i>{% endif %}
+    </a>
+  {% endfor %}
+  {% if versions|length < 8 %}
+  <form method="post" action="/events/{{ ev.id }}/heats/version" class="vadd">
+    <input type="hidden" name="copy_from" value="{{ plan.id }}">
+    <button class="vnew" title="A copy of {{ plan.name }}, to change freely">+ New version</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not is_live %}
+<div class="draftbar">
+  <div>
+    <b>You're editing {{ plan.name }} — it's a draft.</b>
+    <span class="muted">Nobody can see it. The live timetable is
+      {% for pv in versions %}{% if pv.is_active %}{{ pv.name }}{% endif %}{% endfor %},
+      and that's what the public link and the emails still show.</span>
+  </div>
+  <div class="acts">
+    {% if can_activate %}
+    <form method="post" action="/events/{{ ev.id }}/heats/version/{{ plan.id }}/activate"
+          onsubmit="return confirm({{ ('Make ' ~ plan.name ~ ' the live timetable?\n\n'
+            ~ diff.moved ~ (' person moves' if diff.moved == 1 else ' people move')
+            ~ (('.\n' ~ diff.retold ~ (' of them has' if diff.retold == 1 else ' of them have')
+               ~ ' already been told their old time and will need telling again.')
+               if diff.retold else '.')) | tojson }})">
+      <button class="btn primary">Make this the live one</button></form>
+    {% else %}
+    <span class="muted small">Somebody is already racing — the live timetable
+      is what their clocks are measured from, so it can't be switched now.</span>
+    {% endif %}
+    {% if versions|length > 1 %}
+    <form method="post" action="/events/{{ ev.id }}/heats/version/{{ plan.id }}/delete"
+          onsubmit="return confirm('Delete {{ plan.name }}? The live timetable is not affected.')">
+      <button class="btn">Delete</button></form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if request.query_params.get('vlive') %}
+{% set mv = request.query_params.get('vmoved')|int %}
+{% set rt = request.query_params.get('vretold')|int %}
+<div class="notice"><b>{{ plan.name }} is live.</b>
+  {% if mv %}{{ mv }} {{ 'person' if mv == 1 else 'people' }} moved.
+    {% if rt %}<span class="muted">{{ rt }}
+      {{ 'was' if rt == 1 else 'were' }} already told the old time and
+      {{ 'is' if rt == 1 else 'are' }} back in the count below.</span>{% endif %}
+  {% else %}Nothing moved — it matched what was already live.{% endif %}</div>
+{% elif request.query_params.get('vnew') %}
+<div class="notice">New version, copied from the one you were on. Change it
+  freely — nothing here is live until you say so.</div>
+{% elif request.query_params.get('vgone') %}
+<div class="notice">Version deleted.</div>
+{% elif request.query_params.get('vlocked') %}
+<div class="alert warn"><b>Not switched.</b> <span class="muted">Somebody has
+  already started racing, and every race clock is measured from a heat time.
+  Switching now would move the line they started from.</span></div>
+{% elif request.query_params.get('vkeep') %}
+<div class="alert warn"><b>Kept.</b> <span class="muted">The live version
+  can't be deleted, and neither can the only one.</span></div>
+{% elif request.query_params.get('vfull') %}
+<div class="alert warn"><b>That's the limit.</b> <span class="muted">Eight
+  versions is plenty — delete one you're not using.</span></div>
+{% endif %}
+
 {% if request.query_params.get('saved') is not none %}
 {% set n = request.query_params.get('saved')|int %}
 <div class="notice">{% if n %}Timetable saved — {{ n }}
@@ -84,6 +159,8 @@
       Shows each heat, when to arrive, and who is in it as a first name and an
       initial — no emails, no phone numbers, nothing about anybody's money.
       It is always current, so send the link rather than a screenshot.
+      {% if not is_live %}<b>It shows the live version, not the draft you're
+      editing.</b>{% endif %}
     </div>
     <div class="acts">
       <a class="btn" href="/h/{{ ev.heat_token }}" target="_blank" rel="noopener">Open it</a>
@@ -109,23 +186,24 @@
 <h2>The day</h2>
 <div class="card">
   <form method="post" action="/events/{{ ev.id }}/heats/day" class="daybar">
+    <input type="hidden" name="plan_id" value="{{ plan.id }}">
     <div class="f"><label>First heat</label>
-      <input name="first" value="{{ clock12(ev.heat_first) }}" placeholder="10:00 AM"></div>
+      <input name="first" value="{{ clock12(plan.heat_first) }}" placeholder="10:00 AM"></div>
     <div class="f"><label>Last heat</label>
-      <input name="last" value="{{ clock12(ev.heat_last) }}" placeholder="12:00 PM"></div>
+      <input name="last" value="{{ clock12(plan.heat_last) }}" placeholder="12:00 PM"></div>
     <div class="f"><label>Every</label>
       <select name="every">
         {% for m in [5, 10, 15, 20, 30, 45, 60] %}
-        <option value="{{ m }}" {{ 'selected' if ev.heat_every == m }}>{{ m }} minutes</option>
+        <option value="{{ m }}" {{ 'selected' if plan.heat_every == m }}>{{ m }} minutes</option>
         {% endfor %}
       </select></div>
     <div class="f"><label>Per heat</label>
-      <input name="cap" value="{{ ev.heat_cap }}" style="width:64px"></div>
+      <input name="cap" value="{{ plan.heat_cap }}" style="width:64px"></div>
     <div class="vr"></div>
     <div class="f"><label>Arrive before</label>
       <select name="arrive">
         {% for m in [0, 10, 15, 20, 30, 45, 60] %}
-        <option value="{{ m }}" {{ 'selected' if ev.heat_arrive == m }}>
+        <option value="{{ m }}" {{ 'selected' if plan.heat_arrive == m }}>
           {{ 'No earlier' if m == 0 else (m ~ ' minutes' if m < 60 else '1 hour') }}</option>
         {% endfor %}
       </select></div>
@@ -133,7 +211,7 @@
   </form>
   {% if rows %}
   <div class="muted small" style="margin:10px 0 0">{{ rows|length }} heats ·
-    room for {{ room }}{% if ev.heat_arrive %} · first arrival
+    room for {{ room }}{% if plan.heat_arrive %} · first arrival
     <b>{{ clock12(rows[0].arrive) }}</b>, first heat
     <b>{{ clock12(rows[0].t) }}</b>{% endif %}</div>
   {% else %}
@@ -150,12 +228,18 @@
   <b>+</b> adds without dragging, <b>×</b> removes, <b>✉</b> sends that one
   person their time. On a phone, tap a name then tap a heat.</p>
 
-<form method="post" action="/events/{{ ev.id }}/heats/save" id="planform"></form>
+{# The version rides in the action URL, not only in a hidden field: draw()
+   rebuilds this form's contents on every change, and a field inside it would
+   be wiped on the first drag — which would post the draft's arrangement
+   against the live version. #}
+<form method="post" action="/events/{{ ev.id }}/heats/save?v={{ plan.id }}"
+      id="planform">
+  <input type="hidden" name="plan_id" value="{{ plan.id }}"></form>
 
 <div class="heatboard">
   <div>
     <div class="tt">
-      <div class="hd"><span>Heat{% if ev.heat_arrive %} · arrive{% endif %}</span>
+      <div class="hd"><span>Heat{% if plan.heat_arrive %} · arrive{% endif %}</span>
         <span>Who is on</span><span>No.</span></div>
       <div id="rows"></div>
     </div>
@@ -181,6 +265,10 @@
       </div>
     </div>
 
+    {# Telling people only means anything on the live version — a draft time
+       is not a time anybody has, and a Send button on a draft is a button
+       that emails the wrong thing. #}
+    {% if is_live %}
     <div class="card" style="margin-top:12px">
       <div style="font-weight:650;font-size:.86rem;margin-bottom:6px">Telling them</div>
       <div class="muted small" style="margin:0 0 10px;line-height:1.45">
@@ -200,6 +288,15 @@
       <a class="small" href="/events/{{ ev.id }}/preview/heat" target="_blank"
          style="display:inline-block;margin-top:6px">See the email →</a>
     </div>
+    {% else %}
+    <div class="card" style="margin-top:12px">
+      <div style="font-weight:650;font-size:.86rem;margin-bottom:6px">Telling them</div>
+      <div class="muted small" style="margin:0;line-height:1.45">
+        Nothing to send from a draft — these times aren't anybody's yet. Make
+        this version live and the send button comes back, with everyone whose
+        time changed waiting on a fresh one.</div>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -208,7 +305,8 @@
 (function(){
   var ROWS = {{ rows|map(attribute='t')|list|tojson }};
   var ARRIVE = {{ rows|map(attribute='arrive')|list|tojson }};
-  var CAP = {{ ev.heat_cap or 1 }};
+  var CAP = {{ plan.heat_cap or 1 }};
+  var PLAN = {{ plan.id }};
   var MAIL = {{ 'true' if mail_ready else 'false' }};
   var PEOPLE = {
   {%- for r in rows %}{% for p in r.people %}
@@ -378,6 +476,9 @@
     // The whole arrangement, as the form will post it. Rebuilt every draw so
     // what is on screen and what would be saved cannot drift apart.
     form.innerHTML = "";
+    var pv = document.createElement("input");
+    pv.type = "hidden"; pv.name = "plan_id"; pv.value = PLAN;
+    form.appendChild(pv);
     ids().forEach(function(id){
       if (!PEOPLE[id].at) return;
       var h = document.createElement("input");

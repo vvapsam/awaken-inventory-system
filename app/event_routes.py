@@ -59,6 +59,7 @@ from .models import (
     PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
     Event, EventParticipant, EventOrganiserLink, EventStation, StationRun,
+    HeatPlan, HeatSlot,
     ORGANISER_LINK_DAYS, ORGANISER_DEFAULT_PASS,
     from_local, to_local,
 )
@@ -1775,6 +1776,227 @@ def register(app, deps):
         return RedirectResponse("/events/%d/stations?saved=1" % eid,
                                 status_code=303)
 
+    # --------------------------------------------------- timetable versions ----
+    #
+    # A day of heats is rarely right first time, and the version you are
+    # experimenting with must never be the version thirty-eight people can
+    # already see. So each attempt is its own plan and exactly one is live.
+    #
+    # The trick that keeps this cheap: the event's own heat_* columns and every
+    # participant's heat_time stay as a copy of whichever plan is active.
+    # Emails, the public link, the door scanner and the coach app all read
+    # those and know nothing about plans. Activating is what writes the copy.
+
+    PLAN_MAX = 8
+
+    def plans_for(db, ev):
+        """Every version, in order, back-filling one from the live timetable.
+
+        An event that has been arranged already must not lose that work the
+        first time this page loads — so whatever is on the event right now
+        becomes Version 1, active, and the page looks exactly as it did.
+        """
+        rows = sorted(ev.heat_plans, key=lambda p: (p.position, p.id))
+        if rows:
+            return rows
+        plan = HeatPlan(
+            event_id=ev.id, name="Version 1", position=0, is_active=True,
+            heat_first=ev.heat_first, heat_last=ev.heat_last,
+            heat_every=ev.heat_every or 10, heat_cap=ev.heat_cap or 3,
+            heat_arrive=ev.heat_arrive if ev.heat_arrive is not None else 30)
+        db.add(plan)
+        db.flush()
+        live = set(heat_times(ev))
+        for p in ev.participants:
+            if p.heat_time in live:
+                plan.slots.append(HeatSlot(participant_id=p.id,
+                                           heat_time=p.heat_time))
+        db.commit()
+        db.refresh(ev)
+        return [plan]
+
+    def active_plan(db, ev):
+        rows = plans_for(db, ev)
+        return next((p for p in rows if p.is_active), rows[0])
+
+    def plan_or_active(db, ev, raw):
+        """The version being edited: the one asked for, else the live one."""
+        rows = plans_for(db, ev)
+        if raw and str(raw).isdigit():
+            got = next((p for p in rows if p.id == int(raw)), None)
+            if got:
+                return got
+        return next((p for p in rows if p.is_active), rows[0])
+
+    def plan_racing(db, eid) -> bool:
+        """Has anybody started? Then the live timetable is load-bearing.
+
+        Every race clock is measured from a heat time, so switching versions
+        mid-race would move the fixed point somebody is already running
+        against. Editing a draft stays fine — only going live is barred.
+        """
+        return bool(db.query(StationRun).join(EventStation).filter(
+            EventStation.event_id == eid,
+            StationRun.started_at.isnot(None)).count())
+
+    def plan_diff(db, ev, plan):
+        """What activating this version would actually do.
+
+        Two numbers, because they carry different weight: how many people move
+        at all, and how many of those are holding an email that says something
+        else. The second one is the one that costs a phone call.
+        """
+        want = {s.participant_id: s.heat_time for s in plan.slots}
+        live = set(heat_times(plan))
+        moved, retold = 0, 0
+        for p in ev.participants:
+            new = want.get(p.id)
+            if new not in live:
+                new = None
+            if (p.heat_time or None) == (new or None):
+                continue
+            moved += 1
+            if p.heat_email_at:
+                retold += 1
+        return {"moved": moved, "retold": retold}
+
+    def apply_plan(db, ev, plan):
+        """Copy a version onto the event and its people. This is 'going live'.
+
+        Moving somebody clears their sent stamp, exactly as dragging them does
+        on the timetable — a time in somebody's inbox is wrong the instant you
+        move them, and a tick that survives the move is how a person turns up
+        an hour early holding proof they were told to.
+        """
+        for other in plan.event.heat_plans:
+            other.is_active = (other.id == plan.id)
+        ev.heat_first = plan.heat_first
+        ev.heat_last = plan.heat_last
+        ev.heat_every = plan.heat_every or 10
+        ev.heat_cap = plan.heat_cap or 3
+        ev.heat_arrive = plan.heat_arrive if plan.heat_arrive is not None else 30
+        want = {s.participant_id: s.heat_time for s in plan.slots}
+        live = set(heat_times(plan))
+        moved, retold = 0, 0
+        now = datetime.now(timezone.utc)
+        for p in ev.participants:
+            new = want.get(p.id)
+            if new not in live:
+                new = None
+            if (p.heat_time or None) == (new or None):
+                continue
+            if p.heat_email_at:
+                retold += 1
+            p.heat_time = new
+            p.heat_email_at = None
+            p.edited_at = now
+            moved += 1
+        db.commit()
+        return {"moved": moved, "retold": retold}
+
+    @app.post("/events/{eid}/heats/version")
+    def heat_version_new(request: Request, eid: int,
+                         copy_from: str = Form(""),
+                         db: Session = Depends(get_db)):
+        """A new version — a copy of one you have, or an empty day.
+
+        Copying is the default because that is what trying something means:
+        you want the day you already built, with one thing different.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        rows = plans_for(db, ev)
+        if len(rows) >= PLAN_MAX:
+            return RedirectResponse("/events/%d/heats?vfull=1" % eid,
+                                    status_code=303)
+        src = plan_or_active(db, ev, copy_from) if copy_from else None
+        n = max((p.position for p in rows), default=-1) + 1
+        plan = HeatPlan(
+            event_id=ev.id, name="Version %d" % (len(rows) + 1), position=n,
+            is_active=False, created_by_id=staff.id,
+            heat_first=src.heat_first if src else ev.heat_first,
+            heat_last=src.heat_last if src else ev.heat_last,
+            heat_every=(src or ev).heat_every or 10,
+            heat_cap=(src or ev).heat_cap or 3,
+            heat_arrive=(src or ev).heat_arrive if (src or ev).heat_arrive
+            is not None else 30)
+        db.add(plan)
+        db.flush()
+        if src:
+            for slot in src.slots:
+                plan.slots.append(HeatSlot(
+                    participant_id=slot.participant_id,
+                    heat_time=slot.heat_time))
+        db.commit()
+        return RedirectResponse("/events/%d/heats?v=%d&vnew=1" % (eid, plan.id),
+                                status_code=303)
+
+    @app.post("/events/{eid}/heats/version/{pid}/name")
+    def heat_version_name(request: Request, eid: int, pid: int,
+                          name: str = Form(""),
+                          db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        plan = db.get(HeatPlan, pid) if ev else None
+        if not plan or plan.event_id != eid:
+            return RedirectResponse("/events/%d/heats" % eid, status_code=303)
+        plan.name = (name or "").strip()[:40] or plan.name
+        db.commit()
+        return RedirectResponse("/events/%d/heats?v=%d" % (eid, pid),
+                                status_code=303)
+
+    @app.post("/events/{eid}/heats/version/{pid}/delete")
+    def heat_version_delete(request: Request, eid: int, pid: int,
+                            db: Session = Depends(get_db)):
+        """Throw a version away. Never the live one, and never the last one.
+
+        Deleting what is live would leave the event with a timetable nobody
+        can point at — the times would still be on the people, but there would
+        be no version that explains them.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        rows = plans_for(db, ev)
+        plan = next((p for p in rows if p.id == pid), None)
+        if not plan or plan.is_active or len(rows) < 2:
+            return RedirectResponse("/events/%d/heats?vkeep=1" % eid,
+                                    status_code=303)
+        db.delete(plan)
+        db.commit()
+        return RedirectResponse("/events/%d/heats?vgone=1" % eid,
+                                status_code=303)
+
+    @app.post("/events/{eid}/heats/version/{pid}/activate")
+    def heat_version_activate(request: Request, eid: int, pid: int,
+                              db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        rows = plans_for(db, ev)
+        plan = next((p for p in rows if p.id == pid), None)
+        if not plan:
+            return RedirectResponse("/events/%d/heats" % eid, status_code=303)
+        if plan_racing(db, eid):
+            return RedirectResponse("/events/%d/heats?v=%d&vlocked=1"
+                                    % (eid, pid), status_code=303)
+        out = apply_plan(db, ev, plan)
+        return RedirectResponse(
+            "/events/%d/heats?vlive=%d&vmoved=%d&vretold=%d"
+            % (eid, pid, out["moved"], out["retold"]), status_code=303)
+
     # ------------------------------------------------ public heat timetable ----
     #
     # Thirty-five people all want to know one thing: what time do I run, and
@@ -1878,38 +2100,56 @@ def register(app, deps):
     # ------------------------------------------------------------- heats ----
 
     @app.get("/events/{eid}/heats", response_class=HTMLResponse)
-    def event_heats(request: Request, eid: int, db: Session = Depends(get_db)):
-        """The timetable: every heat down the page, who is in each one."""
+    def event_heats(request: Request, eid: int, v: str = "",
+                    db: Session = Depends(get_db)):
+        """The timetable: every heat down the page, who is in each one.
+
+        Which version you are looking at rides in the URL rather than the
+        session, so a refresh, the back button and a link you send yourself all
+        land on the same one.
+        """
         staff, redir = guard(request, db)
         if redir:
             return redir
         ev = db.get(Event, eid)
         if not ev:
             return RedirectResponse("/events", status_code=303)
-        times = heat_times(ev)
+        versions = plans_for(db, ev)
+        plan = plan_or_active(db, ev, v)
+        # The day shape and the assignments both come off the version being
+        # edited, so a draft can differ from what is live in either.
+        times = heat_times(plan)
         known = set(times)
         everyone = sorted(
             [p for p in ev.participants
              if not (p.waitlist or p.declined or p.released_at)],
             key=lambda p: (p.name or "").lower())
+        where = {s.participant_id: s.heat_time for s in plan.slots}
         # A heat that no longer exists is not a heat. Rebuilding the day
         # shorter, or on a different interval, strands whoever was in the rows
         # that went — and silently dropping them is how somebody arrives on
         # Saturday to find they were never on the list. They come back to the
         # unassigned tray, where you cannot miss them.
-        rows = [{"t": t, "arrive": arrive_at(ev, t),
-                 "people": [p for p in everyone if p.heat_time == t]}
+        rows = [{"t": t, "arrive": arrive_at(plan, t),
+                 "people": [p for p in everyone if where.get(p.id) == t]}
                 for t in times]
-        free = [p for p in everyone if p.heat_time not in known]
+        free = [p for p in everyone if where.get(p.id) not in known]
+        live = plan.is_active
         return render(request, "event_heats.html", db, staff, active="events",
                       ev=ev, rows=rows, free=free, times=times,
+                      plan=plan, versions=versions, is_live=live,
+                      can_activate=not plan_racing(db, eid),
+                      diff=None if live else plan_diff(db, ev, plan),
                       total=len(everyone),
-                      room=len(times) * max(1, ev.heat_cap or 1),
-                      arrive_gap=gap_text(ev.heat_arrive or 0),
+                      room=len(times) * max(1, plan.heat_cap or 1),
+                      arrive_gap=gap_text(plan.heat_arrive or 0),
+                      # Telling people only means anything on the live version:
+                      # a draft time is not a time anybody has.
                       told=len([p for p in everyone
-                                if p.heat_time in known and p.heat_email_at]),
+                                if live and p.heat_time in known
+                                and p.heat_email_at]),
                       waiting=len([p for p in everyone
-                                   if p.heat_time in known
+                                   if live and p.heat_time in known
                                    and not p.heat_email_at]),
                       clock12=clock12,
                       mail_ready=Mailer().cfg.configured,
@@ -1920,7 +2160,7 @@ def register(app, deps):
     def event_heat_day(request: Request, eid: int,
                        first: str = Form(""), last: str = Form(""),
                        every: str = Form("10"), cap: str = Form("3"),
-                       arrive: str = Form("30"),
+                       arrive: str = Form("30"), plan_id: str = Form(""),
                        db: Session = Depends(get_db)):
         """The shape of the day. Rebuilding it never moves anybody by itself.
 
@@ -1942,18 +2182,24 @@ def register(app, deps):
             except ValueError:
                 return fallback
 
-        ev.heat_first = hhmm(first)
-        ev.heat_last = hhmm(last)
-        ev.heat_every = num(every, 1, 240, 10)
-        ev.heat_cap = num(cap, 1, 99, 3)
-        ev.heat_arrive = num(arrive, 0, 240, 30)
+        plan = plan_or_active(db, ev, plan_id)
+        plan.heat_first = hhmm(first)
+        plan.heat_last = hhmm(last)
+        plan.heat_every = num(every, 1, 240, 10)
+        plan.heat_cap = num(cap, 1, 99, 3)
+        plan.heat_arrive = num(arrive, 0, 240, 30)
         # No first heat means the event is not running heats at all, and a
         # last heat on its own would draw a timetable of one row at a time
         # nobody typed.
-        if not ev.heat_first:
-            ev.heat_last = None
+        if not plan.heat_first:
+            plan.heat_last = None
+        # A draft only changes itself. The live version writes through, so
+        # editing the one that is live behaves exactly as it always did.
+        if plan.is_active:
+            apply_plan(db, ev, plan)
         db.commit()
-        return RedirectResponse("/events/%d/heats?day=ok" % eid, status_code=303)
+        return RedirectResponse("/events/%d/heats?v=%d&day=ok" % (eid, plan.id),
+                                status_code=303)
 
     @app.post("/events/{eid}/heats/save")
     async def event_heat_save(request: Request, eid: int,
@@ -1976,7 +2222,11 @@ def register(app, deps):
         if not ev:
             return RedirectResponse("/events", status_code=303)
         form = await request.form()
-        known = set(heat_times(ev))
+        # The URL first: the page rebuilds this form's fields on every change,
+        # so the query string is the copy that cannot be clobbered.
+        plan = plan_or_active(db, ev, request.query_params.get("v")
+                              or form.get("plan_id"))
+        known = set(heat_times(plan))
         # "<participant id>:<HH:MM>", one per assigned person.
         want = {}
         for raw in form.getlist("at"):
@@ -1984,18 +2234,37 @@ def register(app, deps):
             t = hhmm(t)
             if pid.isdigit() and t in known:
                 want[int(pid)] = t
-        moved = 0
-        for p in ev.participants:
-            new = want.get(p.id)
-            if (p.heat_time or None) == (new or None):
-                continue
-            p.heat_time = new
-            p.heat_email_at = None
-            p.edited_at = datetime.now(timezone.utc)
-            moved += 1
+        # The version is the thing being edited, so it is rewritten whole.
+        # An unassigned person is the absence of a slot rather than a slot
+        # with nothing in it — one kind of nothing, on every version.
+        mine = {p.id for p in ev.participants}
+        want = {pid: t for pid, t in want.items() if pid in mine}
+        had = {s.participant_id: s.heat_time for s in plan.slots}
+        moved = sum(1 for pid in set(had) | set(want)
+                    if had.get(pid) != want.get(pid))
+        for slot in list(plan.slots):
+            if want.get(slot.participant_id) != slot.heat_time:
+                # Removed from the collection rather than deleted through the
+                # session: apply_plan reads plan.slots straight after this, and
+                # a deleted row stays in a loaded collection until it expires —
+                # which would leave somebody taken off the timetable still
+                # holding the time they were taken off.
+                plan.slots.remove(slot)
+        # Flushed before the inserts: a person moving from 10:00 to 10:10 is a
+        # delete and an insert on the same (plan, person), and the unique index
+        # bites if the insert lands first.
+        db.flush()
+        for pid, t in want.items():
+            if had.get(pid) != t:
+                plan.slots.append(HeatSlot(participant_id=pid, heat_time=t))
+        db.flush()
+        # The live version writes through to the people, which is what makes
+        # editing it behave exactly as it always did.
+        if plan.is_active:
+            apply_plan(db, ev, plan)
         db.commit()
-        return RedirectResponse("/events/%d/heats?saved=%d" % (eid, moved),
-                                status_code=303)
+        return RedirectResponse("/events/%d/heats?v=%d&saved=%d"
+                                % (eid, plan.id, moved), status_code=303)
 
     @app.post("/events/{eid}/heats/send")
     def event_heat_send(request: Request, eid: int, pid: str = Form(""),
