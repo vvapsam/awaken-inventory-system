@@ -1514,6 +1514,19 @@ class Event(Base):
     #: the warm-up both happen in this window, so it is the number that
     #: actually governs their morning — their heat time is the reason for it.
     heat_arrive = Column(Integer, nullable=False, default=30)
+    #: When heat times were first sent for this event at all. Never cleared.
+    #:
+    #: The per-person flag is the better answer, but it cannot be recovered for
+    #: events that predate it: moving somebody wipes heat_email_at, which was
+    #: the only evidence they had ever been told. This survives because it only
+    #: needs one person on the event to still be holding a stamp.
+    #:
+    #: It is also the safer default of the two mistakes available. Telling
+    #: somebody new that their time "has changed" is mildly odd and they still
+    #: get the right time; telling thirty-seven people who were moved "Your
+    #: heat time" is how they decide it is the mail they already read, skip it,
+    #: and turn up an hour wrong.
+    heat_sent_at = Column(DateTime(timezone=True))
     #: The share link for the public timetable, or NULL for "no live link".
     #: A token rather than the slug, because the page carries other people's
     #: names: a guessable address for a start list is a start list anybody can

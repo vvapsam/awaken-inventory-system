@@ -742,6 +742,8 @@ def startup():
                 "  heat_arrive INTEGER NOT NULL DEFAULT 30; "
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS heat_token VARCHAR; "
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  heat_sent_at TIMESTAMPTZ; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  heat_link_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
             # Unique separately: ADD COLUMN cannot carry it, and a partial
@@ -775,6 +777,19 @@ def startup():
                 "  heat_told_before BOOLEAN NOT NULL DEFAULT FALSE; "
                 "UPDATE event_participants SET heat_told_before = TRUE "
                 "  WHERE heat_email_at IS NOT NULL AND NOT heat_told_before; "
+                "END IF; END $$;"))
+            # And the event-level one, recovered from whoever is still holding
+            # a stamp. On an event where everybody has since been moved, the
+            # per-person backfill above finds nobody — this needs only one
+            # survivor to know the event has told people before.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL "
+                "AND to_regclass('public.event_participants') IS NOT NULL THEN "
+                "UPDATE events SET heat_sent_at = s.last_sent FROM ("
+                "  SELECT event_id, MAX(heat_email_at) AS last_sent "
+                "  FROM event_participants WHERE heat_email_at IS NOT NULL "
+                "  GROUP BY event_id) s "
+                "WHERE s.event_id = events.id AND events.heat_sent_at IS NULL; "
                 "END IF; END $$;"))
             # Who is coaching them, and when their last station closed.
             # event_stations and station_runs are new tables, so create_all
