@@ -73,6 +73,7 @@ ACCESS_DEFS = [
     ("view_stock", "View stock levels"),
     ("view_costs", "See costs & profit margins"),
     ("event_door", "Event check-in (door only)"),
+    ("coach_race", "Coaching (race app)"),
 ]
 
 # Access to the newer admin management areas. One toggle grants full access to
@@ -117,6 +118,17 @@ def can(staff, key):
 
 def can_any(staff, keys):
     return any(can(staff, k) for k in keys)
+
+
+def can_coach(staff):
+    """May this person work the race app?
+
+    Deliberately wide: on the morning of a race the failure that actually
+    costs you is a coach who cannot get into the app. The narrow permission
+    exists so a coach can be given this and nothing else — not so that
+    somebody already trusted with the event area gets locked out of it.
+    """
+    return can_any(staff, ("coach_race", "manage_hyrox"))
 
 
 def can_door(staff):

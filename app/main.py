@@ -293,6 +293,13 @@ def startup():
             staff_role = Role(name="Staff", is_admin=False, is_system=True,
                               permissions=",".join(DEFAULT_STAFF_PERMS))
             db.add(staff_role)
+        # Coach: the race app and nothing else. Seeded rather than left to be
+        # built by hand, because "which permissions does a coach need" is a
+        # question with one right answer and no reason to ask it twice.
+        coach_role = db.query(Role).filter(Role.name == "Coach").first()
+        if not coach_role:
+            db.add(Role(name="Coach", is_admin=False, is_system=True,
+                        permissions="coach_race"))
         db.commit()
         # Bootstrap a first admin if none exists.
         if not db.query(Staff).filter(Staff.role == "admin").first():
@@ -1154,7 +1161,17 @@ def _is_mobile_ua(request):
     return any(h in ua for h in _MOBILE_UA_HINTS)
 
 
-def _post_login_dest(request):
+def _post_login_dest(request, staff=None):
+    """Where signing in should land somebody.
+
+    A coach with only the race permission would otherwise land on a screen
+    full of things they cannot use — and nothing in the app links to the race
+    app, so they would have to be told the address. Send them where their one
+    job is.
+    """
+    if staff is not None and not can(staff, "manage_hyrox") \
+            and staff.role != "admin" and can(staff, "coach_race"):
+        return "/race"
     return "/m" if _is_mobile_ua(request) else "/dashboard"
 
 
@@ -1166,7 +1183,9 @@ def home(request: Request, db: Session = Depends(get_db)):
     if host.startswith("pay."):
         return templates.TemplateResponse("order.html", {"request": request})
     staff = current_staff(request, db)
-    return RedirectResponse(_post_login_dest(request) if staff else "/login", status_code=303)
+    return RedirectResponse(
+        _post_login_dest(request, staff) if staff else "/login",
+        status_code=303)
 
 
 @app.get("/board", response_class=HTMLResponse)
@@ -1198,7 +1217,7 @@ def login(request: Request, username: str = Form(...), pin: str = Form(...), db:
             "login.html", {"request": request, "error": "Wrong username or PIN."}
         )
     request.session["staff_id"] = staff.id
-    return RedirectResponse(_post_login_dest(request), status_code=303)
+    return RedirectResponse(_post_login_dest(request, staff), status_code=303)
 
 
 @app.get("/logout")

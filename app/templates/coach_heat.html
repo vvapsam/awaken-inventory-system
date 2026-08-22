@@ -1,9 +1,9 @@
 {% extends "coach_base.html" %}
-{% block title %}{{ heat }} heat{% endblock %}
+{% block title %}{{ h12(heat) }} heat{% endblock %}
 {% block body %}
 <div class="bar">
   <a class="back" href="/race/e/{{ ev.id }}">‹</a>
-  <div class="mid"><h1>{{ heat }} heat</h1>
+  <div class="mid"><h1>{{ h12(heat) }} heat</h1>
     <div class="sub">{{ people|length }} racing · {{ ev.name }}</div></div>
 </div>
 <div class="wrap">

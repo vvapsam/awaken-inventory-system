@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
+    can_coach,
     EVENT_CLOSED, EVENT_DRAFT, Event, EventParticipant, EventStation,
     RSVP_NO, Staff, StationRun, to_local,
 )
@@ -58,6 +59,25 @@ GRAB_WINDOW = timedelta(hours=6)
 def hhmm_key(t: str) -> str:
     """'10:20' -> '1020'. Used in URLs so a heat is one clean path segment."""
     return (t or "").replace(":", "")
+
+
+def h12(t):
+    """A heat time the way it is said out loud: "14:25" -> "2:25 PM".
+
+    Heat times are stored as 24-hour strings because that is what sorts and
+    what the timetable builder writes. Nothing on a race floor is read that
+    way, though, and a coach glancing at a phone should not have to subtract
+    twelve.
+    """
+    if not t:
+        return ""
+    try:
+        h, m = int(str(t)[:2]), int(str(t)[3:5])
+    except (ValueError, IndexError):
+        return str(t)
+    ampm = "AM" if h < 12 else "PM"
+    h = h % 12 or 12
+    return "%d:%02d %s" % (h, m, ampm)
 
 
 def mmss(secs) -> str:
@@ -96,22 +116,28 @@ def register(app, deps):
     # ------------------------------------------------------------- guard ----
 
     def guard(request, db):
-        """Any signed-in member of staff may coach.
+        """Anyone on the Coach role, or anyone running the event area.
 
-        Deliberately wider than the admin event area. On the morning of a race
+        Wider than the admin event area on purpose: on the morning of a race
         the failure that actually costs you is a coach who cannot get into the
-        app, and everyone holding a phone on the floor is already trusted with
-        the till. The blast radius is a rep count, and every count is visible
-        and correctable from the admin side.
+        app. The blast radius is a rep count, and every count is visible and
+        correctable from the admin side.
+
+        It is no longer *every* signed-in member of staff, though — a coach
+        should be able to be given this and nothing else, and somebody trusted
+        with the till has no business on the race floor by default.
         """
         staff = current_staff(request, db)
         if not staff:
             return None, RedirectResponse("/login", status_code=303)
+        if not can_coach(staff):
+            return None, RedirectResponse("/", status_code=303)
         return staff, None
 
     def _shell(request, name, **ctx):
         ctx["request"] = request
         ctx.setdefault("mmss", mmss)
+        ctx.setdefault("h12", h12)
         return templates.TemplateResponse(name, ctx)
 
     # ------------------------------------------------------------- model ----
@@ -355,6 +381,12 @@ def register(app, deps):
         # would be a button that starts a race nobody is in yet.
         show_st = st["open"] if phase == "open" else (
             st["next"] if phase == "pre" else None)
+        # An event whose stations have not been set up has nothing to show and
+        # nothing to count. Say so, rather than letting the counting screen ask
+        # a station that is not there for its target — which is a white
+        # "Internal Server Error" in a coach's hand on a race morning.
+        if phase in ("open", "pre") and show_st is None:
+            phase = "nostations"
         # Station one's own clock starts at the heat, so it is already running
         # before anybody taps. Everything after it starts when it is opened.
         if phase == "open" and st["open_run"] and st["open_run"].started_at:
