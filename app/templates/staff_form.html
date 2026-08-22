@@ -129,6 +129,23 @@
         </label>
         {% endfor %}
       </div>
+
+      {# These four were on the role editor only, which meant two things: you
+         could not grant one of them to a single person, and — because saving
+         rebuilds the permission list from whatever this form posted — saving
+         anybody silently stripped the ones they already had. #}
+      <div class="perm-group">
+        <div class="perm-group-title">Admin areas</div>
+        <p class="muted small" style="margin:-2px 0 8px">Each grants full access
+          to that management page (view &amp; edit).</p>
+        {% for akey, alabel in ADMIN_AREA_DEFS %}
+        <label class="check perm-check">
+          <input type="checkbox" name="permissions" value="{{ akey }}"
+            {% if person and akey in current %}checked{% endif %}>
+          <span>{{ alabel }}</span>
+        </label>
+        {% endfor %}
+      </div>
     </div>
   </div>
 

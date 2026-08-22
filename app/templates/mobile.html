@@ -1085,7 +1085,11 @@ async function boot(){
   $('#home-menu-dash').classList.toggle('hide', !isAdmin);
   $('#home-menu-kiosk').classList.toggle('hide', !(isAdmin || (DATA.perms && DATA.perms.manage_kiosk)));
   $('#home-menu-waivers').classList.toggle('hide', !(isAdmin || (DATA.perms && DATA.perms.view_waivers)));
-  $('#home-menu-events').classList.toggle('hide', !(isAdmin || (DATA.perms && DATA.perms.manage_hyrox)));
+  // The door permission is enough to see this: the API and the guards
+  // already accept it, and gating the button on manage_hyrox meant a
+  // door person got a working screen they could not reach.
+  $('#home-menu-events').classList.toggle('hide', !(isAdmin ||
+    (DATA.perms && (DATA.perms.event_door || DATA.perms.manage_hyrox))));
   const d=new Date();
   $('#home-date').textContent=d.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'});
 }
