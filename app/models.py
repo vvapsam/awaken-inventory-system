@@ -1467,6 +1467,17 @@ class Event(Base):
     #: asking people for a Reel of a class that never happened.
     reels_paused = Column(Boolean, nullable=False, default=False)
 
+    #: How many minutes before a heat a coach may open it in the race app.
+    #: Blank means the default below.
+    #:
+    #: A coach staring at a list of eighteen heats at eight in the morning is a
+    #: coach who can open the wrong one, grab somebody else's athlete out of a
+    #: heat three hours away and hold them there. Heats therefore stay shut
+    #: until they are nearly due. They never shut again afterwards: heats run
+    #: late, and a coach locked out of a race already on the floor has no way
+    #: back to their own athlete.
+    heat_open_mins = Column(Integer)
+
     #: Which columns the participant table shows, as a comma-separated list of
     #: keys. NULL means "whatever the defaults are" — which is not the same as
     #: the empty string, and the difference matters: an event set up before
@@ -1809,6 +1820,25 @@ class HeatSlot(Base):
 #: disqualification, a start that never happened, a race abandoned halfway.
 #: Those are set by hand, and setting one by hand freezes the row against the
 #: derivation, which is the whole point of setting it.
+#: How long before a heat the race app lets a coach in, when the event does not
+#: say otherwise. Thirty minutes is about a warm-up: long enough to find your
+#: athlete before the gun, short enough that the list on the phone is the heat
+#: happening now rather than the whole day.
+HEAT_OPEN_MINS = 30
+#: Nobody is helped by a window of four seconds or of a week.
+HEAT_OPEN_MIN, HEAT_OPEN_MAX = 1, 720
+
+
+def heat_open_mins(event) -> int:
+    """The event's own window, or the default. Always a sane number."""
+    v = getattr(event, "heat_open_mins", None)
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return HEAT_OPEN_MINS
+    return max(HEAT_OPEN_MIN, min(HEAT_OPEN_MAX, v))
+
+
 RACE_STATUSES = [
     ("registered",  "Registered"),
     ("checked_in",  "Checked in"),

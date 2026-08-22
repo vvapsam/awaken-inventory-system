@@ -11,7 +11,7 @@
       <a class="row" href="/race/e/{{ e.id }}">
         <div class="g">
           <div class="t">{{ e.name }}</div>
-          <div class="s">{{ e.starts_at.strftime('%a %-d %b') if e.starts_at else 'No date' }}</div>
+          <div class="s">{{ day(e.starts_at) if e.starts_at else 'No date' }}</div>
         </div>
         <div class="r">{{ e.stations|length }} stations</div>
       </a>

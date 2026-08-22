@@ -64,6 +64,7 @@ from .models import (
     from_local, to_local,
     can_door,
     RACE_STATUSES, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
+    HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     race_status,
 )
 
@@ -1448,6 +1449,8 @@ def register(app, deps):
             return RedirectResponse("/events", status_code=303)
         return render(request, "event_settings.html", db, staff, active="events",
                       ev=ev, statuses=EVENT_STATUSES, modes=EVENT_MODES,
+                      default_heat_open=HEAT_OPEN_MINS,
+                      heat_open_min=HEAT_OPEN_MIN, heat_open_max=HEAT_OPEN_MAX,
                       base=base_url(request))
 
     @app.post("/events/{eid}/settings")
@@ -1460,7 +1463,7 @@ def register(app, deps):
             capacity: str = Form("30"), bring: str = Form(""), perk: str = Form(""),
             handles: str = Form(""), hashtag: str = Form(""),
             reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
-            reels_paused: str = Form(""),
+            reels_paused: str = Form(""), heat_open_mins: str = Form(""),
             confirm_by: str = Form(""),
             mode: str = Form(EVENT_INVITE), signup_open: str = Form(""),
             signup_closes: str = Form(""), slug: str = Form(""),
@@ -1520,6 +1523,12 @@ def register(app, deps):
         ev.handles, ev.hashtag = handles.strip(), hashtag.strip()
         ev.reel_hours = num(reel_hours, 48) or 48
         ev.reels_paused = (reels_paused == "on")
+        # Blank means "use the default", which is a different answer from any
+        # number — so it is stored as NULL rather than as 30. Change the default
+        # later and every event that never had an opinion follows it.
+        w = (heat_open_mins or "").strip()
+        ev.heat_open_mins = (max(HEAT_OPEN_MIN, min(HEAT_OPEN_MAX, num(w, 0)))
+                             if w and num(w, 0) else None)
         # Zero is a real answer here — it switches the rolling clock off and
         # hands the whole job to the fixed date below.
         ev.confirm_hours = num(confirm_hours, 48)

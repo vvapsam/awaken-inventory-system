@@ -61,6 +61,13 @@ a{color:var(--teal);text-decoration:none}
 .row .r{flex:0 0 auto;text-align:right;font-size:.78rem;color:var(--dim)}
 .row.off{opacity:.5}
 .row.mine{border-color:var(--teal-d);background:#10201f}
+/* A heat that has not opened yet. Still listed, and still readable — a coach
+   should be able to see the shape of their morning — but plainly not a thing
+   you can tap. */
+.row.shut{opacity:.62;background:#151a1e;border-style:dashed;cursor:default}
+.row.shut .t{font-weight:600}
+.row.shut .r{display:flex;align-items:center;gap:7px;justify-content:flex-end}
+.row.shut .lock{font-size:.8rem;opacity:.75}
 form.inline{margin:0}
 .grab{border:0;border-radius:11px;background:var(--teal);color:var(--teal-ink);
   font-weight:800;font-size:.85rem;padding:11px 15px;min-height:44px}

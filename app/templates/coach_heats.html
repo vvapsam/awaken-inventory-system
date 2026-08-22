@@ -4,14 +4,20 @@
 <div class="bar">
   <a class="back" href="/race">‹</a>
   <div class="mid"><h1>Heats</h1>
-    <div class="sub">{{ ev.name }}{% if ev.starts_at %} · {{ ev.starts_at.strftime('%a %-d %b') }}{% endif %}</div></div>
+    <div class="sub">{{ ev.name }}{% if ev.starts_at %} · {{ day(ev.starts_at) }}{% endif %}</div></div>
   <div class="pill" id="clock">—</div>
 </div>
 <div class="wrap">
+  {% if early %}
+    <div class="warnbox">{{ early }} has not opened yet. A heat opens
+      {{ window }} minutes before it starts.</div>
+  {% endif %}
   {% if heats %}
     {% for h in heats %}
       {# A heat you cannot work is still listed, greyed. A list that hides
-         taken heats looks broken when the room is busy. #}
+         taken heats looks broken when the room is busy — and one that hides
+         the heats still to come hides the shape of the morning. #}
+      {% if h.open %}
       <a class="row {% if h.mine %}mine{% endif %}"
          href="/race/e/{{ ev.id }}/h/{{ h.key }}">
         <div class="g">
@@ -27,8 +33,20 @@
           {% else %}{{ h.n - h.taken }} free{% endif %}
         </div>
       </a>
+      {% else %}
+      <div class="row shut" data-opens="{{ h.opens_ms }}">
+        <div class="g">
+          <div class="t">{{ h12(h.time) }}</div>
+          <div class="s">{{ h.n }} racing</div>
+        </div>
+        <div class="r"><span class="lock">&#128274;</span>
+          <span class="in" data-opens="{{ h.opens_ms }}">opens {{ h.opens_label }}</span></div>
+      </div>
+      {% endif %}
     {% endfor %}
     <div class="note">
+      A heat opens {{ window }} minutes before it starts and stays open for the
+      rest of the day, however late it runs.
       Grabbing somebody does not start anything. The race starts at the heat
       time whether or not a coach is ready — the grab only decides whose phone
       is counting.
@@ -48,7 +66,33 @@
     el.textContent = String(d.getHours()).padStart(2,'0') + ':'
                    + String(d.getMinutes()).padStart(2,'0');
   }
-  tick(); setInterval(tick, 10000);
+  /* Every shut row carries the moment it comes due. When the earliest of them
+     arrives, reload — the row has to become a link, and the counts beside it
+     ("3 free") are by then stale anyway. Reloading a list is safe; this is not
+     the counting screen. */
+  var due = Array.prototype.map.call(
+        document.querySelectorAll('.row.shut[data-opens]'),
+        function(el){ return parseInt(el.getAttribute('data-opens'), 10); })
+      .filter(function(n){ return n > 0; });
+  var soonest = due.length ? Math.min.apply(Math, due) : 0;
+
+  function countdown(){
+    if (!soonest) { return; }
+    if (Date.now() >= soonest) { window.location.reload(); return; }
+    Array.prototype.forEach.call(document.querySelectorAll('.row.shut .in'),
+      function(el){
+        var t = parseInt(el.getAttribute('data-opens'), 10);
+        if (!(t > 0)) { return; }
+        var mins = Math.ceil((t - Date.now()) / 60000);
+        if (mins <= 60) {
+          el.textContent = mins <= 1 ? 'opens in under a minute'
+                                     : 'opens in ' + mins + ' min';
+        }
+      });
+  }
+
+  tick(); countdown();
+  setInterval(function(){ tick(); countdown(); }, 10000);
 })();
 </script>
 {% endblock %}

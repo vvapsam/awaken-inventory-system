@@ -45,16 +45,10 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    can_coach,
+    can_coach, heat_open_mins,
     EVENT_CLOSED, EVENT_DRAFT, Event, EventParticipant, EventStation,
     RSVP_NO, Staff, StationRun, to_local,
 )
-
-#: How far either side of the heat a coach may still be working. Generous on
-#: purpose: heats run late, and a coach locked out of their own athlete at
-#: 10:31 because the heat was called for 10:00 is a coach with no way back in.
-GRAB_WINDOW = timedelta(hours=6)
-
 
 def hhmm_key(t: str) -> str:
     """'10:20' -> '1020'. Used in URLs so a heat is one clean path segment."""
@@ -138,6 +132,11 @@ def register(app, deps):
         ctx["request"] = request
         ctx.setdefault("mmss", mmss)
         ctx.setdefault("h12", h12)
+        # Dates are stored in UTC. A screen that reads them raw calls an event
+        # starting at 6am on the 23rd "Sat 22 Aug", which on a race morning is
+        # a coach checking they are at the right event.
+        ctx.setdefault("day", lambda d: to_local(d).strftime("%a %-d %b")
+                       if d else "")
         return templates.TemplateResponse(name, ctx)
 
     # ------------------------------------------------------------- model ----
@@ -258,12 +257,30 @@ def register(app, deps):
             if p.finished_at:
                 h["done"] += 1
         order = sorted(heats.values(), key=lambda h: h["time"])
+        now = datetime.now(timezone.utc)
         for h in order:
             h["key"] = hhmm_key(h["time"])
             h["at"] = _heat_moment(ev, h["time"])
+            h["opens"] = heat_opens(ev, h["at"])
+            h["open"] = heat_is_open(ev, h["at"], now)
+            # The page has a clock on it already. Handing it the moment each
+            # shut heat comes due means a coach standing on the list at 9:49
+            # sees it open by itself, rather than learning that a phone needs
+            # pulling down to refresh while their athlete is walking to the
+            # line.
+            h["opens_ms"] = (int(h["opens"].timestamp() * 1000)
+                             if h["opens"] is not None and not h["open"]
+                             else None)
+            # Gym time, not UTC, and said the way the room says it.
+            h["opens_label"] = (h12(to_local(h["opens"]).strftime("%H:%M"))
+                                if h["opens"] is not None else "")
+        # Somebody who typed or bookmarked a heat that has not opened yet is
+        # sent back here; saying why beats a list that simply refuses to move.
+        early = (request.query_params.get("early") or "").strip()
+        early = h12("%s:%s" % (early[:2], early[2:4])) if len(early) >= 4 else ""
         return _shell(request, "coach_heats.html", staff=staff, ev=ev,
-                      heats=order, now=datetime.now(timezone.utc),
-                      stations=len(stations_of(ev)))
+                      heats=order, now=now, window=heat_open_mins(ev),
+                      early=early, stations=len(stations_of(ev)))
 
     def _heat_moment(ev, t):
         if not t or not ev.starts_at:
@@ -276,6 +293,31 @@ def register(app, deps):
         day = to_local(ev.starts_at)
         return from_local(day.replace(hour=h, minute=m, second=0, microsecond=0))
 
+    def heat_opens(ev, at):
+        """The moment the race app lets a coach into this heat, or None.
+
+        None means there is nothing to work out from — an event with no date,
+        or a heat time nobody could parse — and an unanswerable question is not
+        grounds for locking a coach out on a race morning.
+        """
+        if at is None:
+            return None
+        return at - timedelta(minutes=heat_open_mins(ev))
+
+    def heat_is_open(ev, at, now=None):
+        """Is this heat one a coach may work right now?
+
+        Open from ``heat_open_mins`` before the gun, and never shut again. The
+        one-sidedness is the point: a heat three hours out is a heat a coach can
+        only open by mistake, but a heat that started forty minutes ago may
+        still have somebody on the floor, and a coach shut out of a race already
+        running has no way back to their own athlete.
+        """
+        opens = heat_opens(ev, at)
+        if opens is None:
+            return True
+        return (now or datetime.now(timezone.utc)) >= opens
+
     @app.get("/race/e/{eid}/h/{hm}", response_class=HTMLResponse)
     def coach_heat(request: Request, eid: int, hm: str,
                    db: Session = Depends(get_db)):
@@ -286,6 +328,13 @@ def register(app, deps):
         if not ev:
             return RedirectResponse("/race", status_code=303)
         heat = "%s:%s" % (hm[:2], hm[2:4]) if len(hm) >= 4 else hm
+        at = _heat_moment(ev, heat)
+        # Greying the row on the list is a courtesy, not a lock: this address
+        # is four digits and a coach who has worked one heat can type another.
+        # The gate has to be here, where the athletes are.
+        if not heat_is_open(ev, at):
+            return RedirectResponse("/race/e/%d?early=%s" % (ev.id, hm),
+                                    status_code=303)
         rows = racers(db, ev, heat)
         people = []
         for p in rows:
@@ -304,7 +353,7 @@ def register(app, deps):
                 "total": total,
             })
         return _shell(request, "coach_heat.html", staff=staff, ev=ev, heat=heat,
-                      hm=hm, people=people, at=_heat_moment(ev, heat),
+                      hm=hm, people=people, at=at,
                       now=datetime.now(timezone.utc))
 
     def _load(request, db, pid):
@@ -322,6 +371,14 @@ def register(app, deps):
         if redir:
             return redir
         back = "/race/e/%d/h/%s" % (p.event_id, hhmm_key(p.heat_time))
+        # And again on the way in. A POST does not have to come from a page we
+        # drew, and a grab is the thing the window exists to prevent — holding
+        # somebody out of a heat three hours away, out of sight of the coach
+        # who will actually be running it.
+        if not heat_is_open(p.event, _heat_moment(p.event, p.heat_time)):
+            return RedirectResponse(
+                "/race/e/%d?early=%s" % (p.event_id, hhmm_key(p.heat_time)),
+                status_code=303)
         # Exclusive: taken is taken. The other phone is already counting, and
         # two people counting the same athlete is worse than one.
         if p.coach_id and p.coach_id != staff.id:

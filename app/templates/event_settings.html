@@ -298,6 +298,26 @@
     even if you edit these afterwards.</p>
 </div>
 
+<div class="card" style="margin-top:14px">
+  <h2 style="margin:0 0 4px;font-size:1rem">The race app</h2>
+  <p class="muted small" style="margin:0 0 12px">How early a coach can open a
+    heat on their phone. Before that the heat is listed but shut, so nobody
+    grabs an athlete out of a heat three hours away and holds them there. Once
+    a heat opens it stays open for the rest of the day, however late it runs
+    &mdash; a coach shut out of a race already on the floor has no way back to
+    their own athlete.</p>
+  <div>
+    <label class="small" style="font-weight:600">Heat opens this many minutes
+      early</label>
+    <input name="heat_open_mins" value="{{ ev.heat_open_mins or '' }}"
+           inputmode="numeric" placeholder="{{ default_heat_open }}"
+           style="width:110px">
+  </div>
+  <p class="muted small" style="margin:9px 0 0">Leave it blank for
+    {{ default_heat_open }} minutes. Anything from {{ heat_open_min }} to
+    {{ heat_open_max }}.</p>
+</div>
+
 <div class="hdact" style="margin-top:16px">
   <button class="btn primary">Save settings</button>
   <a class="btn" href="/events/{{ ev.id }}">Cancel</a>

@@ -636,6 +636,14 @@ def startup():
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  signup_closes TIMESTAMPTZ; "
                 "END IF; END $$;"))
+            # How early the race app lets a coach open a heat. Nullable on
+            # purpose: blank means "use the default", so an event nobody has
+            # thought about behaves the same as one that has.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  heat_open_mins INTEGER; "
+                "END IF; END $$;"))
             # Room for the one-time correction below. The column defaults to
             # FALSE so that every row written under the old rule is picked up
             # exactly once; the default flips to TRUE once they have been.
