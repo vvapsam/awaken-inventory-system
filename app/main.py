@@ -767,6 +767,14 @@ def startup():
                 "  heat_time VARCHAR; "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  heat_email_at TIMESTAMPTZ; "
+                # Backfilled true for anybody already holding a heat email, so
+                # the first send after this deploy does not greet thirty-four
+                # people who were told last week as though it were the first
+                # time.
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  heat_told_before BOOLEAN NOT NULL DEFAULT FALSE; "
+                "UPDATE event_participants SET heat_told_before = TRUE "
+                "  WHERE heat_email_at IS NOT NULL AND NOT heat_told_before; "
                 "END IF; END $$;"))
             # Who is coaching them, and when their last station closed.
             # event_stations and station_runs are new tables, so create_all

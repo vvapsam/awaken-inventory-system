@@ -1911,6 +1911,11 @@ class EventParticipant(Base):
     #: time somebody was told is only true until you move them — see
     #: EventParticipant.heat_told.
     heat_email_at = Column(DateTime(timezone=True))
+    #: Have they *ever* had a heat time from us? Never cleared, which is the
+    #: whole point: heat_email_at is wiped every time somebody moves, so on its
+    #: own it cannot tell "first time we're telling you" from "we're telling
+    #: you again". That distinction is which of the two emails they get.
+    heat_told_before = Column(Boolean, nullable=False, default=False)
 
     def heat_start(self):
         """Their heat as an actual moment, or None.
