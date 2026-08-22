@@ -45,6 +45,11 @@
   <form method="post" action="/patch/p/{{ who.id }}/given" style="margin:0">
     <button class="btn primary big" type="submit">Handed over — next →</button>
   </form>
+  {# The card is a detour, not the fast path: it only appears once the
+     time has been revealed, and it never sits in front of the
+     hand-over button. #}
+  <a class="btn big" id="showcard" href="/patch/p/{{ who.id }}/card"
+     hidden>&#127942; Show the card &rarr;</a>
   <a class="muted small" href="/patch/e/{{ ev.id }}">Back without handing it over</a>
 </div>
 
@@ -52,7 +57,11 @@
 (function(){
   var btn = document.getElementById('showtime'),
       box = document.getElementById('timewrap');
-  btn.addEventListener('click', function(){ box.hidden = false; btn.hidden = true; });
+  var cardbtn = document.getElementById('showcard');
+  btn.addEventListener('click', function(){
+    box.hidden = false; btn.hidden = true;
+    if (cardbtn) { cardbtn.hidden = false; }
+  });
 })();
 </script>
 {% endblock %}

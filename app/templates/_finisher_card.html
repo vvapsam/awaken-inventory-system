@@ -1,0 +1,95 @@
+{# The finisher card itself.
+
+   One piece of markup, two shapes. Everything that changes between a square
+   1920 and a tall 1080x1920 arrives in `c` as plain pixel numbers, worked out
+   in card_routes.SHAPES — so the card staff preview and the card the athlete
+   opens are the same object drawn at a different size, and cannot drift.
+
+   It is drawn at native size and then scaled by a transform, which keeps the
+   type and the artwork crisp at any display size. #}
+<div class="fcwrap" id="fcwrap-{{ c.key }}">
+  <div class="fcard" id="fcard-{{ c.key }}"
+       style="--cw:{{ c.cw }}px;--ch:{{ c.ch }}px">
+
+    <div class="fc-head" style="padding-top:{{ c.top }}px;
+         gap:{{ c.headgap }}px">
+      <div class="fc-marks" style="gap:{{ c.markgap }}px">
+        <img src="/static/card/awaken.png" alt="AWAKEN"
+             style="width:{{ c.awaken }}px">
+        <div class="fc-rule" style="height:{{ c.rule }}px"></div>
+        <img src="/static/card/hyrox.png" alt="HYROX"
+             style="width:{{ c.hyrox }}px">
+      </div>
+      <img src="/static/card/pft.png" alt="HYROX PFT"
+           style="width:{{ c.badge }}px">
+    </div>
+
+    <div class="fc-mid" style="padding-bottom:{{ c.midpad }}px">
+      <div class="fc-name" style="font-size:{{ c.name }}px">{{ card_name }}</div>
+      <div class="fc-label" style="font-size:{{ c.label }}px;
+           margin-top:{{ c.labelgap }}px">Finish Time</div>
+      <div class="fc-time" style="font-size:{{ c.time }}px;
+           margin-top:{{ c.timegap }}px">{{ clock }}</div>
+    </div>
+
+    <div class="fc-sponsors" style="padding-bottom:{{ c.bottom }}px;
+         gap:{{ c.rowgap }}px">
+      {% for row in c.rows %}
+      <div class="fc-sprow" style="gap:{{ c.spgap }}px">
+        {% for logo in row %}
+        <img src="/static/card/sp/{{ logo.file }}" alt=""
+             style="width:{{ logo.w }}px">
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  /* Scale the card to whatever room it has been given. The card keeps its
+     native pixel size so nothing reflows; only the transform changes, and the
+     wrapper is resized to match so the page lays out correctly around it. */
+  var card = document.getElementById('fcard-{{ c.key }}'),
+      wrap = document.getElementById('fcwrap-{{ c.key }}'),
+      CW = {{ c.cw }}, CH = {{ c.ch }};
+  function fullEl(){
+    return document.fullscreenElement || document.webkitFullscreenElement
+        || document.msFullscreenElement || null;
+  }
+  function fit(){
+    var fs = fullEl(), availW, availH;
+    if (fs && fs.contains(card)) {
+      /* Full screen: the card gets the whole display, and none of the page
+         chrome is there to make room for. */
+      availW = fs.clientWidth;
+      availH = fs.clientHeight;
+    } else {
+      /* clientWidth includes the parent's padding, so measuring it directly
+         scales the card wider than the room it actually has and clips the
+         time and the last sponsor in each row. Take the content box. */
+      var box = wrap.parentNode, ps = getComputedStyle(box);
+      availW = box.clientWidth
+             - (parseFloat(ps.paddingLeft) || 0)
+             - (parseFloat(ps.paddingRight) || 0);
+      availH = (window.innerHeight || CH) - {{ c.chrome }};
+    }
+    /* Never scale past 1: the artwork is drawn at its native size, and
+       enlarging it past that only makes it soft. */
+    var s = Math.min(availW / CW, availH / CH, 1);
+    if (!(s > 0)) { s = 1; }
+    card.style.transform = 'scale(' + s + ')';
+    wrap.style.width = Math.round(CW * s) + 'px';
+    wrap.style.height = Math.round(CH * s) + 'px';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+  ['fullscreenchange','webkitfullscreenchange','msfullscreenchange']
+    .forEach(function(e){ document.addEventListener(e, fit); });
+  /* The webfont lands after first paint and changes nothing about the box,
+     but the artwork does, so re-fit once the images are in. */
+  window.addEventListener('load', fit);
+})();
+</script>

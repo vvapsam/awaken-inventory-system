@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block body %}
+<link rel="stylesheet" href="/static/card.css">
+
+<div class="row-between">
+  <div><h1 style="margin:0">{{ who.full_name }}</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ clock }} &middot;
+      {{ ev.name }}</p></div>
+  <div class="hdact">
+    <a class="btn" href="/patch/p/{{ who.id }}/result">&larr; Back</a>
+  </div>
+</div>
+
+<div class="cardbar">
+  <div class="shapetabs">
+    {% for key, s in shapes.items() %}
+    <a href="/patch/p/{{ who.id }}/card?shape={{ key }}"
+       class="{{ 'on' if key == shape }}">{{ s.title }}</a>
+    {% endfor %}
+  </div>
+  <span class="muted" style="font-size:13px">{{ shapes[shape].note }}</span>
+  <div class="grow"></div>
+  <button class="btn primary" type="button" id="goFull">
+    &#9974; Full screen</button>
+</div>
+
+{# The card is drawn inside a stage so the same element can be handed to the
+   Fullscreen API. Going full screen changes nothing about the card itself —
+   the fit script simply gets a bigger box to scale into. #}
+<div id="stage" style="display:flex;justify-content:center">
+  {% with c = card, card_name = who.full_name %}
+    {% include "_finisher_card.html" %}
+  {% endwith %}
+</div>
+
+<div class="cardlink">
+  <input id="shareurl" type="text" readonly value="{{ share }}"
+         aria-label="Link to this card">
+  <button class="btn" type="button" id="copylink">Copy link</button>
+  <a class="btn" href="{{ share }}" target="_blank" rel="noopener">Open</a>
+</div>
+<p class="cardnote">
+  Send that link to {{ who.full_name.split(' ')[0] }} and it opens on their own
+  phone &mdash; no login. To keep it they press and hold the card and save the
+  picture.
+</p>
+
+<script>
+(function(){
+  var stage = document.getElementById('stage'),
+      full  = document.getElementById('goFull'),
+      copy  = document.getElementById('copylink'),
+      url   = document.getElementById('shareurl');
+
+  /* Full screen is just the stage element handed to the browser. Prefixed
+     names are still what Safari answers to. */
+  function request(el){
+    var fn = el.requestFullscreen || el.webkitRequestFullscreen
+          || el.msRequestFullscreen;
+    if (fn) { fn.call(el); }
+  }
+  function exit(){
+    var fn = document.exitFullscreen || document.webkitExitFullscreen
+          || document.msExitFullscreen;
+    if (fn) { fn.call(document); }
+  }
+  function isFull(){
+    return !!(document.fullscreenElement || document.webkitFullscreenElement
+           || document.msFullscreenElement);
+  }
+  full.addEventListener('click', function(){
+    if (isFull()) { exit(); } else { request(stage); }
+  });
+  function onChange(){
+    var on = isFull();
+    stage.style.background = on ? '#070f10' : '';
+    stage.style.alignItems = on ? 'center' : '';
+    stage.style.height = on ? '100%' : '';
+    full.innerHTML = on ? '&#9974; Leave full screen' : '&#9974; Full screen';
+    /* The card sizes itself off the window, which has just changed. */
+    window.dispatchEvent(new Event('resize'));
+  }
+  ['fullscreenchange','webkitfullscreenchange','msfullscreenchange']
+    .forEach(function(e){ document.addEventListener(e, onChange); });
+
+  copy.addEventListener('click', function(){
+    var done = function(){
+      copy.textContent = 'Copied';
+      setTimeout(function(){ copy.textContent = 'Copy link'; }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url.value).then(done, function(){
+        url.select(); done();
+      });
+    } else {
+      url.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      done();
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -3685,6 +3685,13 @@ from . import patch_routes  # noqa: E402
 
 patch_routes.register(app, {"render": render})
 
+# The finisher card: the same record the awarding table just read,
+# drawn as something the athlete can keep. Needs `templates` as well as
+# `render` because the athlete's copy has no admin chrome around it.
+from . import card_routes  # noqa: E402
+
+card_routes.register(app, {"render": render, "templates": templates})
+
 
 # The words those emails are made of, editable under the gear rather than in a
 # release. Registered after the events section because it renders its preview

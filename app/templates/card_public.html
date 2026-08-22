@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1,
+  viewport-fit=cover">
+<title>{{ who }} &mdash; HYROX PFT</title>
+<meta name="theme-color" content="#0A1C1D">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/static/card.css">
+</head>
+<body class="cardpage">
+
+{% with c = card, card_name = who %}
+  {% include "_finisher_card.html" %}
+{% endwith %}
+
+<p class="save">Press and hold the card to <b>save the picture</b>.</p>
+
+</body>
+</html>

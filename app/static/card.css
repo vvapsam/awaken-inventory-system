@@ -1,0 +1,94 @@
+/* The finisher card.
+ *
+ * Self-contained on purpose: the card has its own dark palette and its own
+ * typeface, and it has to look identical whether it is sitting inside the
+ * admin chrome or alone on somebody's phone. Nothing here leans on style.css.
+ *
+ * The card is drawn once at its native pixel size and then scaled with a CSS
+ * transform, so a square 1920 and a tall 1080x1920 are the same markup with a
+ * different --cw/--ch. That way "what staff see" and "what the athlete gets"
+ * cannot drift apart.
+ */
+@font-face{font-family:CardSans;src:url(/static/card/sg-400.woff2)
+  format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:CardSans;src:url(/static/card/sg-700.woff2)
+  format('woff2');font-weight:700;font-display:swap}
+
+.fcard{
+  --ink:#F2F5F7; --mint:#88EAE0; --mintdim:#79D9CC; --namec:#cfd8dd;
+  width:var(--cw); height:var(--ch);
+  position:relative; overflow:hidden;
+  background:linear-gradient(180deg,#0A1C1D 0%,#0A1C1D 62%,#091617 100%);
+  color:var(--ink);
+  font-family:CardSans,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
+    Arial,sans-serif;
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  transform-origin:top left;
+}
+.fcard::after{
+  content:""; position:absolute; inset:auto 0 0 0; height:29%;
+  background:radial-gradient(120% 100% at 50% 100%,
+    rgba(136,234,224,.055),transparent 70%);
+  pointer-events:none;
+}
+.fcard img{display:block}
+
+.fc-head{display:flex;flex-direction:column;align-items:center}
+.fc-marks{display:flex;align-items:center;justify-content:center}
+.fc-rule{width:1px;background:rgba(242,245,247,.20)}
+
+.fc-mid{
+  flex:1; display:flex; flex-direction:column;
+  justify-content:center; align-items:center; width:100%;
+}
+.fc-name{font-weight:700;letter-spacing:.06em;color:var(--namec);
+  line-height:1}
+.fc-label{font-weight:700;color:var(--mintdim);text-transform:uppercase;
+  letter-spacing:.34em}
+.fc-time{font-weight:700;color:var(--mint);line-height:.82;
+  letter-spacing:-.045em;font-variant-numeric:tabular-nums}
+
+.fc-sponsors{display:flex;flex-direction:column;align-items:center}
+.fc-sprow{display:flex;align-items:center;justify-content:center}
+
+/* The frame the card is scaled inside. Height is set inline per shape so the
+ * page does not jump before the transform is applied. */
+.fcwrap{position:relative;overflow:hidden;margin:0 auto;max-width:100%}
+
+/* ---- the staff page around it ---- */
+.cardbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;
+}
+.cardbar .grow{flex:1}
+.shapetabs{display:inline-flex;border:1px solid var(--line,#dfe5ec);
+  border-radius:9px;overflow:hidden}
+.shapetabs a{
+  padding:9px 16px;font-size:14px;font-weight:600;text-decoration:none;
+  color:inherit;background:transparent;border-right:1px solid var(--line,#dfe5ec)
+}
+.shapetabs a:last-child{border-right:0}
+.shapetabs a.on{background:#0b7a72;color:#fff}
+.cardlink{
+  display:flex;align-items:center;gap:8px;margin-top:18px;flex-wrap:wrap
+}
+.cardlink input{
+  flex:1;min-width:260px;padding:10px 12px;border-radius:8px;
+  border:1px solid var(--line,#dfe5ec);
+  font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:#fff;color:#0f1c33
+}
+.cardnote{font-size:13.5px;color:#5b6b82;margin-top:10px;line-height:1.55}
+
+/* ---- the athlete's page ---- */
+body.cardpage{
+  margin:0;background:#070f10;
+  font-family:CardSans,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
+    Arial,sans-serif;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;min-height:100vh;padding:18px;
+}
+body.cardpage .save{
+  color:rgba(242,245,247,.62);font-size:14px;margin-top:18px;text-align:center;
+  line-height:1.6;max-width:34ch
+}
+body.cardpage .save b{color:#88EAE0;font-weight:700}
