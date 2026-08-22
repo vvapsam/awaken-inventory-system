@@ -69,7 +69,10 @@
       <button class="btn primary">Make this the live one</button></form>
     {% else %}
     <span class="muted small">Somebody is already racing — the live timetable
-      is what their clocks are measured from, so it can't be switched now.</span>
+      is what their clocks are measured from, so it can't be switched now.
+      {# The way out, said where you hit the wall rather than left to be
+         found. Usually it is a rehearsal nobody cleared. #}
+      <a href="/events/{{ ev.id }}/stations">Clear the race →</a></span>
     {% endif %}
     {% if versions|length > 1 %}
     <form method="post" action="/events/{{ ev.id }}/heats/version/{{ plan.id }}/delete"

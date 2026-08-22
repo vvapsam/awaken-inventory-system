@@ -865,6 +865,17 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 /* Times run down the page because that is the order the day happens in. A
    grid of cards makes you hunt for 11:20, and the block of empty morning at
    the bottom is the thing you most need to see at a glance. */
+/* Clearing the race. Deliberately not near the stations table and the only
+   red button on the page — after a rehearsal it is exactly what you want, and
+   on the day it is the worst thing to press by accident. */
+.resetbox{display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+  justify-content:space-between;background:var(--bg);
+  border:1px solid var(--line);border-radius:10px;padding:13px 16px;
+  margin:16px 0 0}
+.resetbox b{font-size:.92rem}
+.btn.danger{border-color:#e0bcb6;color:#8c2c20}
+.btn.danger:hover{background:#8c2c20;border-color:#8c2c20;color:#fff}
+
 /* Timetable versions. Tabs rather than a dropdown: which one is live and
    which one you are on are both things you want answered without clicking. */
 .vstrip{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:14px 0 0}

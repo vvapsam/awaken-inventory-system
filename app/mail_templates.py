@@ -103,6 +103,20 @@ ${block.facts}
 ${block.button "Show my QR pass \u2192" "The same link you registered with"}
 ${block.warn}<b>Miss your heat and we can\u2019t guarantee you a rescheduled time.</b>${/block.warn}"""
 
+#: The second heat email — the one that has to overwrite a time already in
+#: somebody's inbox. Everything here is aimed at one failure: they see a
+#: heat-time email, assume it is the one they read last week, and turn up at
+#: the old time. So the headline says *changed* before anything else, the lede
+#: says it replaces the earlier one, and the times are the same block in the
+#: same place so there is nothing new to decode.
+HEAT_NEW_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">Your heat time has changed, ${record.first_name}</h1>
+<p style="font-size:15px;margin:0 0 18px;color:#2b3642">We’ve moved your heat for <b>${event.name}</b>. This replaces the time we sent you before — go by the two times below.</p>
+${block.heat}
+<p style="font-size:14px;margin:0 0 16px;color:#2b3642">That’s <b>${record.arrive_gap} before</b> your heat. Check-in and your warm-up both happen in that window, so arriving on the dot of ${record.heat} means missing your heat.</p>
+${block.facts}
+${block.button "Show my QR pass →" "The same link you registered with"}
+${block.warn}<b>Miss your heat and we can’t guarantee you a rescheduled time.</b>${/block.warn}"""
+
 RETURNED_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">One more thing, ${record.first_name}</h1>
 <p style="font-size:15px;margin:0 0 6px;color:#2b3642">We had a look at your
    payment and need another go at it.</p>
@@ -199,6 +213,23 @@ TEMPLATES = [
         "pairs": {"block.note": "the bordered callout",
                   "block.warn": "the amber callout"},
         "body": HEAT_BODY,
+    },
+    {
+        "key": "heatnew", "name": "Your heat time has changed",
+        "blurb": "\u201cWe\u2019ve moved your heat \u2014 here is the new one.\u201d",
+        "where": "events running heats",
+        "subject": "Your heat time has changed \u2014 ${event.name}",
+        "values": dict(EVENT_VALUES, **PERSON_VALUES, **{
+            "record.heat": "10:20 AM",
+            "record.arrive": "9:50 AM",
+            "record.arrive_gap": "30 minutes",
+        }),
+        "blocks": {"block.heat": "the two times, side by side",
+                   "block.facts": "When \u00b7 Where \u00b7 Bring \u00b7 After",
+                   "block.button": "the teal call-to-action"},
+        "pairs": {"block.note": "the bordered callout",
+                  "block.warn": "the amber callout"},
+        "body": HEAT_NEW_BODY,
     },
     {
         "key": "finish", "name": "Finish your registration",

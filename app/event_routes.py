@@ -1718,9 +1718,50 @@ def register(app, deps):
         racing = db.query(StationRun).join(EventStation).filter(
             EventStation.event_id == eid,
             StationRun.started_at.isnot(None)).count()
+        # What a reset would actually throw away, so the confirm can name it
+        # rather than asking "are you sure?" about an unknown quantity.
+        finished = sum(1 for p in ev.participants if p.finished_at)
         return render(request, "event_stations.html", db, staff, active="events",
                       ev=ev, rows=rows, measures=MEASURES, locked=bool(racing),
+                      racing=racing, finished=finished,
                       taps=sum(r.taps for r in rows))
+
+    @app.post("/events/{eid}/stations/reset")
+    def event_stations_reset(request: Request, eid: int,
+                             db: Session = Depends(get_db)):
+        """Throw away every race on this event and start the day again.
+
+        Wanted after every rehearsal, and once for real if a coach counts the
+        wrong person. It clears the counts, the splits, the finish times and
+        who is on whose phone — everything the coach app wrote — and leaves the
+        stations themselves alone, because the race is the thing you are
+        redoing, not the way it was set up.
+
+        It also unlocks the two things a started race holds shut: editing the
+        stations, and making a different timetable version live.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        runs = (db.query(StationRun).join(EventStation)
+                .filter(EventStation.event_id == eid).all())
+        gone = len(runs)
+        for r in runs:
+            db.delete(r)
+        people = 0
+        for p in ev.participants:
+            if p.finished_at or p.coach_id or p.grabbed_at:
+                p.finished_at = None
+                p.coach_id = None
+                p.grabbed_at = None
+                people += 1
+        db.commit()
+        return RedirectResponse(
+            "/events/%d/stations?reset=%d&people=%d" % (eid, gone, people),
+            status_code=303)
 
     @app.post("/events/{eid}/stations")
     async def event_stations_save(request: Request, eid: int,
@@ -2648,6 +2689,13 @@ def register(app, deps):
                      "lastcall": _lastcall_mail, "payby": _payby_mail,
                      "cancelled": _cancelled_mail,
                      "heat": _heat_mail}.get(kind, _invite_mail)
+            # One button, two wordings. Somebody who has never had a time from
+            # us gets "Your heat time"; somebody who has gets "Your heat time
+            # has changed", because to them it is not news, it is a
+            # correction — and an email that reads like the first one is an
+            # email they skim and ignore.
+            if kind == "heat" and p.heat_told_before:
+                build = _heat_new_mail
             if kind == "payby":
                 # Set here rather than after a successful send, because the
                 # sentence in the email is this value. Deciding it afterwards
@@ -2676,6 +2724,9 @@ def register(app, deps):
                     pass
                 elif kind == "heat":
                     p.heat_email_at = now
+                    # Never unset. It is what makes the *next* one read as a
+                    # change rather than a repeat.
+                    p.heat_told_before = True
                 elif kind == "lastcall":
                     # Not invited_at: that is "when we first asked", and the
                     # per-person confirm clock is counted from it. Restarting
@@ -2743,6 +2794,15 @@ def register(app, deps):
              "blurb": "\u201cArrive at 9:50, your heat is 10:20.\u201d Only says "
                       "anything to somebody who has a heat.",
              "ok": True, "why": "usually from the timetable"},
+            # Not a separate button on the timetable — the send there picks
+            # this wording by itself for anybody who has had a time before.
+            # It is listed here so it can be previewed and edited like the
+            # rest, and sent by hand if you ever want to.
+            {"key": "heatnew", "name": "Your heat time has changed",
+             "blurb": "\u201cWe\u2019ve moved your heat \u2014 here is the new "
+                      "one.\u201d Sent automatically to anybody who was already "
+                      "told a different time.",
+             "ok": True, "why": "chosen for you when you send heat times"},
             {"key": "cancelled", "name": "Called off",
              "blurb": "\u201cToday's class is cancelled.\u201d Goes to everyone "
                       "who thinks they're coming, and everyone still deciding.",
@@ -2930,6 +2990,9 @@ def register(app, deps):
                 "lastcall": lists["lastcall_all"],
                 "payby": lists["payby_all"],
                 "heat": lists["heat_all"] or lists["heat"],
+                # Same pool: both are previews of a heat time, and the only
+                # person worth showing either against is somebody who has one.
+                "heatnew": lists["heat_all"] or lists["heat"],
                 "returned": [p for p in ev.participants
                              if (p.review_note or "").strip()]}.get(
                     kind, lists["invite_all"])
@@ -2945,7 +3008,7 @@ def register(app, deps):
         build = {"reel": _reel_mail, "finish": _finish_mail,
                  "returned": _returned_mail,
                  "lastcall": _lastcall_mail, "payby": _payby_mail,
-                 "cancelled": _cancelled_mail,
+                 "cancelled": _cancelled_mail, "heatnew": _heat_new_mail,
                  "heat": _heat_mail}.get(kind, _invite_mail)
         subject, _text, html = build(db, ev, who, url)
         # The inline marks are Content-IDs in a real message; a browser needs
@@ -3304,8 +3367,18 @@ def _fmt_when(dt) -> str:
     return dt.strftime("%a %d %b, %I:%M %p").replace(" 0", " ") if dt else ""
 
 
-def _facts(ev) -> str:
-    rows = [("When", " — ".join(x for x in (ev.when_text, ev.when_note) if x)),
+def _facts(ev, p=None) -> str:
+    """When · Where · Bring · After.
+
+    "When" is dropped for anybody who has a heat time. That row carries the
+    event's blanket start — 10:00 AM for everybody — and printing it under a
+    personal heat of 10:20 gives one email two different answers to the only
+    question it exists to settle. Their own time is two inches higher up, in
+    larger type, and is the one they should act on.
+    """
+    when = "" if (p is not None and p.heat_time) else " — ".join(
+        x for x in (ev.when_text, ev.when_note) if x)
+    rows = [("When", when),
             ("Where", ev.venue), ("Bring", ev.bring), ("After", ev.perk)]
     cells = "".join(
         '<tr><td style="color:#6b7683;font-size:14px;padding:4px 12px 4px 0;'
@@ -3524,14 +3597,26 @@ def _heat_block(ev, p) -> str:
             '<tr>%s%s</tr></table>'
             % (cell("Arrive by", clock12(arrive_at(ev, p.heat_time)),
                     "Check in & warm up", "#008080"),
-               cell("Your heat", clock12(p.heat_time), ev.when_text or "",
+               cell("Your heat", clock12(p.heat_time), _heat_day(ev),
                     "#1a232e")))
+
+
+def _heat_day(ev) -> str:
+    """The date under somebody's heat time — the date, and not the event's
+    own start time.
+
+    ``when_text`` is "Sat 22 Aug, 10:00 AM", and printing that under a heat of
+    10:20 puts two different times in one box.
+    """
+    if not ev.starts_at:
+        return ""
+    return to_local(ev.starts_at).strftime("%a %d %b").replace(" 0", " ")
 
 
 def _mail_blocks(ev, p, url, key) -> tuple:
     """The pieces the system builds, and the one you wrap your own words in."""
     blocks = {
-        "block.facts": lambda *a: _facts(ev),
+        "block.facts": lambda *a: _facts(ev, p),
         "block.button": lambda label="Open →", sub="": _button(url, label, sub),
         "block.rewards": lambda title="What you get": _rewards_block(ev, title),
         "block.checklist": lambda *a: _checklist(ev, p),
@@ -3580,6 +3665,10 @@ def _payby_mail(db, ev, p, url):
 
 def _heat_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "heat")
+
+
+def _heat_new_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "heatnew")
 
 
 def _cancelled_mail(db, ev, p, url):
