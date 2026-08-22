@@ -24,6 +24,7 @@
   --safe-t:env(safe-area-inset-top,0px);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none !important}
 html,body{margin:0;padding:0}
 body{font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);
   font-size:16px;line-height:1.4;overscroll-behavior-y:none}
@@ -119,6 +120,30 @@ input,select{font-family:inherit;font-size:16px}
 .h-menu .hm-item:active{background:var(--paper)}
 .h-menu .hm-item.danger{color:#c0392b;border-top:1px solid var(--line)}
 .h-menu .hm-item.danger svg{color:#c0392b}
+/* the door: one event's list */
+.drow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:none;border:0;border-bottom:1px solid var(--line);padding:11px 2px;
+  font:inherit;color:inherit}
+.drow:last-child{border-bottom:0}
+.drow .dn{flex:1;min-width:0}
+.drow .dn b{display:block;font-size:15px;font-weight:700;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drow .dn small{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+.drow .go{flex:none;border-radius:9px;padding:9px 13px;font-size:12.5px;
+  font-weight:800;background:var(--green);color:#fff}
+.drow.isin{background:var(--green-tint);border-radius:12px;border-bottom-color:transparent;
+  padding-left:10px;padding-right:10px;margin-bottom:6px}
+.drow.isin .go{background:none;border:1px solid var(--line);color:var(--muted)}
+.drow .tick{flex:none;width:22px;height:22px;border-radius:50%;
+  background:var(--green);color:#fff;display:flex;align-items:center;
+  justify-content:center;font-size:12px;font-weight:900}
+.snackbar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
+  background:#141a1d;color:#fff;border-radius:13px;padding:13px 15px;display:flex;
+  align-items:center;gap:12px;font-size:14px;font-weight:600;z-index:60;
+  box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.snackbar button{margin-left:auto;background:none;border:0;color:#4fd0be;
+  font:inherit;font-weight:800;padding:2px 4px}
+
 /* events + scan */
 .pad{padding:2px 0 18px}
 .evlist{display:flex;flex-direction:column;gap:10px}
@@ -627,9 +652,30 @@ input.txt:focus,select.txt:focus{border-color:var(--green);box-shadow:0 0 0 3px 
   </div>
 </section>
 
+<!-- ============ ONE EVENT: the door ============ -->
+<section id="s-event" class="screen">
+  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Events</button><h2 class="hd" id="dr-title">Event</h2></div>
+  <div class="pad">
+    <div class="sc-count"><b id="dr-in">0</b> of <b id="dr-of">0</b> in</div>
+    <button class="bigbtn" id="dr-scan" type="button" style="margin-bottom:12px">Scan a code</button>
+    <div class="seg two" id="dr-seg" style="margin-bottom:10px">
+      <button data-tab="tocome" class="on">To come</button>
+      <button data-tab="in">In</button>
+    </div>
+    <input id="dr-q" class="txt" type="search" placeholder="&#128269; Search a name…"
+           autocomplete="off" style="margin-bottom:10px">
+    <div id="dr-list"></div>
+    <div class="muted" id="dr-empty" style="display:none"></div>
+  </div>
+  <div class="snackbar" id="dr-snack" hidden>
+    <span id="dr-snack-t"></span>
+    <button type="button" id="dr-undo">Undo</button>
+  </div>
+</section>
+
 <!-- ============ SCAN ============ -->
 <section id="s-scan" class="screen">
-  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Events</button><h2 class="hd" id="sc-title">Scan</h2></div>
+  <div class="topbar"><button class="back" data-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Back</button><h2 class="hd" id="sc-title">Scan</h2></div>
   <div class="pad">
     <div class="sc-count"><b id="sc-in">0</b> of <b id="sc-of">0</b> in</div>
     <div class="sc-box" id="sc-box">
@@ -668,7 +714,9 @@ function show(name){
   window.scrollTo(0,0);
 }
 function go(name){ stack.push(name); show(name); }
-function back(){ if(stack.length>1){stack.pop();} show(stack[stack.length-1]); leaving(); }
+function back(){ if(stack.length>1){stack.pop();} show(stack[stack.length-1]); leaving();
+  // Scans that happened behind this screen have to show up on it.
+  if(stack[stack.length-1]==='event' && typeof drStale!=='undefined' && drStale){ drStale=false; drLoad(); } }
 function home(){ stack=['home']; show('home'); leaving(); }
 // A camera left running behind another screen is a hot phone and a flat
 // battery halfway through a class.
@@ -712,11 +760,117 @@ function initEvents(){
       b.querySelector('b').textContent=ev.name;
       b.querySelector('small').textContent=bits||(ev.sponsor||'');
       b.querySelector('.c').textContent=ev['in']+'/'+ev.of;
-      b.onclick=()=>openScan(ev);
+      b.onclick=()=>openDoor(ev);
       list.appendChild(b);
     });
   }).catch(()=>{ list.innerHTML='<div class="muted">Could not load the classes.</div>'; });
 }
+
+// ---------------------------------------------------------------- the door
+// Tapping an event used to open the camera. It opens the list now, with the
+// scan one tap away and still the biggest thing on the screen: scanning is
+// faster and cannot pick the wrong person, so the list is the fallback, not
+// the default.
+let drEvent=null, drTab='tocome', drData={to_come:[],arrived:[]},
+    drLast=null, drStale=false;
+
+function openDoor(ev){
+  drEvent=ev; drTab='tocome'; drLast=null;
+  $('#dr-title').textContent=ev.name;
+  $('#dr-q').value='';
+  $('#dr-snack').hidden=true;
+  $$('#dr-seg button').forEach(x=>x.classList.toggle('on',x.dataset.tab==='tocome'));
+  $('#dr-list').innerHTML='<div class="muted">Loading…</div>';
+  go('event');
+  drLoad();
+}
+
+function drLoad(){
+  if(!drEvent) return;
+  fetch('/api/m/event/'+drEvent.id,{credentials:'same-origin'})
+    .then(r=>r.json()).then(j=>{
+      if(!j||!j.ok){ $('#dr-list').innerHTML=''; $('#dr-empty').style.display='';
+        $('#dr-empty').textContent=(j&&j.error)||'Could not load that class.';
+        return; }
+      drData=j; drCount(j.event['in'],j.event.of); drPaint();
+    })
+    .catch(()=>{ $('#dr-list').innerHTML='<div class="muted">Could not load that class.</div>'; });
+}
+
+function drCount(a,b){
+  $('#dr-in').textContent=a; $('#dr-of').textContent=b;
+  if(drEvent){ drEvent['in']=a; drEvent.of=b; }
+  const t=$$('#dr-seg button');
+  if(t[0]) t[0].textContent='To come · '+(b-a);
+  if(t[1]) t[1].textContent='In · '+a;
+}
+
+function drPaint(){
+  const q=($('#dr-q').value||'').trim().toLowerCase();
+  const rows=(drTab==='in'?drData.arrived:drData.to_come)
+    .filter(p=>!q||(p.name||'').toLowerCase().includes(q));
+  const list=$('#dr-list'), empty=$('#dr-empty');
+  list.innerHTML='';
+  if(!rows.length){
+    empty.style.display='';
+    empty.textContent = q ? 'Nobody by that name.'
+      : drTab==='in' ? 'Nobody has come through yet.'
+      : 'Everybody is in.';
+    return;
+  }
+  empty.style.display='none';
+  rows.forEach(p=>{
+    const b=document.createElement('button');
+    b.type='button'; b.className='drow'+(drTab==='in'?' isin':'');
+    b.innerHTML=(drTab==='in'?'<span class="tick">&#10003;</span>':'')+
+      '<span class="dn"><b></b><small></small></span>'+
+      '<span class="go"></span>';
+    b.querySelector('b').textContent=p.name;
+    b.querySelector('small').textContent = drTab==='in'
+      ? ('In at '+p.at+(p.note?' · '+p.note:''))
+      : (p.note||'');
+    b.querySelector('.go').textContent = drTab==='in' ? 'Undo' : 'Check in';
+    b.onclick=()=>drArrive(p, drTab==='in');
+    list.appendChild(b);
+  });
+}
+
+function drArrive(p, undo){
+  if(!drEvent) return;
+  const body=new URLSearchParams();
+  body.append('pid',p.id); if(undo) body.append('undo','1');
+  fetch('/api/m/event/'+drEvent.id+'/arrive',
+        {method:'POST',body:body,credentials:'same-origin'})
+    .then(r=>r.json()).then(d=>{
+      if(!d||!d.ok){ drSnack((d&&d.error)||'That did not save.',null); return; }
+      drCount(d['in'],d.of);
+      if(navigator.vibrate) navigator.vibrate(undo?[20,40,20]:30);
+      drSnack(d.name+(undo?' taken back off':' checked in'),
+              undo?null:()=>drArrive(p,true));
+      drLoad();
+    })
+    .catch(()=>drSnack('Lost the connection — try that again.',null));
+}
+
+// An undo rather than a confirm: a wrong tap at a door is one tap to reverse,
+// and a dialog on every check-in costs more than the mistake does.
+function drSnack(text, undoFn){
+  const bar=$('#dr-snack');
+  $('#dr-snack-t').textContent=text;
+  $('#dr-undo').hidden=!undoFn;
+  $('#dr-undo').onclick=()=>{ bar.hidden=true; if(undoFn) undoFn(); };
+  bar.hidden=false;
+  clearTimeout(drLast);
+  drLast=setTimeout(()=>{ bar.hidden=true; }, 4200);
+}
+
+$$('#dr-seg button').forEach(b=>b.onclick=()=>{
+  drTab=b.dataset.tab;
+  $$('#dr-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  drPaint();
+});
+$('#dr-q').addEventListener('input',drPaint);
+$('#dr-scan').onclick=()=>{ if(drEvent) openScan(drEvent); };
 
 function openScan(ev){
   scEvent=ev;
@@ -750,7 +904,7 @@ function scSend(code){
       else scShow(d.fresh?'in':'again',d.name,d.note);
     })
     .catch(()=>scShow('bad','','Lost the connection — try that one again.'))
-    .then(()=>{ scBusy=false; });
+    .then(()=>{ scBusy=false; drStale=true; });
 }
 
 // The same code stays in front of the lens for a second or two after a scan.

@@ -16,10 +16,11 @@ from sqlalchemy.orm import Session
 
 from .auth import current_staff
 from .db import get_db
+from .event_routes import _assign_slot
 from .models import (
-    Product, Staff, PricingGroup, Waiver, can, can_any,
+    Product, Staff, PricingGroup, Waiver, can, can_any, can_door,
     Transaction, TransactionItem, TX_CASH_SALE, TX_PAYMENT, TX_INVENTORY, TX_ORDER,
-    EVENT_CLOSED, EVENT_DRAFT, Event,
+    EVENT_CLOSED, EVENT_DRAFT, Event, EventParticipant,
 )
 
 router = APIRouter()
@@ -212,7 +213,7 @@ def m_events(request: Request, db: Session = Depends(get_db)):
     staff = current_staff(request, db)
     if not staff:
         return _err("Not signed in", 401)
-    if not can(staff, "manage_hyrox"):
+    if not can_door(staff):
         return _err("Not allowed", 403)
     evs = (db.query(Event)
            .filter(~Event.status.in_([EVENT_DRAFT, EVENT_CLOSED]))
@@ -262,6 +263,7 @@ def bootstrap(request: Request, db: Session = Depends(get_db)):
         "manage_kiosk": can(staff, "manage_kiosk"),
         "view_waivers": can(staff, "view_waivers"),
         "manage_hyrox": can(staff, "manage_hyrox"),
+        "event_door": can_door(staff),
     }
 
     maps = _on_hand_map(db)
@@ -699,3 +701,95 @@ async def settle(
     row = next((r for r in customer_balances(db) if r["customer"].id == c.id), None)
     return {"ok": True, "paid": amt,
             "new_balance": round(row["balance"], 2) if row else 0.0}
+
+
+# ------------------------------------------------------------------- the door
+#
+# Scanning a code is still the fast way in, and it lives in event_routes with
+# the rest of the event machinery. These two are for when the scan cannot
+# happen — a dead phone, an email never opened, a code that will not read —
+# and for the question the scanner could never answer: who is already here.
+
+
+def _door_roster(ev):
+    """The people this door is expecting, split by whether they are in yet.
+
+    Only confirmed slots, matching the count the events list shows, so "4 of 7"
+    on one screen and the list on the next are counting the same seven people.
+    """
+    live = [p for p in ev.participants if not p.waitlist and not p.released_at]
+    return [p for p in live if p.confirmed]
+
+
+@router.get("/api/m/event/{eid}")
+def m_event(eid: int, request: Request, db: Session = Depends(get_db)):
+    staff = current_staff(request, db)
+    if not staff:
+        return _err("Not signed in", 401)
+    if not can_door(staff):
+        return _err("Not allowed", 403)
+    ev = db.get(Event, eid)
+    if not ev or ev.status in (EVENT_DRAFT, EVENT_CLOSED):
+        return _err("That class is not open", 404)
+
+    tz = _tz()
+    coming = _door_roster(ev)
+
+    def when(p):
+        t = p.arrived_at
+        if t is None:
+            return ""
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return t.astimezone(tz).strftime("%I:%M %p").lstrip("0")
+
+    # To come reads alphabetically, because you are looking somebody up.
+    # In reads newest first, because the one you want is the one you just
+    # tapped by mistake.
+    to_come = sorted([p for p in coming if not p.arrived_at],
+                     key=lambda p: (p.full_name or "").lower())
+    inside = sorted([p for p in coming if p.arrived_at],
+                    key=lambda p: p.arrived_at, reverse=True)
+    return {
+        "ok": True,
+        "event": {"id": ev.id, "name": ev.name,
+                  "in": len(inside), "of": len(coming)},
+        "to_come": [{"id": p.id, "name": p.full_name,
+                     "note": p.slot_time or ""} for p in to_come],
+        "arrived": [{"id": p.id, "name": p.full_name, "at": when(p),
+                     "note": p.slot_time or ""} for p in inside],
+    }
+
+
+@router.post("/api/m/event/{eid}/arrive")
+def m_event_arrive(eid: int, request: Request, pid: int = Form(...),
+                   undo: str = Form(""), db: Session = Depends(get_db)):
+    """Mark somebody in, or take it back.
+
+    Writes `arrived_at` — the same field the scanner and the desktop tracker
+    write — so a person checked in here is checked in everywhere, at once.
+    """
+    staff = current_staff(request, db)
+    if not staff:
+        return _err("Not signed in", 401)
+    if not can_door(staff):
+        return _err("Not allowed", 403)
+    ev = db.get(Event, eid)
+    if not ev or ev.status in (EVENT_DRAFT, EVENT_CLOSED):
+        return _err("That class is not open", 404)
+    p = db.get(EventParticipant, pid)
+    if not p or p.event_id != eid:
+        return _err("Not on this list", 404)
+
+    if undo:
+        p.arrived_at = None
+    elif not p.arrived_at:
+        p.arrived_at = datetime.now(timezone.utc)
+        # The same number and wave a scan would have given them.
+        _assign_slot(db, ev, p)
+    db.commit()
+
+    coming = _door_roster(ev)
+    return {"ok": True, "name": p.full_name, "undone": bool(undo),
+            "in": len([x for x in coming if x.arrived_at]),
+            "of": len(coming)}

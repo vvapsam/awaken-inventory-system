@@ -62,10 +62,17 @@ MODULES = [
 ACTIONS = [("create", "Create"), ("edit", "Edit"), ("delete", "Delete")]
 
 # Report / visibility access toggles (not create/edit/delete).
+#
+# `event_door` is deliberately separate from `manage_hyrox`. Working the door
+# is a different job from running the event: somebody checking people in needs
+# the list and the scanner and nothing else, and should not be able to email
+# every participant or delete a timetable. `manage_hyrox` implies it (see
+# can_door), so nobody who already ran events loses anything.
 ACCESS_DEFS = [
     ("view_reports", "View reports"),
     ("view_stock", "View stock levels"),
     ("view_costs", "See costs & profit margins"),
+    ("event_door", "Event check-in (door only)"),
 ]
 
 # Access to the newer admin management areas. One toggle grants full access to
@@ -110,6 +117,16 @@ def can(staff, key):
 
 def can_any(staff, keys):
     return any(can(staff, k) for k in keys)
+
+
+def can_door(staff):
+    """May this person check participants in?
+
+    Either the narrow door permission, or the full event area — running the
+    event has always included standing at its door, and splitting the two
+    should not take anything away from whoever already had it.
+    """
+    return can_any(staff, ("event_door", "manage_hyrox"))
 
 
 PERSON_TYPES = [("", "— none —"), ("employee", "Employee"), ("affiliate", "Affiliate")]

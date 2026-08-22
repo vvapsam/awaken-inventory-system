@@ -47,7 +47,7 @@ from fastapi.responses import (
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .auth import hash_pin, verify_pin
+from .auth import current_staff, hash_pin, verify_pin
 from .db import get_db
 from .mailer import Mailer, looks_like_email
 from . import mail_templates
@@ -62,6 +62,7 @@ from .models import (
     HeatPlan, HeatSlot,
     ORGANISER_LINK_DAYS, ORGANISER_DEFAULT_PASS,
     from_local, to_local,
+    can_door,
 )
 
 #: AWAKEN's palette, and nothing else. Emails are the one place a third
@@ -605,6 +606,40 @@ def counts(event: Event) -> dict:
 # registration
 # --------------------------------------------------------------------------
 
+def _assign_slot(db: Session, ev: Event, p: EventParticipant) -> None:
+    """Give this arrival its number and its start time.
+
+    Module level rather than nested in register() so the mobile door
+    screen can call the same function: somebody checked in off a list has
+    to get the same slot as somebody scanned, or the two ways in quietly
+    disagree on the day.
+
+    Order of arrival, not order of registration: the first fifteen through
+    the door get the early wave. A place held for somebody who never turns
+    up is a place wasted, which is the whole reason this happens at the
+    scanner rather than the night before.
+
+    Written once. If they already have a time, they keep it — telling
+    somebody ten o'clock and then moving them is worse than having no
+    system at all.
+    """
+    if not ev.slot_a_time or p.slot_no:
+        return
+    # Lock the event row so two phones on the door cannot hand out the
+    # same number. Cheap here — one row, held for the length of a scan.
+    db.query(Event).filter(Event.id == ev.id).with_for_update().first()
+    taken = (db.query(func.max(EventParticipant.slot_no))
+             .filter(EventParticipant.event_id == ev.id).scalar()) or 0
+    n = taken + 1
+    cap = ev.slot_a_cap or 0
+    p.slot_no = n
+    # No second time set means one wave with no ceiling: everybody gets the
+    # first time rather than nobody getting anything after the cap.
+    p.slot_time = (ev.slot_a_time if (not cap or n <= cap or not ev.slot_b_time)
+                   else ev.slot_b_time)
+    p.slot_at = datetime.now(timezone.utc)
+
+
 def register(app, deps):
     render = deps["render"]
     require = deps["require"]
@@ -614,6 +649,19 @@ def register(app, deps):
     def guard(request, db):
         """Admins, or anyone granted the HYROX event area."""
         return require(request, db, perm="manage_hyrox")
+
+    def door_guard(request, db):
+        """Anyone allowed to work a door: the narrow permission, or the area.
+
+        Standing at the door is a different job from running the event, so the
+        two screens somebody on the door actually touches - the scanner and
+        the arrive toggle - ask only for `event_door`. Everything else in this
+        module still asks for the full area.
+        """
+        staff = current_staff(request, db)
+        if staff and can_door(staff):
+            return staff, None
+        return require(request, db, perm="event_door")
 
     # ------------------------------------------------------------ public ----
 
@@ -1119,34 +1167,6 @@ def register(app, deps):
                 waves.append({"time": t, "n": out.get(t, 0), "cap": cap})
         return {"waves": waves}
 
-    def _assign_slot(db: Session, ev: Event, p: EventParticipant) -> None:
-        """Give this arrival its number and its start time.
-
-        Order of arrival, not order of registration: the first fifteen through
-        the door get the early wave. A place held for somebody who never turns
-        up is a place wasted, which is the whole reason this happens at the
-        scanner rather than the night before.
-
-        Written once. If they already have a time, they keep it — telling
-        somebody ten o'clock and then moving them is worse than having no
-        system at all.
-        """
-        if not ev.slot_a_time or p.slot_no:
-            return
-        # Lock the event row so two phones on the door cannot hand out the
-        # same number. Cheap here — one row, held for the length of a scan.
-        db.query(Event).filter(Event.id == ev.id).with_for_update().first()
-        taken = (db.query(func.max(EventParticipant.slot_no))
-                 .filter(EventParticipant.event_id == ev.id).scalar()) or 0
-        n = taken + 1
-        cap = ev.slot_a_cap or 0
-        p.slot_no = n
-        # No second time set means one wave with no ceiling: everybody gets the
-        # first time rather than nobody getting anything after the cap.
-        p.slot_time = (ev.slot_a_time if (not cap or n <= cap or not ev.slot_b_time)
-                       else ev.slot_b_time)
-        p.slot_at = datetime.now(timezone.utc)
-
     @app.get("/events/{eid}/scan", response_class=HTMLResponse)
     def event_scanner(request: Request, eid: int, db: Session = Depends(get_db)):
         """The camera, inside the app.
@@ -1156,7 +1176,7 @@ def register(app, deps):
         keeps the camera open and the count on screen, which is what you want
         with a queue in front of you.
         """
-        staff, redir = guard(request, db)
+        staff, redir = door_guard(request, db)
         if redir:
             return redir
         ev = db.get(Event, eid)
@@ -1175,7 +1195,7 @@ def register(app, deps):
         is the last path segment — and is deliberately forgiving about it, on
         the grounds that a door is a bad place to debug a string.
         """
-        staff, redir = guard(request, db)
+        staff, redir = door_guard(request, db)
         if redir:
             return JSONResponse({"ok": False, "why": "signed out"},
                                 status_code=401)
