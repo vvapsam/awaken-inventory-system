@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block body %}
+{#
+  One person's race, station by station.
+
+  This is the hinge: staff reach it from the participant row, and everything
+  that happens after somebody finishes is reached from here. Nothing on this
+  page writes anything, so a mis-tap costs a back button.
+
+  The splits and the finish time are shown as two different numbers on purpose.
+  They do not add up, and that is the useful part — the difference is the walk
+  between stations, which belongs to nobody's split and is where a surprising
+  amount of a slow race actually goes.
+#}
+<div class="row-between">
+  <div><h1 style="margin:0">{{ who.full_name }}</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      {{ ev.name }}
+      {%- if who.heat_time %} &middot; {{ h12(who.heat_time) }} heat{% endif %}
+      {%- if who.age %} &middot; age {{ who.age }}{% endif %}
+      &middot; <span class="statuspill s-{{ status }}">{{
+        RACE_STATUS_LABELS[status] }}</span></p></div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}">&larr; Back to the list</a>
+  </div>
+</div>
+
+<div class="timehead">
+  <div class="big">
+    <div class="lbl">{{ 'Finish time' if who.finished_at else 'On the clock' }}</div>
+    <div class="v">{{ mmss(who.race_seconds if who.finished_at else running) }}</div>
+    <div class="s">
+      {%- if start %}gun at {{ h12(who.heat_time) }}
+      {%- else %}no heat time set, so there is no clock{% endif %}</div>
+  </div>
+  <div class="side">
+    <div><span class="k">On the stations</span>
+      <span class="n">{{ mmss(raced) }}</span></div>
+    <div><span class="k">Between them</span>
+      <span class="n">{{ mmss(moving) }}</span></div>
+    <p class="muted small" style="margin:8px 0 0;line-height:1.45">
+      The walks are in the finish time and not in the splits. That is what the
+      two numbers are for.</p>
+  </div>
+</div>
+
+{% if rows %}
+<div class="tablewrap" style="margin-top:16px">
+<table id="splits">
+  <thead><tr>
+    <th style="width:34px">#</th>
+    <th>Station</th>
+    <th style="width:130px">Done</th>
+    <th style="width:110px">Split</th>
+    <th style="width:120px">Walk after</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="{{ '' if r.done else ('now' if r.started else 'notyet') }}">
+      <td class="muted">{{ loop.index }}</td>
+      <td><b>{{ r.name }}</b></td>
+      <td>
+        {%- if r.count is not none %}{{ r.count }} / {{ r.target }}
+          <span class="muted small">{{ r.unit }}</span>
+        {%- else %}<span class="muted">&mdash;</span>{% endif %}</td>
+      <td>
+        {%- if r.secs is not none %}<b>{{ mmss(r.secs) }}</b>
+        {%- elif r.open_secs is not none %}<span class="running">{{
+          mmss(r.open_secs) }}</span>
+        {%- else %}<span class="muted">&mdash;</span>{% endif %}</td>
+      <td>
+        {%- if r.gap is not none %}{{ mmss(r.gap) }}
+        {%- else %}<span class="muted">&mdash;</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="alert" style="margin-top:16px">This event has no stations set up,
+  so there is nothing to time. Stations are on the event page.</div>
+{% endif %}
+
+<div class="timeacts">
+  {% if who.finished_at %}
+    {# The patch first: it is the thing somebody at the table is queuing for.
+       The card is theirs to keep and can wait. #}
+    <a class="btn primary big" href="/patch/p/{{ who.id }}">&#127941;
+      Reward patch &rarr;</a>
+    <a class="btn big" href="/patch/p/{{ who.id }}/card">&#127942; Finisher card</a>
+    {% if who.patch_at %}
+      <span class="muted small">Patch handed over
+        {{ (who.patch_at|local).strftime('%d %b, %H:%M') }}.</span>
+    {% endif %}
+  {% else %}
+    <span class="muted small">The patch and the card open once the coach
+      submits their last station.</span>
+  {% endif %}
+</div>
+
+<p class="muted small" style="margin-top:14px">
+  <a href="{{ base }}/e/{{ who.token }}" target="_blank" rel="noopener">Open
+    their own page &rarr;</a>
+  &mdash; the invitation, confirmation and Reel link, as they see it.
+</p>
+{% endblock %}

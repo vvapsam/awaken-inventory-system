@@ -1125,3 +1125,61 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
 .statuspick.s-dq         {background-color:#fee2e2;color:#991b1b}
 .statuspick.s-cancelled  {background-color:#f5f5f4;color:#57534e}
 .statuspick.s-no_show    {background-color:#f5f5f4;color:#57534e}
+
+/* ---- a button that is deliberately not a button ---------------------------
+ * Rendered as a <span>, not a disabled <a>, because there is no such thing as
+ * a disabled link — a greyed anchor still navigates. */
+.btn.off{opacity:.42;cursor:not-allowed;background:var(--bg);color:var(--muted)}
+.btn.off:hover{border-color:var(--line)}
+
+/* ---- one person's race, station by station -------------------------------
+ * Reached from the View button on the participant row. Read-only. */
+.statuspill{
+  display:inline-block;font:600 11.5px/1 inherit;padding:4px 9px;
+  border-radius:999px;background:#f3f4f6;color:#4b5563;vertical-align:1px;
+}
+.statuspill.s-registered {background:#f3f4f6;color:#4b5563}
+.statuspill.s-checked_in {background:#e0f2fe;color:#075985}
+.statuspill.s-ready      {background:#ede9fe;color:#5b21b6}
+.statuspill.s-in_progress{background:#fef3c7;color:#92400e}
+.statuspill.s-finished   {background:#dcfce7;color:#166534}
+.statuspill.s-dnf        {background:#ffe4e6;color:#9f1239}
+.statuspill.s-dns        {background:#f5f5f4;color:#57534e}
+.statuspill.s-dq         {background:#fee2e2;color:#991b1b}
+.statuspill.s-cancelled  {background:#f5f5f4;color:#57534e}
+.statuspill.s-no_show    {background:#f5f5f4;color:#57534e}
+
+.timehead{
+  display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;margin-top:16px;
+}
+.timehead .big{
+  flex:1 1 320px;background:var(--card,#fff);border:1px solid var(--line);
+  border-radius:var(--radius,12px);padding:18px 20px;
+}
+.timehead .big .lbl{font-size:.72rem;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--muted);font-weight:700}
+.timehead .big .v{font-size:3.1rem;font-weight:800;line-height:1.05;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin-top:4px}
+.timehead .big .s{font-size:.8rem;color:var(--muted);margin-top:4px}
+.timehead .side{
+  flex:0 1 300px;background:var(--card,#fff);border:1px solid var(--line);
+  border-radius:var(--radius,12px);padding:16px 18px;
+}
+.timehead .side>div{display:flex;justify-content:space-between;
+  align-items:baseline;padding:5px 0}
+.timehead .side .k{font-size:.82rem;color:var(--muted)}
+.timehead .side .n{font-size:1.15rem;font-weight:700;
+  font-variant-numeric:tabular-nums}
+
+#splits td,#splits th{vertical-align:middle}
+#splits tr.notyet{opacity:.5}
+#splits tr.now{background:#fffbeb}
+#splits .running{font-weight:700;color:#92400e}
+
+.timeacts{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin-top:18px}
+/* .btn.big is full width up in the awarding-table section, where the buttons
+   are stacked one per row. Here they sit side by side, so take the width back
+   rather than change a rule three screens depend on. */
+.timeacts .btn.big{width:auto;margin-top:0}
+@media(max-width:640px){.timeacts .btn.big{width:100%}}

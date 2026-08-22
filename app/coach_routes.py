@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    can_coach, heat_open_mins,
+    can_coach, h12, heat_open_mins,
     EVENT_CLOSED, EVENT_DRAFT, Event, EventParticipant, EventStation,
     RSVP_NO, Staff, StationRun, to_local,
 )
@@ -53,25 +53,6 @@ from .models import (
 def hhmm_key(t: str) -> str:
     """'10:20' -> '1020'. Used in URLs so a heat is one clean path segment."""
     return (t or "").replace(":", "")
-
-
-def h12(t):
-    """A heat time the way it is said out loud: "14:25" -> "2:25 PM".
-
-    Heat times are stored as 24-hour strings because that is what sorts and
-    what the timetable builder writes. Nothing on a race floor is read that
-    way, though, and a coach glancing at a phone should not have to subtract
-    twelve.
-    """
-    if not t:
-        return ""
-    try:
-        h, m = int(str(t)[:2]), int(str(t)[3:5])
-    except (ValueError, IndexError):
-        return str(t)
-    ampm = "AM" if h < 12 else "PM"
-    h = h % 12 or 12
-    return "%d:%02d %s" % (h, m, ampm)
 
 
 def mmss(secs) -> str:

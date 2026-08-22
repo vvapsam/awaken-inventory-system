@@ -1839,6 +1839,76 @@ def heat_open_mins(event) -> int:
     return max(HEAT_OPEN_MIN, min(HEAT_OPEN_MAX, v))
 
 
+def h12(t):
+    """A heat time the way it is said out loud: "14:25" -> "2:25 PM".
+
+    Heat times are stored as 24-hour strings because that is what sorts and
+    what the timetable builder writes. Nothing on a race floor is read that
+    way, though, and a coach glancing at a phone should not have to subtract
+    twelve.
+    """
+    if not t:
+        return ""
+    try:
+        h, m = int(str(t)[:2]), int(str(t)[3:5])
+    except (ValueError, IndexError):
+        return str(t)
+    ampm = "AM" if h < 12 else "PM"
+    h = h % 12 or 12
+    return "%d:%02d %s" % (h, m, ampm)
+
+
+def station_splits(p, now=None):
+    """One person's race, station by station, as the sheet reads it.
+
+    Returns a row per station in race order — even the ones not reached, so
+    the shape of the page does not change as somebody works through it.
+
+    ``gap`` is the walk to the next lane: the stretch between one station
+    closing and the next opening. It is its own number rather than folded into
+    a split because it belongs to nobody's station, and hiding it inside one
+    would quietly make that station look slower than it was raced.
+    """
+    stations = sorted(p.event.stations, key=lambda s: (s.position, s.id)) \
+        if p.event else []
+    runs = {r.station_id: r for r in (p.runs or [])}
+    now = now or datetime.now(timezone.utc)
+    out = []
+    for i, st in enumerate(stations):
+        r = runs.get(st.id)
+        nxt = runs.get(stations[i + 1].id) if i + 1 < len(stations) else None
+        gap = None
+        if r and r.ended_at and nxt and nxt.started_at:
+            gap = max(0, int((nxt.started_at - r.ended_at).total_seconds()))
+        live = None
+        if r and r.started_at and not r.ended_at:
+            live = max(0, int((now - r.started_at).total_seconds()))
+        out.append({
+            "station": st, "name": st.name, "unit": st.unit,
+            "target": st.target,
+            "count": r.count if r else None,
+            "secs": r.seconds if r else None,
+            # A station still counting has no split yet, but it has a clock.
+            "open_secs": live,
+            "started": bool(r and r.started_at),
+            "done": bool(r and r.ended_at),
+            "gap": gap,
+        })
+    return out
+
+
+def has_race(p) -> bool:
+    """Is there anything to summarise for this person?
+
+    Somebody standing at a trestle table wants to know whether pressing the
+    button will show them a race or an empty page. Stations existing is not
+    enough — a class where nobody has started yet has nothing to say.
+    """
+    if not p.event or not p.event.stations:
+        return False
+    return bool(p.finished_at or (p.runs or []))
+
+
 RACE_STATUSES = [
     ("registered",  "Registered"),
     ("checked_in",  "Checked in"),

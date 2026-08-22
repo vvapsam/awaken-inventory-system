@@ -591,7 +591,18 @@
     <td style="white-space:nowrap">
       <button type="button" class="btn" style="padding:5px 9px" data-edit="{{ p.id }}"
               title="Edit their details">✎</button>
-      <a class="btn" style="padding:5px 10px" href="/e/{{ p.token }}" target="_blank">View</a>
+      {# View goes to their race, not to their public page - that is what the
+         table is actually for once the morning has started. Greyed when there
+         is nothing to show: an empty summary is worse than a button that says
+         it has nothing. Their own page is linked from the summary. #}
+      {% if has_race(p) %}
+      <a class="btn" style="padding:5px 10px"
+         href="/events/{{ ev.id }}/p/{{ p.id }}/times"
+         title="Their time, station by station">View</a>
+      {% else %}
+      <span class="btn off" style="padding:5px 10px"
+            title="No race yet - nothing to summarise">View</span>
+      {% endif %}
     </td>
   </tr>
   {# The edit row. Its own <tr> rather than a popover, so the fields get the

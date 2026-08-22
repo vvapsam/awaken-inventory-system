@@ -23,7 +23,7 @@ from .db import Base, engine, get_db
 from .models import (
     CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
     MODULES, ACTIONS, ACCESS_DEFS, ADMIN_AREA_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
-    RACE_STATUS_LABELS, RACE_STATUS_MANUAL, race_status,
+    RACE_STATUS_LABELS, RACE_STATUS_MANUAL, race_status, h12, has_race,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Product, Staff,
     PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
@@ -107,6 +107,10 @@ templates.env.globals["can_any"] = can_any
 templates.env.globals["race_status"] = race_status
 templates.env.globals["RACE_STATUS_LABELS"] = RACE_STATUS_LABELS
 templates.env.globals["RACE_STATUS_MANUAL"] = RACE_STATUS_MANUAL
+# Heat times are stored 24-hour because that is what sorts. Nothing on a
+# race floor is read that way, and the admin now shows them too.
+templates.env.globals["h12"] = h12
+templates.env.globals["has_race"] = has_race
 
 # Mobile PWA (additive: new routes only, existing desktop pages untouched)
 from .mobile import router as mobile_router  # noqa: E402

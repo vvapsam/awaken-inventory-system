@@ -36,7 +36,7 @@
       {% for who in people %}
         <tr data-name="{{ who.full_name|lower }}" {% if who.patch_at %}class="low"{% endif %}>
           <td><b>{{ who.full_name }}</b></td>
-          <td class="muted">{{ who.heat_time or '—' }}</td>
+          <td class="muted">{{ h12(who.heat_time) or '—' }}</td>
           <td>
             {%- if who.patch_at %}<span class="chip">Collected{% if who.patch %} ·
               {{ emoji[who.patch] }} {{ labels[who.patch] }}{% endif %}</span>

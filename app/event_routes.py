@@ -65,8 +65,11 @@ from .models import (
     can_door,
     RACE_STATUSES, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
-    race_status,
+    station_splits, has_race, race_status,
 )
+# One definition of a clock, borrowed rather than copied. patch_routes owns it
+# because that is where a time is first read out loud to somebody.
+from .patch_routes import mmss
 
 #: AWAKEN's palette, and nothing else. Emails are the one place a third
 #: party's brand tends to creep in — a sponsor's red here, a warning amber
@@ -1438,6 +1441,38 @@ def register(app, deps):
         if n:
             db.commit()
         return n
+
+    @app.get("/events/{eid}/p/{pid}/times", response_class=HTMLResponse)
+    def event_times(request: Request, eid: int, pid: int,
+                    db: Session = Depends(get_db)):
+        """One person's race, station by station.
+
+        The hinge between the participant list and everything that happens
+        after somebody finishes: this is where staff land from the row, and
+        where the patch and the finisher card are reached from. Read-only —
+        nothing here writes, so a mis-tap at a trestle table costs a back
+        button and nothing else.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse("/events/%d" % eid, status_code=303)
+        now = datetime.now(timezone.utc)
+        rows = station_splits(p, now)
+        # The sum of the splits, which is not the finish time — the walks
+        # between stations are in the finish and not in here. Showing both is
+        # the point: the difference is the transition time, and an athlete
+        # asking "where did my time go" is usually asking about that.
+        raced = sum(r["secs"] for r in rows if r["secs"] is not None)
+        moving = sum(r["gap"] for r in rows if r["gap"] is not None)
+        return render(request, "event_times.html", db, staff, active="events",
+                      ev=p.event, who=p, rows=rows, mmss=mmss,
+                      raced=raced or None, moving=moving or None,
+                      status=race_status(p, now),
+                      running=p.running_seconds(now),
+                      start=p.heat_start(), base=base_url(request))
 
     @app.get("/events/{eid}/settings", response_class=HTMLResponse)
     def event_settings(request: Request, eid: int, db: Session = Depends(get_db)):

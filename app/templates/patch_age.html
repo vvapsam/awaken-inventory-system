@@ -3,7 +3,7 @@
 <div class="row-between">
   <div><h1 style="margin:0">{{ who.full_name }}</h1>
     <p class="muted small" style="margin:2px 0 0">{{ ev.name }}{%
-      if who.heat_time %} · {{ who.heat_time }} heat{% endif %}</p></div>
+      if who.heat_time %} · {{ h12(who.heat_time) }} heat{% endif %}</p></div>
   <div class="hdact"><a class="btn" href="/patch/e/{{ ev.id }}">← Search</a></div>
 </div>
 
