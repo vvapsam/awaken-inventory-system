@@ -1680,6 +1680,84 @@ class EventOrganiserLink(Base):
         return not self.revoked_at and not self.is_expired
 
 
+class HeatPlan(Base):
+    """One version of the timetable: the shape of the day, and who is in it.
+
+    A day of heats is rarely right first time. You lay one out, then wonder
+    whether starting at nine and running every eight minutes would finish
+    earlier, or whether the two Urbinos should be split across heats. Doing
+    that by editing the live timetable means the version you are experimenting
+    with is the version thirty-eight people can already see — so instead each
+    attempt is its own plan, and exactly one of them is live.
+
+    The day shape lives here rather than only on the event because a version
+    that could not change the interval would not be much of a version. The
+    event's own ``heat_*`` columns and every participant's ``heat_time`` are
+    kept as a copy of whichever plan is active: everything downstream — the
+    emails, the public link, the door, the coach app — reads those and knows
+    nothing about plans at all. Activating a plan is what writes the copy.
+    """
+
+    __tablename__ = "heat_plans"
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"),
+                      nullable=False)
+    #: "Version 1", or whatever it gets renamed to. Shown on the tab.
+    name = Column(String, nullable=False, default="Version 1")
+    #: Order in the strip. Gaps are fine — the list is always read sorted.
+    position = Column(Integer, nullable=False, default=0)
+
+    heat_first = Column(String)
+    heat_last = Column(String)
+    heat_every = Column(Integer, nullable=False, default=10)
+    heat_cap = Column(Integer, nullable=False, default=3)
+    heat_arrive = Column(Integer, nullable=False, default=30)
+
+    #: Exactly one per event. Enforced in code and by a partial unique index,
+    #: because two live timetables is the one state with no honest answer to
+    #: "what time am I racing".
+    is_active = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+
+    event = relationship("Event", backref=backref(
+        "heat_plans", cascade="all, delete-orphan",
+        order_by="HeatPlan.position"))
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+
+    @property
+    def assigned(self) -> int:
+        return sum(1 for s in self.slots if s.heat_time)
+
+
+class HeatSlot(Base):
+    """One person's place in one version of the timetable.
+
+    Only people who have been put somewhere get a row: an unassigned person is
+    the absence of a slot, not a slot with an empty time. That way the tray of
+    people still to place is the same question on every version — who has no
+    row here — rather than two different kinds of nothing.
+    """
+
+    __tablename__ = "heat_slots"
+    __table_args__ = (UniqueConstraint("plan_id", "participant_id",
+                                       name="uq_slot_plan_person"),)
+
+    id = Column(Integer, primary_key=True)
+    plan_id = Column(Integer, ForeignKey("heat_plans.id", ondelete="CASCADE"),
+                     nullable=False)
+    participant_id = Column(Integer,
+                            ForeignKey("event_participants.id",
+                                       ondelete="CASCADE"), nullable=False)
+    heat_time = Column(String, nullable=False)
+
+    plan = relationship("HeatPlan", backref=backref(
+        "slots", cascade="all, delete-orphan"))
+    participant = relationship("EventParticipant")
+
+
 class EventStation(Base):
     """One workout station on an event, in the order it is raced.
 

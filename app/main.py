@@ -751,6 +751,15 @@ def startup():
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_events_heat_token "
                 "  ON events (heat_token) WHERE heat_token IS NOT NULL; "
                 "END IF; END $$;"))
+            # One live timetable per event. A partial index rather than a plain
+            # unique: every event has many inactive plans and only ever one
+            # active, and two live timetables is the one state with no honest
+            # answer to "what time am I racing".
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.heat_plans') IS NOT NULL THEN "
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_heat_plan_active "
+                "  ON heat_plans (event_id) WHERE is_active; "
+                "END IF; END $$;"))
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.event_participants') "
                 "IS NOT NULL THEN "
