@@ -1477,7 +1477,46 @@ def register(app, deps):
                       status=race_status(p, now),
                       running=p.running_seconds(now) or 0,
                       started=has_race(p), test=is_test_athlete(p),
+                      is_admin=(staff.role == "admin"),
+                      just_reset=bool(request.query_params.get("reset")),
                       start=p.heat_start(), base=base_url(request))
+
+    @app.post("/events/{eid}/p/{pid}/reset")
+    def event_times_reset(request: Request, eid: int, pid: int,
+                          db: Session = Depends(get_db)):
+        """Put somebody back to the moment before a coach grabbed them.
+
+        Admins only, and there is no undo. It clears the splits, the finish
+        time, the coach and the grab, which is what makes a test re-runnable:
+        they drop back into the heat as free, a coach grabs them again, and the
+        clock starts from zero.
+
+        What it deliberately leaves alone is everything that is not the race.
+        Their check-in stands, because they are still in the building. Their
+        age stands, because it did not change. The patch stands, because if one
+        has been handed over then it is in somebody's hand and deleting the
+        record does not get it back -- the awarding screen will simply ask
+        again and say it was already collected, which is the true state of
+        things.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse("/events/%d" % eid, status_code=303)
+        for r in list(p.runs or []):
+            db.delete(r)
+        p.finished_at = None
+        p.coach_id = None
+        p.grabbed_at = None
+        # A pinned DNF or DQ was a judgement about a race that no longer
+        # exists. Leaving it would show "DNF" against somebody standing on the
+        # line waiting to start.
+        p.race_status_set = None
+        db.commit()
+        return RedirectResponse("/events/%d/p/%d/times?reset=1" % (eid, pid),
+                                status_code=303)
 
     @app.get("/events/{eid}/settings", response_class=HTMLResponse)
     def event_settings(request: Request, eid: int, db: Session = Depends(get_db)):

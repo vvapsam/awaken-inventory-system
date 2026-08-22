@@ -26,6 +26,12 @@
   </div>
 </div>
 
+{% if just_reset %}
+<div class="alert" style="margin-top:14px"><b>Race cleared.</b>
+  <span class="muted">{{ who.full_name.split(' ')[0] }} is back in the heat as
+  free &mdash; a coach can grab them again and the clock starts from zero.</span></div>
+{% endif %}
+
 <div class="timehead">
   <div class="big">
     <div class="lbl">{{ 'Finish time' if who.finished_at else 'On the clock' }}</div>
@@ -109,6 +115,20 @@
       submits their last station.</span>
   {% endif %}
 </div>
+
+{% if is_admin and (started or who.coach_id or who.grabbed_at) %}
+{# Admins only, and it cannot be undone - so it sits below the things somebody
+   actually came here to press, in plain clothes rather than as a red button
+   inviting a thumb. #}
+<form method="post" action="/events/{{ ev.id }}/p/{{ who.id }}/reset"
+      class="resetrow"
+      onsubmit="return confirm('Clear {{ who.full_name }}\'s race?\n\nThe splits, the finish time and the coach all go, and they drop back into the heat as free. This cannot be undone.');">
+  <button class="btn" type="submit">Reset the time</button>
+  <span class="muted small">Clears the splits, the finish time and the coach,
+    so they can be grabbed again and timed from zero. Their check-in, age and
+    patch are left alone. There is no undo.</span>
+</form>
+{% endif %}
 
 <p class="muted small" style="margin-top:14px">
   <a href="{{ base }}/e/{{ who.token }}" target="_blank" rel="noopener">Open

@@ -1184,6 +1184,11 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
 
 .timeacts{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   margin-top:18px}
+/* Below the fold of what somebody came here to do, and quiet: it cannot be
+ * undone, so it should not look like the next step. */
+.resetrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+.resetrow .muted{max-width:56ch;line-height:1.5}
 /* .btn.big is full width up in the awarding-table section, where the buttons
    are stacked one per row. Here they sit side by side, so take the width back
    rather than change a rule three screens depend on. */
