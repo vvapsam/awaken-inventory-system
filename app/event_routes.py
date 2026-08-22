@@ -2694,7 +2694,7 @@ def register(app, deps):
             # has changed", because to them it is not news, it is a
             # correction — and an email that reads like the first one is an
             # email they skim and ignore.
-            if kind == "heat" and p.heat_told_before:
+            if kind == "heat" and heat_kind(ev, p) == "heatnew":
                 build = _heat_new_mail
             if kind == "payby":
                 # Set here rather than after a successful send, because the
@@ -2724,9 +2724,12 @@ def register(app, deps):
                     pass
                 elif kind == "heat":
                     p.heat_email_at = now
-                    # Never unset. It is what makes the *next* one read as a
-                    # change rather than a repeat.
+                    # Neither of these is ever unset. They are what make the
+                    # *next* one read as a change rather than a repeat — the
+                    # person's own flag, and the event's, which survives
+                    # everybody on it being moved.
                     p.heat_told_before = True
+                    ev.heat_sent_at = ev.heat_sent_at or now
                 elif kind == "lastcall":
                     # Not invited_at: that is "when we first asked", and the
                     # per-person confirm clock is counted from it. Restarting
@@ -3010,6 +3013,11 @@ def register(app, deps):
                  "lastcall": _lastcall_mail, "payby": _payby_mail,
                  "cancelled": _cancelled_mail, "heatnew": _heat_new_mail,
                  "heat": _heat_mail}.get(kind, _invite_mail)
+        # A preview that shows a different email from the one that would
+        # actually go out is worse than no preview: it is the page you check
+        # *before* sending to thirty-eight people.
+        if kind == "heat" and heat_kind(ev, who) == "heatnew":
+            build = _heat_new_mail
         subject, _text, html = build(db, ev, who, url)
         # The inline marks are Content-IDs in a real message; a browser needs
         # the routes instead, so the preview swaps them.
@@ -3661,6 +3669,21 @@ def _reel_mail(db, ev, p, url):
 
 def _payby_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "payby")
+
+
+def heat_kind(ev, p) -> str:
+    """Which of the two heat emails this person should get.
+
+    "heatnew" if we have told them before, or if this event has told anybody
+    before. The second half is what covers an event whose people have all been
+    moved since — moving wipes the per-person stamp, so on its own that flag
+    would quietly claim thirty-seven people had never heard from us.
+
+    Biased towards "changed" on purpose. A new person told their time "has
+    changed" is mildly odd and still gets the right time; somebody who was
+    moved and told "Your heat time" decides it is the mail they already read.
+    """
+    return "heatnew" if (p.heat_told_before or ev.heat_sent_at) else "heat"
 
 
 def _heat_mail(db, ev, p, url):
