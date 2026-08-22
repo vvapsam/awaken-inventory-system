@@ -29,14 +29,48 @@
   <span class="muted">Somebody is already racing these stations.</span></div>
 {% endif %}
 
+{% if request.query_params.get('reset') is not none %}
+{% set rn = request.query_params.get('reset')|int %}
+<div class="notice"><b>Race cleared.</b> {{ rn }}
+  {{ 'station count' if rn == 1 else 'station counts' }} thrown away.
+  <span class="muted">The stations themselves are untouched, and the timetable
+    can be switched again.</span></div>
+{% endif %}
+
 {% if locked %}
 {# Changing a target under somebody mid-race would make their count mean
    something else, and afterwards there is no way to tell which taps were
    against which target. #}
 <div class="alert warn"><b>Locked — a race has started.</b>
   <span class="muted">Someone is already being counted against these stations,
-    so they can't change now. They're editable again once the event is
-    over.</span></div>
+    so they can't change now. This also holds the timetable shut: every race
+    clock is measured from a heat time, so a version can't go live while
+    somebody is running against one.</span></div>
+{% endif %}
+
+{# Clearing the race is what you want after a rehearsal, and it is the only
+   way back from a test run that has locked the event. Kept away from the
+   table and behind a confirm that names what goes, because on the day it
+   would be the worst button on the site to press by accident. #}
+{% if racing or finished %}
+<div class="resetbox">
+  <div>
+    <b>Start the day again?</b>
+    <div class="muted small">{{ racing }}
+      {{ 'station has' if racing == 1 else 'stations have' }} been counted{%
+      if finished %}, {{ finished }}
+      {{ 'person has' if finished == 1 else 'people have' }} finished{% endif %}.
+      Clearing throws all of it away — counts, splits, finish times, and who is
+      on whose phone. The stations stay exactly as they are.</div>
+  </div>
+  <form method="post" action="/events/{{ ev.id }}/stations/reset" style="margin:0"
+        onsubmit="return confirm({{ ('Clear every race on this event?\n\n'
+          ~ racing ~ (' station count' if racing == 1 else ' station counts')
+          ~ (', ' ~ finished ~ (' finish time' if finished == 1 else ' finish times')
+             if finished else '')
+          ~ ' will be deleted. This cannot be undone.') | tojson }})">
+    <button class="btn danger">Clear the race</button></form>
+</div>
 {% endif %}
 
 <form method="post" action="/events/{{ ev.id }}/stations">
