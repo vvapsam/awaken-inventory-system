@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block body %}
+{#
+  The awarding table. Search a finisher, confirm their age, and the standard
+  decides the patch — so nobody is holding a table of times in their head at
+  the end of a long morning.
+#}
+<div class="row-between">
+  <div><h1 style="margin:0">Patches</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }} —
+      {{ people|length }} finished{% if people %},
+      {{ people|selectattr('patch_at')|list|length }} collected{% endif %}.</p></div>
+  <div class="hdact"><a class="btn" href="/events/{{ ev.id }}">← The event</a></div>
+</div>
+
+{% if request.query_params.get('done') %}
+<div class="notice">Handed over. Search the next one.</div>
+{% endif %}
+
+{% if people %}
+<div class="card patchfind">
+  <input type="search" id="q" placeholder="Search a participant name…"
+         autocomplete="off" spellcheck="false" autofocus
+         aria-label="Search a participant name">
+  <div class="muted small" style="margin-top:8px">Only people who have
+    finished appear here.</div>
+</div>
+
+<div class="card" style="margin-top:12px;padding:0;overflow:auto">
+  <table class="pfind">
+    <thead><tr><th>Participant</th><th>Heat</th><th>Status</th><th></th></tr></thead>
+    <tbody id="list">
+      {# Somebody who already has theirs stays on the list — a patch gets
+         dropped in a car park often enough — but says so, because the queue is
+         where a second one reaches somebody who already has one. #}
+      {% for who in people %}
+        <tr data-name="{{ who.full_name|lower }}" {% if who.patch_at %}class="low"{% endif %}>
+          <td><b>{{ who.full_name }}</b></td>
+          <td class="muted">{{ who.heat_time or '—' }}</td>
+          <td>
+            {%- if who.patch_at %}<span class="chip">Collected{% if who.patch %} ·
+              {{ emoji[who.patch] }} {{ labels[who.patch] }}{% endif %}</span>
+            {%- else %}<span class="muted">Not yet</span>{% endif -%}
+          </td>
+          <td style="text-align:right">
+            <a class="btn primary small" href="/patch/p/{{ who.id }}">Award →</a></td>
+        </tr>
+      {% endfor %}
+      <tr id="nohits" hidden><td colspan="4" class="muted"
+        style="text-align:center;padding:22px">Nobody by that name has finished.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+(function(){
+  var q = document.getElementById('q'),
+      rows = [].slice.call(document.querySelectorAll('[data-name]')),
+      none = document.getElementById('nohits');
+  q.addEventListener('input', function(){
+    var v = q.value.trim().toLowerCase(), hits = 0;
+    rows.forEach(function(r){
+      var on = !v || r.getAttribute('data-name').indexOf(v) !== -1;
+      r.hidden = !on;
+      if (on) hits++;
+    });
+    none.hidden = !!hits;
+  });
+})();
+</script>
+{% else %}
+<div class="card" style="margin-top:14px"><p class="muted" style="margin:0">
+  Nobody has finished yet.</p></div>
+{% endif %}
+{% endblock %}

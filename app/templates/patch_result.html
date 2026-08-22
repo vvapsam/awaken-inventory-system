@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block body %}
+{#
+  The patch first and the time second, on purpose. The job at this table is
+  handing over the right thing; the time is the athlete's news, not something
+  staff need in order to do it — and revealing it second stops the eye doing
+  the arithmetic itself and second-guessing the answer.
+#}
+<div class="row-between">
+  <div><h1 style="margin:0">{{ who.full_name }}</h1>
+    <p class="muted small" style="margin:2px 0 0">Age {{ who.age }}{%
+      if who.heat_time %} · {{ who.heat_time }} heat{% endif %} · {{ ev.name }}</p></div>
+  <div class="hdact">
+    <a class="btn" href="/patch/p/{{ who.id }}">← Change age</a>
+    <a class="btn" href="/patch/e/{{ ev.id }}">Search</a>
+  </div>
+</div>
+
+{% if who.patch_at %}
+<div class="alert warn"><b>Already collected.</b>
+  <span class="muted">Only hand over another if theirs is lost.</span></div>
+{% endif %}
+
+<div class="awardgrid">
+  <div>
+    <div class="lbl">Patch to give</div>
+    <div class="patch {{ patch }}">
+      <div class="e">{{ emoji[patch] }}</div>
+      <div class="n">{{ labels[patch]|upper }}</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="lbl">Finish time</div>
+    <div class="timebox" id="timewrap" hidden>
+      <div class="v">{{ mmss(secs) }}</div>
+      <div class="s">{{ labels[patch] }} patch ·
+        {{ '45 and over' if who.age >= 45 else 'under 45' }}</div>
+    </div>
+    <button class="btn big" id="showtime" type="button">Show time →</button>
+  </div>
+</div>
+
+<div class="awardacts">
+  <form method="post" action="/patch/p/{{ who.id }}/given" style="margin:0">
+    <button class="btn primary big" type="submit">Handed over — next →</button>
+  </form>
+  <a class="muted small" href="/patch/e/{{ ev.id }}">Back without handing it over</a>
+</div>
+
+<script>
+(function(){
+  var btn = document.getElementById('showtime'),
+      box = document.getElementById('timewrap');
+  btn.addEventListener('click', function(){ box.hidden = false; btn.hidden = true; });
+})();
+</script>
+{% endblock %}

@@ -573,6 +573,8 @@ def counts(event: Event) -> dict:
         # This is the list you work from, so it is the one the tab counts.
         "inplay": len([p for p in live if not p.declined]),
         "gone": len([p for p in ps if p.declined or p.released_at]),
+        # Raced and done, which is what the awarding table works from.
+        "finished": len([p for p in ps if p.finished_at]),
         "confirmed": len(confirmed),
         "declined": len([p for p in ps if p.declined]),
         "waiting": len([p for p in live if p.rsvp == RSVP_NONE]),

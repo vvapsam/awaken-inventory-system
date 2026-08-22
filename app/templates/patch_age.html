@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div><h1 style="margin:0">{{ who.full_name }}</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }}{%
+      if who.heat_time %} · {{ who.heat_time }} heat{% endif %}</p></div>
+  <div class="hdact"><a class="btn" href="/patch/e/{{ ev.id }}">← Search</a></div>
+</div>
+
+{% if who.patch_at %}
+<div class="alert warn"><b>Already collected{% if who.patch %} —
+  {{ emoji[who.patch] }} {{ labels[who.patch] }}{% endif %}.</b>
+  <span class="muted">Carry on only if they need it again.</span></div>
+{% endif %}
+{% if bad %}
+<div class="alert bad"><b>That doesn't look like an age.</b>
+  <span class="muted">Anything from 5 to 110.</span></div>
+{% endif %}
+
+<div class="card agecard">
+  <form method="post" action="/patch/p/{{ who.id }}">
+    <label for="age">How old are they?</label>
+    {# Big because it is typed across a table while somebody waits, and because
+       it is the one number that decides the answer. #}
+    <input class="agebox" id="age" name="age" type="number" inputmode="numeric"
+           min="5" max="110" value="{{ who.age if who.age is not none }}"
+           placeholder="—" autofocus>
+    <div class="muted small">It decides the bracket — under 45 runs against a
+      faster standard than 45 and over.</div>
+    <button class="btn primary big" type="submit">Next →</button>
+  </form>
+</div>
+{% endblock %}

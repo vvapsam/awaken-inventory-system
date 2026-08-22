@@ -122,6 +122,11 @@
     {# Only once there is a race to count. A link to an empty coach app on an
        event with no stations is a link that teaches people it's broken. #}
     {% if ev.stations %}<a class="btn" href="/race/e/{{ ev.id }}">📱 Coach app</a>{% endif %}
+    {# Only once somebody has actually finished — before that there is nothing
+       to award, and a button that opens an empty queue teaches people it is
+       broken. #}
+    {% if c.finished %}<a class="btn" href="/patch/e/{{ ev.id }}">🥇 Patches{%
+      if c.finished %} · {{ c.finished }}{% endif %}</a>{% endif %}
     <a class="btn" href="/events/{{ ev.id }}/report.csv">⤓ Sponsor report</a>
     <a class="btn" href="/events/{{ ev.id }}/settings">⚙ Settings</a>
     <a class="btn" href="/events">← All events</a>

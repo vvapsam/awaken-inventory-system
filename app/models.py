@@ -1920,6 +1920,16 @@ class EventParticipant(Base):
     #: start, which is one subtraction between two fixed points and survives a
     #: coach being late to press anything.
     finished_at = Column(DateTime(timezone=True))
+    #: Their age, as given at the awarding table. Kept rather than asked twice:
+    #: it decides which patch bracket they fall in, and somebody coming back to
+    #: the desk should not be asked their age again in front of a queue.
+    #: Not a date of birth — nobody at a trestle table is doing that sum.
+    age = Column(Integer)
+    #: Which patch they earned, worked out from age and finish time, and when
+    #: it was handed over. The stamp is what stops a second member of staff
+    #: handing a second patch to somebody who already has theirs.
+    patch = Column(String)
+    patch_at = Column(DateTime(timezone=True))
     #: When they were last told it. Cleared whenever they are moved, because a
     #: time somebody was told is only true until you move them — see
     #: EventParticipant.heat_told.

@@ -775,6 +775,12 @@ def startup():
                 # time.
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  heat_told_before BOOLEAN NOT NULL DEFAULT FALSE; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  age INTEGER; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  patch VARCHAR; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  patch_at TIMESTAMPTZ; "
                 "UPDATE event_participants SET heat_told_before = TRUE "
                 "  WHERE heat_email_at IS NOT NULL AND NOT heat_told_before; "
                 "END IF; END $$;"))
@@ -3672,6 +3678,12 @@ event_routes.register(app, {
 from . import coach_routes  # noqa: E402
 
 coach_routes.register(app, {"templates": templates})
+
+# The awarding table: which patch this finisher earned, from their age and
+# their time. Same phone shell, different job and different queue.
+from . import patch_routes  # noqa: E402
+
+patch_routes.register(app, {"render": render})
 
 
 # The words those emails are made of, editable under the gear rather than in a

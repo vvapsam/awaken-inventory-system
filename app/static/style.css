@@ -422,6 +422,12 @@ tr.struck td .sub{text-decoration:none}
 .alert.warn{background:var(--low);border-color:var(--low-line);color:#4a3a12}
 /* display:flex above outranks the hidden attribute, so a JS-toggled alert
    shows as an empty coloured bar until something is put in it. */
+/* The hidden attribute must win, full stop. Any rule that sets display —
+   .btn is inline-flex, .alert is flex — silently outranks it, and the result
+   is an element the JS believes it has hidden sitting there in plain sight.
+   That has now cost three separate bugs (.scanbox, .alert, the patch reveal),
+   so it is settled here once for everything. */
+[hidden]{display:none !important}
 .alert[hidden]{display:none}
 .alert.bad{background:#fdecea;border-color:#e6a49b;color:#9c2c1e;display:block}
 .alert a{margin-left:auto}
@@ -865,6 +871,51 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 /* Times run down the page because that is the order the day happens in. A
    grid of cards makes you hunt for 11:20, and the block of empty morning at
    the bottom is the thing you most need to see at a glance. */
+/* ---- the awarding table ---- */
+.patchfind input[type=search]{width:100%;padding:11px 13px;font-size:1rem;
+  font-family:inherit;border:1px solid var(--line);border-radius:9px}
+table.pfind td,table.pfind th{padding:10px 14px}
+table.pfind tr[hidden]{display:none}
+.btn.small{padding:5px 11px;font-size:.8rem}
+
+.agecard{max-width:420px;margin-top:14px}
+.agecard label{display:block;font-size:1.02rem;font-weight:650;margin:0 0 10px}
+/* Big because it is typed across a table while somebody waits, and because it
+   is the one number that decides the answer. */
+.agebox{width:100%;font-size:3rem;font-weight:800;text-align:center;
+  padding:12px 10px;border:1px solid var(--line);border-radius:12px;
+  font-family:inherit;-moz-appearance:textfield}
+.agebox::-webkit-outer-spin-button,.agebox::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0}
+.btn.big{width:100%;justify-content:center;padding:15px 0;font-size:1.05rem;
+  margin-top:14px}
+
+.awardgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:16px}
+@media(max-width:760px){.awardgrid{grid-template-columns:1fr}}
+.awardgrid .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--muted);font-weight:700;margin-bottom:8px}
+
+/* Readable at arm's length, across a trestle table. */
+.patch{border-radius:14px;padding:30px 18px;text-align:center;
+  border:1px solid var(--line);background:var(--bg)}
+.patch .e{font-size:3.6rem;line-height:1}
+.patch .n{font-size:2.1rem;font-weight:800;letter-spacing:.04em;margin-top:6px}
+.patch.gold{background:#fdf6e0;border-color:#e2c979}
+.patch.gold .n{color:#8a6a14}
+.patch.silver{background:#f2f4f6;border-color:#c9d0d8}
+.patch.silver .n{color:#5a646f}
+.patch.bronze{background:#fbeee4;border-color:#dcb08a}
+.patch.bronze .n{color:#8a5522}
+
+.timebox{background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;padding:26px 18px;text-align:center}
+.timebox .v{font-size:3.4rem;font-weight:800;letter-spacing:-.03em;
+  line-height:1.05;font-variant-numeric:tabular-nums}
+.timebox .s{font-size:.82rem;color:var(--muted);margin-top:5px}
+
+.awardacts{display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+  max-width:420px;margin-top:18px}
+
 /* Clearing the race. Deliberately not near the stations table and the only
    red button on the page — after a rehearsal it is exactly what you want, and
    on the day it is the worst thing to press by accident. */

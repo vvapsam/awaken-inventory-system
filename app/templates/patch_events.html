@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div><h1 style="margin:0">Patches</h1>
+    <p class="muted small" style="margin:2px 0 0">Pick the event you're awarding.</p></div>
+  <div class="hdact"><a class="btn" href="/events">← All events</a></div>
+</div>
+{% if events %}
+<div class="card" style="margin-top:14px;padding:0">
+  <table><tbody>
+    {% for e in events %}
+      <tr><td><a href="/patch/e/{{ e.id }}"><b>{{ e.name }}</b></a></td>
+        <td class="muted">{{ e.starts_at.strftime('%a %-d %b') if e.starts_at else '' }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+</div>
+{% else %}
+<div class="card" style="margin-top:14px"><p class="muted" style="margin:0">
+  Nobody has finished a race yet — there is nothing to award until somebody
+  does.</p></div>
+{% endif %}
+{% endblock %}
