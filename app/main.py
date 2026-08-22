@@ -23,6 +23,7 @@ from .db import Base, engine, get_db
 from .models import (
     CATEGORIES, MOVEMENT_TYPES, PAYMENT_METHODS, PERMISSION_KEYS,
     MODULES, ACTIONS, ACCESS_DEFS, ADMIN_AREA_DEFS, RECEIVE_TYPES, ADJUST_TYPES,
+    RACE_STATUS_LABELS, RACE_STATUS_MANUAL, race_status,
     DEFAULT_STAFF_PERMS, ROLES, UNITS, can, can_any, perm_set, module_for_type,
     Product, Staff,
     PricingGroup, PricingGroupItem, PRICING_KINDS, PERSON_TYPES,
@@ -101,6 +102,11 @@ templates.env.filters["trim0"] = _trim0
 templates.env.globals["ASSET_V"] = _asset_version()
 templates.env.globals["can"] = can
 templates.env.globals["can_any"] = can_any
+# The race status is derived, so every template that shows it must ask the one
+# function rather than each working it out again.
+templates.env.globals["race_status"] = race_status
+templates.env.globals["RACE_STATUS_LABELS"] = RACE_STATUS_LABELS
+templates.env.globals["RACE_STATUS_MANUAL"] = RACE_STATUS_MANUAL
 
 # Mobile PWA (additive: new routes only, existing desktop pages untouched)
 from .mobile import router as mobile_router  # noqa: E402
@@ -788,6 +794,8 @@ def startup():
                 "  patch VARCHAR; "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  patch_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  race_status_set VARCHAR; "
                 "UPDATE event_participants SET heat_told_before = TRUE "
                 "  WHERE heat_email_at IS NOT NULL AND NOT heat_told_before; "
                 "END IF; END $$;"))

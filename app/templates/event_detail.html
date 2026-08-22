@@ -418,6 +418,7 @@
     {% if 'payment' in cols %}<th>Payment</th>{% endif %}
     {% if 'slot' in cols %}<th style="width:110px">Slot</th>{% endif %}
     {% if 'heat' in cols %}<th style="width:118px">Heat</th>{% endif %}
+    {% if 'status' in cols %}<th style="width:140px">Status</th>{% endif %}
     {% if 'emails' in cols %}<th>Emails</th>{% endif %}
     {% if 'instagram' in cols %}<th>Instagram</th>{% endif %}
     {% if 'confirmed' in cols %}<th>Confirmed</th>{% endif %}
@@ -496,6 +497,31 @@
         title="{{ 'Told' if p.heat_email_at else 'Not told yet' }}">{{ p.heat_time }}</span>
         {% if not p.heat_email_at %}<div class="muted small" style="margin:0">not told</div>{% endif %}
       {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'status' in cols %}
+    {# Derived unless somebody has pinned it. The select only offers the
+       judgements - the rest arrive on their own, and a row pinned to
+       "Finished" that has not finished is a lie the timer can see through.
+
+       No form here on purpose. This table already sits inside the bulk-email
+       form, and a nested form is not nested at all: the browser binds the
+       select to the outer one, so submitting it posted to /send. It saves
+       over fetch instead, which also means the page does not reload out from
+       under somebody halfway down a list of forty. #}
+    {% set rs = race_status(p) %}
+    <td style="white-space:nowrap">
+      <select class="statuspick s-{{ rs }}" data-pid="{{ p.id }}"
+              data-auto="{{ RACE_STATUS_LABELS[rs] }}"
+              title="{{ 'Set by hand' if p.race_status_set else 'Worked out from what has happened' }}">
+        <option value=""{% if not p.race_status_set %} selected{% endif %}>{{
+          RACE_STATUS_LABELS[race_status(p, derived_only=True)]
+          }}{% if p.race_status_set %} (automatic){% endif %}</option>
+        {% for key in RACE_STATUS_MANUAL %}
+        <option value="{{ key }}"{% if p.race_status_set == key %} selected{% endif %}>{{
+          RACE_STATUS_LABELS[key] }}</option>
+        {% endfor %}
+      </select>
+    </td>
     {% endif %}
     {# Which of the two emails this person has had. Two ticks means they were
        asked to come and asked to post; one means the second is still owed. #}
@@ -1378,6 +1404,52 @@ document.addEventListener('click', function(e){
       c.classList.toggle('on', c === chip);
     });
     apply(chip.getAttribute('data-fx-val'));
+  });
+})();
+</script>
+
+<script>
+/* The race status column.
+ *
+ * Saves over fetch rather than by submitting a form: this table lives inside
+ * the bulk-email form, and a form nested in a form is not nested - the browser
+ * binds the control to the outer one. Submitting a status therefore posted to
+ * /send, which is a bad thing for a dropdown to do.
+ */
+(function(){
+  var EV = {{ ev.id }};
+  document.querySelectorAll('select.statuspick').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var val = sel.value, pid = sel.getAttribute('data-pid'),
+          was = sel.className, body = new URLSearchParams();
+      body.append('value', val);
+      sel.disabled = true;
+      fetch('/events/' + EV + '/people/' + pid + '/race-status',
+            {method:'POST', body:body, credentials:'same-origin'})
+        .then(function(r){
+          if(!r.ok) throw new Error(r.status);
+          /* The server is the one that knows what the derivation says once a
+             pin is cleared, so read it back rather than guessing here. */
+          return fetch('/events/' + EV + '/people/' + pid + '/race-status.json',
+                       {credentials:'same-origin'}).then(function(x){
+            return x.ok ? x.json() : null; });
+        })
+        .then(function(j){
+          sel.disabled = false;
+          if(!j) return;
+          sel.className = 'statuspick s-' + j.status;
+          sel.title = j.pinned ? 'Set by hand'
+                               : 'Worked out from what has happened';
+          /* The first option is "hand it back to the system", so it has to
+             say what the system would then say - not what the pin says. */
+          var auto = sel.options[0];
+          auto.textContent = j.derived_label + (j.pinned ? ' (automatic)' : '');
+        })
+        .catch(function(){
+          sel.disabled = false; sel.className = was;
+          alert('That status did not save. Try again.');
+        });
+    });
   });
 })();
 </script>

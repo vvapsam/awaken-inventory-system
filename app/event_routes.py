@@ -63,6 +63,8 @@ from .models import (
     ORGANISER_LINK_DAYS, ORGANISER_DEFAULT_PASS,
     from_local, to_local,
     can_door,
+    RACE_STATUSES, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
+    race_status,
 )
 
 #: AWAKEN's palette, and nothing else. Emails are the one place a third
@@ -521,6 +523,7 @@ EVENT_COLUMNS = [
     ("entry",     "Entry",         True,  {"people": False, "gone": False}),
     ("slot",      "Slot",          False, {"people": False}),
     ("heat",      "Heat",          False, {"people": False, "gone": False}),
+    ("status",    "Status",        False, {"people": True,  "gone": False}),
 ]
 
 #: Which column of the event row each tab's choice is kept in. Separate
@@ -1245,6 +1248,52 @@ def register(app, deps):
             "waves": _wave_counts(ev) if ev.slot_a_time else None,
             "counts": {"in": c["arrived"], "of": c["confirmed"]},
         })
+
+    @app.post("/events/{eid}/people/{pid}/race-status")
+    def event_race_status(request: Request, eid: int, pid: int,
+                          value: str = Form(""),
+                     db: Session = Depends(get_db)):
+        """Pin a race status by hand, or hand the row back to the derivation.
+
+        Only the judgements are offered - a disqualification, a start that
+        never happened, a race abandoned halfway. The five the system works out
+        for itself are not settable, because pinning one would only let
+        somebody freeze a row onto a fact the timer can already see through.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse("/events/%d" % eid, status_code=303)
+        want = (value or "").strip()
+        p.race_status_set = want if want in RACE_STATUS_MANUAL else None
+        db.commit()
+        return RedirectResponse("/events/%d" % eid, status_code=303)
+
+    @app.get("/events/{eid}/people/{pid}/race-status.json")
+    def event_race_status_read(request: Request, eid: int, pid: int,
+                          db: Session = Depends(get_db)):
+        """What the status is now — asked after a change.
+
+        The page cannot work out for itself what clearing a pin reveals, and
+        guessing in the browser is how the badge and the truth drift apart.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return JSONResponse({"ok": False}, status_code=403)
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return JSONResponse({"ok": False}, status_code=404)
+        now_status = race_status(p)
+        derived = race_status(p, derived_only=True)
+        return {"ok": True, "status": now_status,
+                "label": RACE_STATUS_LABELS[now_status],
+                # What clearing the pin would reveal — the label the
+                # "automatic" option has to carry.
+                "derived": derived,
+                "derived_label": RACE_STATUS_LABELS[derived],
+                "pinned": bool(p.race_status_set)}
 
     @app.post("/events/{eid}/people/{pid}/arrive")
     def event_arrive(request: Request, eid: int, pid: int,

@@ -1096,3 +1096,32 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
 .pv{font-size:.78rem;color:var(--teal-dark);background:var(--teal-tint);
   border-radius:6px;padding:3px 8px;display:inline-block;font-weight:600;
   white-space:nowrap}
+
+/* --- race status, on the participant tracker ---------------------------- *
+ * The status is one word answering "where is this person right now", so it
+ * has to be readable at a glance down a column of forty rows. Colour carries
+ * the meaning; the select is only there for the five a human has to judge.  */
+.statuspick{
+  /* The table squeezes this column hard, and a status clipped to "Ch" is
+     worse than no column at all. */
+  width:100%; min-width:112px;
+  font:600 12px/1 inherit; padding:6px 22px 6px 9px; border-radius:999px;
+  text-overflow:ellipsis;
+  border:1px solid var(--line,#dfe5ec); background-color:#f3f4f6;
+  color:#374151; -webkit-appearance:none; appearance:none; cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+                   linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 12px) 52%, calc(100% - 8px) 52%;
+  background-size:4px 4px, 4px 4px; background-repeat:no-repeat;
+}
+.statuspick:focus{outline:2px solid #0b7a72;outline-offset:1px}
+.statuspick.s-registered {background-color:#f3f4f6;color:#4b5563}
+.statuspick.s-checked_in {background-color:#e0f2fe;color:#075985}
+.statuspick.s-ready      {background-color:#ede9fe;color:#5b21b6}
+.statuspick.s-in_progress{background-color:#fef3c7;color:#92400e}
+.statuspick.s-finished   {background-color:#dcfce7;color:#166534}
+.statuspick.s-dnf        {background-color:#ffe4e6;color:#9f1239}
+.statuspick.s-dns        {background-color:#f5f5f4;color:#57534e}
+.statuspick.s-dq         {background-color:#fee2e2;color:#991b1b}
+.statuspick.s-cancelled  {background-color:#f5f5f4;color:#57534e}
+.statuspick.s-no_show    {background-color:#f5f5f4;color:#57534e}

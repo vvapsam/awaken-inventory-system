@@ -1800,6 +1800,70 @@ class HeatSlot(Base):
     participant = relationship("EventParticipant")
 
 
+#: Where somebody is in the race, as one word.
+#:
+#: Five of these are worked out rather than stored — the system already knows
+#: when somebody was scanned in, when a coach took them, when their heat went
+#: off and when they crossed the line, and a second copy of a fact is a second
+#: chance to be wrong. The other five are judgements nothing can infer: a
+#: disqualification, a start that never happened, a race abandoned halfway.
+#: Those are set by hand, and setting one by hand freezes the row against the
+#: derivation, which is the whole point of setting it.
+RACE_STATUSES = [
+    ("registered",  "Registered"),
+    ("checked_in",  "Checked in"),
+    ("ready",       "Ready"),
+    ("in_progress", "In progress"),
+    ("finished",    "Finished"),
+    ("dnf",         "DNF"),
+    ("dns",         "DNS"),
+    ("dq",          "DQ"),
+    ("cancelled",   "Cancelled"),
+    ("no_show",     "No show"),
+]
+RACE_STATUS_LABELS = dict(RACE_STATUSES)
+RACE_STATUS_KEYS = [k for k, _ in RACE_STATUSES]
+
+#: The ones a human sets. The rest arrive on their own and offering them by
+#: hand would only let somebody pin a row to a lie the system can already see
+#: through.
+RACE_STATUS_MANUAL = ["dnf", "dns", "dq", "cancelled", "no_show"]
+
+
+def race_status(p, now=None, derived_only=False) -> str:
+    """Where this participant is, in one word.
+
+    Order matters and runs backwards from the finish: the furthest thing that
+    has happened is the truest thing to say. Somebody who has finished is
+    finished even though they were also, earlier, checked in.
+
+    `derived_only` ignores a hand-set status and answers what the system would
+    say on its own — which is what the "clear this" option has to be labelled
+    with, since that is what clearing it would reveal.
+    """
+    if not derived_only and p.race_status_set in RACE_STATUS_KEYS:
+        return p.race_status_set
+    if p.finished_at:
+        return "finished"
+    # Their heat has gone off, or a station is already counting for them.
+    started = bool(getattr(p, "runs", None))
+    if not started:
+        start = p.heat_start() if hasattr(p, "heat_start") else None
+        if start:
+            now = now or datetime.now(timezone.utc)
+            started = now >= start
+    if started and (p.coach_id or p.arrived_at):
+        return "in_progress"
+    if p.coach_id:
+        return "ready"
+    if p.arrived_at:
+        return "checked_in"
+    # Not coming is a status too, and the system already knows.
+    if p.released_at or p.declined:
+        return "cancelled"
+    return "registered"
+
+
 class EventStation(Base):
     """One workout station on an event, in the order it is raced.
 
@@ -1959,6 +2023,9 @@ class EventParticipant(Base):
     #: handing a second patch to somebody who already has theirs.
     patch = Column(String)
     patch_at = Column(DateTime(timezone=True))
+    #: A status set by hand, which freezes the row against the derivation.
+    #: Null means "work it out from what has actually happened".
+    race_status_set = Column(String)
     #: When they were last told it. Cleared whenever they are moved, because a
     #: time somebody was told is only true until you move them — see
     #: EventParticipant.heat_told.
