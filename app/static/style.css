@@ -865,6 +865,15 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 /* Times run down the page because that is the order the day happens in. A
    grid of cards makes you hunt for 11:20, and the block of empty morning at
    the bottom is the thing you most need to see at a glance. */
+/* The share link for the public timetable. The input carries the URL rather
+   than a <code> block because on a phone the reliable way to get a URL out of
+   a page is still to tap it and have it select itself. */
+.sharebox .url{display:flex;gap:8px;align-items:center;margin:0 0 10px}
+.sharebox .url input{flex:1 1 auto;min-width:0;width:auto;font-size:.86rem;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel)}
+.sharebox .url .btn{flex:0 0 auto;width:auto}
+.sharebox .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+
 .daybar{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin:0}
 .daybar .f{display:flex;flex-direction:column;gap:3px}
 .daybar label{font-size:.76rem;font-weight:600;color:var(--muted);margin:0}
