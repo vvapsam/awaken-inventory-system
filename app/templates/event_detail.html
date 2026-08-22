@@ -618,6 +618,14 @@
           <label class="small" style="font-weight:600;margin:0 0 4px">Instagram</label>
           <input form="ed-{{ p.id }}" name="instagram" value="{{ p.instagram or '' }}"
                  placeholder="handle" autocapitalize="none" spellcheck="false"></div>
+        <div>
+          <label class="small" style="font-weight:600;margin:0 0 4px">Country
+            <span class="muted">&mdash; the flag on the board</span></label>
+          <select form="ed-{{ p.id }}" name="country">
+            {% for code, cname in COUNTRIES %}
+            <option value="{{ code }}" {{ 'selected' if country_code(p.country) == code }}>{{ flag(code) }} {{ cname }}</option>
+            {% endfor %}
+          </select></div>
         <div class="acts">
           <button class="btn primary" form="ed-{{ p.id }}" style="margin:0">Save</button>
           <button type="button" class="btn" style="margin:0" data-edit="{{ p.id }}">Cancel</button>

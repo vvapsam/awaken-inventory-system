@@ -1574,6 +1574,12 @@ class Event(Base):
     #: which is the whole point of it being reissuable.
     heat_token = Column(String, unique=True)
     heat_link_at = Column(DateTime(timezone=True))
+    #: The live leaderboard's public link. Its own token rather than the
+    #: timetable's: the timetable goes out days before to the people running,
+    #: the board goes out on the morning to anybody watching, and revoking one
+    #: should not take the other down.
+    board_token = Column(String, unique=True)
+    board_link_at = Column(DateTime(timezone=True))
     #: The sponsor's own logo, stored on the row rather than dropped in the
     #: static folder. A sponsor is a property of one event, not of the app, and
     #: the next one should be an upload rather than a deploy. It rides inside
@@ -1872,6 +1878,88 @@ def h12(t):
 #: is scaffolding, and a name in a constant is easy to find and delete when the
 #: testing is done. Every screen that shows one says so, because a clock that
 #: behaves differently and does not admit it is how a real result gets doubted.
+#: How the two columns on the leaderboard are labelled, and the order they run
+#: in. Somebody with no category recorded is not dropped - a results board that
+#: silently omits people is worse than one with a third short column - but they
+#: only get a column of their own if there is anybody in it.
+BOARD_COLUMNS = [("m", "Men"), ("f", "Women"), ("", "Unlisted")]
+
+
+def board_rows(event, now=None):
+    """The whole field, ranked, split by category.
+
+    Returns [{"key", "label", "rows": [...]}] with an entry per category that
+    has anybody in it.
+
+    The order within a column is the order a spectator reads it: whoever is
+    furthest through the race first.
+
+      1. finishers, fastest first
+      2. everybody still out there, deepest into the race first, and within a
+         station whoever has been on it longest
+      3. people whose heat has not gone off, by heat time
+      4. DNF, DNS, DQ, cancelled, no-show
+
+    Finishers are placed against each other and nobody else. A leader on
+    station four is not "second" - they have not finished, and printing a
+    number against them would be a placing that changes after somebody
+    photographs it.
+    """
+    now = now or datetime.now(timezone.utc)
+    stations = sorted(event.stations, key=lambda s: (s.position, s.id))
+    nst = len(stations)
+    buckets = {k: [] for k, _l in BOARD_COLUMNS}
+    for p in event.participants:
+        # Not in the room: waitlisted, released, or said they cannot come.
+        if p.waitlist or p.released_at or p.declined:
+            continue
+        st = race_status(p, now)
+        runs = {r.station_id: r for r in (p.runs or [])}
+        done = sum(1 for s in stations if s.id in runs and runs[s.id].ended_at)
+        open_run = next((runs[s.id] for s in stations
+                         if s.id in runs and not runs[s.id].ended_at), None)
+        on = None
+        if open_run is not None:
+            on = next((i + 1 for i, s in enumerate(stations)
+                       if s.id == open_run.station_id), None)
+        secs = p.race_seconds if p.finished_at else None
+        elapsed = p.running_seconds(now)
+        if st == "finished":
+            tier = 0
+        elif st in RACE_STATUS_OUT:
+            tier = 3
+        elif st == "in_progress" or done or open_run is not None:
+            tier = 1
+        else:
+            tier = 2
+        buckets.setdefault(p.sex if p.sex in ("m", "f") else "", []).append({
+            "p": p, "status": st, "tier": tier,
+            "secs": secs, "elapsed": elapsed or 0,
+            "done": done, "on": on, "of": nst,
+            "heat": p.heat_time or "",
+        })
+    out = []
+    for key, label in BOARD_COLUMNS:
+        rows = buckets.get(key) or []
+        rows.sort(key=lambda r: (
+            r["tier"],
+            r["secs"] if r["secs"] is not None else 0,      # fastest first
+            -r["done"], -(r["on"] or 0), -r["elapsed"],     # deepest first
+            r["heat"] or "99:99",
+            (r["p"].full_name or "").lower(),
+        ))
+        place = 0
+        for r in rows:
+            if r["tier"] == 0:
+                place += 1
+                r["place"] = place
+            else:
+                r["place"] = None
+        if rows:
+            out.append({"key": key, "label": label, "rows": rows})
+    return out
+
+
 TEST_ATHLETES = {"van sampang"}
 
 
@@ -1949,6 +2037,10 @@ RACE_STATUS_KEYS = [k for k, _ in RACE_STATUSES]
 #: hand would only let somebody pin a row to a lie the system can already see
 #: through.
 RACE_STATUS_MANUAL = ["dnf", "dns", "dq", "cancelled", "no_show"]
+#: The ones that mean the race ended without a time. They sort to the
+#: bottom of the leaderboard rather than being hidden: somebody looking
+#: for a name should find it, and "DNF" is an answer.
+RACE_STATUS_OUT = ["dnf", "dns", "dq", "cancelled", "no_show"]
 
 
 def race_status(p, now=None, derived_only=False) -> str:
@@ -2211,6 +2303,10 @@ class EventParticipant(Base):
     last_name = Column(String)
     mobile = Column(String)
     sex = Column(String)                     # 'm' / 'f'
+    #: ISO-3166-1 alpha-2, for the flag on the leaderboard. NOT NULL with a
+    #: default rather than nullable: everybody has a country, and a board where
+    #: half the rows have no flag looks broken rather than private.
+    country = Column(String, nullable=False, default="PH", server_default="PH")
     tier = Column(String)                    # 'a' / 'b'
     #: What they owed, stored per person rather than read off the event — so a
     #: price change tomorrow never restates what somebody paid today.

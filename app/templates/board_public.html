@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1,
+  viewport-fit=cover">
+<title>{% if ev %}{{ ev.name }} &mdash; live{% else %}Not live{% endif %}</title>
+<meta name="theme-color" content="#0A1C1D">
+<meta name="robots" content="noindex, nofollow">
+<style>
+/* The live leaderboard.
+ *
+ * Self-contained: it is opened by people who have never seen the admin, on
+ * phones, and put on a screen in the room. Nothing here leans on style.css.
+ *
+ * Men and women sit side by side at every width, down to 320px, because the
+ * two columns *are* the page - stacking them turns "who is winning" into a
+ * scroll. Below 560px the rows shed everything but the flag, the name and the
+ * number; above 900px they gain the heat and the station name.
+ */
+*{box-sizing:border-box}
+:root{
+  --bg:#0A1C1D; --card:#0f2526; --line:#1b3a3a; --ink:#F2F5F7;
+  --dim:#8fa6a6; --mint:#88EAE0; --mintdim:#5cc8bd; --amber:#e8c98f;
+}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{
+  font:400 15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
+    "Helvetica Neue",Arial,sans-serif;
+  -webkit-text-size-adjust:100%;
+  padding:14px 12px 40px;
+  min-height:100vh;
+}
+.wrap{max-width:1400px;margin:0 auto}
+
+.head{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.head h1{margin:0;font-size:1.35rem;font-weight:800;letter-spacing:-.02em}
+.head .sub{color:var(--dim);font-size:.8rem;margin-top:3px}
+.live{
+  margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;
+  font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mint);background:#0d2f2d;border:1px solid #1c4a47;
+  border-radius:999px;padding:6px 11px;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--mint);
+  animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+.cols{display:flex;gap:10px;align-items:flex-start}
+.col{flex:1 1 0;min-width:0}
+.col h2{
+  margin:0 0 8px;font-size:.74rem;font-weight:800;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mintdim);
+  padding:0 2px;display:flex;align-items:baseline;gap:7px;
+}
+.col h2 .n{color:var(--dim);font-weight:700;letter-spacing:.04em}
+
+.row{
+  display:flex;align-items:center;gap:9px;
+  background:var(--card);border:1px solid var(--line);border-radius:11px;
+  padding:9px 10px;margin-bottom:6px;min-width:0;
+}
+.row.done{border-color:#1f5a52;background:#0e2b28}
+.row.lead{border-color:var(--mintdim);background:#10322e}
+.row.out{opacity:.5}
+.row.waiting{opacity:.62;border-style:dashed}
+
+.pl{
+  flex:0 0 auto;width:22px;text-align:center;font-weight:800;font-size:.9rem;
+  color:var(--mint);font-variant-numeric:tabular-nums;
+}
+.pl.none{color:var(--dim);font-weight:600;font-size:.72rem}
+.fl{flex:0 0 auto;font-size:1.05rem;line-height:1}
+.who{flex:1 1 auto;min-width:0}
+.nm{
+  font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;
+}
+.st{font-size:.68rem;color:var(--dim);margin-top:2px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.st .brief{display:none}
+.st:empty,.st .wide:empty,.st .brief:empty{display:none}
+.tm{
+  flex:0 0 auto;font-weight:800;font-size:1rem;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;text-align:right;
+}
+.tm.run{color:var(--amber);font-weight:700}
+.tm.none{color:var(--dim);font-weight:600;font-size:.78rem}
+
+.empty{
+  background:var(--card);border:1px solid var(--line);border-radius:11px;
+  padding:18px 12px;text-align:center;color:var(--dim);font-size:.82rem;
+}
+.foot{
+  margin-top:20px;color:var(--dim);font-size:.72rem;text-align:center;
+  line-height:1.6;
+}
+
+/* Phones. The columns stay side by side - that is the whole point of the page
+ * - so the rows give up everything that is not the answer. */
+@media (max-width:559px){
+  body{padding:12px 8px 32px}
+  .cols{gap:6px}
+  .row{padding:8px 7px;gap:6px;border-radius:9px}
+  .pl{width:15px;font-size:.78rem}
+  .fl{font-size:.9rem}
+  /* Wrap rather than truncate. "Marco D." cut to "Marc..." is a row nobody can
+     use; two short lines is worse looking and better. */
+  .nm{font-size:.8rem;white-space:normal;overflow:visible;line-height:1.2}
+  .st{font-size:.62rem}
+  .st .wide{display:none}
+  .st .brief{display:inline}
+  .tm{font-size:.85rem}
+  .head h1{font-size:1.05rem}
+}
+/* A screen in the room. */
+@media (min-width:1100px){
+  .head h1{font-size:1.9rem}
+  .col h2{font-size:.88rem}
+  .row{padding:12px 14px;gap:12px}
+  .nm{font-size:1.15rem}
+  .st{font-size:.78rem}
+  .tm{font-size:1.4rem}
+  .pl{width:30px;font-size:1.15rem}
+  .fl{font-size:1.35rem}
+}
+</style>
+</head>
+<body>
+
+{% if not ev %}
+<div class="wrap">
+  <div class="empty" style="margin-top:40px">
+    <p style="margin:0 0 6px;font-weight:700;color:var(--ink)">This link is not
+      live.</p>
+    <p style="margin:0">Ask whoever sent it for the current one.</p>
+  </div>
+</div>
+{% else %}
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>{{ ev.name }}</h1>
+      <div class="sub">Live standings</div>
+    </div>
+    <span class="live"><span class="dot"></span>Live</span>
+  </div>
+
+  <div class="cols" id="cols"></div>
+
+  <div class="foot">
+    Finishers are ranked by time. Everybody still racing is listed by how far
+    through they are &mdash; no placing, because that would change after you
+    photographed it.<br>
+    This page updates on its own.
+  </div>
+</div>
+
+<script>
+/* The board draws itself from the same data the server rendered the first
+   time, then re-asks every few seconds. The running clocks tick locally in
+   between so the numbers move at one second rather than in five-second jumps
+   whenever a refresh lands. */
+(function(){
+  var FEED = {{ ('/l/' ~ ev.board_token ~ '/feed.json')|tojson }};
+  var cols = {{ cols|tojson }};
+  var syncAt = Date.now();
+  var box = document.getElementById('cols');
+
+  function mmss(s){
+    s = Math.max(0, Math.floor(s));
+    var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
+    var two = function(n){ return (n<10?'0':'') + n; };
+    return h ? (h + ':' + two(m) + ':' + two(ss)) : (m + ':' + two(ss));
+  }
+  function esc(t){
+    return String(t == null ? '' : t)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  function rowHTML(r){
+    var cls = 'row';
+    if (r.status === 'finished') { cls += r.place === 1 ? ' lead' : ' done'; }
+    else if (r.out) { cls += ' out'; }
+    else if (r.status !== 'in_progress') { cls += ' waiting'; }
+
+    /* The place number only ever belongs to a finisher. */
+    var pl = r.place
+      ? '<div class="pl">' + r.place + '</div>'
+      : '<div class="pl none">&middot;</div>';
+
+    /* Two versions of the sub-line. A phone at 320px has about fourteen
+       characters here before it starts eating the name above it, and the name
+       is the thing somebody opened the page to find. */
+    var sub, brief;
+    if (r.out) {
+      sub = brief = r.label;
+    } else if (r.status === 'finished') {
+      sub = r.heat ? r.heat + ' heat' : 'Finished';
+      brief = '';                    /* the place and the time already say it */
+    } else if (r.on) {
+      sub = 'Station ' + r.on + ' of ' + r.of;
+      brief = 'St ' + r.on + '/' + r.of;
+    } else if (r.done) {
+      sub = r.done + ' of ' + r.of + ' done';
+      brief = r.done + '/' + r.of;
+    } else if (r.status === 'in_progress') {
+      sub = brief = 'Started';
+    } else {
+      sub = r.heat ? r.heat + ' heat' : r.label;
+      brief = 'Not started';
+    }
+
+    var tm;
+    if (r.time)                          { tm = '<div class="tm">' + esc(r.time) + '</div>'; }
+    else if (r.elapsed !== null && r.elapsed !== undefined) {
+      tm = '<div class="tm run" data-el="' + r.elapsed + '">'
+         + mmss(r.elapsed) + '</div>';
+    } else                               { tm = '<div class="tm none">&mdash;</div>'; }
+
+    return '<div class="' + cls + '">' + pl
+      + '<div class="fl" title="' + esc(r.country) + '">' + esc(r.flag) + '</div>'
+      + '<div class="who"><div class="nm">' + esc(r.name) + '</div>'
+      + '<div class="st"><span class="wide">' + esc(sub) + '</span>'
+      + '<span class="brief">' + esc(brief) + '</span></div></div>'
+      + tm + '</div>';
+  }
+
+  function render(){
+    if (!cols.length) {
+      box.innerHTML = '<div class="col"><div class="empty">Nobody is on this '
+        + 'event yet.</div></div>';
+      return;
+    }
+    box.innerHTML = cols.map(function(c){
+      var body = c.rows.length
+        ? c.rows.map(rowHTML).join('')
+        : '<div class="empty">Nobody yet.</div>';
+      return '<div class="col"><h2>' + esc(c.label)
+           + '<span class="n">' + c.rows.length + '</span></h2>' + body + '</div>';
+    }).join('');
+  }
+
+  /* Between refreshes the running clocks carry on locally. */
+  function tick(){
+    var drift = (Date.now() - syncAt) / 1000;
+    var els = box.querySelectorAll('.tm.run[data-el]');
+    for (var i = 0; i < els.length; i++) {
+      var base = parseFloat(els[i].getAttribute('data-el'));
+      if (base >= 0) { els[i].textContent = mmss(base + drift); }
+    }
+  }
+
+  function poll(){
+    fetch(FEED, {cache:'no-store'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        if (!j || !j.ok) { return; }
+        cols = j.cols; syncAt = Date.now(); render();
+      })
+      .catch(function(){ /* a dropped phone signal is not an error state */ });
+  }
+
+  render();
+  setInterval(tick, 1000);
+  setInterval(poll, 5000);
+})();
+</script>
+{% endif %}
+
+</body>
+</html>

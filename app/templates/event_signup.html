@@ -233,6 +233,13 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     <div class="lbl">Mobile<span class="req">*</span></div>
     <input type="tel" name="mobile" placeholder="0917 000 0000" required
            autocomplete="tel" value="{{ p.mobile or '' if p }}">
+    <div class="lbl">Country</div>
+    <select name="country" autocomplete="country">
+      {% for code, cname in COUNTRIES %}
+      <option value="{{ code }}" {{ 'selected' if country_code(p.country if p else None) == code }}>{{ flag(code) }} {{ cname }}</option>
+      {% endfor %}
+    </select>
+    <div class="note grey">For the flag beside your name on the board.</div>
     <div class="lbl">Category<span class="req">*</span></div>
     <div class="seg">
       {% for k, label in sexes %}

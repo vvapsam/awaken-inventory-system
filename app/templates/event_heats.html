@@ -146,6 +146,42 @@
 <div class="notice">Share link revoked. That URL no longer opens.</div>
 {% endif %}
 
+{# The board anybody can watch. Beside the timetable link because the two
+   questions - "what do I send the people running?" and "what do I put on the
+   screen?" - are asked in the same five minutes. #}
+<h2>The live leaderboard</h2>
+<div class="card sharebox">
+  {% if ev.board_token %}
+    <div class="url">
+      <input id="boardurl" readonly value="{{ base }}/l/{{ ev.board_token }}"
+             onclick="this.select()">
+      <button class="btn primary" type="button"
+              data-copy="{{ base }}/l/{{ ev.board_token }}">Copy</button>
+    </div>
+    <div class="muted small">
+      Men and women side by side, updating on its own. Finishers ranked by
+      time, then whoever is still out there, deepest into the race first.
+      Names show as a first name and an initial, with a flag &mdash; nothing
+      else about anybody.
+    </div>
+    <div class="acts">
+      <a class="btn" href="/l/{{ ev.board_token }}" target="_blank" rel="noopener">Open it</a>
+      <form method="post" action="/events/{{ ev.id }}/board-link" style="margin:0"
+            onsubmit="return confirm('Make a new link? The one you have already shared stops working.')">
+        <button class="btn">New link</button></form>
+      <form method="post" action="/events/{{ ev.id }}/board-link/revoke" style="margin:0"
+            onsubmit="return confirm('Revoke this link? Anybody watching loses the board.')">
+        <button class="btn">Revoke</button></form>
+    </div>
+  {% else %}
+    <p class="muted small" style="margin:0 0 10px">No board yet. Make one and
+      anybody &mdash; spectators, the screen in the room, people at home
+      &mdash; can watch the race as it happens. No login.</p>
+    <form method="post" action="/events/{{ ev.id }}/board-link" style="margin:0">
+      <button class="btn primary">Make the board link</button></form>
+  {% endif %}
+</div>
+
 {# The link participants read. Kept on this page rather than the event page
    because it is a view of this timetable, and the question it answers —
    "what do I send people?" — is one you have while you are arranging heats. #}

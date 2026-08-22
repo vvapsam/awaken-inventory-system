@@ -66,7 +66,9 @@ from .models import (
     RACE_STATUSES, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     station_splits, has_race, race_status, is_test_athlete,
+    board_rows, RACE_STATUS_OUT, h12,
 )
+from .countries import country_code, country_name, flag as country_flag
 # One definition of a clock, borrowed rather than copied. patch_routes owns it
 # because that is where a time is first read out loud to somebody.
 from .patch_routes import mmss
@@ -835,6 +837,10 @@ def register(app, deps):
         email = (form.get("email") or "").strip()
         mobile = re.sub(r"[^0-9+ ]", "", (form.get("mobile") or "").strip())[:24]
         sex = (form.get("sex") or "").strip()
+        # Not required. Somebody who skips it, or whose browser sends nothing,
+        # gets the default rather than a bounced form - a flag is decoration on
+        # a board, not a thing worth turning anybody away over.
+        country = country_code(form.get("country"))
         tier = (form.get("tier") or "").strip()
         picked = _tier(ev, tier)
         if not (first and last and mobile and sex in ("m", "f") and picked
@@ -857,6 +863,7 @@ def register(app, deps):
                 seen.first_name, seen.last_name = first, last
                 seen.name = "%s %s" % (first, last)
                 seen.mobile, seen.sex = mobile, sex
+                seen.country = country
                 seen.tier = picked["key"]
                 seen.amount = picked["price"]
                 seen.pay_status = PAY_DRAFT
@@ -869,8 +876,8 @@ def register(app, deps):
         p = EventParticipant(
             event_id=ev.id, token=new_token(), name="%s %s" % (first, last),
             first_name=first, last_name=last, email=email, mobile=mobile,
-            sex=sex, tier=picked["key"], amount=picked["price"],
-            pay_status=PAY_DRAFT)
+            sex=sex, country=country, tier=picked["key"],
+            amount=picked["price"], pay_status=PAY_DRAFT)
         db.add(p)
         db.commit()
         resp = RedirectResponse("/r/%s/%s" % (slug, p.token), status_code=303)
@@ -2261,6 +2268,100 @@ def register(app, deps):
             "request": request, "ev": ev, "clock12": clock12,
             "arrive_gap": gap_text(ev.heat_arrive or 0), **ctx})
 
+    def _board_ctx(ev, now=None):
+        """The board's columns, as plain data both the page and the feed read.
+
+        One builder, so the first paint and every refresh afterwards can never
+        disagree about who is where.
+
+        Everything on a participant that is not their name, their flag and
+        their race is dropped here rather than in the template. A page is one
+        careless `{{ }}` away from leaking an address; a context that never
+        held the address cannot.
+        """
+        cols = []
+        for col in board_rows(ev, now):
+            out = []
+            for r in col["rows"]:
+                p = r["p"]
+                out.append({
+                    "id": p.id,
+                    "name": short_name(p),
+                    "cc": country_code(p.country),
+                    "flag": country_flag(p.country),
+                    "country": country_name(p.country),
+                    "place": r["place"],
+                    "status": r["status"],
+                    "label": RACE_STATUS_LABELS[r["status"]],
+                    "out": r["status"] in RACE_STATUS_OUT,
+                    "secs": r["secs"],
+                    "time": mmss(r["secs"]) if r["secs"] is not None else "",
+                    "done": r["done"], "on": r["on"], "of": r["of"],
+                    "heat": h12(r["heat"]),
+                    # The clock a spectator watches. Sent as a number of
+                    # seconds at this instant; the page ticks it on from there
+                    # rather than asking again every second.
+                    "elapsed": r["elapsed"] if r["status"] == "in_progress" else None,
+                })
+            cols.append({"key": col["key"], "label": col["label"], "rows": out})
+        return cols
+
+    @app.get("/l/{token}", response_class=HTMLResponse)
+    def board_public(request: Request, token: str,
+                     db: Session = Depends(get_db)):
+        """The live leaderboard, for anybody with the link."""
+        ev = (db.query(Event)
+              .filter(Event.board_token == token).first()) if token else None
+        if not ev:
+            # One page for "never existed" and "revoked" alike - two different
+            # answers would between them confirm a guess.
+            return templates.TemplateResponse(
+                "board_public.html", {"request": request, "ev": None},
+                status_code=404)
+        return templates.TemplateResponse("board_public.html", {
+            "request": request, "ev": ev, "cols": _board_ctx(ev)})
+
+    @app.get("/l/{token}/feed.json")
+    def board_feed(request: Request, token: str,
+                   db: Session = Depends(get_db)):
+        """What the page asks for every few seconds."""
+        ev = (db.query(Event)
+              .filter(Event.board_token == token).first()) if token else None
+        if not ev:
+            return JSONResponse({"ok": False}, status_code=404)
+        return {"ok": True, "cols": _board_ctx(ev)}
+
+    @app.post("/events/{eid}/board-link")
+    def board_link_new(request: Request, eid: int,
+                       db: Session = Depends(get_db)):
+        """Mint the leaderboard's link, or replace the one there is."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        ev.board_token = secrets.token_urlsafe(18)
+        ev.board_link_at = datetime.now(timezone.utc)
+        db.commit()
+        return RedirectResponse("/events/%d/heats?board=new" % eid,
+                                status_code=303)
+
+    @app.post("/events/{eid}/board-link/revoke")
+    def board_link_revoke(request: Request, eid: int,
+                          db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        ev.board_token = None
+        ev.board_link_at = None
+        db.commit()
+        return RedirectResponse("/events/%d/heats?board=off" % eid,
+                                status_code=303)
+
     @app.post("/events/{eid}/heat-link")
     def heat_link_new(request: Request, eid: int,
                       db: Session = Depends(get_db)):
@@ -2717,7 +2818,8 @@ def register(app, deps):
     @app.post("/events/{eid}/people/{pid}/edit")
     def event_edit_person(request: Request, eid: int, pid: int,
                           name: str = Form(""), email: str = Form(""),
-                          instagram: str = Form(""), db: Session = Depends(get_db)):
+                          instagram: str = Form(""), country: str = Form(""),
+                          db: Session = Depends(get_db)):
         """Fix somebody's details.
 
         Addresses arrive mistyped off a sign-up sheet, people change their
@@ -2744,6 +2846,9 @@ def register(app, deps):
         # Same cleaning as the participant's own page, so a handle typed here
         # and a handle typed there end up stored identically.
         p.instagram = clean_handle(instagram)
+        # Anything unreadable becomes the default rather than blank: a flagless
+        # row on the board reads as a bug, not as a preference.
+        p.country = country_code(country)
         # Stamped here rather than by an onupdate, so "last update" means
         # somebody changed something and not "a participant opened their link".
         p.edited_at = datetime.now(timezone.utc)

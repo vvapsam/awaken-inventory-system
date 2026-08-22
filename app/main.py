@@ -111,6 +111,11 @@ templates.env.globals["RACE_STATUS_MANUAL"] = RACE_STATUS_MANUAL
 # race floor is read that way, and the admin now shows them too.
 templates.env.globals["h12"] = h12
 templates.env.globals["has_race"] = has_race
+from .countries import COUNTRIES, country_code, country_name, flag
+templates.env.globals["COUNTRIES"] = COUNTRIES
+templates.env.globals["country_code"] = country_code
+templates.env.globals["country_name"] = country_name
+templates.env.globals["flag"] = flag
 
 # Mobile PWA (additive: new routes only, existing desktop pages untouched)
 from .mobile import router as mobile_router  # noqa: E402
@@ -770,6 +775,13 @@ def startup():
                 "  heat_sent_at TIMESTAMPTZ; "
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  heat_link_at TIMESTAMPTZ; "
+                # The leaderboard's own link. Separate from the timetable's:
+                # they go to different people at different times, and a
+                # timetable sent on Tuesday should not be revocable only by
+                # taking the race-day board down with it.
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS board_token VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  board_link_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
             # Unique separately: ADD COLUMN cannot carry it, and a partial
             # index keeps the many events with no link from colliding on NULL.
@@ -777,6 +789,8 @@ def startup():
                 "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_events_heat_token "
                 "  ON events (heat_token) WHERE heat_token IS NOT NULL; "
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_events_board_token "
+                "  ON events (board_token) WHERE board_token IS NOT NULL; "
                 "END IF; END $$;"))
             # One live timetable per event. A partial index rather than a plain
             # unique: every event has many inactive plans and only ever one
@@ -808,6 +822,11 @@ def startup():
                 "  patch_at TIMESTAMPTZ; "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  race_status_set VARCHAR; "
+                # NOT NULL with a default, so every row already on the table
+                # is filled in by the ALTER itself. Everybody has a country,
+                # and a board where half the flags are missing looks broken.
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  country VARCHAR NOT NULL DEFAULT 'PH'; "
                 "UPDATE event_participants SET heat_told_before = TRUE "
                 "  WHERE heat_email_at IS NOT NULL AND NOT heat_told_before; "
                 "END IF; END $$;"))
