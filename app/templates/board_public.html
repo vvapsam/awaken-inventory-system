@@ -10,119 +10,213 @@
 <style>
 /* The live leaderboard.
  *
- * Self-contained: it is opened by people who have never seen the admin, on
- * phones, and put on a screen in the room. Nothing here leans on style.css.
+ * Built for a screen in the room first and a phone second, which is the other
+ * way round from most of this system.
  *
- * Men and women sit side by side at every width, down to 320px, because the
- * two columns *are* the page - stacking them turns "who is winning" into a
- * scroll. Below 560px the rows shed everything but the flag, the name and the
- * number; above 900px they gain the heat and the station name.
+ * Three groups, and the shape of the page is the argument:
+ *
+ *   ON THE FLOOR   a full-width strip of cards along the top. It is the widest
+ *                  thing here because it is the part that changes while
+ *                  somebody is watching, and a room watching a race wants to
+ *                  know who is out there before it wants a results table.
+ *   MEN / WOMEN    the ranked finishers, side by side underneath.
+ *
+ * The strip is the one place the two categories are mixed. Splitting it would
+ * halve the cards and put the leader of one category above somebody further
+ * through the race in the other, so each card carries an M or a W instead.
+ *
+ * Nothing here leans on style.css: this page is opened by people who have
+ * never seen the admin, and it has to stand up alone.
  */
 *{box-sizing:border-box}
 :root{
   --bg:#0A1C1D; --card:#0f2526; --line:#1b3a3a; --ink:#F2F5F7;
   --dim:#8fa6a6; --mint:#88EAE0; --mintdim:#5cc8bd; --amber:#e8c98f;
+  --floor:#12211a; --floorline:#2c4632; --floorcard:#132a22;
 }
 html,body{margin:0;background:var(--bg);color:var(--ink)}
 body{
   font:400 15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
     "Helvetica Neue",Arial,sans-serif;
   -webkit-text-size-adjust:100%;
-  padding:14px 12px 40px;
+  padding:18px 18px 44px;
   min-height:100vh;
 }
-.wrap{max-width:1400px;margin:0 auto}
+.wrap{max-width:1680px;margin:0 auto}
 
-.head{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
-.head h1{margin:0;font-size:1.35rem;font-weight:800;letter-spacing:-.02em}
-.head .sub{color:var(--dim);font-size:.8rem;margin-top:3px}
+.head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+/* The mark is white on transparent, cut for the finisher card, and sits here
+   at the size a header wants rather than the size a card wanted. */
+.head .mark{flex:0 0 auto;width:64px;height:auto;display:block;opacity:.95}
+.head h1{margin:0;font-size:1.5rem;font-weight:800;letter-spacing:-.025em}
+.head .sub{color:var(--dim);font-size:.78rem;margin-top:3px}
 .live{
   margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;
-  font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  font-size:.7rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
   color:var(--mint);background:#0d2f2d;border:1px solid #1c4a47;
-  border-radius:999px;padding:6px 11px;
+  border-radius:999px;padding:7px 12px;
 }
 .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);
   animation:pulse 2s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.22}}
+@media (prefers-reduced-motion:reduce){
+  .dot,.seg.on{animation:none}
+}
 
-.cols{display:flex;gap:10px;align-items:flex-start}
-.col{flex:1 1 0;min-width:0}
-.col h2{
-  margin:0 0 8px;font-size:.74rem;font-weight:800;letter-spacing:.12em;
+h2.band{
+  margin:0 0 10px;font-size:.76rem;font-weight:800;letter-spacing:.13em;
   text-transform:uppercase;color:var(--mintdim);
-  padding:0 2px;display:flex;align-items:baseline;gap:7px;
-}
-.col h2 .n{color:var(--dim);font-weight:700;letter-spacing:.04em}
-
-.row{
   display:flex;align-items:center;gap:9px;
-  background:var(--card);border:1px solid var(--line);border-radius:11px;
-  padding:9px 10px;margin-bottom:6px;min-width:0;
 }
-.row.done{border-color:#1f5a52;background:#0e2b28}
-.row.lead{border-color:var(--mintdim);background:#10322e}
-.row.out{opacity:.5}
-.row.waiting{opacity:.62;border-style:dashed}
+h2.band .n{color:var(--dim);font-weight:700;letter-spacing:.04em}
+h2.band.hot{color:var(--amber)}
 
+/* ---- on the floor ---- */
+.floor{
+  background:var(--floor);border:1px solid var(--floorline);
+  border-radius:14px;padding:15px 16px;margin-bottom:16px;
+}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.cell{
+  /* No margin: the grid's own gap spaces these, and a margin on top of it
+     doubles the space between rows of cards. */
+  background:var(--floorcard);border:1px solid var(--line);
+  border-radius:11px;padding:11px 12px;min-width:0;
+}
+.cell .line{display:flex;align-items:center;gap:8px;min-width:0}
+.cell .nm{
+  font-weight:700;font-size:.98rem;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;min-width:0;
+}
+.sx{
+  flex:0 0 auto;font-size:.6rem;font-weight:800;letter-spacing:.08em;
+  color:var(--dim);border:1px solid var(--line);border-radius:4px;
+  padding:3px 5px;line-height:1;
+}
+.cell .tm{margin-left:auto}
+.cell .where{
+  display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  margin-top:7px;font-size:.74rem;color:var(--dim);
+}
+.cell .where .st{
+  font-weight:800;color:var(--amber);letter-spacing:.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.cell .where .reps{font-variant-numeric:tabular-nums;flex:0 0 auto}
+
+/* One segment per station, in race order. */
+.trk{display:flex;gap:3px;margin-top:9px}
+.seg{height:8px;flex:1;border-radius:2px;background:#20403e}
+.seg.dn{background:var(--mintdim)}
+.seg.on{background:var(--amber);animation:pulse 1.6s ease-in-out infinite}
+
+.nofloor{
+  color:var(--dim);font-size:.84rem;padding:6px 2px 14px;
+}
+
+/* ---- the ranked columns ---- */
+.cols{display:flex;gap:12px;align-items:flex-start}
+.col{flex:1 1 0;min-width:0}
+.row{
+  display:flex;align-items:center;gap:11px;
+  background:var(--card);border:1px solid var(--line);border-radius:11px;
+  padding:10px 12px;margin-bottom:6px;min-width:0;
+}
+.row.lead{border-color:var(--mintdim);background:#10322e}
+.row.done{border-color:#1f5a52;background:#0e2b28}
+.row.waiting{opacity:.55;border-style:dashed}
+.row.out{opacity:.42}
 .pl{
-  flex:0 0 auto;width:22px;text-align:center;font-weight:800;font-size:.9rem;
+  flex:0 0 auto;width:24px;text-align:center;font-weight:800;font-size:.95rem;
   color:var(--mint);font-variant-numeric:tabular-nums;
 }
-.pl.none{color:var(--dim);font-weight:600;font-size:.72rem}
-.fl{flex:0 0 auto;font-size:1.05rem;line-height:1}
+.pl.none{color:var(--dim);font-weight:600;font-size:.74rem}
+.fl{flex:0 0 auto;font-size:1.1rem;line-height:1}
 .who{flex:1 1 auto;min-width:0}
-.nm{
-  font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;
-}
-.st{font-size:.68rem;color:var(--dim);margin-top:2px;white-space:nowrap;
+.nm{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.st2{font-size:.7rem;color:var(--dim);margin-top:2px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
-.st .brief{display:none}
-.st:empty,.st .wide:empty,.st .brief:empty{display:none}
 .tm{
-  flex:0 0 auto;font-weight:800;font-size:1rem;letter-spacing:-.02em;
+  flex:0 0 auto;font-weight:800;font-size:1.05rem;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums;text-align:right;
 }
-.tm.run{color:var(--amber);font-weight:700}
-.tm.none{color:var(--dim);font-weight:600;font-size:.78rem}
+.tm.run{color:var(--amber)}
+.tm.none{color:var(--dim);font-weight:600;font-size:.8rem}
+.rule{
+  height:1px;background:var(--line);margin:13px 2px 10px;
+}
 
 .empty{
   background:var(--card);border:1px solid var(--line);border-radius:11px;
-  padding:18px 12px;text-align:center;color:var(--dim);font-size:.82rem;
+  padding:18px 12px;text-align:center;color:var(--dim);font-size:.84rem;
 }
 .foot{
-  margin-top:20px;color:var(--dim);font-size:.72rem;text-align:center;
-  line-height:1.6;
+  margin-top:22px;color:var(--dim);font-size:.74rem;text-align:center;
+  line-height:1.65;
 }
 
-/* Phones. The columns stay side by side - that is the whole point of the page
- * - so the rows give up everything that is not the answer. */
-@media (max-width:559px){
-  body{padding:12px 8px 32px}
-  .cols{gap:6px}
-  .row{padding:8px 7px;gap:6px;border-radius:9px}
-  .pl{width:15px;font-size:.78rem}
-  .fl{font-size:.9rem}
-  /* Wrap rather than truncate. "Marco D." cut to "Marc..." is a row nobody can
-     use; two short lines is worse looking and better. */
-  .nm{font-size:.8rem;white-space:normal;overflow:visible;line-height:1.2}
-  .st{font-size:.62rem}
-  .st .wide{display:none}
-  .st .brief{display:inline}
-  .tm{font-size:.85rem}
-  .head h1{font-size:1.05rem}
+/* The sponsors, along the bottom.
+ *
+ * Sized by a single scale on each mark's native width, the way the finisher
+ * card does it, rather than by forcing them all to one height: these were cut
+ * to sit together at their own proportions, and normalising the heights makes
+ * the short wide ones enormous.
+ *
+ * Sitting directly on the background - no band, no box - and slightly dimmed,
+ * so they read without competing with a race.
+ */
+.sponsors{
+  --sp:0.9;
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
+  gap:14px 26px;margin-top:26px;padding-top:22px;
+  border-top:1px solid var(--line);opacity:.72;
 }
-/* A screen in the room. */
-@media (min-width:1100px){
-  .head h1{font-size:1.9rem}
-  .col h2{font-size:.88rem}
-  .row{padding:12px 14px;gap:12px}
+.sponsors img{display:block;height:auto}
+@media (min-width:1200px){ .sponsors{--sp:1.15;gap:16px 34px} }
+@media (max-width:559px){ .sponsors{--sp:0.66;gap:11px 18px;margin-top:20px} }
+
+/* ---- the room ---- */
+@media (min-width:1200px){
+  body{padding:26px 26px 56px}
+  .head h1{font-size:2.1rem}
+  .head .mark{width:86px}
+  h2.band{font-size:.9rem}
+  .floor{padding:19px 20px;border-radius:16px}
+  .cell{padding:14px 15px}
+  .cell .nm{font-size:1.22rem}
+  .cell .tm{font-size:1.35rem}
+  .cell .where{font-size:.9rem;margin-top:9px}
+  .seg{height:10px}
+  .row{padding:13px 15px}
   .nm{font-size:1.15rem}
-  .st{font-size:.78rem}
   .tm{font-size:1.4rem}
-  .pl{width:30px;font-size:1.15rem}
-  .fl{font-size:1.35rem}
+  .pl{width:32px;font-size:1.2rem}
+  .fl{font-size:1.4rem}
+}
+@media (min-width:1700px){
+  .cards{grid-template-columns:repeat(5,1fr)}
+}
+
+/* ---- a phone ---- */
+@media (max-width:900px){
+  .cards{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:559px){
+  body{padding:12px 9px 34px}
+  .cards{grid-template-columns:1fr}
+  .floor{padding:12px 11px;border-radius:11px}
+  .cols{gap:7px}
+  .row{padding:8px 8px;gap:7px;border-radius:9px}
+  .pl{width:16px;font-size:.8rem}
+  .fl{font-size:.92rem}
+  /* Wrap rather than truncate: "Marco D." cut to "Marc..." is a row nobody
+     can use. */
+  .nm{font-size:.83rem;white-space:normal;overflow:visible;line-height:1.2}
+  .st2{font-size:.64rem}
+  .tm{font-size:.88rem}
+  .head h1{font-size:1.15rem}
+  .head .mark{width:44px}
 }
 </style>
 </head>
@@ -139,6 +233,7 @@ body{
 {% else %}
 <div class="wrap">
   <div class="head">
+    <img class="mark" src="/static/card/awaken.png" alt="AWAKEN">
     <div>
       <h1>{{ ev.name }}</h1>
       <div class="sub">Live standings</div>
@@ -146,26 +241,37 @@ body{
     <span class="live"><span class="dot"></span>Live</span>
   </div>
 
+  <div class="floor">
+    <h2 class="band hot">On the floor now <span class="n" id="nfloor">0</span></h2>
+    <div class="cards" id="floor"></div>
+    <div class="nofloor" id="nofloor" hidden>Nobody is racing this minute.</div>
+  </div>
+
   <div class="cols" id="cols"></div>
 
-  <div class="foot">
-    Finishers are ranked by time. Everybody still racing is listed by how far
-    through they are &mdash; no placing, because that would change after you
-    photographed it.<br>
-    This page updates on its own.
+  <div class="foot" id="foot"></div>
+
+  <div class="sponsors">
+    {% for file, w in sponsors %}
+    <img src="/static/card/sp/{{ file }}" alt=""
+         style="width:calc(var(--sp) * {{ w }}px)">
+    {% endfor %}
   </div>
 </div>
 
 <script>
-/* The board draws itself from the same data the server rendered the first
-   time, then re-asks every few seconds. The running clocks tick locally in
-   between so the numbers move at one second rather than in five-second jumps
-   whenever a refresh lands. */
+/* Drawn once from what the server rendered, then re-asked every few seconds.
+   The running clocks tick locally in between so a number moves at one second
+   rather than jumping every five when a refresh lands. */
 (function(){
   var FEED = {{ ('/l/' ~ ev.board_token ~ '/feed.json')|tojson }};
   var cols = {{ cols|tojson }};
   var syncAt = Date.now();
-  var box = document.getElementById('cols');
+  var floorBox = document.getElementById('floor'),
+      noFloor  = document.getElementById('nofloor'),
+      nFloor   = document.getElementById('nfloor'),
+      colsBox  = document.getElementById('cols'),
+      foot     = document.getElementById('foot');
 
   function mmss(s){
     s = Math.max(0, Math.floor(s));
@@ -178,74 +284,112 @@ body{
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/"/g,'&quot;');
   }
+  function clock(r){
+    if (r.time) { return '<div class="tm">' + esc(r.time) + '</div>'; }
+    if (r.elapsed !== null && r.elapsed !== undefined) {
+      return '<div class="tm run" data-el="' + r.elapsed + '">'
+           + mmss(r.elapsed) + '</div>';
+    }
+    return '<div class="tm none">&mdash;</div>';
+  }
+  /* One segment per station: filled behind them, lit on the one they are on,
+     dark ahead. The shape says how far without anybody reading a number. */
+  function tracker(r){
+    var out = '<div class="trk">';
+    for (var i = 1; i <= (r.of || 0); i++) {
+      var cls = i <= r.done ? 'seg dn' : (i === r.on ? 'seg on' : 'seg');
+      out += '<i class="' + cls + '"></i>';
+    }
+    return out + '</div>';
+  }
+
+  function cardHTML(r){
+    var where;
+    if (r.st) {
+      where = '<span class="st" title="' + esc(r.st_full) + '">'
+            + esc(r.st) + '</span>'
+            + '<span class="reps">' + esc(r.reps || '') + '</span>';
+    } else {
+      /* Their heat has gone off but no station is open yet - between two
+         stations, or waiting for a coach to start counting. */
+      where = '<span class="st">On the start line</span><span class="reps">'
+            + (r.done ? r.done + ' / ' + r.of + ' done' : '') + '</span>';
+    }
+    return '<div class="cell"><div class="line">'
+      + '<span class="fl">' + esc(r.flag) + '</span>'
+      + '<span class="nm">' + esc(r.name) + '</span>'
+      + '<span class="sx">' + esc(r.sx) + '</span>'
+      + clock(r)
+      + '</div>' + tracker(r)
+      + '<div class="where">' + where + '</div></div>';
+  }
 
   function rowHTML(r){
     var cls = 'row';
     if (r.status === 'finished') { cls += r.place === 1 ? ' lead' : ' done'; }
     else if (r.out) { cls += ' out'; }
-    else if (r.status !== 'in_progress') { cls += ' waiting'; }
+    else { cls += ' waiting'; }
 
-    /* The place number only ever belongs to a finisher. */
+    /* A place belongs to a finisher and to nobody else. */
     var pl = r.place
       ? '<div class="pl">' + r.place + '</div>'
       : '<div class="pl none">&middot;</div>';
 
-    /* Two versions of the sub-line. A phone at 320px has about fourteen
-       characters here before it starts eating the name above it, and the name
-       is the thing somebody opened the page to find. */
-    var sub, brief;
-    if (r.out) {
-      sub = brief = r.label;
-    } else if (r.status === 'finished') {
-      sub = r.heat ? r.heat + ' heat' : 'Finished';
-      brief = '';                    /* the place and the time already say it */
-    } else if (r.on) {
-      sub = 'Station ' + r.on + ' of ' + r.of;
-      brief = 'St ' + r.on + '/' + r.of;
-    } else if (r.done) {
-      sub = r.done + ' of ' + r.of + ' done';
-      brief = r.done + '/' + r.of;
-    } else if (r.status === 'in_progress') {
-      sub = brief = 'Started';
-    } else {
-      sub = r.heat ? r.heat + ' heat' : r.label;
-      brief = 'Not started';
-    }
-
-    var tm;
-    if (r.time)                          { tm = '<div class="tm">' + esc(r.time) + '</div>'; }
-    else if (r.elapsed !== null && r.elapsed !== undefined) {
-      tm = '<div class="tm run" data-el="' + r.elapsed + '">'
-         + mmss(r.elapsed) + '</div>';
-    } else                               { tm = '<div class="tm none">&mdash;</div>'; }
-
+    var sub = r.out ? r.label
+            : (r.status === 'finished' ? (r.heat ? r.heat + ' heat' : 'Finished')
+                                       : (r.heat ? r.heat + ' heat' : r.label));
     return '<div class="' + cls + '">' + pl
-      + '<div class="fl" title="' + esc(r.country) + '">' + esc(r.flag) + '</div>'
+      + '<div class="fl">' + esc(r.flag) + '</div>'
       + '<div class="who"><div class="nm">' + esc(r.name) + '</div>'
-      + '<div class="st"><span class="wide">' + esc(sub) + '</span>'
-      + '<span class="brief">' + esc(brief) + '</span></div></div>'
-      + tm + '</div>';
+      + '<div class="st2">' + esc(sub) + '</div></div>'
+      + clock(r) + '</div>';
   }
 
   function render(){
-    if (!cols.length) {
-      box.innerHTML = '<div class="col"><div class="empty">Nobody is on this '
-        + 'event yet.</div></div>';
-      return;
-    }
-    box.innerHTML = cols.map(function(c){
-      var body = c.rows.length
-        ? c.rows.map(rowHTML).join('')
-        : '<div class="empty">Nobody yet.</div>';
-      return '<div class="col"><h2>' + esc(c.label)
-           + '<span class="n">' + c.rows.length + '</span></h2>' + body + '</div>';
+    /* One pass over the data, splitting it the way the page is laid out:
+       everybody racing into the strip, everybody else into their column. */
+    var floor = [], later = 0;
+    cols.forEach(function(c){
+      c.rows.forEach(function(r){
+        if (r.racing) { floor.push(r); }
+        else if (!r.out && r.status !== 'finished') { later++; }
+      });
+    });
+    floor.sort(function(a, b){
+      return (b.done - a.done) || ((b.on || 0) - (a.on || 0))
+          || (b.elapsed - a.elapsed);
+    });
+
+    nFloor.textContent = floor.length;
+    floorBox.innerHTML = floor.map(cardHTML).join('');
+    floorBox.hidden = !floor.length;
+    noFloor.hidden = !!floor.length;
+
+    colsBox.innerHTML = cols.map(function(c){
+      var rest = c.rows.filter(function(r){ return !r.racing; });
+      var fin = rest.filter(function(r){ return r.status === 'finished'; });
+      var other = rest.filter(function(r){ return r.status !== 'finished'; });
+      var body = rest.length
+        ? fin.map(rowHTML).join('')
+          + (fin.length && other.length ? '<div class="rule"></div>' : '')
+          + other.map(rowHTML).join('')
+        : '<div class="empty">Everybody is still out there.</div>';
+      return '<div class="col"><h2 class="band">' + esc(c.label)
+           + '<span class="n">' + fin.length + ' finished</span></h2>'
+           + body + '</div>';
     }).join('');
+
+    foot.innerHTML =
+      (later ? later + (later === 1 ? ' athlete has' : ' athletes have')
+             + ' not started yet.<br>' : '')
+      + 'Finishers are ranked by time. Nobody still racing carries a placing '
+      + '&mdash; it would change after you photographed it.<br>'
+      + 'This page updates on its own.';
   }
 
-  /* Between refreshes the running clocks carry on locally. */
   function tick(){
     var drift = (Date.now() - syncAt) / 1000;
-    var els = box.querySelectorAll('.tm.run[data-el]');
+    var els = document.querySelectorAll('.tm.run[data-el]');
     for (var i = 0; i < els.length; i++) {
       var base = parseFloat(els[i].getAttribute('data-el'));
       if (base >= 0) { els[i].textContent = mmss(base + drift); }

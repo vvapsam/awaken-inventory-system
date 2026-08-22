@@ -69,6 +69,10 @@ from .models import (
     board_rows, RACE_STATUS_OUT, h12,
 )
 from .countries import country_code, country_name, flag as country_flag
+# The sponsor strip is cut and sized once, for the finisher card. The
+# board shows the same marks at the same relative weights rather than
+# keeping a second copy that can drift from it.
+from .card_routes import SPONSORS
 # One definition of a clock, borrowed rather than copied. patch_routes owns it
 # because that is where a time is first read out loud to somebody.
 from .patch_routes import mmss
@@ -2287,6 +2291,14 @@ def register(app, deps):
                 out.append({
                     "id": p.id,
                     "name": short_name(p),
+                    # The strip mixes the two categories, so each card has to
+                    # say which one it is. One letter, because that is all the
+                    # room a card has and all the answer anybody needs.
+                    "sx": {"m": "M", "f": "W"}.get(p.sex, "-"),
+                    # Whether they belong in the strip rather than a column.
+                    # Decided here, so the page and the feed cannot disagree
+                    # about who is on the floor.
+                    "racing": r["status"] == "in_progress",
                     "cc": country_code(p.country),
                     "flag": country_flag(p.country),
                     "country": country_name(p.country),
@@ -2298,6 +2310,14 @@ def register(app, deps):
                     "time": mmss(r["secs"]) if r["secs"] is not None else "",
                     "done": r["done"], "on": r["on"], "of": r["of"],
                     "heat": h12(r["heat"]),
+                    # Where they are right now. The short name is what fits on
+                    # a card; the full one is the title, for anybody who does
+                    # not know that BBJ is the burpee broad jump.
+                    "st": r["st_short"], "st_full": r["st_name"],
+                    "reps": (None if r["st_count"] is None else
+                             "%s / %s%s" % (r["st_count"], r["st_target"],
+                                            (" " + r["st_unit"])
+                                            if r["st_unit"] else "")),
                     # The clock a spectator watches. Sent as a number of
                     # seconds at this instant; the page ticks it on from there
                     # rather than asking again every second.
@@ -2319,7 +2339,8 @@ def register(app, deps):
                 "board_public.html", {"request": request, "ev": None},
                 status_code=404)
         return templates.TemplateResponse("board_public.html", {
-            "request": request, "ev": ev, "cols": _board_ctx(ev)})
+            "request": request, "ev": ev, "cols": _board_ctx(ev),
+            "sponsors": SPONSORS})
 
     @app.get("/l/{token}/feed.json")
     def board_feed(request: Request, token: str,

@@ -1885,6 +1885,32 @@ def h12(t):
 BOARD_COLUMNS = [("m", "Men"), ("f", "Women"), ("", "Unlisted")]
 
 
+def station_shorts(stations) -> dict:
+    """A short name per station, for a row that has to say where somebody is.
+
+    "Burpee Broad Jump" becomes BBJ, "Wall Balls" WB, "Row" stays Row. Initials
+    of the words, and a one-word name kept whole because "R" says nothing.
+
+    If two stations would collapse to the same letters, *both* keep their full
+    names. A board that says BB against two different stations is worse than a
+    board with two long words on it - and shortening is a courtesy, not a rule
+    worth being wrong for.
+    """
+    out, seen = {}, {}
+    for st in stations:
+        name = (st.name or "").strip()
+        words = [w for w in name.split() if w]
+        short = ("".join(w[0] for w in words).upper()
+                 if len(words) > 1 else name)
+        out[st.id] = short
+        seen.setdefault(short, []).append(st.id)
+    for short, ids in seen.items():
+        if len(ids) > 1:
+            for sid in ids:
+                out[sid] = next(st.name for st in stations if st.id == sid)
+    return out
+
+
 def board_rows(event, now=None):
     """The whole field, ranked, split by category.
 
@@ -1908,6 +1934,7 @@ def board_rows(event, now=None):
     now = now or datetime.now(timezone.utc)
     stations = sorted(event.stations, key=lambda s: (s.position, s.id))
     nst = len(stations)
+    shorts = station_shorts(stations)
     buckets = {k: [] for k, _l in BOARD_COLUMNS}
     for p in event.participants:
         # Not in the room: waitlisted, released, or said they cannot come.
@@ -1919,9 +1946,12 @@ def board_rows(event, now=None):
         open_run = next((runs[s.id] for s in stations
                          if s.id in runs and not runs[s.id].ended_at), None)
         on = None
+        st_row = None
         if open_run is not None:
             on = next((i + 1 for i, s in enumerate(stations)
                        if s.id == open_run.station_id), None)
+            st_row = next((s for s in stations
+                           if s.id == open_run.station_id), None)
         secs = p.race_seconds if p.finished_at else None
         elapsed = p.running_seconds(now)
         if st == "finished":
@@ -1937,6 +1967,14 @@ def board_rows(event, now=None):
             "secs": secs, "elapsed": elapsed or 0,
             "done": done, "on": on, "of": nst,
             "heat": p.heat_time or "",
+            # Where they are and how far into it - "BBJ 34 / 80" rather than
+            # "station 3 of 5". A spectator can find a lane from the first and
+            # only count rows from the second.
+            "st_name": st_row.name if st_row is not None else "",
+            "st_short": shorts.get(st_row.id, "") if st_row is not None else "",
+            "st_count": open_run.count if open_run is not None else None,
+            "st_target": st_row.target if st_row is not None else None,
+            "st_unit": st_row.unit if st_row is not None else "",
         })
     out = []
     for key, label in BOARD_COLUMNS:
