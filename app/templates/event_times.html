@@ -19,7 +19,8 @@
       {%- if who.heat_time %} &middot; {{ h12(who.heat_time) }} heat{% endif %}
       {%- if who.age %} &middot; age {{ who.age }}{% endif %}
       &middot; <span class="statuspill s-{{ status }}">{{
-        RACE_STATUS_LABELS[status] }}</span></p></div>
+        RACE_STATUS_LABELS[status] }}</span>
+      {%- if test %} <span class="tagline">TEST ATHLETE</span>{% endif %}</p></div>
   <div class="hdact">
     <a class="btn" href="/events/{{ ev.id }}">&larr; Back to the list</a>
   </div>
@@ -30,8 +31,12 @@
     <div class="lbl">{{ 'Finish time' if who.finished_at else 'On the clock' }}</div>
     <div class="v">{{ mmss(who.race_seconds if who.finished_at else running) }}</div>
     <div class="s">
-      {%- if start %}gun at {{ h12(who.heat_time) }}
-      {%- else %}no heat time set, so there is no clock{% endif %}</div>
+      {%- if test and start %}started when a coach grabbed them
+      {%- elif test %}starts when a coach grabs them
+      {%- elif start %}gun at {{ h12(who.heat_time) }}
+      {%- elif who.heat_time %}{{ h12(who.heat_time) }} heat, on a day with no
+        date set &mdash; so there is no clock
+      {%- else %}no heat time yet, so there is nothing to count from{% endif %}</div>
   </div>
   <div class="side">
     <div><span class="k">On the stations</span>
@@ -76,6 +81,13 @@
   </tbody>
 </table>
 </div>
+{% if not started %}
+{# A dash per station rather than 0:00: "0:00" against a station nobody has
+   touched reads as though it was done in no time at all. The totals above are
+   zeros because zero is the true sum of nothing. #}
+<p class="muted small" style="margin:10px 0 0">No station has been raced yet.
+  The table fills in as the coach works down them.</p>
+{% endif %}
 {% else %}
 <div class="alert" style="margin-top:16px">This event has no stations set up,
   so there is nothing to time. Stations are on the event page.</div>

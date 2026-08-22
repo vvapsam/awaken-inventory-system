@@ -21,11 +21,13 @@
       <a class="row {% if h.mine %}mine{% endif %}"
          href="/race/e/{{ ev.id }}/h/{{ h.key }}">
         <div class="g">
-          <div class="t">{{ h12(h.time) }}</div>
+          <div class="t">{{ h12(h.time) }}{% if h.test %}
+            <span class="tag">TEST</span>{% endif %}</div>
           <div class="s">
             {{ h.n }} racing
             {%- if h.done %} · {{ h.done }} finished{% endif %}
             {%- if h.mine %} · you have {{ h.mine }}{% endif %}
+            {%- if h.test %} · open early for a test athlete{% endif %}
           </div>
         </div>
         <div class="r">

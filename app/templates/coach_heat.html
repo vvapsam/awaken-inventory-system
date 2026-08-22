@@ -14,23 +14,29 @@
   {% for x in people %}
     <div class="row {% if x.mine %}mine{% elif x.p.coach_id %}off{% endif %}">
       <div class="g">
-        <div class="t">{{ x.p.full_name }}</div>
+        <div class="t">{{ x.p.full_name }}{% if x.test %}
+          <span class="tag">TEST</span>{% endif %}</div>
         <div class="s">
           {%- if x.done %}Finished
           {%- elif x.mine %}Yours{% if x.started %} · station {{ x.pos }} of {{ x.total }}{% endif %}
           {%- elif x.coach %}{{ x.coach }}
           {%- else %}Free{% endif -%}
           {%- if x.p.sex %} · {{ 'Female' if x.p.sex == 'f' else 'Male' }}{% endif %}
+          {%- if x.test %} · clock starts on the grab{% endif %}
         </div>
       </div>
       {% if x.mine %}
         <a class="grab" href="/race/p/{{ x.p.id }}">Open →</a>
       {% elif x.p.coach_id %}
         <span class="grab ghost">Taken</span>
-      {% else %}
+      {% elif x.grabbable %}
         <form class="inline" method="post" action="/race/p/{{ x.p.id }}/grab">
           <button class="grab" type="submit">Grab</button>
         </form>
+      {% else %}
+        {# The heat was opened early because a test athlete is in it. Everybody
+           else in it still waits for the window. #}
+        <span class="grab ghost">Not yet</span>
       {% endif %}
     </div>
   {% else %}

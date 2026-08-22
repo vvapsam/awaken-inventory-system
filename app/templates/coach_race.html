@@ -4,7 +4,7 @@
 <div class="bar">
   <a class="back" href="/race/e/{{ ev.id }}/h/{{ (p.heat_time or '')|replace(':','') }}">‹</a>
   <div class="mid"><h1>{{ p.full_name }}</h1>
-    <div class="sub">{{ h12(p.heat_time) }} heat{% if p.sex %} · {{ 'Female' if p.sex == 'f' else 'Male' }}{% endif %}</div></div>
+    <div class="sub">{{ h12(p.heat_time) }} heat{% if p.sex %} · {{ 'Female' if p.sex == 'f' else 'Male' }}{% endif %}{% if test %} · <span class="tag">TEST</span>{% endif %}</div></div>
   <div class="pill {% if phase == 'done' %}done{% else %}live{% endif %}">{{ 'Done' if phase == 'done' else 'Live' }}</div>
 </div>
 
@@ -23,7 +23,9 @@
   <div class="k">{{ 'Final race time' if phase == 'done' else 'Running time' }}</div>
   <div class="v" id="runv">{{ mmss(race_secs if phase == 'done' else run_secs) }}</div>
   <div class="s" id="runs">
-    {% if start_ms %}Heat start {{ h12(p.heat_time) }}{% else %}No heat time set{% endif %}
+    {% if test %}Started when you grabbed
+    {%- elif start_ms %}Heat start {{ h12(p.heat_time) }}
+    {%- else %}No heat time set{% endif %}
   </div>
 </div>
 
@@ -88,9 +90,11 @@
   </form>
 
   <div class="note" id="tnote">
-    {% if phase == 'pre' %}Station one is already running — it starts at the
-    heat, not at your first tap. {% endif %}The clock above counts from
-    {{ h12(p.heat_time) or 'the heat' }} and nothing on this screen can move it.
+    {% if phase == 'pre' %}Station one is already running — it starts at
+    {% if test %}the grab{% else %}the heat{% endif %}, not at your first tap.
+    {% endif %}The clock above counts from
+    {% if test %}the moment you grabbed them{% else %}{{ h12(p.heat_time)
+      or 'the heat' }}{% endif %} and nothing on this screen can move it.
   </div>
 
   {% if mine %}

@@ -1858,6 +1858,27 @@ def h12(t):
     return "%d:%02d %s" % (h, m, ampm)
 
 
+#: Athletes exempt from the race rules, so a live event can be tested end to
+#: end without waiting for a real heat. Matched on the full name, lower-cased.
+#:
+#: A test athlete differs from everybody else in exactly two ways:
+#:
+#: * their heat can be opened in the race app at any time, however far off it
+#:   is -- but only *they* can be grabbed out of it early; anybody else sharing
+#:   that heat still waits for the window; and
+#: * their clock starts when a coach grabs them, not at the gun.
+#:
+#: Deliberately a short, visible list rather than a column and a checkbox: this
+#: is scaffolding, and a name in a constant is easy to find and delete when the
+#: testing is done. Every screen that shows one says so, because a clock that
+#: behaves differently and does not admit it is how a real result gets doubted.
+TEST_ATHLETES = {"van sampang"}
+
+
+def is_test_athlete(p) -> bool:
+    return (getattr(p, "full_name", "") or "").strip().lower() in TEST_ATHLETES
+
+
 def station_splits(p, now=None):
     """One person's race, station by station, as the sheet reads it.
 
@@ -2142,7 +2163,17 @@ class EventParticipant(Base):
         The event's date plus their heat's clock time, read in gym time. This
         is the fixed point everything else is measured from — it never moves,
         whatever a coach does.
+
+        One exception, and it is the whole of the exception: a test athlete
+        (see ``TEST_ATHLETES``) starts when a coach grabs them. Overriding the
+        answer *here* rather than in each screen means the race clock, the
+        splits, the status column, the finish time, the patch and the card all
+        follow from one line and cannot drift apart. Until they are grabbed
+        there is no start at all, which is what "the timer starts on the grab"
+        means.
         """
+        if is_test_athlete(self):
+            return self.grabbed_at
         if not self.heat_time or not self.event or not self.event.starts_at:
             return None
         try:

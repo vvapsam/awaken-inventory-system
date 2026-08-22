@@ -65,7 +65,7 @@ from .models import (
     can_door,
     RACE_STATUSES, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
-    station_splits, has_race, race_status,
+    station_splits, has_race, race_status, is_test_athlete,
 )
 # One definition of a clock, borrowed rather than copied. patch_routes owns it
 # because that is where a time is first read out loud to somebody.
@@ -1469,9 +1469,14 @@ def register(app, deps):
         moving = sum(r["gap"] for r in rows if r["gap"] is not None)
         return render(request, "event_times.html", db, staff, active="events",
                       ev=p.event, who=p, rows=rows, mmss=mmss,
-                      raced=raced or None, moving=moving or None,
+                      # Zero rather than None: a race that has not happened
+                      # reads 0:00 across the board, which is a page you can
+                      # look at the night before. A dash there would say "we
+                      # do not know", and we do - nothing has happened.
+                      raced=raced, moving=moving,
                       status=race_status(p, now),
-                      running=p.running_seconds(now),
+                      running=p.running_seconds(now) or 0,
+                      started=has_race(p), test=is_test_athlete(p),
                       start=p.heat_start(), base=base_url(request))
 
     @app.get("/events/{eid}/settings", response_class=HTMLResponse)

@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 from .auth import current_staff
 from .db import get_db
 from .models import (
-    can_coach, h12, heat_open_mins,
+    can_coach, h12, heat_open_mins, is_test_athlete,
     EVENT_CLOSED, EVENT_DRAFT, Event, EventParticipant, EventStation,
     RSVP_NO, Staff, StationRun, to_local,
 )
@@ -229,8 +229,11 @@ def register(app, deps):
         heats = {}
         for p in rows:
             h = heats.setdefault(p.heat_time, {"time": p.heat_time, "n": 0,
-                                               "taken": 0, "mine": 0, "done": 0})
+                                               "taken": 0, "mine": 0,
+                                               "done": 0, "test": False})
             h["n"] += 1
+            if is_test_athlete(p):
+                h["test"] = True
             if p.coach_id:
                 h["taken"] += 1
             if p.coach_id == staff.id:
@@ -243,7 +246,10 @@ def register(app, deps):
             h["key"] = hhmm_key(h["time"])
             h["at"] = _heat_moment(ev, h["time"])
             h["opens"] = heat_opens(ev, h["at"])
-            h["open"] = heat_is_open(ev, h["at"], now)
+            # A heat holding a test athlete can always be entered. Only they
+            # can be grabbed out of it early, though - the grab below still
+            # asks the window about everybody else.
+            h["open"] = h["test"] or heat_is_open(ev, h["at"], now)
             # The page has a clock on it already. Handing it the moment each
             # shut heat comes due means a coach standing on the list at 9:49
             # sees it open by itself, rather than learning that a phone needs
@@ -310,19 +316,25 @@ def register(app, deps):
             return RedirectResponse("/race", status_code=303)
         heat = "%s:%s" % (hm[:2], hm[2:4]) if len(hm) >= 4 else hm
         at = _heat_moment(ev, heat)
+        rows_for_gate = racers(db, ev, heat)
         # Greying the row on the list is a courtesy, not a lock: this address
         # is four digits and a coach who has worked one heat can type another.
         # The gate has to be here, where the athletes are.
-        if not heat_is_open(ev, at):
+        if not (heat_is_open(ev, at)
+                or any(is_test_athlete(x) for x in rows_for_gate)):
             return RedirectResponse("/race/e/%d?early=%s" % (ev.id, hm),
                                     status_code=303)
-        rows = racers(db, ev, heat)
+        rows = rows_for_gate
         people = []
         for p in rows:
             st = race_state(p)
             total = len(st["stations"])
             people.append({
                 "p": p,
+                # Shown on the row, because a clock that behaves differently
+                # and does not admit it is how a real result gets doubted.
+                "test": is_test_athlete(p),
+                "grabbable": is_test_athlete(p) or heat_is_open(ev, at),
                 "mine": p.coach_id == staff.id,
                 "coach": coach_name(db, p.coach_id),
                 "done": bool(p.finished_at),
@@ -356,7 +368,8 @@ def register(app, deps):
         # drew, and a grab is the thing the window exists to prevent — holding
         # somebody out of a heat three hours away, out of sight of the coach
         # who will actually be running it.
-        if not heat_is_open(p.event, _heat_moment(p.event, p.heat_time)):
+        if not (is_test_athlete(p)
+                or heat_is_open(p.event, _heat_moment(p.event, p.heat_time))):
             return RedirectResponse(
                 "/race/e/%d?early=%s" % (p.event_id, hhmm_key(p.heat_time)),
                 status_code=303)
@@ -444,7 +457,7 @@ def register(app, deps):
             now_ms=int(now.timestamp() * 1000),
             run_secs=p.running_seconds(now),
             race_secs=p.race_seconds,
-            mine=(p.coach_id == staff.id),
+            mine=(p.coach_id == staff.id), test=is_test_athlete(p),
             coach=coach_name(db, p.coach_id))
 
     # -------------------------------------------------------------- taps ----

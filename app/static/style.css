@@ -1176,6 +1176,12 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
 #splits tr.now{background:#fffbeb}
 #splits .running{font-weight:700;color:#92400e}
 
+/* A test athlete, marked wherever they appear. A clock that behaves
+ * differently and does not say so is how a real result gets doubted. */
+.tagline{display:inline-block;font:800 10px/1 inherit;letter-spacing:.1em;
+  padding:4px 6px;border-radius:5px;background:#fef3c7;color:#92400e;
+  vertical-align:1px}
+
 .timeacts{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   margin-top:18px}
 /* .btn.big is full width up in the awarding-table section, where the buttons
