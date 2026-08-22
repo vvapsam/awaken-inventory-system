@@ -1,0 +1,189 @@
+{# The public heat timetable.
+
+   Outside base.html for the same reason the registration page is: this is a
+   page a member of the public reads on a phone, and it must not carry the
+   app's navigation or imply there is a system behind it to log into.
+
+   Names are shortened to a first name and an initial before they get here —
+   see short_name(). There is no email, no phone, no payment, nothing about
+   anybody's money. noindex because a start list should be findable by the
+   people in it and by nobody else. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#14171a">
+<title>{% if ev %}{{ ev.name }} · Heat times{% else %}Link not live{% endif %}</title>
+<link rel="icon" href="/static/logo.svg">
+<style>
+:root{--ink:#1a232e;--muted:#6b7683;--line:#e4e8ed;--panel:#f3f5f7;
+  --teal:#008080;--teal-dark:#006a6a;--teal-tint:#e6f2f2;
+  --black:#14171a;--black-soft:#9aa3ab}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:var(--ink);background:#eef1f4;line-height:1.5;-webkit-font-smoothing:antialiased}
+.sheet{max-width:460px;margin:0 auto;background:#fff;min-height:100vh}
+@media(min-width:520px){.sheet{margin:22px auto;min-height:0;border-radius:12px;
+  overflow:hidden;box-shadow:0 6px 30px rgba(16,24,32,.10)}}
+
+.top{background:var(--black);color:#fff;padding:20px 22px 18px;text-align:center}
+.top svg{width:24px;height:30px;display:block;margin:0 auto 6px}
+.top .wm{letter-spacing:.34em;font-size:.66rem;color:#b6bdc4;padding-left:.34em}
+.top .ev{margin-top:11px;font-size:1.02rem;font-weight:650;letter-spacing:-.01em}
+.top .sub{margin-top:3px;font-size:.68rem;color:var(--black-soft);letter-spacing:.08em;
+  text-transform:uppercase}
+
+/* The one instruction that governs their morning, before any times. */
+.rule{background:var(--teal-tint);color:var(--teal-dark);padding:13px 22px;
+  font-size:.88rem;font-weight:600;text-align:center}
+.rule b{font-weight:700}
+
+.find{padding:16px 22px 0}
+.find input{width:100%;border:1px solid var(--line);border-radius:10px;
+  padding:12px 13px;font-size:1rem;font-family:inherit;color:var(--ink);
+  outline:0;background:#fff;-webkit-appearance:none}
+.find input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
+
+.body{padding:14px 18px 26px}
+
+/* One column of times running down the page, names beside each — the same
+   shape as the timetable on the admin side, and the shape of the day itself.
+   The time is the thing being looked up, so it holds the left edge and never
+   moves; the names flow beside it however many there are. */
+.tt{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.heat{display:flex;align-items:stretch;border-top:1px solid var(--line)}
+.heat:first-child{border-top:0}
+/* Wide enough that "arrive 10:30 AM" stays on one line — a wrapped time
+   reads as two times. */
+.heat .when{flex:0 0 114px;padding:12px 10px 12px 14px;background:var(--panel);
+  border-right:1px solid var(--line)}
+.heat .t{font-size:1.02rem;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.heat .a{font-size:.7rem;color:var(--muted);margin-top:2px;line-height:1.35;
+  white-space:nowrap}
+.heat .who{flex:1 1 auto;min-width:0;padding:6px 0}
+.heat .who div{padding:6px 14px;font-size:.98rem}
+.heat .who div + div{border-top:1px solid #f2f4f6}
+
+/* The heat that is happening, on the day itself. */
+.heat.now .when{background:var(--teal-tint);border-right-color:#bcdedd}
+.heat.now .t,.heat.now .a{color:var(--teal-dark)}
+.heat.now .a{font-weight:700}
+
+@media(max-width:359px){
+  .body{padding:14px 12px 26px}
+  .heat .when{flex-basis:102px;padding-left:10px;padding-right:8px}
+  .heat .t{font-size:.94rem}
+  .heat .a{font-size:.64rem}
+  .heat .who div{padding-left:11px;padding-right:11px}
+}
+
+.none{padding:30px 22px;text-align:center;color:var(--muted);font-size:.92rem}
+.foot{padding:0 22px 26px;color:var(--muted);font-size:.76rem;line-height:1.5}
+.foot p{margin:0 0 7px}
+.gone{padding:44px 26px;text-align:center}
+.gone h1{font-size:1.15rem;margin:0 0 8px}
+.gone p{color:var(--muted);font-size:.9rem;margin:0}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<div class="top">
+  <svg viewBox="0 0 200 250" fill="#fff">
+    <path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/>
+    <path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
+  <div class="wm">AWAKEN</div>
+  {% if ev %}
+    <div class="ev">{{ ev.name }}</div>
+    <div class="sub">Heat times{% if ev.starts_at and not ev.time_tba %} ·
+      {{ ev.when_text }}{% elif ev.starts_at %} · {{ ev.when_text }}{% endif %}</div>
+  {% else %}
+    <div class="ev">Heat times</div>
+  {% endif %}
+</div>
+
+{% if not ev %}
+  <div class="gone">
+    <h1>This link isn't live any more.</h1>
+    <p>Ask whoever sent it to you for the current one.</p>
+  </div>
+
+{% elif not rows %}
+  <div class="none">
+    The heats haven't been set yet.<br>Check back — this page updates itself.
+  </div>
+
+{% else %}
+  <div class="rule">
+    Be at {{ ev.venue or 'the gym' }} <b>{{ arrive_gap }} before</b> your heat —
+    that's check-in and your warm-up.
+  </div>
+
+  <div class="find">
+    <input type="search" id="q" placeholder="Find your name…"
+           autocomplete="off" autocapitalize="off" spellcheck="false"
+           aria-label="Find your name">
+  </div>
+
+  <div class="body" id="list">
+    <div class="tt">
+      {% for r in rows %}
+        <div class="heat {% if r.t == live %}now{% endif %}" data-heat>
+          <div class="when">
+            <div class="t">{{ clock12(r.t) }}</div>
+            <div class="a">{% if r.t == live %}Running now{% else %}arrive
+              {{ clock12(r.arrive) }}{% endif %}</div>
+          </div>
+          <div class="who">
+            {% for n in r.people %}<div data-name="{{ n|lower }}">{{ n }}</div>{% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="none" id="nohits" hidden>No one by that name on the list.</div>
+  </div>
+
+  <div class="foot">
+    <p>{{ counted }} {{ 'person' if counted == 1 else 'people' }} on the list.
+      Times can still move — this page is always the current one, so open it
+      again on the morning rather than trusting a screenshot.</p>
+    <p>Can't find your name, or need a different heat? Message AWAKEN.</p>
+  </div>
+{% endif %}
+
+</div>
+
+{% if ev and rows %}
+<script>
+(function(){
+  /* Find-your-name. Client-side because the whole list is already here and a
+     round trip per keystroke on gym wifi is a round trip too many. */
+  var q = document.getElementById('q'),
+      heats = [].slice.call(document.querySelectorAll('[data-heat]')),
+      none = document.getElementById('nohits');
+
+  function paint(){
+    var v = q.value.trim().toLowerCase(), hits = 0;
+    heats.forEach(function(h){
+      var shown = 0;
+      [].slice.call(h.querySelectorAll('[data-name]')).forEach(function(li){
+        var on = !v || li.getAttribute('data-name').indexOf(v) !== -1;
+        li.hidden = !on;
+        if (on) shown++;
+      });
+      /* A heat with nobody matching is noise, not an answer. */
+      h.hidden = v && !shown;
+      hits += shown;
+    });
+    none.hidden = !(v && !hits);
+  }
+  q.addEventListener('input', paint);
+})();
+</script>
+{% endif %}
+</body>
+</html>

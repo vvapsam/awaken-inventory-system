@@ -420,6 +420,22 @@ def clock12(t: str) -> str:
     return "%d:%02d %s" % (((h + 11) % 12) + 1, m, "AM" if h < 12 else "PM")
 
 
+def short_name(p) -> str:
+    """"Chrizel Urbino" as "Chrizel U." — enough to find yourself, and not a
+    contact list.
+
+    The initial comes off the first word of the family name, so "De la Cruz"
+    reads "D." rather than something that looks like a typo. Somebody with one
+    name keeps it whole: an initial-less "Madonna" is right, and "Madonna ."
+    is not.
+    """
+    given, family = (p.given or "").strip(), (p.family or "").strip()
+    if not given:
+        return (p.name or "").strip() or "—"
+    first = family.split(" ")[0] if family else ""
+    return "%s %s." % (given, first[0].upper()) if first else given
+
+
 def shift(t: str, minutes: int) -> str:
     """A time this many minutes earlier, clamped to the same day."""
     t = hhmm(t)
@@ -1757,6 +1773,106 @@ def register(app, deps):
                 db.delete(row)
         db.commit()
         return RedirectResponse("/events/%d/stations?saved=1" % eid,
+                                status_code=303)
+
+    # ------------------------------------------------ public heat timetable ----
+    #
+    # Thirty-five people all want to know one thing: what time do I run, and
+    # when do I have to be there. Answering that thirty-five times by DM is a
+    # morning, and an emailed time goes stale the moment somebody is moved.
+    # So the timetable gets a URL, and the URL is always current.
+    #
+    # It carries other people's names, so it is a token rather than the event
+    # slug: a guessable address for a start list is a start list anybody can
+    # find. Names are shortened to a first name and an initial, which is
+    # enough to find yourself and not enough to be a contact list. No email,
+    # no phone, no payment, nothing about anybody's money.
+
+    def _heat_public_ctx(ev, now=None):
+        """Everything the public page shows, worked out in one place.
+
+        Shared by the page and its tests so there is no second opinion about
+        who appears on a public URL.
+        """
+        now = now or datetime.now(timezone.utc)
+        times = heat_times(ev)
+        known = set(times)
+        people = sorted(
+            [p for p in ev.participants
+             if not (p.waitlist or p.declined or p.released_at)
+             and p.heat_time in known],
+            key=lambda p: ((p.given or "").lower(), (p.family or "").lower()))
+        rows = []
+        for t in times:
+            here = [short_name(p) for p in people if p.heat_time == t]
+            if not here:
+                continue                # an empty heat is not news to anybody
+            rows.append({"t": t, "arrive": arrive_at(ev, t), "people": here})
+        # Which heat is happening, so somebody holding this page at the venue
+        # can see where the day has got to. Only ever on the day itself.
+        live = None
+        if ev.starts_at and to_local(now).date() == to_local(ev.starts_at).date():
+            mins = to_local(now).hour * 60 + to_local(now).minute
+            for r in rows:
+                start = int(r["t"][:2]) * 60 + int(r["t"][3:])
+                if start <= mins < start + max(1, ev.heat_every or 10):
+                    live = r["t"]
+                    break
+        return {"rows": rows, "live": live,
+                "counted": sum(len(r["people"]) for r in rows)}
+
+    @app.get("/h/{token}", response_class=HTMLResponse)
+    def heat_public(request: Request, token: str,
+                    db: Session = Depends(get_db)):
+        """The timetable, for the people who are in it."""
+        ev = (db.query(Event)
+              .filter(Event.heat_token == token).first()) if token else None
+        if not ev:
+            # One page for "never existed" and "revoked" alike: the row is
+            # gone either way, and a page that could tell them apart would be
+            # a page that confirms a guess.
+            return templates.TemplateResponse(
+                "heat_public.html", {"request": request, "ev": None},
+                status_code=404)
+        ctx = _heat_public_ctx(ev)
+        return templates.TemplateResponse("heat_public.html", {
+            "request": request, "ev": ev, "clock12": clock12,
+            "arrive_gap": gap_text(ev.heat_arrive or 0), **ctx})
+
+    @app.post("/events/{eid}/heat-link")
+    def heat_link_new(request: Request, eid: int,
+                      db: Session = Depends(get_db)):
+        """Mint a share link, or replace the one there is.
+
+        Replacing is the same action as making one: there is only ever a
+        single live link per event, and reissuing is how you take back a URL
+        that went somewhere you did not mean it to.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        ev.heat_token = secrets.token_urlsafe(18)
+        ev.heat_link_at = datetime.now(timezone.utc)
+        db.commit()
+        return RedirectResponse("/events/%d/heats?link=new" % eid,
+                                status_code=303)
+
+    @app.post("/events/{eid}/heat-link/revoke")
+    def heat_link_revoke(request: Request, eid: int,
+                         db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        ev.heat_token = None
+        ev.heat_link_at = None
+        db.commit()
+        return RedirectResponse("/events/%d/heats?link=off" % eid,
                                 status_code=303)
 
     # ------------------------------------------------------------- heats ----

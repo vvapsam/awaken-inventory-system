@@ -1514,6 +1514,13 @@ class Event(Base):
     #: the warm-up both happen in this window, so it is the number that
     #: actually governs their morning — their heat time is the reason for it.
     heat_arrive = Column(Integer, nullable=False, default=30)
+    #: The share link for the public timetable, or NULL for "no live link".
+    #: A token rather than the slug, because the page carries other people's
+    #: names: a guessable address for a start list is a start list anybody can
+    #: find. Revoking sets this back to NULL and the old URL stops working,
+    #: which is the whole point of it being reissuable.
+    heat_token = Column(String, unique=True)
+    heat_link_at = Column(DateTime(timezone=True))
     #: The sponsor's own logo, stored on the row rather than dropped in the
     #: static folder. A sponsor is a property of one event, not of the app, and
     #: the next one should be an upload rather than a deploy. It rides inside

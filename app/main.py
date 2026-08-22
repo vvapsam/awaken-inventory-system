@@ -740,6 +740,16 @@ def startup():
                 "  heat_cap INTEGER NOT NULL DEFAULT 3; "
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  heat_arrive INTEGER NOT NULL DEFAULT 30; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS heat_token VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  heat_link_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
+            # Unique separately: ADD COLUMN cannot carry it, and a partial
+            # index keeps the many events with no link from colliding on NULL.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_events_heat_token "
+                "  ON events (heat_token) WHERE heat_token IS NOT NULL; "
                 "END IF; END $$;"))
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.event_participants') "
