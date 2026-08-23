@@ -43,6 +43,10 @@
   overflow:hidden;text-overflow:ellipsis;
 }
 .prow .who span{font-size:.7rem;color:var(--dim)}
+.prow .who a{color:inherit;text-decoration:none}
+.prow .who a:hover{color:var(--mint);text-decoration:underline}
+.prow .who a:focus-visible{outline:2px solid var(--mint);outline-offset:3px;
+  border-radius:3px}
 .prow .t{
   font-weight:800;font-size:1.02rem;flex:0 0 auto;letter-spacing:-.01em;
   font-variant-numeric:tabular-nums;
@@ -87,7 +91,8 @@
       <div class="prow{{ ' gold' if loop.index == 1 }}">
         <span class="p">{{ loop.index }}</span>
         <span class="fl" title="{{ r.country }}">{{ r.flag }}</span>
-        <span class="who"><b>{{ r.name }}</b><span>{{ r.country }}</span></span>
+        <span class="who"><b><a href="/l/{{ token }}/p/{{ r.id }}"
+          >{{ r.name }}</a></b><span>{{ r.country }}</span></span>
         <span class="t">{{ r.time }}</span>
       </div>
       {% endfor %}

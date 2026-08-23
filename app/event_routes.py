@@ -30,6 +30,7 @@ import csv
 import hashlib
 import hmac
 import io
+import math
 import os
 import re
 import secrets
@@ -67,7 +68,7 @@ from .models import (
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     station_splits, has_race, race_status, is_test_athlete,
     board_rows, RACE_STATUS_OUT, h12, Staff, wants_reels,
-    race_totals,
+    race_totals, station_field, rank_in, station_shorts,
     parse_clock, CLOCK_MAX,
     CATEGORIES, CATEGORY_LABELS, CATEGORY_DEFAULT, category_key,
 )
@@ -2679,8 +2680,13 @@ def register(app, deps):
             if r["done"]:
                 n += 1
                 r["place"] = n
-        return {"rows": rows, "groups": groups,
-                "finishers": n, "field": len(rows)}
+        return {"rows": rows, "groups": groups, "finishers": n,
+                "field": len(rows),
+                # The board is the morning. Once nobody is on the floor it is
+                # a page about a race that has stopped, so it stops being
+                # offered - and comes back on its own for the next event.
+                "racing": sum(1 for r in rows
+                              if r["status"] == "in_progress")}
 
     def _board_event(db, token):
         return (db.query(Event)
@@ -2717,6 +2723,177 @@ def register(app, deps):
         return templates.TemplateResponse("podium_public.html", {
             "request": request, "ev": ev, "token": token, "view": "podium",
             "sponsors": SPONSORS, **_results_ctx(ev)})
+
+    #: How far out a station is drawn on the shape when it is the only result
+    #: on it. Dead centre would say "worst in the field" about somebody who is
+    #: also the best in it; the middle is the honest answer to "compared with
+    #: whom".
+    SHAPE_ALONE = 0.5
+
+    def _radar(shape, cx=120.0, cy=112.0, r=78.0):
+        """The polygon, its rings and its labels, worked out here.
+
+        Geometry in Python rather than trigonometry in a template: a chart
+        drawn by string concatenation in Jinja is a chart nobody can check.
+        """
+        n = len(shape)
+        if n < 3:
+            return None
+        step = 2 * math.pi / n
+        # Start at the top and go clockwise, so the first station is where a
+        # reader's eye already is.
+        angs = [-math.pi / 2 + i * step for i in range(n)]
+
+        def at(i, frac, rad=None):
+            rr = (rad if rad is not None else r) * frac
+            return (round(cx + math.cos(angs[i]) * rr, 1),
+                    round(cy + math.sin(angs[i]) * rr, 1))
+
+        def poly(frac):
+            return " ".join("%s,%s" % at(i, frac) for i in range(n))
+
+        labels = []
+        for i, sp in enumerate(shape):
+            x, y = at(i, 1.0, r + 19)
+            # Nudge the text off the point rather than centring it on top of
+            # the axis, except at the top and bottom where centred is right.
+            dx = math.cos(angs[i])
+            anchor = "middle" if abs(dx) < 0.3 else ("start" if dx > 0
+                                                     else "end")
+            labels.append({"name": sp["name"], "x": x,
+                           "y": round(y + (4 if abs(dx) >= 0.3 else
+                                           (10 if math.sin(angs[i]) > 0
+                                            else -2)), 1),
+                           "anchor": anchor})
+        return {
+            "cx": cx, "cy": cy,
+            "rings": [poly(f) for f in (1.0, 0.66, 0.33)],
+            "spokes": [at(i, 1.0) for i in range(n)],
+            "you": " ".join("%s,%s" % at(i, max(0.08, shape[i]["v"]))
+                            for i in range(n)),
+            "labels": labels,
+        }
+
+    def _athlete_ctx(ev, p, now=None):
+        """One person's race, and where it sits in the field that ran it.
+
+        Ranked against everybody at this event rather than against their own
+        group. "4th of 16" is a number somebody can picture; "2nd of 4" is a
+        number that mostly describes how few Elite women entered.
+        """
+        now = now or datetime.now(timezone.utc)
+        field = station_field(ev, now)
+        rows, shape = [], []
+        for r in station_splits(p, now):
+            st = r["station"]
+            pairs = field.get(st.id, [])
+            place, of, through = rank_in(pairs, p.id)
+            rows.append({
+                "name": st.name,
+                "count": r["count"], "target": r["target"], "unit": r["unit"],
+                "secs": r["secs"], "split": mmss(r["secs"]) if r["secs"] is not None else "",
+                "gap": r["gap"], "walk": mmss(r["gap"]) if r["gap"] is not None else "",
+                "place": place, "of": of,
+                # Every result on this station, as a position from 0 (fastest)
+                # to 1 (slowest), for the strip of dots. Sixteen dots is the
+                # field; a curve fitted to sixteen points is an opinion.
+                # Everybody the same time is a real answer on a station with
+                # a hard cap, and it belongs in the middle of the line rather
+                # than piled on the fast end - "left" would read as fastest
+                # when nobody was.
+                "dots": ([{"at": 50 if pairs[-1][1] == pairs[0][1] else
+                           round((sec - pairs[0][1]) * 100.0
+                                 / (pairs[-1][1] - pairs[0][1]), 2),
+                           "me": pid == p.id}
+                          for pid, sec in pairs] if pairs else []),
+                "fastest": mmss(pairs[0][1]) if pairs else "",
+                "slowest": mmss(pairs[-1][1]) if pairs else "",
+            })
+            shape.append({
+                "name": station_shorts(sorted(ev.stations,
+                                              key=lambda s: (s.position, s.id))
+                                       ).get(st.id, st.name),
+                "full": st.name,
+                "v": (SHAPE_ALONE if (through is None or of < 2) else through),
+                "known": place is not None,
+            })
+
+        raced, moving = race_totals(p, now)
+        # The walks, ranked the same way. It is the number nobody looks at and
+        # the one with a minute hiding in it.
+        walks = sorted(((q.id, race_totals(q, now)[1])
+                        for q in ev.participants
+                        if not (q.waitlist or q.released_at or q.declined)
+                        and race_status(q, now) == "finished"),
+                       key=lambda t: t[1])
+        wplace, wof, _wt = rank_in(walks, p.id)
+
+        st = race_status(p, now)
+        cols = board_rows(ev, now)
+        mine = next((c for c in cols
+                     for r in c["rows"] if r["p"].id == p.id), None)
+        gplace = next((r["place"] for c in cols for r in c["rows"]
+                       if r["p"].id == p.id), None)
+        overall = _results_ctx(ev, now)
+        oplace = next((r["place"] for r in overall["rows"] if r["id"] == p.id),
+                      None)
+        return {
+            "who": {
+                "name": short_name(p),
+                "flag": country_flag(p.country),
+                "country": country_name(p.country),
+                "group": mine["label"] if mine else "",
+                "cat": (mine["key"].split(":")[0]
+                        if mine and ":" in mine["key"] else ""),
+                "status": st, "label": RACE_STATUS_LABELS[st],
+                "done": st == "finished",
+                "finish": mmss(p.race_seconds) if p.finished_at else "",
+                "raced": mmss(raced), "moving": mmss(moving),
+                # What share of the race was spent walking. The number that
+                # makes somebody look at their transitions for the first time.
+                "walkpct": (round(moving * 100.0 / (raced + moving))
+                            if (raced + moving) else 0),
+                "gplace": gplace, "oplace": oplace,
+                "field": overall["finishers"],
+                "wplace": wplace, "wof": wof,
+            },
+            "rows": rows, "shape": shape, "radar": _radar(shape),
+            "walkdots": ([{"at": 50 if walks[-1][1] == walks[0][1] else
+                           round((sec - walks[0][1]) * 100.0
+                                 / (walks[-1][1] - walks[0][1]), 2),
+                           "me": pid == p.id}
+                          for pid, sec in walks] if walks else []),
+            "walkfast": mmss(walks[0][1]) if walks else "",
+            "walkslow": mmss(walks[-1][1]) if walks else "",
+        }
+
+    @app.get("/l/{token}/p/{pid}", response_class=HTMLResponse)
+    def athlete_public(request: Request, token: str, pid: int,
+                       db: Session = Depends(get_db)):
+        """One athlete's race, for anybody holding the results link.
+
+        Public by decision, so the same rule as the other two pages: a name
+        shortened to a first name and an initial, a flag, a group and clocks.
+        The age on the row is on file for a patch and does not travel here.
+        """
+        ev = _board_event(db, token)
+        if not ev:
+            return templates.TemplateResponse(
+                "board_public.html", {"request": request, "ev": None},
+                status_code=404)
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != ev.id or p.waitlist or p.released_at \
+                or p.declined:
+            # The same answer as a bad token. Two different ones would between
+            # them confirm a guess about who is on this event.
+            return templates.TemplateResponse(
+                "board_public.html", {"request": request, "ev": None},
+                status_code=404)
+        ctx = _results_ctx(ev)
+        return templates.TemplateResponse("athlete_public.html", {
+            "request": request, "ev": ev, "token": token, "view": "athlete",
+            "sponsors": SPONSORS, "finishers": ctx["finishers"],
+            "racing": ctx["racing"], **_athlete_ctx(ev, p)})
 
     @app.get("/l/{token}/feed.json")
     def board_feed(request: Request, token: str,

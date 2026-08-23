@@ -2162,6 +2162,46 @@ def race_totals(p, now=None):
     return raced, moving
 
 
+def station_field(event, now=None):
+    """Every completed split on this event, station by station.
+
+    ``{station_id: [(participant_id, seconds), ...]}`` sorted fastest first,
+    which is what a rank and a spread are both read off.
+
+    Only closed stations count. A station somebody is standing on has a clock
+    but not a time, and ranking a race in progress against races that are over
+    would put somebody first for having barely started.
+    """
+    out = {}
+    for p in event.participants:
+        if p.waitlist or p.released_at or p.declined:
+            continue
+        for r in station_splits(p, now):
+            if r["secs"] is None:
+                continue
+            out.setdefault(r["station"].id, []).append((p.id, r["secs"]))
+    for k in out:
+        out[k].sort(key=lambda t: t[1])
+    return out
+
+
+def rank_in(pairs, pid):
+    """(place, how many, how far through) for one person in one sorted list.
+
+    ``through`` runs 1.0 for the fastest down to 0.0 for the slowest, which is
+    what a shape wants to be drawn from - and is deliberately not a percentile,
+    because with sixteen people a percentile implies a precision that sixteen
+    people cannot carry.
+    """
+    ids = [i for i, _s in pairs]
+    if pid not in ids:
+        return None, len(pairs), None
+    place = ids.index(pid) + 1
+    n = len(pairs)
+    through = 1.0 if n < 2 else 1.0 - (place - 1) / (n - 1)
+    return place, n, through
+
+
 def has_race(p) -> bool:
     """Is there anything to summarise for this person?
 

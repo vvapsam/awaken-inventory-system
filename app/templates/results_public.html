@@ -44,6 +44,10 @@ table.res{
 }
 .res .pl.none{color:#3c5a58;font-weight:600;font-size:.72rem}
 .res .nm{font-weight:700;font-size:.92rem;display:flex;align-items:center;gap:8px}
+.res .nm a.who{color:inherit;text-decoration:none}
+.res .nm a.who:hover{color:var(--mint);text-decoration:underline}
+.res .nm a.who:focus-visible{outline:2px solid var(--mint);outline-offset:3px;
+  border-radius:3px}
 .res .nm .fl{font-size:1.05rem;line-height:1;flex:0 0 auto}
 .res .meta{font-size:.68rem;color:var(--dim);margin-top:2px;padding-left:26px}
 .res .tm{font-weight:800;font-size:.98rem;letter-spacing:-.01em}
@@ -137,7 +141,7 @@ table.res{
           data-place="{{ r.place or '' }}">{{ r.place or '—' }}</td>
       <td>
         <div class="nm"><span class="fl" title="{{ r.country }}">{{ r.flag }}</span>
-          {{ r.name }}</div>
+          <a class="who" href="/l/{{ token }}/p/{{ r.id }}">{{ r.name }}</a></div>
         <div class="meta"><span class="onsm">{{ r.group }}{{ " · " if r.heat }}</span>{% if r.heat %}{{ r.heat }} heat{% endif %}</div>
       </td>
       <td><span class="tag{{ ' elite' if r.cat == 'elite' }}">{{ r.group }}</span></td>

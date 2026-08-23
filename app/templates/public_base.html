@@ -130,7 +130,13 @@ nav.views a:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
   </div>
 
   <nav class="views">
+    {# The board is the morning. Once nobody is on the floor it is a page
+       about a race that has stopped, so it stops being offered - and comes
+       back on its own the next time somebody is out there. The page itself
+       still answers on its own URL; it just is not the way in any more. #}
+    {% if racing %}
     <a href="/l/{{ token }}"{% if view == 'board' %} aria-current="page"{% endif %}>Live board</a>
+    {% endif %}
     <a href="/l/{{ token }}/results"{% if view == 'results' %} aria-current="page"{% endif %}>Results</a>
     <a href="/l/{{ token }}/podium"{% if view == 'podium' %} aria-current="page"{% endif %}>Podium</a>
   </nav>

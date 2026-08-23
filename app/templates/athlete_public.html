@@ -1,0 +1,276 @@
+{% extends "public_base.html" %}
+{% block title %}{{ who.name }} &mdash; {{ ev.name }}{% endblock %}
+{% block subtitle %}{{ ev.when_text }}{% endblock %}
+
+{% block css %}
+.back{
+  display:inline-block;margin-bottom:14px;color:var(--mint);
+  text-decoration:none;font-size:.82rem;font-weight:700;
+}
+.back:hover{text-decoration:underline}
+.back:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
+
+/* ---- who, and where they came ---- */
+.ath{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;
+  padding-bottom:15px;border-bottom:1px solid var(--line);margin-bottom:16px;
+}
+.ath .fl{font-size:1.7rem;line-height:1;flex:0 0 auto}
+.ath h2{margin:0;font-size:1.3rem;font-weight:800;letter-spacing:-.025em}
+.stat{
+  font-size:.78rem;font-weight:700;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;padding:6px 10px;
+  font-variant-numeric:tabular-nums;
+}
+.stat em{font-style:normal;color:var(--dim);font-weight:600}
+.stat.cat{color:var(--mint);border-color:var(--eliteline)}
+.stat.big{
+  background:var(--amber);border-color:var(--amber);color:#1d1a10;
+  font-size:.95rem;font-weight:800;
+}
+.stat.big em{color:#4a4023}
+
+/* ---- the three totals ---- */
+.tots{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px;
+}
+.tot{
+  background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:13px 14px;min-width:0;
+}
+.tot .k{
+  font-size:.6rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--mintdim);
+}
+.tot .v{
+  font-size:1.5rem;font-weight:800;letter-spacing:-.03em;margin-top:4px;
+  font-variant-numeric:tabular-nums;
+}
+.tot .n{font-size:.68rem;color:var(--dim);margin-top:3px;line-height:1.4}
+.tot.amber .v{color:var(--amber)}
+
+h3.sec{
+  margin:24px 0 11px;font-size:.68rem;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--mintdim);
+}
+
+/* ---- station by station ---- */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.sp{
+  width:100%;min-width:520px;border-collapse:collapse;color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.sp th{
+  text-align:left;font-size:.6rem;font-weight:800;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--mintdim);padding:0 9px 9px;
+  border-bottom:1px solid var(--line);white-space:nowrap;
+}
+.sp td{padding:11px 9px;border-bottom:1px solid #142c2c}
+.sp tbody tr:last-child td{border-bottom:0}
+.sp .r{text-align:right}
+.sp .st{font-weight:700;font-size:.92rem}
+/* The count lives in its own column on a wide screen and moves under the
+   station name on a narrow one, where that column is dropped. Never both. */
+.sp .did{display:none;font-size:.72rem;color:var(--dim);margin-top:2px}
+.sp .tm{font-weight:800;font-size:.96rem}
+.sp .walk{color:var(--dim);font-size:.86rem}
+.rk{
+  display:inline-block;font-size:.7rem;font-weight:800;border-radius:5px;
+  padding:3px 7px;background:#12292a;border:1px solid var(--line);
+  color:var(--dim);white-space:nowrap;
+}
+.rk.top{color:var(--mint);border-color:var(--eliteline);background:#10322e}
+
+/* ---- the field, as dots ---- */
+.strips{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:14px;min-width:0;
+}
+.card h4{
+  margin:0 0 2px;font-size:.72rem;font-weight:800;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--mintdim);
+}
+.card .note{font-size:.7rem;color:var(--dim);margin:0 0 11px}
+.card .note b{color:var(--ink);font-weight:700}
+
+/* Every result is a dot and yours is lit. At sixteen people you can count the
+   people ahead of you, which is the question anybody actually has - and a
+   smooth curve fitted to sixteen points would be mostly invention. */
+.dline{position:relative;height:26px;border-bottom:1px solid var(--line)}
+.dline i{
+  position:absolute;top:9px;width:6px;height:6px;margin-left:-3px;
+  border-radius:50%;background:#2f5b58;display:block;
+}
+.dline i.me{
+  width:12px;height:12px;top:6px;margin-left:-6px;background:var(--mint);
+  box-shadow:0 0 0 3px rgba(136,234,224,.17);
+}
+.dax{
+  display:flex;justify-content:space-between;font-size:.62rem;color:var(--dim);
+  margin-top:6px;font-variant-numeric:tabular-nums;
+}
+
+.radar{display:block;width:100%;height:auto;max-width:270px;margin:2px auto 0}
+
+@media (max-width:720px){
+  .tots{grid-template-columns:1fr}
+  .strips{grid-template-columns:1fr}
+}
+@media (max-width:559px){
+  table.sp{min-width:0}
+  .sp th:nth-child(2),.sp td:nth-child(2){display:none}
+  .sp .did{display:block}
+  .ath h2{font-size:1.08rem}
+}
+{% endblock %}
+
+{% block content %}
+<a class="back" href="/l/{{ token }}/results">&larr; All results</a>
+
+<div class="ath">
+  <span class="fl" title="{{ who.country }}">{{ who.flag }}</span>
+  <h2>{{ who.name }}</h2>
+  {% if who.done %}
+    <span class="stat big">{{ who.finish }} <em>finish</em></span>
+    {% if who.gplace %}
+      <span class="stat cat">#{{ who.gplace }} <em>{{ who.group }}</em></span>
+    {% endif %}
+    {% if who.oplace %}
+      <span class="stat">#{{ who.oplace }} <em>of {{ who.field }}</em></span>
+    {% endif %}
+  {% else %}
+    <span class="stat">{{ who.label }}</span>
+    {% if who.group %}<span class="stat cat">{{ who.group }}</span>{% endif %}
+  {% endif %}
+</div>
+
+{% if not who.done %}
+<div class="empty" style="margin-bottom:16px">
+  {# Splits still show. What does not show is a placing, because there is not
+     one yet - and a number here would be read as one. #}
+  <b>This race is not finished.</b><br>
+  The stations below are as far as it has got.
+</div>
+{% endif %}
+
+<div class="tots">
+  <div class="tot amber">
+    <div class="k">{{ 'Finish time' if who.done else 'On the clock' }}</div>
+    <div class="v">{{ who.finish or '—' }}</div>
+    <div class="n">{% if who.oplace %}{{ who.oplace }} of {{ who.field }}
+      overall{% else %}no official time{% endif %}</div>
+  </div>
+  <div class="tot">
+    <div class="k">On the stations</div>
+    <div class="v">{{ who.raced }}</div>
+    <div class="n">{{ 100 - who.walkpct }}% of the race</div>
+  </div>
+  <div class="tot">
+    <div class="k">Between them</div>
+    <div class="v">{{ who.moving }}</div>
+    <div class="n">the walks &mdash; {{ who.walkpct }}%{% if who.wplace %},
+      {{ who.wplace }}{{ 'st' if who.wplace == 1 else ('nd' if who.wplace == 2
+      else ('rd' if who.wplace == 3 else 'th')) }} quickest of
+      {{ who.wof }}{% endif %}</div>
+  </div>
+</div>
+
+{% if rows %}
+<h3 class="sec">Station by station</h3>
+<div class="tw">
+<table class="sp">
+  <thead><tr>
+    <th>Station</th>
+    <th style="width:120px">Done</th>
+    <th class="r" style="width:88px">Split</th>
+    <th class="r" style="width:96px">Walk after</th>
+    <th class="r" style="width:104px">In the field</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><div class="st">{{ r.name }}</div>
+        {% if r.count is not none %}
+        <div class="did">{{ r.count }} / {{ r.target }} {{ r.unit }}</div>
+        {% endif %}</td>
+      <td class="walk">{% if r.count is not none %}{{ r.count }} /
+        {{ r.target }} {{ r.unit }}{% else %}&mdash;{% endif %}</td>
+      <td class="r tm">{{ r.split or '—' }}</td>
+      <td class="r walk">{{ r.walk or '—' }}</td>
+      <td class="r">{% if r.place %}<span class="rk{{ ' top'
+        if r.place <= 3 }}">{{ r.place }} of {{ r.of }}</span>
+        {% else %}<span class="walk">&mdash;</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h3 class="sec">Against everybody who raced</h3>
+<div class="strips">
+  {% for r in rows %}
+  {% if r.dots %}
+  <div class="card">
+    <h4>{{ r.name }}</h4>
+    <p class="note"><b>{{ r.split }}</b>{% if r.place %} &middot; {{ r.place }}
+      of {{ r.of }}{% endif %} &middot; every result on this station, yours
+      lit</p>
+    <div class="dline">
+      {% for d in r.dots %}<i class="{{ 'me' if d.me }}"
+        style="left:{{ d.at }}%"></i>{% endfor %}
+    </div>
+    <div class="dax"><span>{{ r.fastest }} fastest</span>
+      <span>{{ r.slowest }} slowest</span></div>
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  {% if walkdots %}
+  <div class="card">
+    <h4>Between the stations</h4>
+    <p class="note"><b>{{ who.moving }}</b>{% if who.wplace %} &middot;
+      {{ who.wplace }} of {{ who.wof }}{% endif %} &middot; the walks, which
+      are in the finish time and in nobody's split</p>
+    <div class="dline">
+      {% for d in walkdots %}<i class="{{ 'me' if d.me }}"
+        style="left:{{ d.at }}%"></i>{% endfor %}
+    </div>
+    <div class="dax"><span>{{ walkfast }} least</span>
+      <span>{{ walkslow }} most</span></div>
+  </div>
+  {% endif %}
+
+  {% if shape|length >= 3 %}
+  <div class="card">
+    <h4>Shape of the race</h4>
+    <p class="note">Further out is stronger against the field</p>
+    {# Drawn from the ranks rather than the times: a station measured in
+       metres and one measured in reps have no common axis, and plotting
+       seconds against seconds would make the long stations look like
+       weaknesses on every single athlete's chart. #}
+    <svg class="radar" viewBox="0 0 240 226" role="img"
+         aria-label="How {{ who.name }} ranked on each station against the field">
+      <g fill="none" stroke="{{ '#1b3a3a' }}" stroke-width="1">
+        {% for ring in radar.rings %}<polygon points="{{ ring }}"/>{% endfor %}
+        {% for sp in radar.spokes %}<line x1="{{ radar.cx }}" y1="{{ radar.cy }}"
+          x2="{{ sp[0] }}" y2="{{ sp[1] }}"/>{% endfor %}
+      </g>
+      <polygon points="{{ radar.you }}" fill="rgba(136,234,224,.19)"
+               stroke="#88EAE0" stroke-width="2" stroke-linejoin="round"/>
+      <g fill="#8fa6a6" font-family="-apple-system,sans-serif"
+         font-size="10" font-weight="600">
+        {% for lb in radar.labels %}
+        <text x="{{ lb.x }}" y="{{ lb.y }}" text-anchor="{{ lb.anchor }}"
+          >{{ lb.name }}</text>
+        {% endfor %}
+      </g>
+    </svg>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="empty">This event has no stations set up, so there is nothing to
+  break down.</div>
+{% endif %}
+{% endblock %}
