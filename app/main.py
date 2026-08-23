@@ -111,6 +111,8 @@ templates.env.globals["RACE_STATUS_MANUAL"] = RACE_STATUS_MANUAL
 # race floor is read that way, and the admin now shows them too.
 templates.env.globals["h12"] = h12
 templates.env.globals["has_race"] = has_race
+from .models import wants_reels as _wants_reels
+templates.env.globals["wants_reels"] = _wants_reels
 from .countries import COUNTRIES, country_code, country_name, flag
 templates.env.globals["COUNTRIES"] = COUNTRIES
 templates.env.globals["country_code"] = country_code
@@ -652,6 +654,11 @@ def startup():
                 "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
                 "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
                 "  heat_open_mins INTEGER; "
+                # Nullable on purpose: NULL means "decide from the mode", so
+                # every event already on the table keeps behaving as it did
+                # without anybody having to go and tick anything.
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  reels_on BOOLEAN; "
                 "END IF; END $$;"))
             # Room for the one-time correction below. The column defaults to
             # FALSE so that every row written under the old rule is picked up

@@ -171,6 +171,20 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
 /* The pass. White plate, black code, nothing else on it — a QR fights with
    anything busy behind it, and a code that will not scan first time in a
    doorway is worse than no code at all. */
+/* The way to the code from any state this page can be in. Teal, because on
+   this page teal is reserved for the thing that is settled and positive, and
+   a pass is the one thing here that is already theirs. */
+.passlink{
+  display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;
+  border:1px solid var(--teal);border-radius:12px;padding:13px 15px;
+  margin:0 0 18px;background:rgba(0,128,128,.06);
+}
+.passlink .ic{font-size:1.5rem;line-height:1;color:var(--teal);flex:0 0 auto}
+.passlink b{font-size:.98rem}
+.passlink .sub{font-size:.78rem;color:var(--muted,#6b7683)}
+.passlink .go{margin-left:auto;color:var(--teal);font-size:1.2rem;
+  flex:0 0 auto}
+
 .pass{margin:4px 0 20px;padding:16px 16px 13px;border:1px solid var(--line);
   border-radius:12px;background:#fff;text-align:center}
 .pass img{display:block;margin:0 auto;width:200px;height:200px;image-rendering:pixelated}
@@ -255,6 +269,23 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
     {% endif %}
   </div>
 
+  {# The code, from anywhere on this page.
+     Once somebody has a slot, this page can be showing them any of four
+     different things - the pass, a Reel form, a reward code, or a closed
+     window - and on three of those four the code was nowhere to be found.
+     It is the thing they open this link for on the morning, so it gets a way
+     back to it from every one of them. #}
+  {# Not on 'ready' - that screen draws the code itself, and a link to a page
+     showing what is already on this one is noise. #}
+  {% if stage in ('submit', 'late', 'rewarded') %}
+  <a class="passlink" href="/e/{{ p.token }}/pass">
+    <span class="ic">&#9635;</span>
+    <span><b>Show my QR pass</b><br>
+      <span class="sub">The code we scan at the door</span></span>
+    <span class="go">&rarr;</span>
+  </a>
+  {% endif %}
+
   {# ---------------------------------------------------------- confirm ---- #}
   {% if stage == 'confirm' %}
   {% if confirm_left %}
@@ -329,7 +360,7 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
       <button class="go">Confirm my slot</button>
     </form>
 
-    {{ rewards_panel(ev, 'Once you\'ve posted') }}
+    {% if wants_reels(ev) %}{{ rewards_panel(ev, 'Once you\'ve posted') }}{% endif %}
   </div>
 
   {# ------------------------------------------------- confirmed, waiting -- #}
@@ -341,17 +372,19 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
     <p>You're checked in — enjoy the class.</p>
     {% else %}
     <p>Show this at the door. Screenshot it now, in case the signal is bad.</p>
-    {# The pass. It is only drawn once they are confirmed, because a pass is
-       proof of a slot and until they answer they do not have one. #}
+    {% endif %}
+    {# The pass. Drawn once they are confirmed, because a pass is proof of a
+       slot and until they answer they do not have one — and drawn whether or
+       not they have already been scanned, because the code still works and
+       somebody opening this page has almost always come looking for it. #}
     <div class="pass{{ ' used' if p.arrived_at }}">
       <img src="/e/{{ p.token }}/qr.png" alt="Your check-in code" width="200" height="200">
       <div class="nm">{{ p.name }}</div>
       <div class="sub">{{ ev.name }}</div>
     </div>
-    {% endif %}
     {{ detail_card(p, ev) }}
     {# No point rehearsing how to post a Reel while submissions are shut. #}
-    {% if not ev.reels_paused %}{{ reel_howto(ev) }}{% endif %}
+    {% if wants_reels(ev) and not ev.reels_paused %}{{ reel_howto(ev) }}{% endif %}
   </div>
 
   {# ---------------------------------------------------------- paused ----- #}

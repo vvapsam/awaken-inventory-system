@@ -66,7 +66,7 @@ from .models import (
     RACE_STATUSES, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     station_splits, has_race, race_status, is_test_athlete,
-    board_rows, RACE_STATUS_OUT, h12, Staff,
+    board_rows, RACE_STATUS_OUT, h12, Staff, wants_reels,
 )
 from .countries import country_code, country_name, flag as country_flag
 # The sponsor strip is cut and sized once, for the finisher card. The
@@ -709,6 +709,11 @@ def register(app, deps):
         # pass to a class that isn't happening, and the hold only bit later.
         # Anyone already holding a Reel link lands here too, which is the one
         # place that can answer the question they arrived with.
+        # An event that asks for nothing has one confirmed state and stays in
+        # it: they have a slot, here is the pass. No window, no form, no
+        # deadline that quietly turns the page into an ask.
+        if not wants_reels(ev):
+            return "ready"
         if ev.reels_paused:
             return "paused"
         ends = _aware(ev.ends_at)
@@ -1617,6 +1622,7 @@ def register(app, deps):
             handles: str = Form(""), hashtag: str = Form(""),
             reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
             reels_paused: str = Form(""), heat_open_mins: str = Form(""),
+            reels_on: str = Form(""),
             confirm_by: str = Form(""),
             mode: str = Form(EVENT_INVITE), signup_open: str = Form(""),
             signup_closes: str = Form(""), slug: str = Form(""),
@@ -1676,6 +1682,10 @@ def register(app, deps):
         ev.handles, ev.hashtag = handles.strip(), hashtag.strip()
         ev.reel_hours = num(reel_hours, 48) or 48
         ev.reels_paused = (reels_paused == "on")
+        # Three answers, not two: yes, no, and "you decide" - which is stored
+        # as NULL so an event never has to be revisited when the default is.
+        ev.reels_on = {"yes": True, "no": False}.get(
+            (reels_on or "").strip().lower())
         # Blank means "use the default", which is a different answer from any
         # number — so it is stored as NULL rather than as 30. Change the default
         # later and every event that never had an opinion follows it.
@@ -3141,7 +3151,8 @@ def register(app, deps):
             {"key": "reel", "name": "The Reel email",
              "blurb": "\u201cThank you \u2014 submit your Reel and pick your "
                       "reward.\u201d",
-             "ok": True, "why": ""},
+             "ok": wants_reels(ev),
+             "why": "" if wants_reels(ev) else "this event does not ask for a Reel"},
             {"key": "returned", "name": "Ask for a better receipt",
              "blurb": "Carries your reason for sending one back, when there is "
                       "one on the row.",
@@ -3210,12 +3221,15 @@ def register(app, deps):
             "lastcall_all": [p for p in invitable
                              if p.invited_at and not p.confirmed],
             # The Reel email: everyone who came and hasn't been asked yet.
-            "reel": [p for p in confirmed if not p.reel_email_at],
+            "reel": ([p for p in confirmed if not p.reel_email_at]
+                     if wants_reels(ev) else []),
             # The nudge: everyone who was asked and still hasn't posted. A
             # separate list because sending the first ask again to somebody who
             # already posted is the fastest way to sour this.
-            "nudge": [p for p in confirmed if p.reel_email_at and not p.posted],
-            "reel_all": confirmed,
+            "nudge": ([p for p in confirmed
+                       if p.reel_email_at and not p.posted]
+                      if wants_reels(ev) else []),
+            "reel_all": confirmed if wants_reels(ev) else [],
             # Started and stalled. Deliberately not the ones we sent back
             # for a better receipt — those have already had an email carrying
             # your reason, and a second, vaguer nudge on top of it reads as
@@ -3339,7 +3353,10 @@ def register(app, deps):
         if redir:
             return redir
         ev = db.get(Event, eid)
-        if not ev or kind not in {t["key"] for t in sendable_templates(ev) if t["ok"]}:
+        # Every template, not only the ones this event can send. A preview is
+        # a look at wording and harms nobody, and somebody deciding whether to
+        # switch a template on wants to read it first.
+        if not ev or kind not in {t["key"] for t in sendable_templates(ev)}:
             return RedirectResponse(f"/events/{eid}", status_code=303)
         lists = mail_lists(ev)
         # Whoever this email is most about, so the preview shows the sentences
@@ -3362,9 +3379,12 @@ def register(app, deps):
                 "<p style='font:15px system-ui;padding:28px'>Nobody on the list "
                 "to preview against yet.</p>")
         base = base_url(request)
-        url = ("%s/r/%s/%s" % (base, ev.slug, who.token)
-               if kind in ("finish", "returned", "payby")
-               else "%s/e/%s" % (base, who.token))
+        if kind in ("finish", "returned", "payby"):
+            url = "%s/r/%s/%s" % (base, ev.slug, who.token)
+        elif kind in ("heat", "heatnew", "pass"):
+            url = "%s/e/%s/pass" % (base, who.token)
+        else:
+            url = "%s/e/%s" % (base, who.token)
         build = {"reel": _reel_mail, "finish": _finish_mail,
                  "returned": _returned_mail,
                  "lastcall": _lastcall_mail, "payby": _payby_mail,

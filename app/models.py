@@ -1467,6 +1467,13 @@ class Event(Base):
     #: asking people for a Reel of a class that never happened.
     reels_paused = Column(Boolean, nullable=False, default=False)
 
+    #: Whether this event asks anybody for a Reel at all. NULL means "decide
+    #: from the mode", which is the honest default: the Reel is the sponsor's
+    #: side of a sponsored class - somebody comes free and posts about it - and
+    #: an open event is one people paid to enter. Nobody who bought a race
+    #: entry owes anybody a Reel.
+    reels_on = Column(Boolean)
+
     #: How many minutes before a heat a coach may open it in the race app.
     #: Blank means the default below.
     #:
@@ -1883,6 +1890,24 @@ def h12(t):
 #: silently omits people is worse than one with a third short column - but they
 #: only get a column of their own if there is anybody in it.
 BOARD_COLUMNS = [("m", "Men"), ("f", "Women"), ("", "Unlisted")]
+
+
+def wants_reels(event) -> bool:
+    """Does this event ask for a Reel?
+
+    An explicit answer wins. With no answer, an invite event does and an open
+    one does not - which is the difference between "we gave you a place, post
+    about it" and "you paid to race".
+
+    Everything Reel-shaped reads this: the participant's own page, the stages
+    it can be in, the send lists and the reward panel. One question, asked in
+    one place, so a Reel form cannot appear on a page whose email list is
+    empty.
+    """
+    v = getattr(event, "reels_on", None)
+    if v is not None:
+        return bool(v)
+    return getattr(event, "mode", None) != EVENT_OPEN
 
 
 def station_shorts(stations) -> dict:

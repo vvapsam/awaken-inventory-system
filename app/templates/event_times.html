@@ -151,8 +151,11 @@
 {% endif %}
 
 <p class="muted small" style="margin-top:14px">
-  <a href="{{ base }}/e/{{ who.token }}" target="_blank" rel="noopener">Open
-    their own page &rarr;</a>
-  &mdash; the invitation, confirmation and Reel link, as they see it.
+  <a href="{{ base }}/e/{{ who.token }}/pass" target="_blank" rel="noopener">Their
+    QR pass &rarr;</a> &mdash; the code we scan, and the link worth sending on
+  the morning.<br>
+  <a href="{{ base }}/e/{{ who.token }}" target="_blank" rel="noopener">Their
+    own page &rarr;</a> &mdash; the invitation, confirmation and Reel link, as
+  they see it.
 </p>
 {% endblock %}

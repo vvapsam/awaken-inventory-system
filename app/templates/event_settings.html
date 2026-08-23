@@ -299,6 +299,26 @@
 </div>
 
 <div class="card" style="margin-top:14px">
+  <h2 style="margin:0 0 4px;font-size:1rem">The Reel</h2>
+  <p class="muted small" style="margin:0 0 12px">Whether this event asks anybody
+    to post. It is the sponsor's side of a sponsored class &mdash; somebody
+    comes free and posts about it &mdash; so it is <b>off by default on an
+    open event</b>, where people paid to enter and owe nobody a Reel.
+    With it off there is no Reel form on their page, no Reel email, and no
+    reward to pick.</p>
+  <div>
+    <label class="small" style="font-weight:600">Ask for a Reel</label>
+    <select name="reels_on" style="max-width:320px">
+      <option value="" {{ 'selected' if ev.reels_on is none }}>Decide from the
+        entry type &mdash; {{ 'no' if ev.mode == 'open' else 'yes' }} for this
+        one</option>
+      <option value="yes" {{ 'selected' if ev.reels_on is true }}>Yes, ask for a Reel</option>
+      <option value="no" {{ 'selected' if ev.reels_on is false }}>No, never ask</option>
+    </select>
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px">
   <h2 style="margin:0 0 4px;font-size:1rem">The race app</h2>
   <p class="muted small" style="margin:0 0 12px">How early a coach can open a
     heat on their phone. Before that the heat is listed but shut, so nobody

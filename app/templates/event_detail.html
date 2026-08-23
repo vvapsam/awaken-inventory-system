@@ -585,8 +585,13 @@
       {% else %}—{% endif %}</td>
     {% endif %}
     {% if 'link' in cols %}
+    {# The pass, not the whole page. This is the link somebody sends on the
+       morning, and what they want the person to see is the code. Anybody who
+       has not confirmed yet is redirected to their own page by /pass itself,
+       so nothing is lost by handing this one out to everybody. #}
     <td><button class="btn" style="padding:4px 10px;font-size:.76rem"
-        data-copy="{{ base }}/e/{{ p.token }}">Copy</button></td>
+        title="Their QR pass"
+        data-copy="{{ base }}/e/{{ p.token }}/pass">Copy</button></td>
     {% endif %}
     <td style="white-space:nowrap">
       <button type="button" class="btn" style="padding:5px 9px" data-edit="{{ p.id }}"
@@ -1004,8 +1009,13 @@
       {% else %}—{% endif %}</td>
     {% endif %}
     {% if 'link' in gone_cols %}
+    {# The pass, not the whole page. This is the link somebody sends on the
+       morning, and what they want the person to see is the code. Anybody who
+       has not confirmed yet is redirected to their own page by /pass itself,
+       so nothing is lost by handing this one out to everybody. #}
     <td><button class="btn" style="padding:4px 10px;font-size:.76rem"
-        data-copy="{{ base }}/e/{{ p.token }}">Copy</button></td>
+        title="Their QR pass"
+        data-copy="{{ base }}/e/{{ p.token }}/pass">Copy</button></td>
     {% endif %}
     <td style="white-space:nowrap">
       <button class="btn" form="ud-{{ p.id }}" style="margin:0">Put them back</button></td>
