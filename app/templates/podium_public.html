@@ -1,82 +1,79 @@
 {% extends "public_base.html" %}
 {% block title %}Podium &mdash; {{ ev.name }}{% endblock %}
-{% block subtitle %}{{ ev.when_text }} &middot; the top of each category{% endblock %}
+{% block bandsub %}The top of each category{% endblock %}
 
 {% block css %}
 /* Four winners, not one. An Elite woman won her race whether or not anybody
-   finished ahead of her overall, and a single podium would say otherwise. */
-/* Two by two rather than "as many as fit". Four groups laid out three-and-one
-   reads as a list that ran out of room; a square reads as four of a kind,
-   which is what they are. */
-.pods{
-  display:grid;grid-template-columns:repeat(2,1fr);gap:14px;
-  align-items:start;
-}
-.pod{
-  min-width:0;background:var(--open);
-  border:1px solid var(--line);border-radius:15px;padding:15px 15px 10px;
-}
-.pod.elite{background:var(--elite);border-color:var(--eliteline)}
-.pod h2{
-  margin:0 0 13px;font-size:.86rem;font-weight:800;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--ink);
-  display:flex;align-items:baseline;gap:9px;
-}
-.pod.elite h2{color:var(--mint)}
-.pod h2 em{font-style:normal;font-size:.63rem;color:var(--dim);
-  letter-spacing:.05em;font-weight:700}
+   finished ahead of her overall, and a single podium would say otherwise.
 
-.prow{
-  display:flex;align-items:center;gap:11px;background:var(--card);
-  border:1px solid var(--line);border-radius:10px;padding:11px 12px;
-  margin-bottom:6px;min-width:0;
+   No boxes: each group is announced by a heavy rule above its name, teal for
+   Elite and white for Open. That is the whole difference between the two, and
+   it is enough - a frame around each would put four boxes on a page that has
+   just spent ten rows proving it does not need them. */
+.pods{display:grid;grid-template-columns:1fr 1fr;gap:0 40px}
+.pod{padding:22px 0 8px;border-top:2px solid var(--ink);min-width:0}
+.pod.elite{border-top-color:var(--teal)}
+.pod h3{
+  font-family:var(--head);font-weight:600;font-size:1.12rem;margin:0 0 10px;
+  letter-spacing:.05em;text-transform:uppercase;
+  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
 }
-.prow.gold{border-color:var(--mintdim);background:#10322e}
-.prow .p{
-  width:20px;text-align:center;font-weight:800;color:var(--mint);
-  font-size:.98rem;flex:0 0 auto;font-variant-numeric:tabular-nums;
+.pod.elite h3{color:var(--teal)}
+.pod h3 em{
+  font-family:var(--sans);font-style:normal;font-size:.86rem;font-weight:600;
+  color:var(--dim);letter-spacing:.09em;
 }
-.prow .fl{font-size:1.25rem;flex:0 0 auto;line-height:1}
-.prow .who{flex:1 1 auto;min-width:0}
-.prow .who b{
-  display:block;font-size:.95rem;font-weight:700;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;
+.pr{
+  display:flex;align-items:center;gap:12px;padding:11px 0;
+  border-bottom:1px solid var(--hair);min-width:0;
 }
-.prow .who span{font-size:.7rem;color:var(--dim)}
-.prow .who a{color:inherit;text-decoration:none}
-.prow .who a:hover{color:var(--mint);text-decoration:underline}
-.prow .who a:focus-visible{outline:2px solid var(--mint);outline-offset:3px;
-  border-radius:3px}
-.prow .t{
-  font-weight:800;font-size:1.02rem;flex:0 0 auto;letter-spacing:-.01em;
-  font-variant-numeric:tabular-nums;
+.pr:last-child{border-bottom:0}
+.pr.gold{background:linear-gradient(90deg,rgba(201,133,0,.13),transparent 70%)}
+.pr .p{
+  font-family:var(--head);font-weight:700;font-size:1.35rem;width:22px;
+  color:var(--teal);flex:0 0 auto;font-variant-numeric:tabular-nums;
 }
-.pod .waiting{
-  color:var(--dim);font-size:.8rem;padding:10px 2px 8px;
+.pr.gold .p{color:var(--amber)}
+.pr .fl{font-size:1.2rem;flex:0 0 auto;line-height:1}
+.pr .who{flex:1 1 auto;min-width:0}
+.pr .who a{
+  display:block;font-family:var(--sans);font-weight:700;font-size:1.34rem;
+  text-transform:uppercase;line-height:1.05;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;color:inherit;text-decoration:none;
+}
+.pr .who a:hover{color:var(--teal)}
+.pr .who a:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+.pr .who i{
+  font-style:normal;font-family:var(--head);font-size:.64rem;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--dimmer);
+}
+.pr .tm{
+  font-family:var(--mono);font-weight:600;font-size:1.24rem;letter-spacing:-.035em;
+  flex:0 0 auto;font-variant-numeric:tabular-nums;
+}
+.pr.gold .tm{color:var(--amber)}
+.waiting{
+  color:var(--dim);font-family:var(--sans);font-size:1rem;font-weight:500;
+  text-transform:uppercase;letter-spacing:.06em;padding:10px 0 8px;
 }
 .foot{
-  margin-top:18px;color:var(--dim);font-size:.78rem;
+  margin-top:26px;padding-top:16px;border-top:1px solid var(--hair);
+  font-family:var(--head);font-weight:400;font-size:.72rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--dim);
 }
-.foot a{color:var(--mint)}
+.foot a{color:var(--teal);text-decoration:none}
+.foot a:hover{text-decoration:underline}
 
-@media (min-width:1200px){
-  .prow .who b{font-size:1.08rem}
-  .prow .t{font-size:1.2rem}
-  .pod h2{font-size:1rem}
-}
-@media (max-width:760px){
-  .pods{grid-template-columns:1fr}
-}
-@media (max-width:559px){
-  .pod{padding:12px 11px 6px;border-radius:12px}
-}
+@media (max-width:760px){.pods{grid-template-columns:1fr;gap:0}}
 {% endblock %}
 
 {% block content %}
 {% if not groups %}
-<div class="empty"><b>No podium yet.</b><br>
+<div class="empty"><b>No podium yet</b><br>
   It fills in as people finish.</div>
 {% else %}
+
+<div class="sec"><h2>Podium</h2><span>{{ finishers }} finished</span></div>
 
 <div class="pods">
   {% for g in groups %}
@@ -85,15 +82,15 @@
      recorded a gender yet" is not a race anybody entered. #}
   {% if g.cat %}
   <section class="pod{{ ' elite' if g.cat == 'elite' }}">
-    <h2>{{ g.label }} <em>{{ g.raced }} raced</em></h2>
+    <h3>{{ g.label }} <em>{{ g.raced }} raced</em></h3>
     {% if g.top %}
       {% for r in g.top %}
-      <div class="prow{{ ' gold' if loop.index == 1 }}">
+      <div class="pr{{ ' gold' if loop.index == 1 }}">
         <span class="p">{{ loop.index }}</span>
         <span class="fl" title="{{ r.country }}">{{ r.flag }}</span>
-        <span class="who"><b><a href="/l/{{ token }}/p/{{ r.id }}"
-          >{{ r.name }}</a></b><span>{{ r.country }}</span></span>
-        <span class="t">{{ r.time }}</span>
+        <span class="who"><a href="/l/{{ token }}/p/{{ r.id }}">{{ r.name }}</a>
+          <i>{{ r.country }}</i></span>
+        <span class="tm">{{ r.time }}</span>
       </div>
       {% endfor %}
     {% else %}
@@ -104,7 +101,7 @@
   {% endfor %}
 </div>
 
-<p class="foot">Every time here is the official finish time.
+<p class="foot">Every time here is the official finish time &middot;
   <a href="/l/{{ token }}/results">The whole field &rarr;</a></p>
 {% endif %}
 {% endblock %}

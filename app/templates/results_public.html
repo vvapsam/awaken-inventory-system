@@ -1,184 +1,196 @@
 {% extends "public_base.html" %}
 {% block title %}Results &mdash; {{ ev.name }}{% endblock %}
-{% block subtitle %}{{ ev.when_text }} &middot; {{ finishers }} of {{ field }}
-  finished{% endblock %}
+{% block bandsub %}{{ finishers }} of {{ field }} finished{% endblock %}
 
 {% block css %}
-/* ---- the filter row ---- */
-.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+/* ---- the filter bar: one hard-edged block, not a row of pills ---- */
+.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:16px 0 4px}
+.seg{display:flex;border:1px solid var(--hair);width:max-content;max-width:100%}
 .chip{
-  font:inherit;font-size:.72rem;font-weight:700;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--dim);background:var(--card);
-  border:1px solid var(--line);border-radius:999px;padding:7px 13px;
-  cursor:pointer;
+  font-family:var(--head);font-weight:500;font-size:.76rem;letter-spacing:.13em;
+  text-transform:uppercase;padding:9px 15px;color:var(--dim);cursor:pointer;
+  background:none;border:0;border-right:1px solid var(--hair);
 }
-.chip[aria-pressed="true"]{
-  color:#062421;background:var(--mint);border-color:var(--mint);
-}
-.chip:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
-.sep{width:1px;background:var(--line);margin:4px 4px}
+.seg .chip:last-child{border-right:0}
+.chip[aria-pressed="true"]{background:var(--teal);color:#04120F}
+.chip:focus-visible{outline:2px solid var(--teal);outline-offset:-3px}
 .find{
-  font:inherit;flex:1 1 170px;min-width:130px;background:var(--card);
-  border:1px solid var(--line);border-radius:999px;padding:7px 14px;
-  color:var(--ink);font-size:.82rem;
+  font-family:var(--mono);flex:1 1 180px;min-width:150px;background:var(--panel);
+  border:1px solid var(--hair);padding:9px 13px;color:var(--ink);font-size:.84rem;
 }
-.find::placeholder{color:#54706e}
-.find:focus-visible{outline:2px solid var(--mint);outline-offset:1px}
+.find::placeholder{color:var(--dimmer)}
+.find:focus-visible{outline:2px solid var(--teal);outline-offset:-1px}
 
-/* ---- the table ---- */
-.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table.res{
-  width:100%;min-width:600px;border-collapse:collapse;color:var(--ink);
-  font-variant-numeric:tabular-nums;
+/* ---- the rows. No cards, no radius: rules, the way a board is ---- */
+.row{
+  display:flex;align-items:center;gap:16px;padding:13px 0;
+  border-bottom:1px solid var(--hair);
 }
-.res th{
-  text-align:left;font-size:.6rem;font-weight:800;letter-spacing:.13em;
-  text-transform:uppercase;color:var(--mintdim);padding:0 9px 9px;
-  border-bottom:1px solid var(--line);white-space:nowrap;
+.row:last-of-type{border-bottom:0}
+/* First place gets a wash rather than a box, so the row still reads as a row. */
+.row.lead{background:linear-gradient(90deg,rgba(201,133,0,.13),transparent 62%)}
+.row .pl{
+  font-family:var(--head);font-weight:700;font-size:1.85rem;width:42px;
+  line-height:.9;color:var(--teal);flex:0 0 auto;font-variant-numeric:tabular-nums;
 }
-.res td{padding:11px 9px;border-bottom:1px solid #142c2c}
-.res tbody tr:last-child td{border-bottom:0}
-.res .r{text-align:right}
-.res .pl{
-  color:var(--mint);font-weight:800;width:42px;font-size:.95rem;
+.row.lead .pl{color:var(--amber)}
+.row .pl.none{color:var(--dimmer);font-size:.9rem;font-weight:400}
+.row .who{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:12px}
+.row .fl{font-size:1.35rem;line-height:1;flex:0 0 auto}
+.row .nm{
+  font-family:var(--sans);font-weight:700;font-size:1.6rem;
+  text-transform:uppercase;line-height:1.05;min-width:0;
+  color:inherit;text-decoration:none;
 }
-.res .pl.none{color:#3c5a58;font-weight:600;font-size:.72rem}
-.res .nm{font-weight:700;font-size:.92rem;display:flex;align-items:center;gap:8px}
-.res .nm a.who{color:inherit;text-decoration:none}
-.res .nm a.who:hover{color:var(--mint);text-decoration:underline}
-.res .nm a.who:focus-visible{outline:2px solid var(--mint);outline-offset:3px;
-  border-radius:3px}
-.res .nm .fl{font-size:1.05rem;line-height:1;flex:0 0 auto}
-.res .meta{font-size:.68rem;color:var(--dim);margin-top:2px;padding-left:26px}
-.res .tm{font-weight:800;font-size:.98rem;letter-spacing:-.01em}
-.res .sub{color:var(--dim);font-size:.86rem}
-.res tr.lead td{background:#10322e}
-.res tr.out{opacity:.5}
-/* A label is not a time. Anything that is not a finish reads quieter and on
-   one line, so the column of times stays a column of times. */
-.res tr.out .tm,.res tr.pend .tm{
-  color:var(--dim);font-weight:700;font-size:.74rem;white-space:nowrap;
+a.nm:hover{color:var(--teal)}
+a.nm:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+.row .cat{
+  font-family:var(--head);font-weight:400;font-size:.7rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dimmer);flex:0 0 auto;width:100px;
+  text-align:right;
 }
-.res tr.pend .tm{color:var(--amber)}
-.tag{
-  display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.08em;
-  border:1px solid var(--line);border-radius:4px;padding:3px 6px;
-  color:var(--dim);white-space:nowrap;
+.row .cat.el{color:var(--teal);font-weight:500}
+/* The two detail columns wear the same hues their cards do on the athlete
+   page, so teal always means stations and blue always means transition. */
+.row .sub{
+  font-family:var(--mono);font-size:.88rem;width:58px;text-align:right;
+  flex:0 0 auto;font-variant-numeric:tabular-nums;
 }
-.tag.elite{color:var(--mint);border-color:var(--eliteline)}
+.row .sub.st{color:var(--teal)}
+.row .sub.tr{color:var(--blue)}
+.row .sub.na{color:var(--dimmer)}
+.row .tm{
+  font-family:var(--mono);font-weight:600;font-size:1.5rem;letter-spacing:-.035em;
+  flex:0 0 auto;width:100px;text-align:right;font-variant-numeric:tabular-nums;
+}
+.row.lead .tm{color:var(--amber)}
+.row.out{opacity:.45}
+/* A label is not a time, so it never wears the size of one. */
+.row.out .tm,.row.pend .tm{
+  font-family:var(--head);font-weight:500;font-size:.72rem;letter-spacing:.11em;
+  text-transform:uppercase;white-space:nowrap;color:var(--dim);
+}
+.row.pend .tm{color:var(--amber)}
+.colhead span:nth-child(1){width:42px;flex:0 0 auto}
+.colhead span:nth-child(2){flex:1 1 auto}
+.colhead span:nth-child(3){width:100px;text-align:right;flex:0 0 auto}
+.colhead span:nth-child(4),.colhead span:nth-child(5){width:58px;
+  text-align:right;flex:0 0 auto}
+.colhead span:nth-child(6){width:100px;text-align:right;flex:0 0 auto}
 .none-shown{display:none}
 .none-shown.on{display:block}
 
 .onsm{display:none}
-/* On a phone the table cannot hold six columns, and the one that would scroll
-   off the right is the finish time - the only column anybody opened the page
-   for. So the two detail columns go instead, and the category moves onto the
-   line under the name where there is room for it. */
-@media (max-width:640px){
-  table.res{min-width:0}
-  .res th:nth-child(3),.res td:nth-child(3),
-  .res th:nth-child(4),.res td:nth-child(4),
-  .res th:nth-child(5),.res td:nth-child(5){display:none}
-  .onsm{display:inline}
-}
-@media (max-width:559px){
-  .res td{padding:9px 7px}
-  .res .meta{padding-left:0}
+/* On a phone the row cannot hold six columns, and the one that would scroll
+   off the right is the finish time - the only one anybody opened the page
+   for. So the three detail columns go and the category moves under the name. */
+@media (max-width:700px){
+  .row .cat,.row .sub,
+  .colhead span:nth-child(3),.colhead span:nth-child(4),
+  .colhead span:nth-child(5){display:none}
+  .onsm{display:block;font-family:var(--head);font-weight:400;font-size:.6rem;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--dimmer);
+    margin-top:3px}
+  .onsm.el{color:var(--teal)}
+  .row .who{align-items:flex-start;gap:10px}
+  .row .fl{margin-top:2px}
+  .row .nm{font-size:1.3rem}
+  .row .tm{font-size:1.26rem;width:86px}
+  .row .pl{font-size:1.5rem;width:30px}
 }
 {% endblock %}
 
 {% block content %}
 {% if not rows %}
-<div class="empty"><b>Nobody has raced yet.</b><br>
+<div class="empty"><b>Nobody has raced yet</b><br>
   Results appear here as people finish.</div>
 {% else %}
+
+<div class="sec"><h2>Results</h2>
+  <span>{{ finishers }} of {{ field }} finished</span></div>
 
 {#
   Filtering happens in the browser rather than by reloading with a query
   string. The whole field is already on the page - it is one morning of one
-  gym, not a thousand rows - and somebody standing in the car park comparing
-  two categories should not be waiting on a network they are sharing with
-  everybody else who just finished.
+  gym, not a thousand rows - and somebody in the car park comparing two
+  categories should not be waiting on a network they are sharing with
+  everybody who just finished.
 #}
 <div class="filters">
-  <button type="button" class="chip" data-f="cat" data-v=""
-          aria-pressed="true">All</button>
-  <button type="button" class="chip" data-f="cat" data-v="elite"
-          aria-pressed="false">Elite</button>
-  <button type="button" class="chip" data-f="cat" data-v="open"
-          aria-pressed="false">Open</button>
-  <span class="sep" aria-hidden="true"></span>
-  <button type="button" class="chip" data-f="sex" data-v=""
-          aria-pressed="true">Everyone</button>
-  <button type="button" class="chip" data-f="sex" data-v="m"
-          aria-pressed="false">Men</button>
-  <button type="button" class="chip" data-f="sex" data-v="f"
-          aria-pressed="false">Women</button>
+  <div class="seg">
+    <button type="button" class="chip" data-f="cat" data-v=""
+            aria-pressed="true">All</button>
+    <button type="button" class="chip" data-f="cat" data-v="elite"
+            aria-pressed="false">Elite</button>
+    <button type="button" class="chip" data-f="cat" data-v="open"
+            aria-pressed="false">Open</button>
+  </div>
+  <div class="seg">
+    <button type="button" class="chip" data-f="sex" data-v=""
+            aria-pressed="true">Everyone</button>
+    <button type="button" class="chip" data-f="sex" data-v="m"
+            aria-pressed="false">Men</button>
+    <button type="button" class="chip" data-f="sex" data-v="f"
+            aria-pressed="false">Women</button>
+  </div>
   <input class="find" id="find" type="search" placeholder="Find a name…"
          autocapitalize="none" spellcheck="false" aria-label="Find a name">
 </div>
 
-<div class="tw">
-<table class="res">
-  <thead><tr>
-    <th style="width:46px">#</th>
-    <th>Athlete</th>
-    <th style="width:96px">Category</th>
-    <th class="r" style="width:92px">Stations</th>
-    <th class="r" style="width:92px">Between</th>
-    <th class="r" style="width:104px">Time</th>
-  </tr></thead>
-  <tbody id="rows">
-  {% for r in rows %}
-    <tr data-cat="{{ r.cat }}" data-sex="{{ r.sex }}"
-        data-name="{{ r.name|lower }}" data-gplace="{{ r.gplace or '' }}"
-        class="{{ 'done' if r.done else ('out' if r.out else 'pend') }}{{
-          ' lead' if r.place == 1 }}">
-      {# The overall number, swapped for the number within a group the moment
-         somebody filters down to one - "4th" means something different when
-         the page in front of you is only the Elite women. #}
-      <td class="pl{{ '' if r.place else ' none' }}"
-          data-place="{{ r.place or '' }}">{{ r.place or '—' }}</td>
-      <td>
-        <div class="nm"><span class="fl" title="{{ r.country }}">{{ r.flag }}</span>
-          <a class="who" href="/l/{{ token }}/p/{{ r.id }}">{{ r.name }}</a></div>
-        <div class="meta"><span class="onsm">{{ r.group }}{{ " · " if r.heat }}</span>{% if r.heat %}{{ r.heat }} heat{% endif %}</div>
-      </td>
-      <td><span class="tag{{ ' elite' if r.cat == 'elite' }}">{{ r.group }}</span></td>
-      <td class="r sub">{{ r.raced or '—' }}</td>
-      <td class="r sub">{{ r.moving or '—' }}</td>
-      <td class="r tm">{{ r.time if r.done else r.label }}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="colhead">
+  <span>Pos</span><span>Athlete</span><span>Category</span>
+  <span>Stations</span><span>Transition</span><span>Time</span>
 </div>
 
-<div class="empty none-shown" id="nohits" style="margin-top:14px">
-  Nobody here matches that.
+<div id="rows">
+{% for r in rows %}
+  <div class="row {{ 'done' if r.done else ('out' if r.out else 'pend') }}{{
+       ' lead' if r.place == 1 }}"
+       data-cat="{{ r.cat }}" data-sex="{{ r.sex }}"
+       data-name="{{ r.name|lower }}">
+    {# The overall number, swapped for the number within a group the moment
+       somebody filters down to one - "4th" means something different when
+       the page in front of you is only the Elite women. #}
+    <span class="pl{{ '' if r.place else ' none' }}"
+          data-place="{{ r.place or '' }}">{{ r.place or '—' }}</span>
+    <span class="who">
+      <span class="fl" title="{{ r.country }}">{{ r.flag }}</span>
+      <span style="min-width:0">
+        <a class="nm" href="/l/{{ token }}/p/{{ r.id }}">{{ r.name }}</a>
+        <span class="onsm{{ ' el' if r.cat == 'elite' }}">{{ r.group }}{{
+          " · " ~ r.heat ~ " heat" if r.heat }}</span>
+      </span>
+    </span>
+    <span class="cat{{ ' el' if r.cat == 'elite' }}">{{ r.group }}</span>
+    <span class="sub {{ 'st' if r.raced else 'na' }}">{{ r.raced or '—' }}</span>
+    <span class="sub {{ 'tr' if r.moving else 'na' }}">{{ r.moving or '—' }}</span>
+    <span class="tm">{{ r.time if r.done else r.label }}</span>
+  </div>
+{% endfor %}
 </div>
+
+<div class="empty none-shown" id="nohits">Nobody here matches that.</div>
 
 <script>
 (function(){
   var pick = {cat:"", sex:""};
-  var rows = [].slice.call(document.querySelectorAll("#rows tr"));
+  var rows = [].slice.call(document.querySelectorAll("#rows .row"));
   var find = document.getElementById("find");
   var none = document.getElementById("nohits");
 
   function apply(){
     var q = (find.value || "").trim().toLowerCase();
-    var shown = 0, narrowed = !!(pick.cat || pick.sex);
-    var n = 0;
-    rows.forEach(function(tr){
-      var ok = (!pick.cat || tr.dataset.cat === pick.cat)
-            && (!pick.sex || tr.dataset.sex === pick.sex)
-            && (!q || tr.dataset.name.indexOf(q) !== -1);
-      tr.hidden = !ok;
+    var shown = 0, narrowed = !!(pick.cat || pick.sex), n = 0;
+    rows.forEach(function(el){
+      var ok = (!pick.cat || el.dataset.cat === pick.cat)
+            && (!pick.sex || el.dataset.sex === pick.sex)
+            && (!q || el.dataset.name.indexOf(q) !== -1);
+      el.hidden = !ok;
       if (!ok) { return; }
       shown++;
       /* Renumber against what is actually on screen. A filtered page that
          still reads 1, 4, 7 is a page asking you to do subtraction. */
-      var cell = tr.querySelector(".pl");
+      var cell = el.querySelector(".pl");
       var has = !!cell.dataset.place;
       if (has) { n++; }
       cell.textContent = has ? (narrowed ? n : cell.dataset.place) : "—";

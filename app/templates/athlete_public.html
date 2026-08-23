@@ -1,127 +1,123 @@
 {% extends "public_base.html" %}
 {% block title %}{{ who.name }} &mdash; {{ ev.name }}{% endblock %}
-{% block subtitle %}{{ ev.when_text }}{% endblock %}
+{% block bandsub %}{{ who.name }}{% endblock %}
 
 {% block css %}
 .back{
-  display:inline-block;margin-bottom:14px;color:var(--mint);
-  text-decoration:none;font-size:.82rem;font-weight:700;
+  display:inline-block;margin-top:18px;color:var(--teal);text-decoration:none;
+  font-family:var(--head);font-weight:500;font-size:.72rem;letter-spacing:.13em;
+  text-transform:uppercase;
 }
 .back:hover{text-decoration:underline}
-.back:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
+.back:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
 
-/* ---- who, and where they came ---- */
 .ath{
-  display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;
-  padding-bottom:15px;border-bottom:1px solid var(--line);margin-bottom:16px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:16px 0;border-bottom:2px solid var(--ink);
 }
-.ath .fl{font-size:1.7rem;line-height:1;flex:0 0 auto}
-.ath h2{margin:0;font-size:1.3rem;font-weight:800;letter-spacing:-.025em}
-.stat{
-  font-size:.78rem;font-weight:700;background:var(--card);
-  border:1px solid var(--line);border-radius:8px;padding:6px 10px;
-  font-variant-numeric:tabular-nums;
+.ath .fl{font-size:2rem;line-height:1;flex:0 0 auto}
+.ath h2{
+  font-family:var(--sans);font-weight:700;font-size:2.3rem;margin:0;
+  text-transform:uppercase;line-height:1;
 }
-.stat em{font-style:normal;color:var(--dim);font-weight:600}
-.stat.cat{color:var(--mint);border-color:var(--eliteline)}
-.stat.big{
-  background:var(--amber);border-color:var(--amber);color:#1d1a10;
-  font-size:.95rem;font-weight:800;
+.rk{
+  font-family:var(--head);font-weight:500;font-size:.74rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--teal);border:1px solid var(--teal);
+  padding:6px 11px;
 }
-.stat.big em{color:#4a4023}
+.rk.b{color:var(--dim);border-color:var(--hair)}
 
-/* ---- the three totals ---- */
-.tots{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px;
-}
-.tot{
-  background:var(--card);border:1px solid var(--line);border-radius:12px;
-  padding:13px 14px;min-width:0;
-}
+/* One hue per measure, and the same hue wherever that measure appears. The
+   label names it as well, so nothing here depends on telling two hues apart. */
+.tots{display:grid;grid-template-columns:repeat(3,1fr);gap:0;
+  border-bottom:1px solid var(--hair)}
+.tot{padding:0 20px 18px 0;border-right:1px solid var(--hair);
+  border-top:3px solid var(--c);min-width:0}
+.tot:last-child{border-right:0;padding-right:0}
+.tot:not(:first-child){padding-left:20px}
+.tot.f{--c:var(--amber)} .tot.s{--c:var(--teal)} .tot.t{--c:var(--blue)}
 .tot .k{
-  font-size:.6rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;
-  color:var(--mintdim);
+  font-family:var(--head);font-weight:500;font-size:.64rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--c);padding-top:14px;
 }
 .tot .v{
-  font-size:1.5rem;font-weight:800;letter-spacing:-.03em;margin-top:4px;
-  font-variant-numeric:tabular-nums;
+  font-family:var(--mono);font-weight:600;font-size:2.5rem;letter-spacing:-.05em;
+  margin-top:5px;line-height:1;color:var(--c);font-variant-numeric:tabular-nums;
 }
-.tot .n{font-size:.68rem;color:var(--dim);margin-top:3px;line-height:1.4}
-.tot.amber .v{color:var(--amber)}
-
-h3.sec{
-  margin:24px 0 11px;font-size:.68rem;font-weight:800;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--mintdim);
+.tot .n{
+  font-family:var(--sans);font-size:.94rem;font-weight:500;color:var(--dim);
+  margin-top:7px;text-transform:uppercase;letter-spacing:.05em;line-height:1.3;
 }
 
-/* ---- station by station ---- */
-.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table.sp{
-  width:100%;min-width:520px;border-collapse:collapse;color:var(--ink);
-  font-variant-numeric:tabular-nums;
+.srow{display:flex;align-items:center;gap:16px;padding:13px 0;
+  border-bottom:1px solid var(--hair)}
+.srow:last-of-type{border-bottom:0}
+.srow .sn{
+  font-family:var(--sans);font-weight:700;font-size:1.42rem;
+  text-transform:uppercase;flex:1 1 auto;min-width:0;line-height:1.05;
 }
-.sp th{
-  text-align:left;font-size:.6rem;font-weight:800;letter-spacing:.13em;
-  text-transform:uppercase;color:var(--mintdim);padding:0 9px 9px;
-  border-bottom:1px solid var(--line);white-space:nowrap;
+.srow .sd{font-family:var(--mono);font-size:.84rem;color:var(--dimmer);
+  width:126px;flex:0 0 auto}
+.srow .ss{font-family:var(--mono);font-weight:600;font-size:1.24rem;width:76px;
+  text-align:right;flex:0 0 auto;letter-spacing:-.035em;color:var(--teal);
+  font-variant-numeric:tabular-nums}
+.srow .sw{font-family:var(--mono);font-size:.94rem;color:var(--blue);width:62px;
+  text-align:right;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.srow .sw.na,.srow .ss.na{color:var(--dimmer)}
+.srow .sr{width:92px;text-align:right;flex:0 0 auto}
+.rkb{
+  font-family:var(--head);font-weight:500;font-size:.72rem;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--dim);border:1px solid var(--hair);
+  padding:5px 8px;display:inline-block;white-space:nowrap;
 }
-.sp td{padding:11px 9px;border-bottom:1px solid #142c2c}
-.sp tbody tr:last-child td{border-bottom:0}
-.sp .r{text-align:right}
-.sp .st{font-weight:700;font-size:.92rem}
-/* The count lives in its own column on a wide screen and moves under the
-   station name on a narrow one, where that column is dropped. Never both. */
-.sp .did{display:none;font-size:.72rem;color:var(--dim);margin-top:2px}
-.sp .tm{font-weight:800;font-size:.96rem}
-.sp .walk{color:var(--dim);font-size:.86rem}
-.rk{
-  display:inline-block;font-size:.7rem;font-weight:800;border-radius:5px;
-  padding:3px 7px;background:#12292a;border:1px solid var(--line);
-  color:var(--dim);white-space:nowrap;
-}
-.rk.top{color:var(--mint);border-color:var(--eliteline);background:#10322e}
+.rkb.top{color:var(--amber);border-color:var(--amber)}
 
-/* ---- the field, as dots ---- */
-.strips{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.card{
-  background:var(--card);border:1px solid var(--line);border-radius:12px;
-  padding:14px;min-width:0;
+.strips{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;margin-top:4px}
+.strip{padding:18px 0 16px;border-bottom:1px solid var(--hair);min-width:0}
+.strip h4{
+  font-family:var(--head);font-weight:600;font-size:.92rem;margin:0;
+  letter-spacing:.09em;text-transform:uppercase;
 }
-.card h4{
-  margin:0 0 2px;font-size:.72rem;font-weight:800;letter-spacing:.11em;
-  text-transform:uppercase;color:var(--mintdim);
+.strip .note{
+  font-family:var(--sans);font-size:.94rem;font-weight:500;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.05em;margin:3px 0 15px;
 }
-.card .note{font-size:.7rem;color:var(--dim);margin:0 0 11px}
-.card .note b{color:var(--ink);font-weight:700}
-
-/* Every result is a dot and yours is lit. At sixteen people you can count the
-   people ahead of you, which is the question anybody actually has - and a
-   smooth curve fitted to sixteen points would be mostly invention. */
-.dline{position:relative;height:26px;border-bottom:1px solid var(--line)}
+.strip .note b{color:var(--amber);font-weight:600;font-family:var(--mono);
+  font-size:.88rem;letter-spacing:-.02em}
+/* Every result is a mark and yours is amber. Sixteen results do not make a
+   distribution; a smooth curve fitted through them would show a confident
+   peak that moves when one person has a bad morning. Dots also answer the
+   question people actually have, which is how many are ahead of them. */
+.dline{position:relative;height:24px;border-bottom:2px solid var(--hair)}
 .dline i{
-  position:absolute;top:9px;width:6px;height:6px;margin-left:-3px;
-  border-radius:50%;background:#2f5b58;display:block;
+  position:absolute;top:8px;width:8px;height:8px;margin-left:-4px;
+  background:var(--field);display:block;
 }
+/* A ring of the page colour, so yours still reads when the field crowds in. */
 .dline i.me{
-  width:12px;height:12px;top:6px;margin-left:-6px;background:var(--mint);
-  box-shadow:0 0 0 3px rgba(136,234,224,.17);
+  width:14px;height:14px;top:5px;margin-left:-7px;background:var(--amber);
+  box-shadow:0 0 0 2px var(--bg);z-index:2;
 }
 .dax{
-  display:flex;justify-content:space-between;font-size:.62rem;color:var(--dim);
-  margin-top:6px;font-variant-numeric:tabular-nums;
+  display:flex;justify-content:space-between;margin-top:8px;
+  font-family:var(--mono);font-size:.72rem;color:var(--dimmer);
 }
+.radarbox{padding:22px 0 10px}
+.radar{display:block;width:100%;height:auto;max-width:260px;margin:0 auto}
 
-.radar{display:block;width:100%;height:auto;max-width:270px;margin:2px auto 0}
-
-@media (max-width:720px){
+@media (max-width:820px){
+  .strips{grid-template-columns:1fr;gap:0}
   .tots{grid-template-columns:1fr}
-  .strips{grid-template-columns:1fr}
+  .tot{border-right:0;border-bottom:1px solid var(--hair);padding:0 0 16px}
+  .tot:not(:first-child){padding-left:0;border-top:3px solid var(--c)}
+  .tot:last-child{border-bottom:0}
 }
 @media (max-width:559px){
-  table.sp{min-width:0}
-  .sp th:nth-child(2),.sp td:nth-child(2){display:none}
-  .sp .did{display:block}
-  .ath h2{font-size:1.08rem}
+  .ath h2{font-size:1.7rem}
+  .tot .v{font-size:2.1rem}
+  .srow .sd,.srow .sw{display:none}
+  .srow .sn{font-size:1.22rem}
+  .srow .sr{width:80px}
 }
 {% endblock %}
 
@@ -132,44 +128,45 @@ table.sp{
   <span class="fl" title="{{ who.country }}">{{ who.flag }}</span>
   <h2>{{ who.name }}</h2>
   {% if who.done %}
-    <span class="stat big">{{ who.finish }} <em>finish</em></span>
     {% if who.gplace %}
-      <span class="stat cat">#{{ who.gplace }} <em>{{ who.group }}</em></span>
+      <span class="rk">{{ who.gplace }}{{ 'st' if who.gplace == 1 else
+        ('nd' if who.gplace == 2 else ('rd' if who.gplace == 3 else 'th')) }}
+        &middot; {{ who.group }}</span>
     {% endif %}
     {% if who.oplace %}
-      <span class="stat">#{{ who.oplace }} <em>of {{ who.field }}</em></span>
+      <span class="rk b">{{ who.oplace }} of {{ who.field }}</span>
     {% endif %}
   {% else %}
-    <span class="stat">{{ who.label }}</span>
-    {% if who.group %}<span class="stat cat">{{ who.group }}</span>{% endif %}
+    <span class="rk b">{{ who.label }}</span>
+    {% if who.group %}<span class="rk">{{ who.group }}</span>{% endif %}
   {% endif %}
 </div>
 
 {% if not who.done %}
-<div class="empty" style="margin-bottom:16px">
+<div class="empty" style="margin-top:16px">
   {# Splits still show. What does not show is a placing, because there is not
      one yet - and a number here would be read as one. #}
-  <b>This race is not finished.</b><br>
+  <b>This race is not finished</b><br>
   The stations below are as far as it has got.
 </div>
 {% endif %}
 
 <div class="tots">
-  <div class="tot amber">
-    <div class="k">{{ 'Finish time' if who.done else 'On the clock' }}</div>
+  <div class="tot f">
+    <div class="k">{{ 'Finish' if who.done else 'On the clock' }}</div>
     <div class="v">{{ who.finish or '—' }}</div>
     <div class="n">{% if who.oplace %}{{ who.oplace }} of {{ who.field }}
       overall{% else %}no official time{% endif %}</div>
   </div>
-  <div class="tot">
+  <div class="tot s">
     <div class="k">On the stations</div>
     <div class="v">{{ who.raced }}</div>
     <div class="n">{{ 100 - who.walkpct }}% of the race</div>
   </div>
-  <div class="tot">
-    <div class="k">Between them</div>
+  <div class="tot t">
+    <div class="k">Transition</div>
     <div class="v">{{ who.moving }}</div>
-    <div class="n">the walks &mdash; {{ who.walkpct }}%{% if who.wplace %},
+    <div class="n">{{ who.walkpct }}% of the race{% if who.wplace %} &middot;
       {{ who.wplace }}{{ 'st' if who.wplace == 1 else ('nd' if who.wplace == 2
       else ('rd' if who.wplace == 3 else 'th')) }} quickest of
       {{ who.wof }}{% endif %}</div>
@@ -177,45 +174,29 @@ table.sp{
 </div>
 
 {% if rows %}
-<h3 class="sec">Station by station</h3>
-<div class="tw">
-<table class="sp">
-  <thead><tr>
-    <th>Station</th>
-    <th style="width:120px">Done</th>
-    <th class="r" style="width:88px">Split</th>
-    <th class="r" style="width:96px">Walk after</th>
-    <th class="r" style="width:104px">In the field</th>
-  </tr></thead>
-  <tbody>
-  {% for r in rows %}
-    <tr>
-      <td><div class="st">{{ r.name }}</div>
-        {% if r.count is not none %}
-        <div class="did">{{ r.count }} / {{ r.target }} {{ r.unit }}</div>
-        {% endif %}</td>
-      <td class="walk">{% if r.count is not none %}{{ r.count }} /
-        {{ r.target }} {{ r.unit }}{% else %}&mdash;{% endif %}</td>
-      <td class="r tm">{{ r.split or '—' }}</td>
-      <td class="r walk">{{ r.walk or '—' }}</td>
-      <td class="r">{% if r.place %}<span class="rk{{ ' top'
-        if r.place <= 3 }}">{{ r.place }} of {{ r.of }}</span>
-        {% else %}<span class="walk">&mdash;</span>{% endif %}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-</div>
+<div class="sec"><h3>Station by station</h3><span>{{ rows|length }} stations</span></div>
+<div class="colhead" style="display:none"></div>
+{% for r in rows %}
+  <div class="srow">
+    <span class="sn">{{ r.name }}</span>
+    <span class="sd">{% if r.count is not none %}{{ r.count }} / {{ r.target }}
+      {{ r.unit }}{% else %}&mdash;{% endif %}</span>
+    <span class="ss{{ '' if r.split else ' na' }}">{{ r.split or '—' }}</span>
+    <span class="sw{{ '' if r.walk else ' na' }}">{{ r.walk or '—' }}</span>
+    <span class="sr">{% if r.place %}<span class="rkb{{ ' top'
+      if r.place <= 3 }}">{{ r.place }} of {{ r.of }}</span>
+      {% else %}<span class="rkb">&mdash;</span>{% endif %}</span>
+  </div>
+{% endfor %}
 
-<h3 class="sec">Against everybody who raced</h3>
+<div class="sec"><h3>Against the field</h3><span>everybody who raced it</span></div>
 <div class="strips">
   {% for r in rows %}
   {% if r.dots %}
-  <div class="card">
+  <div class="strip">
     <h4>{{ r.name }}</h4>
     <p class="note"><b>{{ r.split }}</b>{% if r.place %} &middot; {{ r.place }}
-      of {{ r.of }}{% endif %} &middot; every result on this station, yours
-      lit</p>
+      of {{ r.of }}{% endif %}</p>
     <div class="dline">
       {% for d in r.dots %}<i class="{{ 'me' if d.me }}"
         style="left:{{ d.at }}%"></i>{% endfor %}
@@ -227,11 +208,10 @@ table.sp{
   {% endfor %}
 
   {% if walkdots %}
-  <div class="card">
-    <h4>Between the stations</h4>
+  <div class="strip">
+    <h4>Transition</h4>
     <p class="note"><b>{{ who.moving }}</b>{% if who.wplace %} &middot;
-      {{ who.wplace }} of {{ who.wof }}{% endif %} &middot; the walks, which
-      are in the finish time and in nobody's split</p>
+      {{ who.wplace }} of {{ who.wof }}{% endif %}</p>
     <div class="dline">
       {% for d in walkdots %}<i class="{{ 'me' if d.me }}"
         style="left:{{ d.at }}%"></i>{% endfor %}
@@ -240,35 +220,35 @@ table.sp{
       <span>{{ walkslow }} most</span></div>
   </div>
   {% endif %}
-
-  {% if shape|length >= 3 %}
-  <div class="card">
-    <h4>Shape of the race</h4>
-    <p class="note">Further out is stronger against the field</p>
-    {# Drawn from the ranks rather than the times: a station measured in
-       metres and one measured in reps have no common axis, and plotting
-       seconds against seconds would make the long stations look like
-       weaknesses on every single athlete's chart. #}
-    <svg class="radar" viewBox="0 0 240 226" role="img"
-         aria-label="How {{ who.name }} ranked on each station against the field">
-      <g fill="none" stroke="{{ '#1b3a3a' }}" stroke-width="1">
-        {% for ring in radar.rings %}<polygon points="{{ ring }}"/>{% endfor %}
-        {% for sp in radar.spokes %}<line x1="{{ radar.cx }}" y1="{{ radar.cy }}"
-          x2="{{ sp[0] }}" y2="{{ sp[1] }}"/>{% endfor %}
-      </g>
-      <polygon points="{{ radar.you }}" fill="rgba(136,234,224,.19)"
-               stroke="#88EAE0" stroke-width="2" stroke-linejoin="round"/>
-      <g fill="#8fa6a6" font-family="-apple-system,sans-serif"
-         font-size="10" font-weight="600">
-        {% for lb in radar.labels %}
-        <text x="{{ lb.x }}" y="{{ lb.y }}" text-anchor="{{ lb.anchor }}"
-          >{{ lb.name }}</text>
-        {% endfor %}
-      </g>
-    </svg>
-  </div>
-  {% endif %}
 </div>
+
+{% if radar %}
+<div class="sec"><h3>Shape of the race</h3>
+  <span>Further out is stronger against the field</span></div>
+<div class="radarbox">
+  {# Drawn from the ranks rather than the times: a station measured in metres
+     and one measured in reps have no common axis, and plotting seconds
+     against seconds would make the long stations look like a weakness on
+     every athlete's chart. #}
+  <svg class="radar" viewBox="0 0 240 226" role="img"
+       aria-label="How {{ who.name }} ranked on each station against the field">
+    <g fill="none" stroke="#242930" stroke-width="1">
+      {% for ring in radar.rings %}<polygon points="{{ ring }}"/>{% endfor %}
+      {% for sp in radar.spokes %}<line x1="{{ radar.cx }}" y1="{{ radar.cy }}"
+        x2="{{ sp[0] }}" y2="{{ sp[1] }}"/>{% endfor %}
+    </g>
+    <polygon points="{{ radar.you }}" fill="rgba(27,168,147,.2)"
+             stroke="#1BA893" stroke-width="2"/>
+    <g fill="#8A9298" font-family="Oswald,sans-serif" font-size="10"
+       font-weight="500" letter-spacing="1.2">
+      {% for lb in radar.labels %}
+      <text x="{{ lb.x }}" y="{{ lb.y }}" text-anchor="{{ lb.anchor }}"
+        >{{ lb.name|upper }}</text>
+      {% endfor %}
+    </g>
+  </svg>
+</div>
+{% endif %}
 {% else %}
 <div class="empty">This event has no stations set up, so there is nothing to
   break down.</div>
