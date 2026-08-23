@@ -2030,6 +2030,49 @@ def is_test_athlete(p) -> bool:
     return (getattr(p, "full_name", "") or "").strip().lower() in TEST_ATHLETES
 
 
+#: The longest a single station or a whole race is allowed to be, in seconds.
+#: Twelve hours. Not a real race length - it is the line past which a typed
+#: number is a typo rather than a correction, and letting one through would put
+#: a nonsense on the board that nobody could explain.
+CLOCK_MAX = 12 * 60 * 60
+
+
+def parse_clock(text):
+    """A typed duration as whole seconds, or None if there is nothing there.
+
+    Takes the shapes a person actually types into a field labelled with a time
+    already in it: ``3:20``, ``1:03:20``, and a bare ``200``. Blank means blank
+    - "this station was not raced" is a real answer and is not the same as
+    zero, so it comes back as None rather than 0 and the caller decides.
+
+    Raises ValueError on anything else. An admin correcting a result at a
+    trestle table needs to be told they fat-fingered it, not to have the row
+    silently become 0:00 and go out on a finisher card.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    parts = raw.split(":")
+    if len(parts) > 3:
+        raise ValueError(raw)
+    try:
+        nums = [int(x) for x in parts]
+    except ValueError:
+        raise ValueError(raw)
+    if any(n < 0 for n in nums):
+        raise ValueError(raw)
+    # Only the leading field may run over: "90:00" is a plain ninety minutes,
+    # but "1:90" is somebody who meant "1:30" and missed.
+    if len(nums) > 1 and any(n > 59 for n in nums[1:]):
+        raise ValueError(raw)
+    secs = 0
+    for n in nums:
+        secs = secs * 60 + n
+    if secs > CLOCK_MAX:
+        raise ValueError(raw)
+    return secs
+
+
 def station_splits(p, now=None):
     """One person's race, station by station, as the sheet reads it.
 

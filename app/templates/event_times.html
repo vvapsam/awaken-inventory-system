@@ -22,6 +22,11 @@
         RACE_STATUS_LABELS[status] }}</span>
       {%- if test %} <span class="tagline">TEST ATHLETE</span>{% endif %}</p></div>
   <div class="hdact">
+    {% if is_admin %}
+    {# Admins only: this rewrites what an athlete goes home with. #}
+    <a class="btn" href="/events/{{ ev.id }}/p/{{ who.id }}/times/edit">&#9998;
+      Edit the times</a>
+    {% endif %}
     <a class="btn" href="/events/{{ ev.id }}">&larr; Back to the list</a>
   </div>
 </div>
@@ -31,6 +36,13 @@
   <span class="muted">{{ who.full_name.split(' ')[0] }} is free for any coach
   to grab. Nothing about their race changed &mdash; the clock, the splits and
   the finish time are all where they were.</span></div>
+{% endif %}
+
+{% if just_edited %}
+<div class="alert" style="margin-top:14px"><b>Times saved.</b>
+  <span class="muted">Everything below is what was typed on the edit page. The
+  splits and the finish time are set independently, so they are not required
+  to add up.</span></div>
 {% endif %}
 
 {% if just_reset %}

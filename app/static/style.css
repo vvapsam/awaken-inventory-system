@@ -1190,7 +1190,9 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
   margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
 .resetrow .muted{max-width:56ch;line-height:1.5}
 /* .btn.big is full width up in the awarding-table section, where the buttons
-   are stacked one per row. Here they sit side by side, so take the width back
-   rather than change a rule three screens depend on. */
-.timeacts .btn.big{width:auto;margin-top:0}
+   are stacked one per row - and full width is why it carries no side padding.
+   Here they sit side by side and shrink to their text, so both have to come
+   back, or the label ends up flush against the edge of its own button. */
+.timeacts .btn.big{width:auto;margin-top:0;padding-left:20px;
+  padding-right:20px}
 @media(max-width:640px){.timeacts .btn.big{width:100%}}

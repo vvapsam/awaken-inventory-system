@@ -67,6 +67,7 @@ from .models import (
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     station_splits, has_race, race_status, is_test_athlete,
     board_rows, RACE_STATUS_OUT, h12, Staff, wants_reels,
+    parse_clock, CLOCK_MAX,
 )
 from .countries import country_code, country_name, flag as country_flag
 # The sponsor strip is cut and sized once, for the finisher card. The
@@ -1525,11 +1526,165 @@ def register(app, deps):
                       started=has_race(p), test=is_test_athlete(p),
                       is_admin=(staff.role == "admin"),
                       just_reset=bool(request.query_params.get("reset")),
+                      just_edited=bool(request.query_params.get("edited")),
                       just_freed=bool(request.query_params.get("freed")),
                       coach=(db.get(Staff, p.coach_id).name
                              if p.coach_id and db.get(Staff, p.coach_id)
                              else None),
                       start=p.heat_start(), base=base_url(request))
+
+    def _clocktext(secs):
+        """A stored number of seconds as the text that goes in the field.
+
+        Not ``_clock`` - that name is taken, module-level, by the one that
+        reads a heat's "HH:MM" off a settings form. Two helpers a thousand
+        lines apart both called _clock is how a nested def silently eats the
+        one above it.
+        """
+        return "" if secs is None else mmss(secs)
+
+    def _edit_rows(p, vals=None):
+        """The station rows as an editable table.
+
+        Pre-filled from what is stored unless we are re-drawing after a bad
+        entry, in which case the admin gets back exactly what they typed - a
+        form that empties itself when you mistype one field in it is a form
+        that gets abandoned.
+        """
+        rows = station_splits(p)
+        out = []
+        for i, r in enumerate(rows):
+            st = r["station"]
+            sk, wk = "split_%d" % st.id, "walk_%d" % st.id
+            out.append({
+                "station": st, "name": r["name"],
+                "unit": r["unit"], "target": r["target"], "count": r["count"],
+                "split_key": sk, "walk_key": wk,
+                "split": (vals.get(sk, "") if vals is not None
+                          else _clocktext(r["secs"])),
+                "walk": (vals.get(wk, "") if vals is not None
+                         else _clocktext(r["gap"])),
+                # The last station has nothing to walk to.
+                "last": i == len(rows) - 1,
+            })
+        return out
+
+    @app.get("/events/{eid}/p/{pid}/times/edit", response_class=HTMLResponse)
+    def event_times_edit(request: Request, eid: int, pid: int,
+                         db: Session = Depends(get_db)):
+        """Correct a race by hand. Admins only.
+
+        A stopwatch on a phone in a loud room gets things wrong: a coach taps
+        Done a lane late, somebody's clock drifts, a station gets started for
+        the wrong athlete. The results are what an athlete goes home with, so
+        somebody has to be able to fix them.
+
+        Every number on the page is editable and none of them are derived from
+        each other - the splits, the walks and the finish time each stand on
+        their own. That is deliberate. Making the finish recompute from the
+        splits would be tidier arithmetic and the wrong tool: the finish time
+        is the one that was called out and written down, and an admin fixing a
+        mis-tapped split must not silently restate it.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse("/events/%d" % eid, status_code=303)
+        return render(request, "event_times_edit.html", db, staff,
+                      active="events", ev=p.event, who=p,
+                      rows=_edit_rows(p), finish=_clocktext(p.race_seconds),
+                      start=p.heat_start(), err="")
+
+    @app.post("/events/{eid}/p/{pid}/times/edit")
+    async def event_times_save(request: Request, eid: int, pid: int,
+                               db: Session = Depends(get_db)):
+        """Write the corrected race back.
+
+        The stamps are rebuilt as one chain rather than patched field by
+        field. A split and a walk are both differences between two moments, so
+        editing one in isolation would have to shove a neighbour to stay
+        arithmetically possible - and an admin who fixed one row and found a
+        different row had moved would rightly stop trusting the page. Rebuild
+        from the top and every number on screen is the number that gets saved.
+
+        The anchor is where the first raced station already started, so a
+        correction lower down never moves the top of somebody's race.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse("/events/%d" % eid, status_code=303)
+        form = await request.form()
+        vals = {k: (form.get(k) or "").strip() for k in form.keys()}
+
+        def bad(msg):
+            return render(request, "event_times_edit.html", db, staff,
+                          active="events", ev=p.event, who=p,
+                          rows=_edit_rows(p, vals), finish=vals.get("finish", ""),
+                          start=p.heat_start(), err=msg)
+
+        stations = sorted(p.event.stations, key=lambda s: (s.position, s.id)) \
+            if p.event else []
+        runs = {r.station_id: r for r in (p.runs or [])}
+
+        # Read the whole form before writing anything. A page that saved the
+        # first four rows and then refused the fifth would leave a race that is
+        # neither the old one nor the new one.
+        plan = []
+        for st in stations:
+            try:
+                split = parse_clock(vals.get("split_%d" % st.id, ""))
+                walk = parse_clock(vals.get("walk_%d" % st.id, ""))
+            except ValueError:
+                return bad("%s: a time reads like m:ss or h:mm:ss \u2014 3:20, or "
+                           "1:03:20. Nothing was saved." % st.name)
+            plan.append((st, split, walk))
+        try:
+            finish = parse_clock(vals.get("finish", ""))
+        except ValueError:
+            return bad("The finish time reads like m:ss or h:mm:ss \u2014 22:41, "
+                       "or 1:04:09. Nothing was saved.")
+
+        start = p.heat_start()
+        if finish is not None and not start:
+            return bad("There is no start to measure a finish time from - "
+                       "this heat has no time set, or the event has no date. "
+                       "Set those first. Nothing was saved.")
+        # The top of the race stays where it was. Only if nothing has ever been
+        # raced do we fall back to the gun.
+        anchor = next((runs[st.id].started_at for st, _s, _w in plan
+                       if runs.get(st.id) and runs[st.id].started_at), None)
+        anchor = anchor or start
+        if any(s is not None for _st, s, _w in plan) and not anchor:
+            return bad("There is no start to measure the stations from - "
+                       "this heat has no time set, or the event has no date. "
+                       "Set those first. Nothing was saved.")
+
+        cursor = anchor
+        for st, split, walk in plan:
+            run = runs.get(st.id)
+            if split is None:
+                # Cleared. The station was not raced, which is a different
+                # thing from having been raced in no time.
+                if run:
+                    db.delete(run)
+                continue
+            if not run:
+                run = StationRun(participant_id=p.id, station_id=st.id,
+                                 count=st.target or 0)
+                db.add(run)
+            run.started_at = cursor
+            run.ended_at = cursor + timedelta(seconds=split)
+            cursor = run.ended_at + timedelta(seconds=walk or 0)
+        p.finished_at = (start + timedelta(seconds=finish)
+                         if finish is not None else None)
+        db.commit()
+        return RedirectResponse("/events/%d/p/%d/times?edited=1" % (eid, pid),
+                                status_code=303)
 
     @app.post("/events/{eid}/p/{pid}/reset")
     def event_times_reset(request: Request, eid: int, pid: int,

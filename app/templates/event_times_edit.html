@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block body %}
+{#
+  Correcting a race by hand.
+
+  Every number here is typed, and none of them are computed from each other.
+  The splits, the walks and the finish time each stand alone on purpose: the
+  finish is the number that was called out and written down, and a mis-tapped
+  split must not be allowed to silently restate it.
+
+  Blank is a real answer. An empty split means the station was not raced,
+  which is not the same as a station raced in no time.
+#}
+<div class="row-between">
+  <div><h1 style="margin:0">Edit {{ who.full_name }}&rsquo;s times</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      {{ ev.name }}
+      {%- if who.heat_time %} &middot; {{ h12(who.heat_time) }} heat{% endif %}</p></div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}/p/{{ who.id }}/times">&larr;
+      Back without saving</a>
+  </div>
+</div>
+
+{% if err %}
+<div class="alert bad" style="margin-top:14px"><b>Not saved.</b>
+  <span class="muted">{{ err }}</span></div>
+{% endif %}
+
+<form method="post" action="/events/{{ ev.id }}/p/{{ who.id }}/times/edit">
+<div class="tablewrap" style="margin-top:16px">
+<table id="editsplits">
+  <thead><tr>
+    <th style="width:34px">#</th>
+    <th>Station</th>
+    <th style="width:120px">Split</th>
+    <th style="width:140px">Walk after</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="muted">{{ loop.index }}</td>
+      <td><b>{{ r.name }}</b>
+        {% if r.count is not none %}
+        <span class="did muted small">{{ r.count }} / {{ r.target }}
+          {{ r.unit }}</span>
+        {% endif %}</td>
+      <td><input class="clock" name="{{ r.split_key }}" value="{{ r.split }}"
+                 placeholder="3:20" inputmode="numeric"
+                 autocapitalize="none" spellcheck="false"></td>
+      <td>
+        {%- if r.last %}<span class="muted">&mdash;</span>
+        {%- else %}<input class="clock" name="{{ r.walk_key }}"
+                 value="{{ r.walk }}" placeholder="0:14" inputmode="numeric"
+                 autocapitalize="none" spellcheck="false">{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if not rows %}
+<div class="alert" style="margin-top:16px">This event has no stations set up,
+  so there is nothing to time. Stations are on the event page.</div>
+{% endif %}
+
+<div class="finishrow">
+  <div>
+    <label class="small" style="font-weight:600;margin:0 0 4px;display:block">
+      Finish time</label>
+    <input class="clock big" name="finish" value="{{ finish }}"
+           placeholder="22:41" inputmode="numeric"
+           autocapitalize="none" spellcheck="false">
+  </div>
+  <p class="muted small" style="margin:0;line-height:1.45">
+    The official time, measured from
+    {%- if start %} the gun{% else %} the start &mdash; and this heat has none
+      set, so a finish time cannot be saved until it does{% endif %}. It is
+    not the sum of the splits and is not meant to be: the walks between
+    stations are in it. Clearing it puts them back to still racing.</p>
+</div>
+
+<div class="timeacts" style="margin-top:18px">
+  <button class="btn primary big" type="submit">Save the times</button>
+  <a class="btn big" href="/events/{{ ev.id }}/p/{{ who.id }}/times">Cancel</a>
+</div>
+
+<p class="muted small" style="margin-top:14px;max-width:60ch">
+  Times read as <b>m:ss</b> or <b>h:mm:ss</b> &mdash; 3:20, or 1:03:20. Leave a
+  split blank to say the station was not raced; the row is cleared. If anything
+  on the page will not read, nothing at all is saved.</p>
+</form>
+
+<style>
+/* Wide enough for h:mm:ss and no wider - a full-width box invites a sentence,
+   and this field takes four characters. */
+.clock{width:100%;max-width:120px;font-variant-numeric:tabular-nums}
+.did::before{content:"\00b7\00a0"}
+.clock.big{max-width:150px;font-size:1.2rem;font-weight:700}
+#editsplits td{vertical-align:middle}
+.finishrow{
+  display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;
+  margin-top:18px;padding-top:16px;border-top:1px solid var(--line,#e6e8ea);
+}
+.finishrow > p{flex:1 1 260px}
+/* On a phone the station names are the first thing to lose, and a name broken
+   over three lines is a name nobody reads. Give the column its width back by
+   dropping the reps onto their own line and taking it off the boxes, which
+   only ever hold four characters. */
+@media(max-width:640px){
+  .clock{max-width:86px}
+  .did{display:block}
+  .did::before{content:""}
+  #editsplits th:nth-child(1),#editsplits td:nth-child(1){display:none}
+}
+</style>
+{% endblock %}
