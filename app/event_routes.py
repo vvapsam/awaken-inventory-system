@@ -2562,7 +2562,25 @@ def register(app, deps):
                     # rather than asking again every second.
                     "elapsed": r["elapsed"] if r["status"] == "in_progress" else None,
                 })
-            cols.append({"key": col["key"], "label": col["label"], "rows": out})
+            # The page draws Elite and Open as two boxes with two columns
+            # inside each, so it needs the split as data rather than by
+            # picking the key apart in JavaScript. Sent from here for the
+            # usual reason: the first paint and every refresh afterwards read
+            # the same builder and cannot disagree about it.
+            key = col["key"]
+            cat = key.split(":")[0] if ":" in key else ""
+            cols.append({
+                "key": key,
+                "label": col["label"],
+                "cat": cat,
+                "catLabel": CATEGORY_LABELS.get(cat, ""),
+                # Inside an Elite box the column is just "Men" - repeating the
+                # word Elite above it and again on it is the box saying its
+                # own name twice.
+                "short": (col["label"].split(" ", 1)[1]
+                          if cat else col["label"]),
+                "rows": out,
+            })
         return cols
 
     @app.get("/l/{token}", response_class=HTMLResponse)

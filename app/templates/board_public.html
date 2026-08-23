@@ -64,12 +64,12 @@ body{
   .dot,.seg.on{animation:none}
 }
 
-h2.band{
+h2.band,h3.band{
   margin:0 0 10px;font-size:.76rem;font-weight:800;letter-spacing:.13em;
   text-transform:uppercase;color:var(--mintdim);
   display:flex;align-items:center;gap:9px;
 }
-h2.band .n{color:var(--dim);font-weight:700;letter-spacing:.04em}
+h2.band .n,h3.band .n{color:var(--dim);font-weight:700;letter-spacing:.04em}
 h2.band.hot{color:var(--amber)}
 
 /* ---- on the floor ---- */
@@ -120,13 +120,37 @@ h2.band.hot{color:var(--amber)}
 }
 
 /* ---- the ranked columns ---- */
-/* Four of these now - Elite Men, Elite Women, Open Men, Open Women - so they
-   have to be allowed to wrap. A basis rather than 0: four columns squeezed
-   onto a laptop is four columns of ellipsis, and 2x2 is legible where 1x4 is
-   not. On a wall screen they all sit in one row, which is the case this page
-   is actually for. */
-.cols{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
-.col{flex:1 1 232px;min-width:0}
+/* Elite and Open are drawn as two boxes, two columns inside each, rather than
+   four bare columns in a row. Four headings side by side made a reader work
+   out for themselves that the first two belonged together; a box says it
+   without being read.
+
+   The boxes sit side by side on a wall screen and stack below about 1000px,
+   which is where two columns inside a half-width box start to pinch. */
+.groups{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.grp{
+  flex:1 1 470px;min-width:0;
+  border:1px solid var(--line);border-radius:15px;
+  padding:14px 14px 8px;background:#0c2021;
+}
+/* The one difference between the two boxes, and it is deliberately small: a
+   mint edge and a mint name. Elite is not more important than Open, it is
+   just the one people scan for first. */
+.grp.elite{border-color:#2c5f5a;background:#0d2725}
+h2.gname{
+  margin:0 0 12px;font-size:.95rem;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink);
+  display:flex;align-items:baseline;gap:10px;
+}
+.grp.elite h2.gname{color:var(--mint)}
+h2.gname .gn{
+  font-size:.68rem;color:var(--dim);font-weight:700;letter-spacing:.06em;
+}
+.cols{display:flex;gap:11px;align-items:flex-start}
+.col{flex:1 1 0;min-width:0}
+/* The Unlisted column arrives as a bare .cols with no box round it, so it
+   needs the basis the boxes get or it collapses to its content. */
+.groups > .cols{flex:1 1 470px;min-width:0;padding-top:2px}
 .row{
   display:flex;align-items:center;gap:11px;
   background:var(--card);border:1px solid var(--line);border-radius:11px;
@@ -199,7 +223,8 @@ h2.band.hot{color:var(--amber)}
   body{padding:26px 26px 56px}
   .head h1{font-size:2.1rem}
   .head .mark{width:86px}
-  h2.band{font-size:.9rem}
+  h2.band,h3.band{font-size:.9rem}
+  h2.gname{font-size:1.15rem}
   .floor{padding:19px 20px;border-radius:16px}
   .cell{padding:14px 15px}
   .cell .nm{font-size:1.22rem}
@@ -220,10 +245,18 @@ h2.band.hot{color:var(--amber)}
 @media (max-width:900px){
   .cards{grid-template-columns:repeat(2,1fr)}
 }
+/* Two columns inside a box need real width. Below this the box keeps its
+   frame - which is the whole point of it - and stacks Men over Women. */
+@media (max-width:660px){
+  .cols{flex-direction:column;gap:0}
+  .col + .col{margin-top:14px}
+}
 @media (max-width:559px){
   body{padding:12px 9px 34px}
   .cards{grid-template-columns:1fr}
   .floor{padding:12px 11px;border-radius:11px}
+  .grp{padding:11px 10px 5px;border-radius:12px}
+  h2.gname{font-size:.85rem;margin-bottom:10px}
   .cols{gap:7px}
   .row{padding:8px 8px;gap:7px;border-radius:9px}
   .pl{width:16px;font-size:.8rem}
@@ -265,7 +298,7 @@ h2.band.hot{color:var(--amber)}
     <div class="nofloor" id="nofloor" hidden>Nobody is racing this minute.</div>
   </div>
 
-  <div class="cols" id="cols"></div>
+  <div class="groups" id="cols"></div>
 
   <div class="sponsors">
     {% for file, w in sponsors %}
@@ -378,7 +411,8 @@ h2.band.hot{color:var(--amber)}
     floorBox.hidden = !floor.length;
     noFloor.hidden = !!floor.length;
 
-    colsBox.innerHTML = cols.map(function(c){
+    /* One column: the finishers, a rule, then everybody else. */
+    function colHTML(c){
       var rest = c.rows.filter(function(r){ return !r.racing; });
       var fin = rest.filter(function(r){ return r.status === 'finished'; });
       var other = rest.filter(function(r){ return r.status !== 'finished'; });
@@ -387,9 +421,41 @@ h2.band.hot{color:var(--amber)}
           + (fin.length && other.length ? '<div class="rule"></div>' : '')
           + other.map(rowHTML).join('')
         : '<div class="empty">Everybody is still out there.</div>';
-      return '<div class="col"><h2 class="band">' + esc(c.label)
-           + '<span class="n">' + fin.length + ' finished</span></h2>'
+      return '<div class="col"><h3 class="band">' + esc(c.short)
+           + '<span class="n">' + fin.length + ' finished</span></h3>'
            + body + '</div>';
+    }
+
+    /* Elite and Open each get a box, in the order the server sent them.
+       Built by walking the columns rather than from a fixed list of two, so
+       a category with nobody in it never draws an empty frame - and a third
+       one, if there is ever a third one, needs nothing here. */
+    var groups = [], byCat = {};
+    cols.forEach(function(c){
+      var g = byCat[c.cat];
+      if (!g) {
+        g = byCat[c.cat] = {cat: c.cat, label: c.catLabel, cols: []};
+        groups.push(g);
+      }
+      g.cols.push(c);
+    });
+
+    colsBox.innerHTML = groups.map(function(g){
+      var fin = 0;
+      g.cols.forEach(function(c){
+        c.rows.forEach(function(r){
+          if (r.status === 'finished') { fin++; }
+        });
+      });
+      /* The Unlisted column has no category, so it gets no box and no name -
+         a frame round it would make a gap in the data look like a division
+         somebody could be entered in. */
+      var inner = '<div class="cols">' + g.cols.map(colHTML).join('') + '</div>';
+      if (!g.cat) { return inner; }
+      return '<section class="grp' + (g.cat === 'elite' ? ' elite' : '') + '">'
+           + '<h2 class="gname">' + esc(g.label)
+           + '<span class="gn">' + fin + ' finished</span></h2>'
+           + inner + '</section>';
     }).join('');
   }
 
