@@ -66,7 +66,7 @@ from .models import (
     RACE_STATUSES, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     station_splits, has_race, race_status, is_test_athlete,
-    board_rows, RACE_STATUS_OUT, h12,
+    board_rows, RACE_STATUS_OUT, h12, Staff,
 )
 from .countries import country_code, country_name, flag as country_flag
 # The sponsor strip is cut and sized once, for the finisher card. The
@@ -1520,6 +1520,10 @@ def register(app, deps):
                       started=has_race(p), test=is_test_athlete(p),
                       is_admin=(staff.role == "admin"),
                       just_reset=bool(request.query_params.get("reset")),
+                      just_freed=bool(request.query_params.get("freed")),
+                      coach=(db.get(Staff, p.coach_id).name
+                             if p.coach_id and db.get(Staff, p.coach_id)
+                             else None),
                       start=p.heat_start(), base=base_url(request))
 
     @app.post("/events/{eid}/p/{pid}/reset")
@@ -1557,6 +1561,35 @@ def register(app, deps):
         p.race_status_set = None
         db.commit()
         return RedirectResponse("/events/%d/p/%d/times?reset=1" % (eid, pid),
+                                status_code=303)
+
+    @app.post("/events/{eid}/p/{pid}/release")
+    def event_release_coach(request: Request, eid: int, pid: int,
+                            db: Session = Depends(get_db)):
+        """Hand somebody back so another coach can grab them.
+
+        One field, and deliberately only one: ``coach_id``. The splits stay,
+        the finish time stays, and the grab time stays.
+
+        That last one matters more than it looks. For a test athlete the grab
+        *is* the start of their clock, so clearing it would restart their race
+        - and the grab route keeps whatever is already there rather than
+        stamping a new one, so the next coach picks them up with the clock
+        still running. Somebody mid-race whose coach's phone died gets a new
+        coach, not a new race.
+
+        Not admin-only, unlike Reset: this destroys nothing and undoes itself
+        the moment somebody grabs them again.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        p = db.get(EventParticipant, pid)
+        if not p or p.event_id != eid:
+            return RedirectResponse("/events/%d" % eid, status_code=303)
+        p.coach_id = None
+        db.commit()
+        return RedirectResponse("/events/%d/p/%d/times?freed=1" % (eid, pid),
                                 status_code=303)
 
     @app.get("/events/{eid}/settings", response_class=HTMLResponse)

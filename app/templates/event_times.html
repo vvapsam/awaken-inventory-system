@@ -26,6 +26,13 @@
   </div>
 </div>
 
+{% if just_freed %}
+<div class="alert" style="margin-top:14px"><b>Handed back.</b>
+  <span class="muted">{{ who.full_name.split(' ')[0] }} is free for any coach
+  to grab. Nothing about their race changed &mdash; the clock, the splits and
+  the finish time are all where they were.</span></div>
+{% endif %}
+
 {% if just_reset %}
 <div class="alert" style="margin-top:14px"><b>Race cleared.</b>
   <span class="muted">{{ who.full_name.split(' ')[0] }} is back in the heat as
@@ -115,6 +122,19 @@
       submits their last station.</span>
   {% endif %}
 </div>
+
+{% if who.coach_id %}
+{# Releasing is not resetting. It clears one field so somebody else can pick
+   them up, and touches nothing about the race. Anybody who can work the event
+   can do it - it destroys nothing and undoes itself on the next grab. #}
+<form method="post" action="/events/{{ ev.id }}/p/{{ who.id }}/release"
+      class="resetrow" style="border-top:0;padding-top:0;margin-top:18px">
+  <button class="btn" type="submit">Hand back to the coaches</button>
+  <span class="muted small">{{ coach or 'A coach' }} has
+    {{ who.full_name.split(' ')[0] }} right now. This frees them for anybody to
+    grab. The clock, the splits and the finish time are untouched.</span>
+</form>
+{% endif %}
 
 {% if is_admin and (started or who.coach_id or who.grabbed_at) %}
 {# Admins only, and it cannot be undone - so it sits below the things somebody

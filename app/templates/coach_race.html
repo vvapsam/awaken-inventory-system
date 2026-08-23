@@ -89,6 +89,15 @@
     <button class="next" type="submit">Next station →</button>
   </form>
 
+  {% if mine %}
+  {# The way out. At the bottom, behind a confirm, because this is a screen
+     somebody is tapping fast with one hand. #}
+  <form method="post" action="/race/p/{{ p.id }}/drop" class="handback"
+        onsubmit="return confirm('Hand {{ p.full_name }} back?\n\nAnother coach can then grab them. Their time keeps running and nothing they have done is lost.');">
+    <button class="hb" type="submit">Hand back to the heat</button>
+  </form>
+  {% endif %}
+
   <div class="note" id="tnote">
     {% if phase == 'pre' %}Station one is already running — it starts at
     {% if test %}the grab{% else %}the heat{% endif %}, not at your first tap.
