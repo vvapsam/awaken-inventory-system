@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1,
+  viewport-fit=cover">
+<title>{{ p.name }} &mdash; {{ ev.name }}</title>
+<meta name="theme-color" content="#14171a">
+<meta name="robots" content="noindex, nofollow">
+<style>
+/* The pass, and nothing else.
+ *
+ * This is what "Show my QR pass" in an email opens. It used to open the
+ * participant's whole page, which carries the confirmation, the sponsor terms
+ * and - once the class is over - a form asking for a Reel. Somebody standing
+ * at a door at half six in the morning with a phone in one hand does not want
+ * any of that; they want the square.
+ *
+ * So: the code, their name, and the two times that decide whether they make
+ * their heat. Everything else is one quiet link at the bottom.
+ *
+ * Deliberately one visual world - dark, high contrast - because it is held up
+ * at a scanner in a room whose lighting nobody chose.
+ */
+*{box-sizing:border-box}
+:root{
+  --bg:#14171a; --card:#1b2024; --line:#2b3238; --ink:#F2F5F7;
+  --dim:#93a1a8; --teal:#3ecfc0; --amber:#e8c98f;
+}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{
+  font:400 16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
+    "Helvetica Neue",Arial,sans-serif;
+  -webkit-text-size-adjust:100%;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:22px 16px 32px;
+}
+.wrap{width:100%;max-width:420px}
+
+.mark{display:block;width:74px;margin:0 auto 20px;opacity:.9}
+
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:24px 20px 22px;text-align:center;
+}
+h1{
+  margin:0 0 3px;font-size:1.32rem;font-weight:800;letter-spacing:-.02em;
+  text-wrap:balance;
+}
+.ev{color:var(--dim);font-size:.88rem;margin:0 0 20px}
+
+/* White plate behind the code: a scanner wants black on white, and a dark
+   card behind a dark QR is a code that will not read. */
+.qr{
+  background:#fff;border-radius:14px;padding:14px;display:inline-block;
+  line-height:0;
+}
+.qr img{display:block;width:236px;height:236px;max-width:100%}
+.say{color:var(--dim);font-size:.86rem;margin:16px 0 0;line-height:1.5}
+.say b{color:var(--ink);font-weight:600}
+
+.times{
+  display:flex;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden;margin-top:18px;
+}
+.times div{flex:1 1 0;background:var(--card);padding:13px 10px}
+.times .k{
+  font-size:.62rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--dim);
+}
+.times .v{
+  font-size:1.42rem;font-weight:800;letter-spacing:-.02em;margin-top:3px;
+  font-variant-numeric:tabular-nums;
+}
+.times .arrive .v{color:var(--teal)}
+.times .s{font-size:.68rem;color:var(--dim);margin-top:2px}
+
+.in{
+  margin-top:18px;background:#122b26;border:1px solid #1f5a52;
+  border-radius:12px;padding:13px 14px;color:var(--teal);
+  font-size:.92rem;font-weight:600;
+}
+.warnbox{
+  margin-top:18px;background:#2a2116;border:1px solid #4a3a20;color:var(--amber);
+  border-radius:12px;padding:13px 14px;font-size:.9rem;text-align:left;
+}
+.more{
+  display:block;text-align:center;margin-top:20px;color:var(--dim);
+  font-size:.82rem;
+}
+.more a{color:var(--teal)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="mark" src="/static/card/awaken.png" alt="AWAKEN">
+
+  <div class="card">
+    <h1>{{ p.name }}</h1>
+    <p class="ev">{{ ev.name }}</p>
+
+    {% if p.arrived_at %}
+      {# Already scanned. The code still works, but the thing they want to
+         know standing there is whether they are in. #}
+      <div class="qr"><img src="/e/{{ p.token }}/qr.png"
+           alt="Your check-in code" width="236" height="236"></div>
+      <div class="in">&#10003; Checked in
+        {{ (p.arrived_at|local).strftime('%-I:%M %p') }}</div>
+    {% else %}
+      <div class="qr"><img src="/e/{{ p.token }}/qr.png"
+           alt="Your check-in code" width="236" height="236"></div>
+      <p class="say">Show this at the door &mdash; we&rsquo;ll scan it.<br>
+        <b>Screenshot it now</b>, in case the signal is bad.</p>
+    {% endif %}
+
+    {% if p.heat_time %}
+    <div class="times">
+      <div class="arrive">
+        <div class="k">Arrive by</div>
+        <div class="v">{{ arrive }}</div>
+        <div class="s">Check in &amp; warm up</div>
+      </div>
+      <div>
+        <div class="k">Your heat</div>
+        <div class="v">{{ h12(p.heat_time) }}</div>
+        <div class="s">{{ day }}</div>
+      </div>
+    </div>
+    {% elif ev.starts_at %}
+    <div class="times">
+      <div><div class="k">When</div>
+        <div class="v" style="font-size:1.05rem">{{ ev.when_text }}</div>
+        {% if ev.venue %}<div class="s">{{ ev.venue }}</div>{% endif %}</div>
+    </div>
+    {% endif %}
+
+    {% if ev.bring %}
+    <div class="warnbox"><b>Bring:</b> {{ ev.bring }}</div>
+    {% endif %}
+  </div>
+
+  {# The only way out of here, and it is small on purpose. #}
+  <span class="more">Everything else &mdash;
+    <a href="/e/{{ p.token }}">your page</a></span>
+</div>
+</body>
+</html>

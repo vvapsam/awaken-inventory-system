@@ -1010,6 +1010,36 @@ def register(app, deps):
         return templates.TemplateResponse("event_public.html",
                                           _public_ctx(request, p, now))
 
+    @app.get("/e/{token}/pass", response_class=HTMLResponse)
+    def event_pass(request: Request, token: str,
+                   db: Session = Depends(get_db)):
+        """The code, and nothing else.
+
+        What "Show my QR pass" in an email opens. It used to open the whole
+        participant page, which carries the confirmation, the sponsor terms
+        and - once the class is over - a form asking for a Reel. Somebody at a
+        door at half six in the morning wants the square, not a form.
+
+        A pass is proof of a slot, so somebody who has not confirmed one has
+        nothing to show: they are sent to their own page, which is where the
+        question they still have to answer lives.
+        """
+        p = _participant(db, token)
+        if not p:
+            return templates.TemplateResponse(
+                "event_gone.html", {"request": request, "reason": "unknown"},
+                status_code=404)
+        if _stage(p) not in ("ready", "submit", "late", "rewarded"):
+            return RedirectResponse("/e/%s" % token, status_code=303)
+        now = datetime.now(timezone.utc)
+        p.opens = (p.opens or 0) + 1
+        p.last_opened_at = now
+        db.commit()
+        return templates.TemplateResponse("event_pass.html", {
+            "request": request, "p": p, "ev": p.event,
+            "arrive": clock12(arrive_at(p.event, p.heat_time)),
+            "day": _heat_day(p.event)})
+
     @app.post("/e/{token}/confirm")
     def event_confirm(request: Request, token: str,
                       rsvp: str = Form(""), instagram: str = Form(""),
@@ -2966,9 +2996,18 @@ def register(app, deps):
             # left, not on the participant page — that one assumes a slot they
             # have not got yet. Same for a receipt we've sent back: the whole
             # ask is "do the payment step again".
-            url = ("%s/r/%s/%s" % (base, ev.slug, p.token)
-                   if kind in ("finish", "returned", "payby")
-                   else "%s/e/%s" % (base, p.token))
+            if kind in ("finish", "returned", "payby"):
+                # Somebody mid-registration has to land back in the flow they
+                # left, not on the participant page - that one assumes a slot
+                # they have not got yet.
+                url = "%s/r/%s/%s" % (base, ev.slug, p.token)
+            elif kind in ("heat", "pass"):
+                # These two say "show my QR pass" on the button, so that is
+                # what the button opens. Anything else is a page somebody has
+                # to read past while a queue builds behind them.
+                url = "%s/e/%s/pass" % (base, p.token)
+            else:
+                url = "%s/e/%s" % (base, p.token)
             build = {"reel": _reel_mail, "finish": _finish_mail,
                      "returned": _returned_mail,
                      "lastcall": _lastcall_mail, "payby": _payby_mail,
@@ -3331,7 +3370,7 @@ def register(app, deps):
         if not mailer.cfg.configured:
             return
         url = ("%s/r/%s/%s" % (base, ev.slug, p.token) if p.registering
-               else "%s/e/%s" % (base, p.token))
+               else "%s/e/%s/pass" % (base, p.token))
         subject, text, html = _pass_mail(db, ev, p, url)
         inline = {PASS_CID: qr_png("%s/i/%s" % (base, p.token))}
         logo = _logo_bytes()
