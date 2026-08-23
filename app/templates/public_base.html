@@ -30,9 +30,7 @@ body{
   font:400 15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
     "Helvetica Neue",Arial,sans-serif;
   -webkit-text-size-adjust:100%;
-  /* Room at the bottom for the pinned sponsor strip, so the last row of a
-     long field is never sitting underneath it. */
-  padding:18px 18px 108px;min-height:100vh;
+  padding:18px 18px 48px;min-height:100vh;
 }
 .wrap{max-width:1180px;margin:0 auto}
 
@@ -74,30 +72,14 @@ nav.views a:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
   text-align:center;
 }
 
-/* The sponsors, pinned to the bottom of the screen rather than the bottom of
-   the page: a field of thirty pushes a footer a long way down, and a sponsor
-   mark nobody scrolls to is a sponsor mark nobody sees. */
-.sponsors{
-  --sp:0.9;
-  position:fixed;left:0;right:0;bottom:0;z-index:5;
-  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
-  gap:12px 26px;padding:14px 16px;
-  background:var(--bg);border-top:1px solid var(--line);
-}
-.sponsors img{display:block;height:auto;opacity:.82}
-@media (min-width:900px){  .sponsors{--sp:0.76;gap:12px 12px} }
-@media (min-width:1200px){ .sponsors{--sp:0.98;gap:14px 18px;padding:16px 20px} }
-@media (min-width:1500px){ .sponsors{--sp:1.15;gap:14px 28px} }
-@media (max-width:559px){  .sponsors{--sp:0.6;gap:9px 16px;padding:10px 10px} }
-
 @media (min-width:1200px){
-  body{padding:26px 26px 120px}
+  body{padding:26px 26px 60px}
   .head h1{font-size:2.1rem}
   .head .mark{width:86px}
   nav.views a{font-size:.88rem;padding:10px 6px}
 }
 @media (max-width:559px){
-  body{padding:12px 9px 104px}
+  body{padding:12px 9px 40px}
   .head h1{font-size:1.15rem}
   .head .mark{width:44px}
   nav.views a{font-size:.72rem;padding:8px 3px}
@@ -144,12 +126,6 @@ nav.views a:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
   {% block content %}{% endblock %}
 </div>
 
-<div class="sponsors">
-  {% for file, w in sponsors %}
-  <img src="/static/card/sp/{{ file }}" alt=""
-       style="width:calc(var(--sp) * {{ w }}px)">
-  {% endfor %}
-</div>
 {% endif %}
 
 </body>

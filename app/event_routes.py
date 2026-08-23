@@ -2709,7 +2709,7 @@ def register(app, deps):
                 status_code=404)
         return templates.TemplateResponse("results_public.html", {
             "request": request, "ev": ev, "token": token, "view": "results",
-            "sponsors": SPONSORS, **_results_ctx(ev)})
+            **_results_ctx(ev)})
 
     @app.get("/l/{token}/podium", response_class=HTMLResponse)
     def podium_public(request: Request, token: str,
@@ -2722,7 +2722,7 @@ def register(app, deps):
                 status_code=404)
         return templates.TemplateResponse("podium_public.html", {
             "request": request, "ev": ev, "token": token, "view": "podium",
-            "sponsors": SPONSORS, **_results_ctx(ev)})
+            **_results_ctx(ev)})
 
     #: How far out a station is drawn on the shape when it is the only result
     #: on it. Dead centre would say "worst in the field" about somebody who is
@@ -2892,7 +2892,7 @@ def register(app, deps):
         ctx = _results_ctx(ev)
         return templates.TemplateResponse("athlete_public.html", {
             "request": request, "ev": ev, "token": token, "view": "athlete",
-            "sponsors": SPONSORS, "finishers": ctx["finishers"],
+            "finishers": ctx["finishers"],
             "racing": ctx["racing"], **_athlete_ctx(ev, p)})
 
     @app.get("/l/{token}/feed.json")
