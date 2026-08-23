@@ -115,6 +115,8 @@ from .models import wants_reels as _wants_reels
 templates.env.globals["wants_reels"] = _wants_reels
 from .countries import COUNTRIES, country_code, country_name, flag
 templates.env.globals["COUNTRIES"] = COUNTRIES
+from .models import SEXES as _SEXES
+templates.env.globals["SEXES"] = _SEXES
 templates.env.globals["country_code"] = country_code
 templates.env.globals["country_name"] = country_name
 templates.env.globals["flag"] = flag

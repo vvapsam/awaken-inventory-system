@@ -2913,6 +2913,7 @@ def register(app, deps):
     def event_edit_person(request: Request, eid: int, pid: int,
                           name: str = Form(""), email: str = Form(""),
                           instagram: str = Form(""), country: str = Form(""),
+                          sex: str = Form(""),
                           db: Session = Depends(get_db)):
         """Fix somebody's details.
 
@@ -2943,6 +2944,10 @@ def register(app, deps):
         # Anything unreadable becomes the default rather than blank: a flagless
         # row on the board reads as a bug, not as a preference.
         p.country = country_code(country)
+        # Blank is a real answer - "we do not know" - and is not the same as
+        # guessing. Anything that is not one of the two is stored as nothing.
+        want = (sex or "").strip().lower()
+        p.sex = want if want in {k for k, _l in SEXES} else None
         # Stamped here rather than by an onupdate, so "last update" means
         # somebody changed something and not "a participant opened their link".
         p.edited_at = datetime.now(timezone.utc)

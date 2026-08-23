@@ -624,6 +624,18 @@
           <input form="ed-{{ p.id }}" name="instagram" value="{{ p.instagram or '' }}"
                  placeholder="handle" autocapitalize="none" spellcheck="false"></div>
         <div>
+          {# Collected at self-registration and, until now, nowhere else - so
+             anybody added by hand had no category, which is how somebody ends
+             up in the leaderboard's third column instead of Women. #}
+          <label class="small" style="font-weight:600;margin:0 0 4px">Category
+            <span class="muted">&mdash; which column on the board</span></label>
+          <select form="ed-{{ p.id }}" name="sex">
+            <option value="" {{ 'selected' if p.sex not in ('m', 'f') }}>Not set</option>
+            {% for key, label in SEXES %}
+            <option value="{{ key }}" {{ 'selected' if p.sex == key }}>{{ label }}</option>
+            {% endfor %}
+          </select></div>
+        <div>
           <label class="small" style="font-weight:600;margin:0 0 4px">Country
             <span class="muted">&mdash; the flag on the board</span></label>
           <select form="ed-{{ p.id }}" name="country">
