@@ -413,6 +413,7 @@
     <th style="width:34px"><input type="checkbox" class="chk selall" title="Select everyone"></th>
     <th>Participant</th>
     {% if 'gender' in cols %}<th style="width:90px">Gender</th>{% endif %}
+    {% if 'category' in cols %}<th style="width:88px">Category</th>{% endif %}
     {% if 'mobile' in cols %}<th style="width:130px">Mobile</th>{% endif %}
     {% if 'entry' in cols %}<th style="width:120px">Entry</th>{% endif %}
     {% if 'payment' in cols %}<th>Payment</th>{% endif %}
@@ -454,6 +455,11 @@
     {% if 'gender' in cols %}
     <td>{% if p.sex %}{{ 'Male' if p.sex == 'm' else 'Female' }}
       {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'category' in cols %}
+    {# No dash here: there is no such thing as a participant without a
+       category. Everybody is Open until somebody moves them up. #}
+    <td>{{ CATEGORY_LABELS[p.category or 'open'] }}</td>
     {% endif %}
     {% if 'mobile' in cols %}
     <td style="white-space:nowrap">{% if p.mobile %}<span class="mono">{{ p.mobile }}</span>
@@ -625,14 +631,26 @@
                  placeholder="handle" autocapitalize="none" spellcheck="false"></div>
         <div>
           {# Collected at self-registration and, until now, nowhere else - so
-             anybody added by hand had no category, which is how somebody ends
-             up in the leaderboard's third column instead of Women. #}
-          <label class="small" style="font-weight:600;margin:0 0 4px">Category
-            <span class="muted">&mdash; which column on the board</span></label>
+             anybody added by hand had no gender, which is how somebody ends
+             up in the leaderboard's Unlisted column instead of Women. #}
+          <label class="small" style="font-weight:600;margin:0 0 4px">Gender
+            <span class="muted">&mdash; Men or Women</span></label>
           <select form="ed-{{ p.id }}" name="sex">
             <option value="" {{ 'selected' if p.sex not in ('m', 'f') }}>Not set</option>
             {% for key, label in SEXES %}
             <option value="{{ key }}" {{ 'selected' if p.sex == key }}>{{ label }}</option>
+            {% endfor %}
+          </select></div>
+        <div>
+          {# Crosses gender rather than replacing it: the board runs Elite Men,
+             Elite Women, Open Men, Open Women. There is no "not set" here -
+             everybody is Open until somebody moves them up. #}
+          <label class="small" style="font-weight:600;margin:0 0 4px">Category
+            <span class="muted">&mdash; Elite or Open</span></label>
+          <select form="ed-{{ p.id }}" name="category">
+            {% for key, label in CATEGORIES %}
+            <option value="{{ key }}"
+              {{ 'selected' if (p.category or 'open') == key }}>{{ label }}</option>
             {% endfor %}
           </select></div>
         <div>
@@ -940,6 +958,7 @@
   <thead><tr>
     <th>Not coming</th>
     {% if 'gender' in gone_cols %}<th style="width:90px">Gender</th>{% endif %}
+    {% if 'category' in gone_cols %}<th style="width:88px">Category</th>{% endif %}
     {% if 'mobile' in gone_cols %}<th style="width:130px">Mobile</th>{% endif %}
     {% if 'entry' in gone_cols %}<th style="width:120px">Entry</th>{% endif %}
     {% if 'payment' in gone_cols %}<th>Payment</th>{% endif %}
@@ -960,6 +979,9 @@
     {% if 'gender' in gone_cols %}
     <td>{% if p.sex %}{{ 'Male' if p.sex == 'm' else 'Female' }}
       {% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endif %}
+    {% if 'category' in gone_cols %}
+    <td>{{ CATEGORY_LABELS[p.category or 'open'] }}</td>
     {% endif %}
     {% if 'mobile' in gone_cols %}
     <td style="white-space:nowrap">{% if p.mobile %}<span class="mono">{{ p.mobile }}</span>

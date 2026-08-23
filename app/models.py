@@ -1393,6 +1393,25 @@ PAY_LABELS = {
 #: Male / female, as asked for on the form.
 SEXES = [("m", "Male"), ("f", "Female")]
 
+#: The competitive category, crossing gender rather than replacing it: a field
+#: of four - Elite Men, Elite Women, Open Men, Open Women. The two are asked
+#: separately because they are separate questions, and a single list of four
+#: would have to be re-cut every time either one of them changed.
+CATEGORIES = [("elite", "Elite"), ("open", "Open")]
+CATEGORY_LABELS = dict(CATEGORIES)
+CATEGORY_KEYS = [k for k, _l in CATEGORIES]
+#: Everybody is Open until somebody says otherwise. Nullable would put a fifth,
+#: nameless column on the board on the morning this ships; the bigger field is
+#: the safer guess, and moving a handful of people up to Elite is a minute's
+#: work where sorting an entire unassigned column is not.
+CATEGORY_DEFAULT = "open"
+
+
+def category_key(raw) -> str:
+    """Whatever arrived, as one of the two. Anything else is Open."""
+    v = (raw or "").strip().lower()
+    return v if v in CATEGORY_KEYS else CATEGORY_DEFAULT
+
 
 class Event(Base):
     """One sponsored class, with the terms of the sponsorship on it.
@@ -1885,11 +1904,28 @@ def h12(t):
 #: is scaffolding, and a name in a constant is easy to find and delete when the
 #: testing is done. Every screen that shows one says so, because a clock that
 #: behaves differently and does not admit it is how a real result gets doubted.
-#: How the two columns on the leaderboard are labelled, and the order they run
-#: in. Somebody with no category recorded is not dropped - a results board that
-#: silently omits people is worse than one with a third short column - but they
-#: only get a column of their own if there is anybody in it.
-BOARD_COLUMNS = [("m", "Men"), ("f", "Women"), ("", "Unlisted")]
+#: How the columns on the leaderboard are labelled, and the order they run in.
+#: Category first because that is the bigger division - an Elite woman is
+#: racing the Elite women, not the Open women - and the two Elite columns
+#: reading together on the left is what a spectator scanning for a winner
+#: expects.
+#:
+#: Somebody whose gender is not recorded is not dropped. A results board that
+#: silently omits people is worse than one with a short extra column, and they
+#: go in one Unlisted column rather than one per category: it is a gap to be
+#: closed, not a group to be ranked, and it disappears the moment it is filled
+#: in. Every column here only appears if there is anybody in it.
+BOARD_COLUMNS = ([("%s:%s" % (ck, sk), "%s %s" % (cl, "Men" if sk == "m"
+                                                  else "Women"))
+                  for ck, cl in CATEGORIES for sk, _sl in SEXES]
+                 + [("", "Unlisted")])
+
+
+def board_key(p) -> str:
+    """Which column somebody belongs in."""
+    if p.sex not in ("m", "f"):
+        return ""
+    return "%s:%s" % (category_key(getattr(p, "category", None)), p.sex)
 
 
 def wants_reels(event) -> bool:
@@ -1937,10 +1973,11 @@ def station_shorts(stations) -> dict:
 
 
 def board_rows(event, now=None):
-    """The whole field, ranked, split by category.
+    """The whole field, ranked, split into the four groups.
 
-    Returns [{"key", "label", "rows": [...]}] with an entry per category that
-    has anybody in it.
+    Returns [{"key", "label", "rows": [...]}] with an entry per group that has
+    anybody in it - Elite Men, Elite Women, Open Men, Open Women, and an
+    Unlisted column for anybody whose gender is not recorded yet.
 
     The order within a column is the order a spectator reads it: whoever is
     furthest through the race first.
@@ -1987,7 +2024,7 @@ def board_rows(event, now=None):
             tier = 1
         else:
             tier = 2
-        buckets.setdefault(p.sex if p.sex in ("m", "f") else "", []).append({
+        buckets.setdefault(board_key(p), []).append({
             "p": p, "status": st, "tier": tier,
             "secs": secs, "elapsed": elapsed or 0,
             "done": done, "on": on, "of": nst,
@@ -2409,6 +2446,12 @@ class EventParticipant(Base):
     last_name = Column(String)
     mobile = Column(String)
     sex = Column(String)                     # 'm' / 'f'
+    #: 'elite' / 'open'. NOT NULL with a default for the same reason as the
+    #: country below: this crosses gender rather than replacing it, so a null
+    #: here would put a fifth, nameless column on the leaderboard rather than
+    #: leave a blank in a row.
+    category = Column(String, nullable=False, default=CATEGORY_DEFAULT,
+                      server_default=CATEGORY_DEFAULT)
     #: ISO-3166-1 alpha-2, for the flag on the leaderboard. NOT NULL with a
     #: default rather than nullable: everybody has a country, and a board where
     #: half the rows have no flag looks broken rather than private.

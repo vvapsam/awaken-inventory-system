@@ -13,17 +13,18 @@
  * Built for a screen in the room first and a phone second, which is the other
  * way round from most of this system.
  *
- * Three groups, and the shape of the page is the argument:
+ * The shape of the page is the argument:
  *
  *   ON THE FLOOR   a full-width strip of cards along the top. It is the widest
  *                  thing here because it is the part that changes while
  *                  somebody is watching, and a room watching a race wants to
  *                  know who is out there before it wants a results table.
- *   MEN / WOMEN    the ranked finishers, side by side underneath.
+ *   THE FOUR       Elite Men, Elite Women, Open Men, Open Women - the ranked
+ *                  finishers, side by side underneath.
  *
- * The strip is the one place the two categories are mixed. Splitting it would
- * halve the cards and put the leader of one category above somebody further
- * through the race in the other, so each card carries an M or a W instead.
+ * The strip is the one place all four are mixed. Splitting it would quarter
+ * the cards and put the leader of one group above somebody further through
+ * the race in another, so each card carries an E/O and an M/W instead.
  *
  * Nothing here leans on style.css: this page is opened by people who have
  * never seen the admin, and it has to stand up alone.
@@ -91,8 +92,12 @@ h2.band.hot{color:var(--amber)}
 .sx{
   flex:0 0 auto;font-size:.6rem;font-weight:800;letter-spacing:.08em;
   color:var(--dim);border:1px solid var(--line);border-radius:4px;
-  padding:3px 5px;line-height:1;
+  padding:3px 5px;line-height:1;white-space:nowrap;
 }
+/* The strip mixes all four groups, so a card has to say which one it is.
+   Elite is coloured as well as lettered - on a screen across a room the
+   colour lands before the letter does. */
+.sx.elite{color:var(--mint);border-color:var(--mintdim)}
 .cell .tm{margin-left:auto}
 .cell .where{
   display:flex;justify-content:space-between;align-items:baseline;gap:8px;
@@ -115,8 +120,13 @@ h2.band.hot{color:var(--amber)}
 }
 
 /* ---- the ranked columns ---- */
-.cols{display:flex;gap:12px;align-items:flex-start}
-.col{flex:1 1 0;min-width:0}
+/* Four of these now - Elite Men, Elite Women, Open Men, Open Women - so they
+   have to be allowed to wrap. A basis rather than 0: four columns squeezed
+   onto a laptop is four columns of ellipsis, and 2x2 is legible where 1x4 is
+   not. On a wall screen they all sit in one row, which is the case this page
+   is actually for. */
+.cols{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.col{flex:1 1 232px;min-width:0}
 .row{
   display:flex;align-items:center;gap:11px;
   background:var(--card);border:1px solid var(--line);border-radius:11px;
@@ -323,7 +333,8 @@ h2.band.hot{color:var(--amber)}
     return '<div class="cell"><div class="line">'
       + '<span class="fl">' + esc(r.flag) + '</span>'
       + '<span class="nm">' + esc(r.name) + '</span>'
-      + '<span class="sx">' + esc(r.sx) + '</span>'
+      + '<span class="sx' + (r.elite ? ' elite' : '') + '">'
+      + esc(r.sx) + '</span>'
       + clock(r)
       + '</div>' + tracker(r)
       + '<div class="where">' + where + '</div></div>';

@@ -68,6 +68,7 @@ from .models import (
     station_splits, has_race, race_status, is_test_athlete,
     board_rows, RACE_STATUS_OUT, h12, Staff, wants_reels,
     parse_clock, CLOCK_MAX,
+    CATEGORIES, CATEGORY_LABELS, CATEGORY_DEFAULT, category_key,
 )
 from .countries import country_code, country_name, flag as country_flag
 # The sponsor strip is cut and sized once, for the finisher card. The
@@ -530,6 +531,11 @@ EVENT_COLUMNS = [
     ("updated",   "Last update",   False, {"people": True,  "gone": False}),
     ("link",      "Link",          False, {"people": True,  "gone": False}),
     ("gender",    "Gender",        True,  {"people": False, "gone": False}),
+    # Not open_only: Elite/Open is about who somebody is racing, which is
+    # a question an invite event has too. On by default on the roster,
+    # because the only way anybody gets out of Open is somebody reading
+    # down the list and moving them.
+    ("category",  "Category",      False, {"people": True,  "gone": False}),
     ("mobile",    "Mobile",        True,  {"people": False, "gone": False}),
     ("entry",     "Entry",         True,  {"people": False, "gone": False}),
     ("slot",      "Slot",          False, {"people": False}),
@@ -2519,10 +2525,15 @@ def register(app, deps):
                 out.append({
                     "id": p.id,
                     "name": short_name(p),
-                    # The strip mixes the two categories, so each card has to
-                    # say which one it is. One letter, because that is all the
-                    # room a card has and all the answer anybody needs.
-                    "sx": {"m": "M", "f": "W"}.get(p.sex, "-"),
+                    # The strip mixes all four groups, so each card has to
+                    # say which one it is. Two letters, because that is all
+                    # the room a card has - "E\u00b7W" is the Elite women's
+                    # column, and the colour on the chip says Elite again for
+                    # anybody reading it from across a room.
+                    "sx": "%s\u00b7%s" % (
+                        "E" if category_key(p.category) == "elite" else "O",
+                        {"m": "M", "f": "W"}.get(p.sex, "-")),
+                    "elite": category_key(p.category) == "elite",
                     # Whether they belong in the strip rather than a column.
                     # Decided here, so the page and the feed cannot disagree
                     # about who is on the floor.
@@ -3068,7 +3079,7 @@ def register(app, deps):
     def event_edit_person(request: Request, eid: int, pid: int,
                           name: str = Form(""), email: str = Form(""),
                           instagram: str = Form(""), country: str = Form(""),
-                          sex: str = Form(""),
+                          sex: str = Form(""), category: str = Form(""),
                           db: Session = Depends(get_db)):
         """Fix somebody's details.
 
@@ -3103,6 +3114,10 @@ def register(app, deps):
         # guessing. Anything that is not one of the two is stored as nothing.
         want = (sex or "").strip().lower()
         p.sex = want if want in {k for k, _l in SEXES} else None
+        # No blank branch: Elite/Open has no "not set". Anything unreadable
+        # lands on Open, which is where somebody who has not been looked at
+        # yet belongs anyway.
+        p.category = category_key(category)
         # Stamped here rather than by an onupdate, so "last update" means
         # somebody changed something and not "a participant opened their link".
         p.edited_at = datetime.now(timezone.utc)

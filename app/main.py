@@ -117,6 +117,10 @@ from .countries import COUNTRIES, country_code, country_name, flag
 templates.env.globals["COUNTRIES"] = COUNTRIES
 from .models import SEXES as _SEXES
 templates.env.globals["SEXES"] = _SEXES
+from .models import CATEGORIES as _CATEGORIES
+templates.env.globals["CATEGORIES"] = _CATEGORIES
+from .models import CATEGORY_LABELS as _CATEGORY_LABELS
+templates.env.globals["CATEGORY_LABELS"] = _CATEGORY_LABELS
 templates.env.globals["country_code"] = country_code
 templates.env.globals["country_name"] = country_name
 templates.env.globals["flag"] = flag
@@ -836,6 +840,12 @@ def startup():
                 # and a board where half the flags are missing looks broken.
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  country VARCHAR NOT NULL DEFAULT 'PH'; "
+                # Same shape, same reason. Elite/Open crosses gender rather
+                # than replacing it, so a null here would put a fifth,
+                # nameless column on the leaderboard - everybody starts Open
+                # and gets moved up by hand.
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  category VARCHAR NOT NULL DEFAULT 'open'; "
                 "UPDATE event_participants SET heat_told_before = TRUE "
                 "  WHERE heat_email_at IS NOT NULL AND NOT heat_told_before; "
                 "END IF; END $$;"))
