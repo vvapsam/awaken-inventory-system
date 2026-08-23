@@ -27,6 +27,11 @@
   border-bottom:1px solid var(--hair);
 }
 .row:last-of-type{border-bottom:0}
+/* The filter sets the `hidden` attribute, and the browser's own rule for that
+   is display:none - but it is a user-agent rule, so ANY author rule setting
+   display beats it. These rows are display:flex, so hiding silently stopped
+   working the moment they stopped being table rows. Say it here. */
+.row[hidden]{display:none}
 /* First place gets a wash rather than a box, so the row still reads as a row. */
 .row.lead{background:linear-gradient(90deg,rgba(201,133,0,.13),transparent 62%)}
 .row .pl{
