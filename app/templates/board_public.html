@@ -151,6 +151,14 @@ h2.gname .gn{
 /* The Unlisted column arrives as a bare .cols with no box round it, so it
    needs the basis the boxes get or it collapses to its content. */
 .groups > .cols{flex:1 1 470px;min-width:0;padding-top:2px}
+
+.after{
+  display:flex;flex-wrap:wrap;gap:9px 20px;margin:22px 2px 0;
+  font-size:.86rem;font-weight:700;
+}
+.after a{color:var(--mint);text-decoration:none}
+.after a:hover{text-decoration:underline}
+.after a:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
 .row{
   display:flex;align-items:center;gap:11px;
   background:var(--card);border:1px solid var(--line);border-radius:11px;
@@ -299,6 +307,13 @@ h2.gname .gn{
   </div>
 
   <div class="groups" id="cols"></div>
+
+  {# The way off this page. The board is the morning; the results are what
+     somebody opens on the bus home, and they are on the same link. #}
+  <p class="after">
+    <a href="/l/{{ ev.board_token }}/results">Full results &rarr;</a>
+    <a href="/l/{{ ev.board_token }}/podium">Podium &rarr;</a>
+  </p>
 
   <div class="sponsors">
     {% for file, w in sponsors %}

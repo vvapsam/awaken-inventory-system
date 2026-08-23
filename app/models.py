@@ -2149,6 +2149,19 @@ def station_splits(p, now=None):
     return out
 
 
+def race_totals(p, now=None):
+    """(on the stations, between them) in seconds, for one person.
+
+    The two numbers the Time Summary shows side by side, computed the same way
+    for the results page - the walks are not in the splits and are in the
+    finish time, which is the whole reason both are worth printing.
+    """
+    rows = station_splits(p, now)
+    raced = sum(r["secs"] for r in rows if r["secs"] is not None)
+    moving = sum(r["gap"] for r in rows if r["gap"] is not None)
+    return raced, moving
+
+
 def has_race(p) -> bool:
     """Is there anything to summarise for this person?
 

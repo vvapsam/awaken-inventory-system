@@ -159,13 +159,25 @@
               data-copy="{{ base }}/l/{{ ev.board_token }}">Copy</button>
     </div>
     <div class="muted small">
-      Men and women side by side, updating on its own. Finishers ranked by
-      time, then whoever is still out there, deepest into the race first.
-      Names show as a first name and an initial, with a flag &mdash; nothing
-      else about anybody.
+      Elite and Open side by side, men and women within each, updating on its
+      own. Finishers ranked by time, then whoever is still out there, deepest
+      into the race first. Names show as a first name and an initial, with a
+      flag &mdash; nothing else about anybody.
+    </div>
+    <div class="muted small" style="margin-top:8px">
+      {# One token, three pages. Somebody who has already sent the link out
+         does not have to send a second one when the racing stops. #}
+      The same link carries the <b>results</b> and the <b>podium</b> once
+      people start finishing &mdash; add <span class="mono">/results</span> or
+      <span class="mono">/podium</span>, or use the buttons below. Revoking
+      takes down all three.
     </div>
     <div class="acts">
       <a class="btn" href="/l/{{ ev.board_token }}" target="_blank" rel="noopener">Open it</a>
+      <a class="btn" href="/l/{{ ev.board_token }}/results" target="_blank"
+         rel="noopener">Results</a>
+      <a class="btn" href="/l/{{ ev.board_token }}/podium" target="_blank"
+         rel="noopener">Podium</a>
       <form method="post" action="/events/{{ ev.id }}/board-link" style="margin:0"
             onsubmit="return confirm('Make a new link? The one you have already shared stops working.')">
         <button class="btn">New link</button></form>

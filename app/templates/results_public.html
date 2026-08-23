@@ -1,0 +1,200 @@
+{% extends "public_base.html" %}
+{% block title %}Results &mdash; {{ ev.name }}{% endblock %}
+{% block subtitle %}{{ ev.when_text }} &middot; {{ finishers }} of {{ field }}
+  finished{% endblock %}
+
+{% block css %}
+/* ---- the filter row ---- */
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.chip{
+  font:inherit;font-size:.72rem;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--dim);background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:7px 13px;
+  cursor:pointer;
+}
+.chip[aria-pressed="true"]{
+  color:#062421;background:var(--mint);border-color:var(--mint);
+}
+.chip:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.sep{width:1px;background:var(--line);margin:4px 4px}
+.find{
+  font:inherit;flex:1 1 170px;min-width:130px;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;
+  color:var(--ink);font-size:.82rem;
+}
+.find::placeholder{color:#54706e}
+.find:focus-visible{outline:2px solid var(--mint);outline-offset:1px}
+
+/* ---- the table ---- */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.res{
+  width:100%;min-width:600px;border-collapse:collapse;color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.res th{
+  text-align:left;font-size:.6rem;font-weight:800;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--mintdim);padding:0 9px 9px;
+  border-bottom:1px solid var(--line);white-space:nowrap;
+}
+.res td{padding:11px 9px;border-bottom:1px solid #142c2c}
+.res tbody tr:last-child td{border-bottom:0}
+.res .r{text-align:right}
+.res .pl{
+  color:var(--mint);font-weight:800;width:42px;font-size:.95rem;
+}
+.res .pl.none{color:#3c5a58;font-weight:600;font-size:.72rem}
+.res .nm{font-weight:700;font-size:.92rem;display:flex;align-items:center;gap:8px}
+.res .nm .fl{font-size:1.05rem;line-height:1;flex:0 0 auto}
+.res .meta{font-size:.68rem;color:var(--dim);margin-top:2px;padding-left:26px}
+.res .tm{font-weight:800;font-size:.98rem;letter-spacing:-.01em}
+.res .sub{color:var(--dim);font-size:.86rem}
+.res tr.lead td{background:#10322e}
+.res tr.out{opacity:.5}
+/* A label is not a time. Anything that is not a finish reads quieter and on
+   one line, so the column of times stays a column of times. */
+.res tr.out .tm,.res tr.pend .tm{
+  color:var(--dim);font-weight:700;font-size:.74rem;white-space:nowrap;
+}
+.res tr.pend .tm{color:var(--amber)}
+.tag{
+  display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.08em;
+  border:1px solid var(--line);border-radius:4px;padding:3px 6px;
+  color:var(--dim);white-space:nowrap;
+}
+.tag.elite{color:var(--mint);border-color:var(--eliteline)}
+.none-shown{display:none}
+.none-shown.on{display:block}
+
+.onsm{display:none}
+/* On a phone the table cannot hold six columns, and the one that would scroll
+   off the right is the finish time - the only column anybody opened the page
+   for. So the two detail columns go instead, and the category moves onto the
+   line under the name where there is room for it. */
+@media (max-width:640px){
+  table.res{min-width:0}
+  .res th:nth-child(3),.res td:nth-child(3),
+  .res th:nth-child(4),.res td:nth-child(4),
+  .res th:nth-child(5),.res td:nth-child(5){display:none}
+  .onsm{display:inline}
+}
+@media (max-width:559px){
+  .res td{padding:9px 7px}
+  .res .meta{padding-left:0}
+}
+{% endblock %}
+
+{% block content %}
+{% if not rows %}
+<div class="empty"><b>Nobody has raced yet.</b><br>
+  Results appear here as people finish.</div>
+{% else %}
+
+{#
+  Filtering happens in the browser rather than by reloading with a query
+  string. The whole field is already on the page - it is one morning of one
+  gym, not a thousand rows - and somebody standing in the car park comparing
+  two categories should not be waiting on a network they are sharing with
+  everybody else who just finished.
+#}
+<div class="filters">
+  <button type="button" class="chip" data-f="cat" data-v=""
+          aria-pressed="true">All</button>
+  <button type="button" class="chip" data-f="cat" data-v="elite"
+          aria-pressed="false">Elite</button>
+  <button type="button" class="chip" data-f="cat" data-v="open"
+          aria-pressed="false">Open</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button type="button" class="chip" data-f="sex" data-v=""
+          aria-pressed="true">Everyone</button>
+  <button type="button" class="chip" data-f="sex" data-v="m"
+          aria-pressed="false">Men</button>
+  <button type="button" class="chip" data-f="sex" data-v="f"
+          aria-pressed="false">Women</button>
+  <input class="find" id="find" type="search" placeholder="Find a name…"
+         autocapitalize="none" spellcheck="false" aria-label="Find a name">
+</div>
+
+<div class="tw">
+<table class="res">
+  <thead><tr>
+    <th style="width:46px">#</th>
+    <th>Athlete</th>
+    <th style="width:96px">Category</th>
+    <th class="r" style="width:92px">Stations</th>
+    <th class="r" style="width:92px">Between</th>
+    <th class="r" style="width:104px">Time</th>
+  </tr></thead>
+  <tbody id="rows">
+  {% for r in rows %}
+    <tr data-cat="{{ r.cat }}" data-sex="{{ r.sex }}"
+        data-name="{{ r.name|lower }}" data-gplace="{{ r.gplace or '' }}"
+        class="{{ 'done' if r.done else ('out' if r.out else 'pend') }}{{
+          ' lead' if r.place == 1 }}">
+      {# The overall number, swapped for the number within a group the moment
+         somebody filters down to one - "4th" means something different when
+         the page in front of you is only the Elite women. #}
+      <td class="pl{{ '' if r.place else ' none' }}"
+          data-place="{{ r.place or '' }}">{{ r.place or '—' }}</td>
+      <td>
+        <div class="nm"><span class="fl" title="{{ r.country }}">{{ r.flag }}</span>
+          {{ r.name }}</div>
+        <div class="meta"><span class="onsm">{{ r.group }}{{ " · " if r.heat }}</span>{% if r.heat %}{{ r.heat }} heat{% endif %}</div>
+      </td>
+      <td><span class="tag{{ ' elite' if r.cat == 'elite' }}">{{ r.group }}</span></td>
+      <td class="r sub">{{ r.raced or '—' }}</td>
+      <td class="r sub">{{ r.moving or '—' }}</td>
+      <td class="r tm">{{ r.time if r.done else r.label }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="empty none-shown" id="nohits" style="margin-top:14px">
+  Nobody here matches that.
+</div>
+
+<script>
+(function(){
+  var pick = {cat:"", sex:""};
+  var rows = [].slice.call(document.querySelectorAll("#rows tr"));
+  var find = document.getElementById("find");
+  var none = document.getElementById("nohits");
+
+  function apply(){
+    var q = (find.value || "").trim().toLowerCase();
+    var shown = 0, narrowed = !!(pick.cat || pick.sex);
+    var n = 0;
+    rows.forEach(function(tr){
+      var ok = (!pick.cat || tr.dataset.cat === pick.cat)
+            && (!pick.sex || tr.dataset.sex === pick.sex)
+            && (!q || tr.dataset.name.indexOf(q) !== -1);
+      tr.hidden = !ok;
+      if (!ok) { return; }
+      shown++;
+      /* Renumber against what is actually on screen. A filtered page that
+         still reads 1, 4, 7 is a page asking you to do subtraction. */
+      var cell = tr.querySelector(".pl");
+      var has = !!cell.dataset.place;
+      if (has) { n++; }
+      cell.textContent = has ? (narrowed ? n : cell.dataset.place) : "—";
+    });
+    none.classList.toggle("on", shown === 0);
+  }
+
+  document.querySelectorAll(".chip").forEach(function(b){
+    b.addEventListener("click", function(){
+      var f = b.dataset.f;
+      pick[f] = b.dataset.v;
+      document.querySelectorAll('.chip[data-f="' + f + '"]').forEach(function(o){
+        o.setAttribute("aria-pressed", o === b ? "true" : "false");
+      });
+      apply();
+    });
+  });
+  find.addEventListener("input", apply);
+  apply();
+})();
+</script>
+{% endif %}
+{% endblock %}

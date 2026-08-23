@@ -67,6 +67,7 @@ from .models import (
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     station_splits, has_race, race_status, is_test_athlete,
     board_rows, RACE_STATUS_OUT, h12, Staff, wants_reels,
+    race_totals,
     parse_clock, CLOCK_MAX,
     CATEGORIES, CATEGORY_LABELS, CATEGORY_DEFAULT, category_key,
 )
@@ -2598,6 +2599,124 @@ def register(app, deps):
         return templates.TemplateResponse("board_public.html", {
             "request": request, "ev": ev, "cols": _board_ctx(ev),
             "sponsors": SPONSORS})
+
+    def _results_ctx(ev, now=None):
+        """Everybody's race, once the racing is over.
+
+        Built off the same ``board_rows`` the live board reads, so a placing
+        never differs between the two screens. What it adds is the pair of
+        numbers the Time Summary shows staff - the stations and the walks -
+        and an overall order across the whole field, which the board has no
+        use for and a results page is mostly about.
+
+        This is a public page, so the same rule applies here as on the board:
+        it carries a name, a flag, a group and a clock, and nothing else that
+        is on the row. The age is on the row and does not travel - it is on
+        file for a patch, not for a page anybody can open.
+        """
+        groups, rows = [], []
+        for col in board_rows(ev, now):
+            picked = []
+            for r in col["rows"]:
+                p = r["p"]
+                raced, moving = race_totals(p, now)
+                row = {
+                    "id": p.id,
+                    "name": short_name(p),
+                    "cat": (col["key"].split(":")[0]
+                            if ":" in col["key"] else ""),
+                    "sex": p.sex if p.sex in ("m", "f") else "",
+                    "group": col["label"],
+                    "flag": country_flag(p.country),
+                    "cc": country_code(p.country),
+                    "country": country_name(p.country),
+                    # Where they came in their own group. The overall number
+                    # is added below, once every group has been read.
+                    "gplace": r["place"],
+                    "place": None,
+                    "status": r["status"],
+                    "label": RACE_STATUS_LABELS[r["status"]],
+                    "out": r["status"] in RACE_STATUS_OUT,
+                    "done": r["status"] == "finished",
+                    "secs": r["secs"],
+                    "time": mmss(r["secs"]) if r["secs"] is not None else "",
+                    # Only for a race that is over. Half a field's worth of
+                    # stations and a walk that is still being walked are not
+                    # a result, and printing them next to finished ones on a
+                    # results page invites somebody to compare them.
+                    "raced": mmss(raced) if (raced and r["status"] == "finished")
+                             else "",
+                    "moving": mmss(moving) if (moving and r["status"] == "finished")
+                              else "",
+                    "heat": h12(r["heat"]),
+                }
+                picked.append(row)
+                rows.append(row)
+            if picked:
+                groups.append({
+                    "key": col["key"], "label": col["label"],
+                    "cat": picked[0]["cat"], "sex": picked[0]["sex"],
+                    # Three is a podium. Fewer than three is however many
+                    # there are, because a podium with an empty step on it
+                    # looks like a page that failed to load.
+                    "top": [r for r in picked if r["done"]][:3],
+                    "raced": len(picked),
+                    "finished": sum(1 for r in picked if r["done"]),
+                })
+
+        # One order across the whole field. Finishers by time, then everybody
+        # who started and did not finish, then the judged-out rows - and only
+        # the finishers get a number, here for the same reason as on the
+        # board: a placing against somebody who did not finish is not a
+        # placing, it is a row number.
+        rows.sort(key=lambda r: (
+            0 if r["done"] else (2 if r["out"] else 1),
+            r["secs"] if r["secs"] is not None else 0,
+            r["name"].lower(),
+        ))
+        n = 0
+        for r in rows:
+            if r["done"]:
+                n += 1
+                r["place"] = n
+        return {"rows": rows, "groups": groups,
+                "finishers": n, "field": len(rows)}
+
+    def _board_event(db, token):
+        return (db.query(Event)
+                .filter(Event.board_token == token).first()) if token else None
+
+    @app.get("/l/{token}/results", response_class=HTMLResponse)
+    def results_public(request: Request, token: str,
+                       db: Session = Depends(get_db)):
+        """Everybody's times, on the link that was already handed out.
+
+        The same token as the live board rather than a second one to print and
+        share. During the morning that link is the board; afterwards it is the
+        results, and revoking it still takes down both at once - which is what
+        somebody pressing Revoke means.
+        """
+        ev = _board_event(db, token)
+        if not ev:
+            return templates.TemplateResponse(
+                "board_public.html", {"request": request, "ev": None},
+                status_code=404)
+        return templates.TemplateResponse("results_public.html", {
+            "request": request, "ev": ev, "token": token, "view": "results",
+            "sponsors": SPONSORS, **_results_ctx(ev)})
+
+    @app.get("/l/{token}/podium", response_class=HTMLResponse)
+    def podium_public(request: Request, token: str,
+                      db: Session = Depends(get_db)):
+        """The top of each group - four winners, not one."""
+        ev = _board_event(db, token)
+        if not ev:
+            return templates.TemplateResponse(
+                "board_public.html", {"request": request, "ev": None},
+                status_code=404)
+        return templates.TemplateResponse("podium_public.html", {
+            "request": request, "ev": ev, "token": token, "view": "podium",
+            "sponsors": SPONSORS, **_results_ctx(ev)})
 
     @app.get("/l/{token}/feed.json")
     def board_feed(request: Request, token: str,
