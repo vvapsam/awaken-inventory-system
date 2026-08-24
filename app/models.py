@@ -1538,6 +1538,12 @@ class Event(Base):
     #: somebody's calendar, and they turn up on the wrong Sunday. Blank on an
     #: event that has never moved, which is almost all of them.
     moved_from = Column(DateTime(timezone=True))
+    #: One sentence saying why it moved, shown above the two dates. A field
+    #: rather than words in the template, because the template is shared by
+    #: every event that ever moves and the reason never is - one class goes
+    #: for weather, the next for a venue clash, and a template that has last
+    #: time's reason typed into it will confidently send it again.
+    moved_why = Column(String)
     confirm_hours = Column(Integer, nullable=False, default=48)
     #: A hard backstop, whatever the per-person clock says — the point past
     #: which an unanswered slot has to go to the waitlist so there is still

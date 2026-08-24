@@ -1815,6 +1815,7 @@ def register(app, deps):
             reels_paused: str = Form(""), heat_open_mins: str = Form(""),
             reels_on: str = Form(""),
             confirm_by: str = Form(""), moved_from: str = Form(""),
+            moved_why: str = Form(""),
             mode: str = Form(EVENT_INVITE), signup_open: str = Form(""),
             signup_closes: str = Form(""), slug: str = Form(""),
             external_url: str = Form(""), external_label: str = Form(""),
@@ -1890,6 +1891,7 @@ def register(app, deps):
         # Blank is the normal state and has to stay reachable: an event that
         # was moved and then moved back has not moved.
         ev.moved_from = dt(moved_from)
+        ev.moved_why = moved_why.strip()[:200] or None
 
         def price(text):
             try:
@@ -3829,8 +3831,8 @@ def register(app, deps):
              "ok": True,
              "why": "" if not openreg else "usually invite events"},
             {"key": "reconfirm", "name": "The date has changed",
-             "blurb": "\u201cWe\u2019ve moved the class \u2014 can you still "
-                      "make it?\u201d Prints the old date beside the new one.",
+             "blurb": "\u201cCan you still make it?\u201d Says why it moved, "
+                      "and prints the old date beside the new one.",
              "ok": bool(ev.moved_from),
              "why": "" if ev.moved_from else "set \u201cMoved from\u201d in "
                                              "Settings first"},
@@ -4588,6 +4590,7 @@ def _mail_values(ev, p, url, key) -> dict:
         # Empty on an event that has never moved, which is the signal the
         # "date has changed" email should not be going out at all.
         "event.was": _fmt_when(ev.moved_from) if ev.moved_from else "",
+        "event.moved_why": ev.moved_why or "",
         # Not yet sent means not yet stamped, and a preview reading "Pay by ."
         # would be worse than useless. What it will be is the honest stand-in.
         "record.pay_deadline": _fmt_when(

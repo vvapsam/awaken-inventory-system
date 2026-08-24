@@ -234,6 +234,12 @@
         the <b>old</b> day here and put the new one at the top, and the &ldquo;date has
         changed&rdquo; email prints them together &mdash; a new date on its own gets read as
         the one already in somebody&rsquo;s calendar. Leave it empty otherwise.</div></div>
+    <div><label class="small" style="font-weight:600">Why it moved</label>
+      <input name="moved_why" value="{{ ev.moved_why or '' }}"
+             placeholder="Bad weather on 9 August meant we had to call it off.">
+      <div class="muted small" style="margin:3px 0 0">One sentence, printed above the two
+        dates. A field rather than words in the template, because the next class that moves
+        will move for a different reason.</div></div>
     <div><label class="small" style="font-weight:600">Answer by</label>
       <input type="datetime-local" name="confirm_by"
         value="{{ ev.confirm_by|local_dt if ev.confirm_by }}">

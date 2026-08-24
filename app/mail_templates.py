@@ -77,20 +77,14 @@ ${block.facts}
 #: read as the one already in their calendar, and somebody turns up on the
 #: wrong Sunday.
 RECONFIRM_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 12px">Can you still make it, ${record.first_name}?</h1>
-<p style="font-size:15px;margin:0 0 16px;color:#2b3642">We've had to reschedule
-   <b>${event.name}</b> \u2014 sorry for the shuffle.${if event.sponsor} ${event.sponsor}
-   are still fuelling us after,${/if} and your slot is still yours if the new day
-   works.</p>
+${if event.moved_why}<p style="font-size:15px;margin:0 0 16px;color:#2b3642">${event.moved_why}</p>${/if}
 ${block.moved}
-<p style="font-size:15px;margin:0 0 16px;color:#2b3642">Because the day changed,
-   <b>we need to hear from everybody again</b> \u2014 a yes for the old date
-   doesn't carry over.</p>
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">Please confirm again \u2014 a yes for the old date doesn't carry over.</p>
 ${if record.deadline}${block.note}<b>Let us know by ${record.deadline}.</b> After that the slot goes to somebody on the waitlist.${/block.note}${/if}
-${block.button "Yes, I can make the new date \u2192"}
+${block.button "Yes, I can make it \u2192"}
 ${block.facts}
-<p style="font-size:14px;margin:16px 0 0;color:#6b7683">Can't make the new date?
-   Same link, tap <b>I can't make it</b> \u2014 it means somebody on the waitlist
-   gets to train, and that's genuinely useful to us.</p>"""
+<p style="font-size:14px;margin:16px 0 0;color:#6b7683">Can't make it? Tap the
+   same link and let us know.</p>"""
 
 PASS_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">You're in, ${record.first_name} ✅</h1>
 <p style="font-size:15px;margin:0 0 18px;color:#2b3642">Show this at the door —
@@ -217,7 +211,9 @@ TEMPLATES = [
         "subject": "Can you still make it? \u2014 new date for ${event.name}",
         "values": dict(EVENT_VALUES, **PERSON_VALUES,
                        **{"record.deadline": "Wed 26 Aug, 5:00 PM",
-                          "event.was": "Sun 9 Aug, 10:00 AM"}),
+                          "event.was": "Sun 9 Aug, 10:00 AM",
+                          "event.moved_why": "Bad weather on 9 August meant "
+                                             "we had to call it off."}),
         "blocks": {"block.moved": "the old date struck through, above the new one",
                    "block.facts": "When \u00b7 Where \u00b7 Bring \u00b7 After",
                    "block.button": "the teal call-to-action"},
