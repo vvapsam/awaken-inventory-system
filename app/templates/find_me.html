@@ -98,6 +98,19 @@ button.go:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   text-transform:uppercase;color:var(--dim);border:1px solid var(--hair);
   padding:5px 8px;display:inline-block;white-space:nowrap}
 .rkb.top{color:var(--amber);border-color:var(--amber)}
+/* The exits. On the door because somebody who came to watch has no email to
+   type, and on the far side because a page with one link on it is a cul-de-sac. */
+.ways{margin-top:30px;padding-top:16px;border-top:1px solid var(--hair);
+  display:flex;gap:22px;flex-wrap:wrap;align-items:baseline}
+.ways .wt{font-family:var(--head);font-weight:400;font-size:.66rem;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--dimmer);
+  flex:0 0 auto}
+.ways a{font-family:var(--head);font-weight:500;font-size:.74rem;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--teal);
+  text-decoration:none}
+.ways a:hover{text-decoration:underline}
+.ways a:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+@media (max-width:559px){.ways{gap:12px 20px}.ways .wt{flex:1 1 100%}}
 .more{display:inline-block;margin-top:20px;font-family:var(--head);
   font-weight:500;font-size:.72rem;letter-spacing:.13em;text-transform:uppercase;
   color:var(--teal);text-decoration:none}
@@ -121,9 +134,10 @@ button.go:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 {% block content %}
 
 {% if stage == 'ask' %}
-<div class="sec"><h2>That's me</h2><span>your card, and your card only</span></div>
-<p class="lead">Everybody's times are on the results page. Your finisher card
-  has your name on it, so we check it is you first.</p>
+<div class="sec"><h2>That's me</h2><span>your race, and your race only</span></div>
+<p class="lead">Your own splits, station by station. Everybody's finish times
+  are on the results page and always will be &mdash; this asks first because
+  it greets you by your full name.</p>
 
 <form class="me" method="post" action="/l/{{ token }}/me">
   <div class="fld">
@@ -138,19 +152,32 @@ button.go:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
            min="5" max="110" required>
     <p class="hint">The one you gave us on the day.</p>
   </div>
-  <button class="go" type="submit">Find my card</button>
+  <button class="go" type="submit">Find my race</button>
 </form>
 
 {% if err == 'nomatch' %}
+{# The commonest reason this fails is not a typo. Age was only ever written
+   down at the awarding table, so somebody who never collected a patch has no
+   age on file and no pair can ever match. Saying so is the difference between
+   a person trying four more times and a person messaging us. #}
 <div class="bad"><b>That pair doesn't match anybody</b>
-  Check the address is the one you registered with, and that the age is the one
-  you gave on the day. If it still won't have it, message us and we'll sort it.</div>
+  Check the address is the one you registered with. If it still won't have it,
+  we may not have your age written down &mdash; message us and we'll add it in
+  a minute.</div>
 {% elif err == 'slow' %}
 <div class="bad"><b>Too many tries</b>
   Give it fifteen minutes and have another go.</div>
 {% endif %}
 
-<a class="back" href="/l/{{ token }}/results">&larr; All results</a>
+{# Nobody gets stuck on this page. Somebody who came to watch, or who never
+   raced, or whose age we never wrote down, still has somewhere to go - and
+   the way out is on the page rather than in the browser's back button. #}
+<div class="ways">
+  <div class="wt">Not racing, or can't get in?</div>
+  <a href="/l/{{ token }}/results">Everybody's times &rarr;</a>
+  <a href="/l/{{ token }}/podium">The podium &rarr;</a>
+  {% if racing %}<a href="/l/{{ token }}">The live board &rarr;</a>{% endif %}
+</div>
 
 {% else %}
 
@@ -218,7 +245,11 @@ button.go:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   against the field &rarr;</a>
 {% endif %}
 
-<a class="back" href="/l/{{ token }}/results">&larr; All results</a>
+<div class="ways">
+  <div class="wt">Everybody else</div>
+  <a href="/l/{{ token }}/results">All the times &rarr;</a>
+  <a href="/l/{{ token }}/podium">The podium &rarr;</a>
+</div>
 
 {% if not opened %}
 <script>
