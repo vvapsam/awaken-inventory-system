@@ -102,6 +102,58 @@
   display:flex;justify-content:space-between;margin-top:8px;
   font-family:var(--mono);font-size:.72rem;color:var(--dimmer);
 }
+/* ---- the ask ----------------------------------------------------------
+   Sits directly under the three totals: that is the second somebody is
+   happiest, and everything below it is long. Two numbered steps, and the
+   second one is never locked - the number is the nudge. A lock here would
+   be trading a card for a review, which is the one thing Google's policy
+   names outright, and it would stop nobody anyway. */
+.ask{margin-top:4px}
+.stp{display:flex;gap:18px;padding:20px 0;border-bottom:1px solid var(--hair);
+  align-items:flex-start}
+.stp:last-child{border-bottom:0}
+.stp .sn{
+  font-family:var(--head);font-weight:700;font-size:2rem;line-height:.85;
+  color:var(--dimmer);flex:0 0 auto;width:34px;font-variant-numeric:tabular-nums;
+}
+.stp.lit .sn{color:var(--teal)}
+.stp .sb{flex:1 1 auto;min-width:0}
+.stp h4{
+  font-family:var(--sans);font-weight:700;font-size:1.6rem;margin:0 0 5px;
+  text-transform:uppercase;line-height:1.05;
+}
+.stp .sp{
+  font-family:var(--sans);font-size:1.06rem;font-weight:500;color:var(--dim);
+  margin:0;line-height:1.4;max-width:46ch;letter-spacing:.01em;
+}
+.strs{font-size:1.15rem;letter-spacing:4px;color:var(--amber);margin-top:11px}
+/* White, because that is what a Google button looks like everywhere else and
+   this one is leaving the site. */
+.gbtn,.cbtn{
+  display:inline-block;margin-top:12px;font-family:var(--head);font-weight:600;
+  font-size:.76rem;letter-spacing:.15em;text-transform:uppercase;
+  padding:13px 26px;text-decoration:none;
+}
+.gbtn{background:#fff;color:#1a1a1a}
+.gbtn:hover{background:#E3E7E9}
+.cbtn{background:var(--teal);color:#04120F}
+.cbtn:hover{background:#159683}
+.gbtn:focus-visible,.cbtn:focus-visible{outline:2px solid var(--teal);
+  outline-offset:3px}
+.done{
+  display:none;font-family:var(--head);font-weight:500;font-size:.76rem;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--teal);
+  margin:12px 0 0;
+}
+.done.on{display:block}
+.done.on + .strs,.stp.said .strs,.stp.said .gbtn{display:none}
+@media (max-width:559px){
+  .stp{gap:12px;padding:17px 0}
+  .stp .sn{font-size:1.6rem;width:24px}
+  .stp h4{font-size:1.3rem}
+  .stp .sp{font-size:.98rem}
+  .gbtn,.cbtn{display:block;text-align:center;padding:14px 10px}
+}
 .radarbox{padding:22px 0 10px}
 .radar{display:block;width:100%;height:auto;max-width:260px;margin:0 auto}
 
@@ -172,6 +224,73 @@
       {{ who.wof }}{% endif %}</div>
   </div>
 </div>
+
+{% if review_url %}
+<div class="sec"><h3>Before you go</h3><span>two quick things</span></div>
+
+<div class="ask">
+  <section class="stp" id="stp1">
+    <div class="sn">1</div>
+    <div class="sb">
+      <h4>How was your race?</h4>
+      <p class="sp">We were happy to see you out there this morning. Thirty
+        seconds on Google is how the next person finds us &mdash; and you can
+        say whatever you actually thought.</p>
+      <div class="strs">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+      <a class="gbtn" id="rvbtn" href="{{ review_url }}" target="_blank"
+         rel="noopener">Review us on Google</a>
+      <p class="done" id="thanks">&#10003; Thank you &mdash; that really helps us.</p>
+    </div>
+  </section>
+
+  {% if cardlink %}
+  <section class="stp" id="stp2">
+    <div class="sn">2</div>
+    <div class="sb">
+      <h4>Your finisher card</h4>
+      <p class="sp">Your name and your time, with the marks on it. Screenshot
+        it, put it on your story, tag us.</p>
+      <a class="cbtn" href="{{ cardlink }}">Show my card</a>
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+<script>
+(function(){
+  var btn = document.getElementById("rvbtn");
+  if (!btn) { return; }
+  var one = document.getElementById("stp1");
+  var two = document.getElementById("stp2");
+  var ta  = document.getElementById("thanks");
+  var KEY = "awaken_rv_{{ ev.id }}";
+
+  /* Nothing here checks whether they reviewed - nothing can. Google tells
+     your page precisely nothing about what happened on its own. What the
+     browser does tell us is that they left and came back, which is enough to
+     stop asking and to point at the card. Somebody who taps through and
+     changes their mind gets thanked anyway; that is the honest cost of the
+     only signal that exists, and it is cheaper than nagging the person who
+     did write one. */
+  function said(){
+    if (ta) { ta.classList.add("on"); }
+    if (one) { one.classList.add("said"); }
+    if (two) { two.classList.add("lit"); }
+  }
+  try { if (localStorage.getItem(KEY)) { said(); } } catch (e) {}
+
+  var went = false;
+  btn.addEventListener("click", function(){ went = true; });
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible" && went) {
+      went = false;
+      try { localStorage.setItem(KEY, "1"); } catch (e) {}
+      said();
+    }
+  });
+})();
+</script>
+{% endif %}
 
 {% if rows %}
 <div class="sec"><h3>Station by station</h3><span>{{ rows|length }} stations</span></div>

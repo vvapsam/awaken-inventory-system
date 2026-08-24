@@ -76,7 +76,8 @@ from .countries import country_code, country_name, flag as country_flag
 # The sponsor strip is cut and sized once, for the finisher card. The
 # board shows the same marks at the same relative weights rather than
 # keeping a second copy that can drift from it.
-from .card_routes import SPONSORS
+from .card_routes import (SPONSORS, DEFAULT_SHAPE, SHAPES,
+                          card_context)
 # One definition of a clock, borrowed rather than copied. patch_routes owns it
 # because that is where a time is first read out loud to somebody.
 from .patch_routes import mmss
@@ -436,6 +437,19 @@ def clock12(t: str) -> str:
         return ""
     h, m = int(t[:2]), int(t[3:])
     return "%d:%02d %s" % (((h + 11) % 12) + 1, m, "AM" if h < 12 else "PM")
+
+
+#: Where "How was your race?" sends people. Business Profile -> Ask for
+#: reviews gives you this address; it opens Google's review composer directly,
+#: and on a phone it hands off to the Maps app.
+#:
+#: A constant with an environment override rather than a column: it is one
+#: address for the whole gym, not a fact about any one event, and putting it in
+#: the database would mean a settings field to maintain for a value that
+#: changes roughly never. Setting GOOGLE_REVIEW_URL on the server beats it
+#: without a deploy if that day ever comes.
+REVIEW_URL = os.environ.get(
+    "GOOGLE_REVIEW_URL", "https://g.page/r/CaH2Yg5cIoVBEBM/review")
 
 
 def short_name(p) -> str:
@@ -2709,7 +2723,7 @@ def register(app, deps):
                 status_code=404)
         return templates.TemplateResponse("results_public.html", {
             "request": request, "ev": ev, "token": token, "view": "results",
-            **_results_ctx(ev)})
+            "review_url": REVIEW_URL, **_results_ctx(ev)})
 
     @app.get("/l/{token}/podium", response_class=HTMLResponse)
     def podium_public(request: Request, token: str,
@@ -2892,8 +2906,49 @@ def register(app, deps):
         ctx = _results_ctx(ev)
         return templates.TemplateResponse("athlete_public.html", {
             "request": request, "ev": ev, "token": token, "view": "athlete",
-            "finishers": ctx["finishers"],
+            "finishers": ctx["finishers"], "review_url": REVIEW_URL,
+            "cardlink": ("/l/%s/p/%d/card" % (token, p.id)
+                         if p.finished_at else ""),
             "racing": ctx["racing"], **_athlete_ctx(ev, p)})
+
+    @app.get("/l/{token}/p/{pid}/card", response_class=HTMLResponse)
+    def card_via_results(request: Request, token: str, pid: int,
+                         db: Session = Depends(get_db)):
+        """The finisher card, for somebody who came in off the results link.
+
+        The card already has its own address at ``/c/{token}`` - but that token
+        is the participant's own, the one their registration link and their
+        door QR are built from, and it must never appear on a page anybody can
+        open. So the card gets a second way in that is reached the same way the
+        athlete page is: the event's public token, plus the row id.
+
+        That does mean full names are readable by anyone holding the results
+        link, where the list itself deliberately says "Atheena G." A card that
+        calls you by an initial is not a keepsake, and this was Nes's call
+        knowing the trade.
+        """
+        ev = _board_event(db, token)
+        p = db.get(EventParticipant, pid) if ev else None
+        # Exactly the athlete page's guards, plus a finish. Anything missing
+        # gets the same answer as a bad token: two different answers would
+        # between them confirm a guess about who is on this event.
+        if not ev or not p or p.event_id != ev.id or p.waitlist \
+                or p.released_at or p.declined or not p.finished_at:
+            return templates.TemplateResponse(
+                "board_public.html", {"request": request, "ev": None},
+                status_code=404)
+        want = (request.query_params.get("shape") or "").strip().lower()
+        shape = want if want in SHAPES else DEFAULT_SHAPE
+        return templates.TemplateResponse("card_public.html", {
+            "request": request, "who": p.full_name,
+            "clock": mmss(p.race_seconds),
+            "card": card_context(shape, chrome=150),
+            "shape": shape,
+            # Only set on this way in, so the card on somebody's own private
+            # link does not sprout a link to a results page they may not have
+            # been given.
+            "back": "/l/%s/p/%d" % (token, p.id),
+        })
 
     @app.get("/l/{token}/feed.json")
     def board_feed(request: Request, token: str,

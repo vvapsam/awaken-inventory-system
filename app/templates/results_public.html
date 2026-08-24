@@ -82,6 +82,39 @@ a.nm:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
 .colhead span:nth-child(4),.colhead span:nth-child(5){width:58px;
   text-align:right;flex:0 0 auto}
 .colhead span:nth-child(6){width:100px;text-align:right;flex:0 0 auto}
+/* A quiet strip under the last finisher, for the people who open this page
+   to look up somebody else's time and never tap into their own. Dismissible,
+   and it stays dismissed. */
+.rvstrip{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:26px;
+  padding:18px 0 0;border-top:2px solid var(--ink);
+}
+.rvstrip.gone{display:none}
+.rvstrip .rt{flex:1 1 240px;min-width:0}
+.rvstrip .rt b{
+  display:block;font-family:var(--sans);font-weight:700;font-size:1.34rem;
+  text-transform:uppercase;line-height:1.05;
+}
+.rvstrip .rt span{
+  font-family:var(--sans);font-size:1rem;font-weight:500;color:var(--dim);
+  letter-spacing:.01em;
+}
+.rvstrip a.go{
+  font-family:var(--head);font-weight:600;font-size:.74rem;letter-spacing:.15em;
+  text-transform:uppercase;background:#fff;color:#1a1a1a;padding:12px 22px;
+  text-decoration:none;flex:0 0 auto;
+}
+.rvstrip a.go:hover{background:#E3E7E9}
+.rvstrip button.nah{
+  font-family:var(--head);font-weight:400;font-size:.66rem;letter-spacing:.13em;
+  text-transform:uppercase;background:none;border:0;color:var(--dimmer);
+  cursor:pointer;padding:12px 4px;flex:0 0 auto;
+}
+.rvstrip a.go:focus-visible,.rvstrip button.nah:focus-visible{
+  outline:2px solid var(--teal);outline-offset:3px}
+@media (max-width:559px){
+  .rvstrip a.go{flex:1 1 auto;text-align:center}
+}
 .none-shown{display:none}
 .none-shown.on{display:block}
 
@@ -175,6 +208,38 @@ a.nm:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
 </div>
 
 <div class="empty none-shown" id="nohits">Nobody here matches that.</div>
+
+{% if review_url %}
+<div class="rvstrip" id="rvstrip">
+  <span class="rt"><b>Race here this morning?</b>
+    <span>We were happy to see you. Tell people how it went &mdash;
+      it takes about thirty seconds.</span></span>
+  <a class="go" id="rvgo" href="{{ review_url }}" target="_blank"
+     rel="noopener">Review us on Google</a>
+  <button type="button" class="nah" id="rvno">Not now</button>
+</div>
+<script>
+(function(){
+  var strip = document.getElementById("rvstrip");
+  var KEY = "awaken_rvstrip_{{ ev.id }}";
+  if (!strip) { return; }
+  /* Hidden once they have either gone to Google or said no. The point of a
+     strip on a page people reload all morning is that it asks once. */
+  function hide(){ strip.classList.add("gone"); }
+  try { if (localStorage.getItem(KEY)) { hide(); } } catch (e) {}
+  function done(){
+    try { localStorage.setItem(KEY, "1"); } catch (e) {}
+    hide();
+  }
+  document.getElementById("rvno").addEventListener("click", done);
+  document.getElementById("rvgo").addEventListener("click", function(){
+    /* Not hidden on the click itself - the tab is about to lose focus and a
+       row vanishing under their thumb reads as a misfire. */
+    setTimeout(done, 400);
+  });
+})();
+</script>
+{% endif %}
 
 <script>
 (function(){
