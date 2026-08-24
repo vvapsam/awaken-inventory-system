@@ -159,8 +159,8 @@
               data-copy="{{ base }}/l/{{ ev.board_token }}">Copy</button>
     </div>
     <div class="muted small">
-      Elite and Open side by side, men and women within each, updating on its
-      own. Finishers ranked by time, then whoever is still out there, deepest
+      {{ CATEGORIES|map(attribute=1)|join(" and ") }} side by side, men and
+      women within each, updating on its own. Finishers ranked by time, then whoever is still out there, deepest
       into the race first. Names show as a first name and an initial, with a
       flag &mdash; nothing else about anybody.
     </div>

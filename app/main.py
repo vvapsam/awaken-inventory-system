@@ -840,7 +840,7 @@ def startup():
                 # and a board where half the flags are missing looks broken.
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  country VARCHAR NOT NULL DEFAULT 'PH'; "
-                # Same shape, same reason. Elite/Open crosses gender rather
+                # Same shape, same reason. The category crosses gender rather
                 # than replacing it, so a null here would put a fifth,
                 # nameless column on the leaderboard - everybody starts Open
                 # and gets moved up by hand.

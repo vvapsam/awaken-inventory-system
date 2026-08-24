@@ -19,7 +19,7 @@
  *                  thing here because it is the part that changes while
  *                  somebody is watching, and a room watching a race wants to
  *                  know who is out there before it wants a results table.
- *   THE FOUR       Elite Men, Elite Women, Open Men, Open Women - the ranked
+ *   THE FOUR       Advanced Men, Advanced Women, Open Men, Open Women - ranked
  *                  finishers, side by side underneath.
  *
  * The strip is the one place all four are mixed. Splitting it would quarter
@@ -95,7 +95,7 @@ h2.band.hot{color:var(--amber)}
   padding:3px 5px;line-height:1;white-space:nowrap;
 }
 /* The strip mixes all four groups, so a card has to say which one it is.
-   Elite is coloured as well as lettered - on a screen across a room the
+   Advanced is coloured as well as lettered - on a screen across a room the
    colour lands before the letter does. */
 .sx.elite{color:var(--mint);border-color:var(--mintdim)}
 .cell .tm{margin-left:auto}
@@ -120,7 +120,7 @@ h2.band.hot{color:var(--amber)}
 }
 
 /* ---- the ranked columns ---- */
-/* Elite and Open are drawn as two boxes, two columns inside each, rather than
+/* The two categories are drawn as boxes of two columns each, rather than
    four bare columns in a row. Four headings side by side made a reader work
    out for themselves that the first two belonged together; a box says it
    without being read.
@@ -134,7 +134,7 @@ h2.band.hot{color:var(--amber)}
   padding:14px 14px 8px;background:#0c2021;
 }
 /* The one difference between the two boxes, and it is deliberately small: a
-   mint edge and a mint name. Elite is not more important than Open, it is
+   mint edge and a mint name. Advanced is not more important than Open, it is
    just the one people scan for first. */
 .grp.elite{border-color:#2c5f5a;background:#0d2725}
 h2.gname{
@@ -441,7 +441,7 @@ h2.gname .gn{
            + body + '</div>';
     }
 
-    /* Elite and Open each get a box, in the order the server sent them.
+    /* Each category gets a box, in the order the server sent them.
        Built by walking the columns rather than from a fixed list of two, so
        a category with nobody in it never draws an empty frame - and a third
        one, if there is ever a third one, needs nothing here. */

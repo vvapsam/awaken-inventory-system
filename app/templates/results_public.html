@@ -155,13 +155,16 @@ a.nm:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
   everybody who just finished.
 #}
 <div class="filters">
+  {# Built from CATEGORIES rather than typed out, so renaming a category
+     renames its chip. These used to say Elite and Open in the markup, and a
+     rename left them behind. #}
   <div class="seg">
     <button type="button" class="chip" data-f="cat" data-v=""
             aria-pressed="true">All</button>
-    <button type="button" class="chip" data-f="cat" data-v="elite"
-            aria-pressed="false">Elite</button>
-    <button type="button" class="chip" data-f="cat" data-v="open"
-            aria-pressed="false">Open</button>
+    {% for key, label in CATEGORIES %}
+    <button type="button" class="chip" data-f="cat" data-v="{{ key }}"
+            aria-pressed="false">{{ label }}</button>
+    {% endfor %}
   </div>
   <div class="seg">
     <button type="button" class="chip" data-f="sex" data-v=""
@@ -188,7 +191,7 @@ a.nm:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
        data-name="{{ r.name|lower }}">
     {# The overall number, swapped for the number within a group the moment
        somebody filters down to one - "4th" means something different when
-       the page in front of you is only the Elite women. #}
+       the page in front of you is only the Advanced women. #}
     <span class="pl{{ '' if r.place else ' none' }}"
           data-place="{{ r.place or '' }}">{{ r.place or '—' }}</span>
     <span class="who">

@@ -1394,15 +1394,20 @@ PAY_LABELS = {
 SEXES = [("m", "Male"), ("f", "Female")]
 
 #: The competitive category, crossing gender rather than replacing it: a field
-#: of four - Elite Men, Elite Women, Open Men, Open Women. The two are asked
+#: of four - Advanced Men, Advanced Women, Open Men, Open Women. Both are asked
 #: separately because they are separate questions, and a single list of four
 #: would have to be re-cut every time either one of them changed.
-CATEGORIES = [("elite", "Elite"), ("open", "Open")]
+#: The stored key stays "elite" while the label reads Advanced. Renaming the
+#: key would mean rewriting every row on every past event, the ?cat= filter the
+#: results page ships, and every saved link somebody has - all to change a
+#: string nobody outside this file ever sees. The label is the only part that
+#: was ever shown.
+CATEGORIES = [("elite", "Advanced"), ("open", "Open")]
 CATEGORY_LABELS = dict(CATEGORIES)
 CATEGORY_KEYS = [k for k, _l in CATEGORIES]
 #: Everybody is Open until somebody says otherwise. Nullable would put a fifth,
 #: nameless column on the board on the morning this ships; the bigger field is
-#: the safer guess, and moving a handful of people up to Elite is a minute's
+#: the safer guess, and moving a handful of people up to Advanced is a minute's
 #: work where sorting an entire unassigned column is not.
 CATEGORY_DEFAULT = "open"
 
@@ -1905,8 +1910,8 @@ def h12(t):
 #: testing is done. Every screen that shows one says so, because a clock that
 #: behaves differently and does not admit it is how a real result gets doubted.
 #: How the columns on the leaderboard are labelled, and the order they run in.
-#: Category first because that is the bigger division - an Elite woman is
-#: racing the Elite women, not the Open women - and the two Elite columns
+#: Category first because that is the bigger division - an Advanced woman is
+#: racing the Advanced women, not the Open women - and the two Advanced columns
 #: reading together on the left is what a spectator scanning for a winner
 #: expects.
 #:
@@ -1976,7 +1981,7 @@ def board_rows(event, now=None):
     """The whole field, ranked, split into the four groups.
 
     Returns [{"key", "label", "rows": [...]}] with an entry per group that has
-    anybody in it - Elite Men, Elite Women, Open Men, Open Women, and an
+    anybody in it - Advanced Men, Advanced Women, Open Men, Open Women, and an
     Unlisted column for anybody whose gender is not recorded yet.
 
     The order within a column is the order a spectator reads it: whoever is

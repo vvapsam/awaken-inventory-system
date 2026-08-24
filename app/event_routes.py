@@ -551,7 +551,7 @@ EVENT_COLUMNS = [
     ("updated",   "Last update",   False, {"people": True,  "gone": False}),
     ("link",      "Link",          False, {"people": True,  "gone": False}),
     ("gender",    "Gender",        True,  {"people": False, "gone": False}),
-    # Not open_only: Elite/Open is about who somebody is racing, which is
+    # Not open_only: the category is about who somebody is racing, which is
     # a question an invite event has too. On by default on the roster,
     # because the only way anybody gets out of Open is somebody reading
     # down the list and moving them.
@@ -2549,11 +2549,15 @@ def register(app, deps):
                     "name": short_name(p),
                     # The strip mixes all four groups, so each card has to
                     # say which one it is. Two letters, because that is all
-                    # the room a card has - "E\u00b7W" is the Elite women's
-                    # column, and the colour on the chip says Elite again for
-                    # anybody reading it from across a room.
+                    # the room a card has - "A\u00b7W" is the Advanced women's
+                    # column, and the colour on the chip says it again for
+                    # anybody reading from across a room.
+                    #
+                    # Taken off the label rather than written here, so renaming
+                    # a category renames its letter with it. This used to be a
+                    # hardcoded "E".
                     "sx": "%s\u00b7%s" % (
-                        "E" if category_key(p.category) == "elite" else "O",
+                        CATEGORY_LABELS[category_key(p.category)][:1].upper(),
                         {"m": "M", "f": "W"}.get(p.sex, "-")),
                     "elite": category_key(p.category) == "elite",
                     # Whether they belong in the strip rather than a column.
@@ -2584,7 +2588,7 @@ def register(app, deps):
                     # rather than asking again every second.
                     "elapsed": r["elapsed"] if r["status"] == "in_progress" else None,
                 })
-            # The page draws Elite and Open as two boxes with two columns
+            # The page draws the two categories as boxes of two columns
             # inside each, so it needs the split as data rather than by
             # picking the key apart in JavaScript. Sent from here for the
             # usual reason: the first paint and every refresh afterwards read
@@ -2596,8 +2600,8 @@ def register(app, deps):
                 "label": col["label"],
                 "cat": cat,
                 "catLabel": CATEGORY_LABELS.get(cat, ""),
-                # Inside an Elite box the column is just "Men" - repeating the
-                # word Elite above it and again on it is the box saying its
+                # Inside a category's box the column is just "Men" - repeating
+                # the category above it and again on it is the box saying its
                 # own name twice.
                 "short": (col["label"].split(" ", 1)[1]
                           if cat else col["label"]),
@@ -2799,7 +2803,7 @@ def register(app, deps):
 
         Ranked against everybody at this event rather than against their own
         group. "4th of 16" is a number somebody can picture; "2nd of 4" is a
-        number that mostly describes how few Elite women entered.
+        number that mostly describes how few Advanced women entered.
         """
         now = now or datetime.now(timezone.utc)
         field = station_field(ev, now)
@@ -3587,7 +3591,7 @@ def register(app, deps):
         # guessing. Anything that is not one of the two is stored as nothing.
         want = (sex or "").strip().lower()
         p.sex = want if want in {k for k, _l in SEXES} else None
-        # No blank branch: Elite/Open has no "not set". Anything unreadable
+        # No blank branch: the category has no "not set". Anything unreadable
         # lands on Open, which is where somebody who has not been looked at
         # yet belongs anyway.
         p.category = category_key(category)

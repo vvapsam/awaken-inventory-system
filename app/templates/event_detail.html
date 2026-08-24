@@ -659,11 +659,11 @@
             {% endfor %}
           </select></div>
         <div>
-          {# Crosses gender rather than replacing it: the board runs Elite Men,
-             Elite Women, Open Men, Open Women. There is no "not set" here -
+          {# Crosses gender rather than replacing it: the board runs Advanced
+             Men, Advanced Women, Open Men, Open Women. There is no "not set" -
              everybody is Open until somebody moves them up. #}
           <label class="small" style="font-weight:600;margin:0 0 4px">Category
-            <span class="muted">&mdash; Elite or Open</span></label>
+            <span class="muted">&mdash; {{ CATEGORIES|map(attribute=1)|join(' or ') }}</span></label>
           <select form="ed-{{ p.id }}" name="category">
             {% for key, label in CATEGORIES %}
             <option value="{{ key }}"
