@@ -2232,6 +2232,10 @@ def has_race(p) -> bool:
 
 
 RACE_STATUSES = [
+    # Before registered, because they are not. Somebody who has been asked and
+    # has not answered was reading "Registered" on the tracker, which is the
+    # tracker asserting the one thing you are waiting to find out.
+    ("for_confirmation", "For confirmation"),
     ("registered",  "Registered"),
     ("checked_in",  "Checked in"),
     ("ready",       "Ready"),
@@ -2287,6 +2291,15 @@ def race_status(p, now=None, derived_only=False) -> str:
     # Not coming is a status too, and the system already knows.
     if p.released_at or p.declined:
         return "cancelled"
+    # Asked, and still deciding. Derived rather than stored, which is what
+    # makes it survive a reset: clear somebody's answer and they land back
+    # here on their own, with nothing to set and nothing to remember to set.
+    #
+    # Last but one, so everything further along the morning still wins - a
+    # person who never answered and then walked in and was scanned reads
+    # "Checked in", because they are.
+    if p.rsvp == RSVP_NONE:
+        return "for_confirmation"
     return "registered"
 
 
