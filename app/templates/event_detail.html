@@ -414,6 +414,8 @@
     <th>Participant</th>
     {% if 'gender' in cols %}<th style="width:90px">Gender</th>{% endif %}
     {% if 'category' in cols %}<th style="width:88px">Category</th>{% endif %}
+    {% if 'age' in cols %}<th style="width:64px">Age</th>{% endif %}
+    {% if 'reviewed' in cols %}<th style="width:112px">Review</th>{% endif %}
     {% if 'mobile' in cols %}<th style="width:130px">Mobile</th>{% endif %}
     {% if 'entry' in cols %}<th style="width:120px">Entry</th>{% endif %}
     {% if 'payment' in cols %}<th>Payment</th>{% endif %}
@@ -460,6 +462,21 @@
     {# No dash here: there is no such thing as a participant without a
        category. Everybody is Open until somebody moves them up. #}
     <td>{{ CATEGORY_LABELS[p.category or 'open'] }}</td>
+    {% endif %}
+    {% if 'age' in cols %}
+    {# Half of what somebody answers to reach their own card, so a blank one is
+       a person who cannot get theirs - worth seeing down the column. #}
+    <td>{% if p.age %}<span class="mono">{{ p.age }}</span>
+      {% else %}<span class="tag amber">&mdash;</span>{% endif %}</td>
+    {% endif %}
+    {% if 'reviewed' in cols %}
+    {# "Went to Google", not "left a review". Nothing can tell us the second
+       one - see EventParticipant.review_opened_at - and a column headed
+       Reviewed would quietly become a number somebody plans against. #}
+    <td style="white-space:nowrap">{% if p.review_opened_at %}
+      <span class="tag">Went</span>
+      <div class="sub">{{ (p.review_opened_at|local).strftime('%d %b, %H:%M') }}</div>
+      {% else %}<span class="muted small">&mdash;</span>{% endif %}</td>
     {% endif %}
     {% if 'mobile' in cols %}
     <td style="white-space:nowrap">{% if p.mobile %}<span class="mono">{{ p.mobile }}</span>
@@ -653,6 +670,14 @@
               {{ 'selected' if (p.category or 'open') == key }}>{{ label }}</option>
             {% endfor %}
           </select></div>
+        <div>
+          {# Until now this was only ever filled in at the awarding table, so
+             most rows have none. It is half of what somebody answers to reach
+             their own finisher card, which is why it is editable here. #}
+          <label class="small" style="font-weight:600;margin:0 0 4px">Age
+            <span class="muted">&mdash; opens their card</span></label>
+          <input form="ed-{{ p.id }}" name="age" type="number" min="5" max="110"
+                 value="{{ p.age or '' }}" style="width:100%"></div>
         <div>
           <label class="small" style="font-weight:600;margin:0 0 4px">Country
             <span class="muted">&mdash; the flag on the board</span></label>

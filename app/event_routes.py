@@ -76,8 +76,7 @@ from .countries import country_code, country_name, flag as country_flag
 # The sponsor strip is cut and sized once, for the finisher card. The
 # board shows the same marks at the same relative weights rather than
 # keeping a second copy that can drift from it.
-from .card_routes import (SPONSORS, DEFAULT_SHAPE, SHAPES,
-                          card_context)
+from .card_routes import SPONSORS
 # One definition of a clock, borrowed rather than copied. patch_routes owns it
 # because that is where a time is first read out loud to somebody.
 from .patch_routes import mmss
@@ -448,6 +447,11 @@ def clock12(t: str) -> str:
 #: the database would mean a settings field to maintain for a value that
 #: changes roughly never. Setting GOOGLE_REVIEW_URL on the server beats it
 #: without a deploy if that day ever comes.
+#: Failed find-my-result attempts, by address. In memory on purpose: it is a
+#: speed bump, not an audit, and a restart forgiving somebody is the right
+#: failure. One gym, one morning - a table here never grows.
+_ME_FAILS: dict = {}
+
 REVIEW_URL = os.environ.get(
     "GOOGLE_REVIEW_URL", "https://g.page/r/CaH2Yg5cIoVBEBM/review")
 
@@ -552,6 +556,8 @@ EVENT_COLUMNS = [
     # because the only way anybody gets out of Open is somebody reading
     # down the list and moving them.
     ("category",  "Category",      False, {"people": True,  "gone": False}),
+    ("age",       "Age",           False, {"people": True,  "gone": False}),
+    ("reviewed",  "Review",        False, {"people": True,  "gone": False}),
     ("mobile",    "Mobile",        True,  {"people": False, "gone": False}),
     ("entry",     "Entry",         True,  {"people": False, "gone": False}),
     ("slot",      "Slot",          False, {"people": False}),
@@ -2907,48 +2913,145 @@ def register(app, deps):
         return templates.TemplateResponse("athlete_public.html", {
             "request": request, "ev": ev, "token": token, "view": "athlete",
             "finishers": ctx["finishers"], "review_url": REVIEW_URL,
-            "cardlink": ("/l/%s/p/%d/card" % (token, p.id)
-                         if p.finished_at else ""),
+            "cardlink": "/l/%s/me" % token if p.finished_at else "",
             "racing": ctx["racing"], **_athlete_ctx(ev, p)})
 
-    @app.get("/l/{token}/p/{pid}/card", response_class=HTMLResponse)
-    def card_via_results(request: Request, token: str, pid: int,
-                         db: Session = Depends(get_db)):
-        """The finisher card, for somebody who came in off the results link.
+    # ---------------------------------------------------- find my result ----
+    #: How many wrong email/age pairs one address may try before it is asked to
+    #: wait. Email plus age is a guessable pair - an address somebody already
+    #: knows, and a number between about 15 and 70 - so the thing standing
+    #: between a stranger and a member's full name is this counter rather than
+    #: the strength of the secret. Generous enough that a person mistyping
+    #: their own address four times never meets it.
+    ME_TRIES, ME_WINDOW = 8, 15 * 60
 
-        The card already has its own address at ``/c/{token}`` - but that token
-        is the participant's own, the one their registration link and their
-        door QR are built from, and it must never appear on a page anybody can
-        open. So the card gets a second way in that is reached the same way the
-        athlete page is: the event's public token, plus the row id.
+    def _me_throttled(request) -> bool:
+        """True if this address has been guessing. Also does the recording."""
+        who = (request.client.host if request.client else "?") or "?"
+        now = datetime.now(timezone.utc).timestamp()
+        seen = [t for t in _ME_FAILS.get(who, []) if now - t < ME_WINDOW]
+        _ME_FAILS[who] = seen
+        return len(seen) >= ME_TRIES
 
-        That does mean full names are readable by anyone holding the results
-        link, where the list itself deliberately says "Atheena G." A card that
-        calls you by an initial is not a keepsake, and this was Nes's call
-        knowing the trade.
+    def _me_failed(request):
+        who = (request.client.host if request.client else "?") or "?"
+        _ME_FAILS.setdefault(who, []).append(
+            datetime.now(timezone.utc).timestamp())
+
+    def _me_of(request, ev, db):
+        """The participant this browser has already proved it is, or None."""
+        pid = request.session.get("me_%d" % ev.id)
+        if not pid:
+            return None
+        p = db.get(EventParticipant, pid)
+        # Re-checked on every request rather than trusted from the cookie: a
+        # row that has since been removed from the event must stop resolving.
+        if not p or p.event_id != ev.id or p.waitlist or p.released_at \
+                or p.declined:
+            return None
+        return p
+
+    def _me_ctx(request, ev, token, p, db, err=""):
+        opened = bool(p and (p.review_opened_at
+                             or request.session.get("me_open_%d" % ev.id)))
+        return {
+            "request": request, "ev": ev, "token": token, "view": "me",
+            "racing": _results_ctx(ev)["racing"],
+            "review_url": REVIEW_URL, "err": err,
+            "stage": "card" if p else "ask",
+            "who": ({"full": p.full_name,
+                     "flag": country_flag(p.country),
+                     "finish": mmss(p.race_seconds) if p.finished_at else "",
+                     "done": bool(p.finished_at),
+                     "pid": p.id} if p else None),
+            # The stations are built only once they have been past the ask.
+            # Not rendered-then-hidden: markup on the page is markup anybody
+            # can read with the developer tools, and a lock you can open with
+            # a keyboard shortcut is one that annoys the honest and stops
+            # nobody.
+            "opened": opened,
+            "rows": (_athlete_ctx(ev, p)["rows"] if (opened and p) else []),
+        }
+
+    @app.get("/l/{token}/me", response_class=HTMLResponse)
+    def find_me(request: Request, token: str, db: Session = Depends(get_db)):
+        """"That's me" - the way to your own card.
+
+        The results list stays open to anybody: times at a public race are not
+        a secret, and spectators, family and the gym's own website all need it.
+        The card is different. It carries a full name, where the list carefully
+        says "Atheena G.", so it asks first.
         """
         ev = _board_event(db, token)
-        p = db.get(EventParticipant, pid) if ev else None
-        # Exactly the athlete page's guards, plus a finish. Anything missing
-        # gets the same answer as a bad token: two different answers would
-        # between them confirm a guess about who is on this event.
-        if not ev or not p or p.event_id != ev.id or p.waitlist \
-                or p.released_at or p.declined or not p.finished_at:
+        if not ev:
             return templates.TemplateResponse(
                 "board_public.html", {"request": request, "ev": None},
                 status_code=404)
-        want = (request.query_params.get("shape") or "").strip().lower()
-        shape = want if want in SHAPES else DEFAULT_SHAPE
-        return templates.TemplateResponse("card_public.html", {
-            "request": request, "who": p.full_name,
-            "clock": mmss(p.race_seconds),
-            "card": card_context(shape, chrome=150),
-            "shape": shape,
-            # Only set on this way in, so the card on somebody's own private
-            # link does not sprout a link to a results page they may not have
-            # been given.
-            "back": "/l/%s/p/%d" % (token, p.id),
-        })
+        # A deliberate "show me it anyway" from somebody who reviewed months
+        # ago, or is on a laptop. It opens the card for this browser only and
+        # writes nothing: a review that did not happen through us must not
+        # leave a stamp saying it did.
+        if request.query_params.get("open"):
+            request.session["me_open_%d" % ev.id] = 1
+        return templates.TemplateResponse(
+            "find_me.html", _me_ctx(request, ev, token,
+                                    _me_of(request, ev, db), db))
+
+    @app.post("/l/{token}/me", response_class=HTMLResponse)
+    def find_me_check(request: Request, token: str, email: str = Form(""),
+                      age: str = Form(""), db: Session = Depends(get_db)):
+        """Email plus age, against this event's list."""
+        ev = _board_event(db, token)
+        if not ev:
+            return templates.TemplateResponse(
+                "board_public.html", {"request": request, "ev": None},
+                status_code=404)
+        if _me_throttled(request):
+            return templates.TemplateResponse(
+                "find_me.html",
+                _me_ctx(request, ev, token, None, db, err="slow"),
+                status_code=429)
+        want = (email or "").strip().lower()
+        try:
+            years = int((age or "").strip())
+        except ValueError:
+            years = None
+        hit = next((q for q in ev.participants
+                    if (q.email or "").strip().lower() == want and want
+                    and q.age is not None and q.age == years
+                    and not (q.waitlist or q.released_at or q.declined)), None)
+        if not hit:
+            _me_failed(request)
+            # One message for a wrong address and a wrong age alike. Two
+            # different ones would tell a stranger which half they had right,
+            # which is most of the work of guessing the other.
+            return templates.TemplateResponse(
+                "find_me.html", _me_ctx(request, ev, token, None, db,
+                                        err="nomatch"),
+                status_code=404)
+        request.session["me_%d" % ev.id] = hit.id
+        return RedirectResponse("/l/%s/me" % token, status_code=303)
+
+    @app.get("/l/{token}/me/review")
+    def find_me_review(request: Request, token: str,
+                       db: Session = Depends(get_db)):
+        """Stamp the row, then hand them to Google.
+
+        Through the server rather than straight off the button, because a link
+        that goes directly to Google is a link we never hear about. This is the
+        only moment the system learns anything at all, and even then what it
+        learns is that they went - see EventParticipant.review_opened_at.
+        """
+        ev = _board_event(db, token)
+        p = _me_of(request, ev, db) if ev else None
+        if not ev or not p:
+            return RedirectResponse("/l/%s/me" % token, status_code=303)
+        # First trip only. A second one is the same person coming back for
+        # another look, and moving the stamp would lose the day they went.
+        if not p.review_opened_at:
+            p.review_opened_at = datetime.now(timezone.utc)
+            db.commit()
+        return RedirectResponse(REVIEW_URL, status_code=303)
 
     @app.get("/l/{token}/feed.json")
     def board_feed(request: Request, token: str,
@@ -3449,6 +3552,7 @@ def register(app, deps):
                           name: str = Form(""), email: str = Form(""),
                           instagram: str = Form(""), country: str = Form(""),
                           sex: str = Form(""), category: str = Form(""),
+                          age: str = Form(""),
                           db: Session = Depends(get_db)):
         """Fix somebody's details.
 
@@ -3487,6 +3591,22 @@ def register(app, deps):
         # lands on Open, which is where somebody who has not been looked at
         # yet belongs anyway.
         p.category = category_key(category)
+        # Blank clears it. Until now the only way an age got on file was a
+        # member of staff typing it at the awarding table, so most rows have
+        # none - which matters more than it used to, because it is half of
+        # what somebody answers to reach their own card.
+        want_age = (age or "").strip()
+        if not want_age:
+            p.age = None
+        else:
+            try:
+                n = int(want_age)
+            except ValueError:
+                n = None
+            # The same bracket the patch desk accepts. Anything outside it is
+            # a typo, and a typo here locks somebody out of their own card.
+            if n is not None and 5 <= n <= 110:
+                p.age = n
         # Stamped here rather than by an onupdate, so "last update" means
         # somebody changed something and not "a participant opened their link".
         p.edited_at = datetime.now(timezone.utc)

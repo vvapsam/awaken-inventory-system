@@ -153,6 +153,10 @@ nav.tabs a:focus-visible{outline:2px solid var(--teal);outline-offset:-4px}
     <a href="/l/{{ token }}/results"{% if view == 'results' %} aria-current="page"{% endif %}>Results</a>
     <a href="/l/{{ token }}/podium"{% if view == 'podium' %} aria-current="page"{% endif %}>Podium</a>
     {% if view == 'athlete' %}<a aria-current="page">Athlete</a>{% endif %}
+    {# The way to your own race without hunting for your name in forty rows.
+       Last, because most people opening these pages are looking somebody else
+       up - it is the athlete's own shortcut, not the headline. #}
+    <a href="/l/{{ token }}/me"{% if view == 'me' %} aria-current="page"{% endif %}>That's me</a>
   </nav>
 
   <div class="body">{% block content %}{% endblock %}</div>

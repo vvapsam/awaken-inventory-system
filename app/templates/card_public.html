@@ -17,15 +17,5 @@
 
 <p class="save">Press and hold the card to <b>save the picture</b>.</p>
 
-{# Only set when the card was reached through the results link. Somebody on
-   their own private /c/ address was never given a results page and must not
-   be handed one. #}
-{% if back %}
-<p class="save" style="margin-top:14px">
-  <a href="{{ back }}" style="color:#1BA893;text-decoration:none;
-     font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-     font-size:.78rem">&larr; Back to my splits</a></p>
-{% endif %}
-
 </body>
 </html>

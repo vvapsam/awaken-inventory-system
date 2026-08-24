@@ -1,0 +1,244 @@
+{% extends "public_base.html" %}
+{% block title %}Your card &mdash; {{ ev.name }}{% endblock %}
+{% block bandsub %}{% if who %}{{ who.full }}{% else %}Find your result{% endif %}{% endblock %}
+
+{% block css %}
+.lead{
+  font-family:var(--sans);font-size:1.24rem;font-weight:500;color:var(--dim);
+  max-width:44ch;margin:16px 0 0;line-height:1.4;letter-spacing:.01em;
+}
+form.me{max-width:420px;margin-top:26px}
+.fld{margin-bottom:18px}
+.fld label{
+  display:block;font-family:var(--head);font-weight:500;font-size:.68rem;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
+  margin-bottom:7px;
+}
+.fld input{
+  width:100%;background:var(--panel);border:1px solid var(--hair);
+  padding:14px 15px;color:var(--ink);font-family:var(--mono);font-size:1rem;
+}
+.fld input:focus-visible{outline:2px solid var(--teal);outline-offset:-1px}
+.fld .hint{
+  font-family:var(--sans);font-size:.96rem;font-weight:500;color:var(--dimmer);
+  margin:6px 0 0;
+}
+button.go{
+  font-family:var(--head);font-weight:600;font-size:.8rem;letter-spacing:.15em;
+  text-transform:uppercase;background:var(--teal);color:#04120F;border:0;
+  padding:15px 30px;cursor:pointer;width:100%;
+}
+button.go:hover{background:#159683}
+button.go:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.bad{
+  border-left:2px solid var(--amber);padding:3px 0 3px 15px;margin-top:20px;
+  font-family:var(--sans);font-size:1.06rem;font-weight:500;color:#D7DCDF;
+  max-width:44ch;line-height:1.4;
+}
+.bad b{color:var(--amber);display:block;text-transform:uppercase;
+  font-family:var(--head);font-weight:600;font-size:.76rem;letter-spacing:.12em;
+  margin-bottom:4px}
+
+/* ---- the summary. Enough to know we found the right person, and not the
+   card itself: that is what the next step is for. ---- */
+.sum{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:18px 0;
+  border-bottom:2px solid var(--ink)}
+.sum .fl{font-size:2rem;line-height:1;flex:0 0 auto}
+.sum h2{font-family:var(--sans);font-weight:700;font-size:2.1rem;margin:0;
+  text-transform:uppercase;line-height:1}
+.sum .tm{
+  margin-left:auto;font-family:var(--mono);font-weight:600;font-size:2.1rem;
+  letter-spacing:-.05em;color:var(--amber);font-variant-numeric:tabular-nums;
+}
+.sum .tm i{display:block;font-style:normal;font-family:var(--head);
+  font-weight:500;font-size:.6rem;letter-spacing:.16em;color:var(--dim);
+  text-transform:uppercase;text-align:right;margin-bottom:3px}
+
+.stp{display:flex;gap:18px;padding:22px 0;border-bottom:1px solid var(--hair);
+  align-items:flex-start}
+.stp:last-child{border-bottom:0}
+.stp .sn{font-family:var(--head);font-weight:700;font-size:2rem;line-height:.85;
+  color:var(--dimmer);flex:0 0 auto;width:34px;font-variant-numeric:tabular-nums}
+.stp.lit .sn{color:var(--teal)}
+.stp .sb{flex:1 1 auto;min-width:0}
+.stp h3{font-family:var(--sans);font-weight:700;font-size:1.6rem;margin:0 0 5px;
+  text-transform:uppercase;line-height:1.05}
+.stp p{font-family:var(--sans);font-size:1.06rem;font-weight:500;color:var(--dim);
+  margin:0;line-height:1.4;max-width:46ch;letter-spacing:.01em}
+.strs{font-size:1.15rem;letter-spacing:4px;color:var(--amber);margin-top:11px}
+.gbtn{display:inline-block;margin-top:12px;font-family:var(--head);
+  font-weight:600;font-size:.76rem;letter-spacing:.15em;text-transform:uppercase;
+  padding:13px 26px;text-decoration:none;background:#fff;color:#1a1a1a}
+.gbtn:hover{background:#E3E7E9}
+.gbtn:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+.said{font-family:var(--head);font-weight:500;font-size:.76rem;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--teal);margin:10px 0 0}
+.anyway{display:inline-block;margin-top:14px;font-family:var(--head);
+  font-weight:400;font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--dimmer);text-decoration:none;border-bottom:1px solid var(--hair)}
+.anyway:hover{color:var(--dim)}
+/* Same row as the athlete page's station list, on purpose: somebody who
+   looked at that page and then came here should not have to re-learn what a
+   line means. */
+.srow{display:flex;align-items:center;gap:16px;padding:13px 0;
+  border-bottom:1px solid var(--hair)}
+.srow:last-of-type{border-bottom:0}
+.srow .sn{font-family:var(--sans);font-weight:700;font-size:1.42rem;
+  text-transform:uppercase;flex:1 1 auto;min-width:0;line-height:1.05}
+.srow .sd{font-family:var(--mono);font-size:.84rem;color:var(--dimmer);
+  width:126px;flex:0 0 auto}
+.srow .ss{font-family:var(--mono);font-weight:600;font-size:1.24rem;width:76px;
+  text-align:right;flex:0 0 auto;letter-spacing:-.035em;color:var(--teal);
+  font-variant-numeric:tabular-nums}
+.srow .sw{font-family:var(--mono);font-size:.94rem;color:var(--blue);width:62px;
+  text-align:right;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.srow .sw.na,.srow .ss.na{color:var(--dimmer)}
+.srow .sr{width:92px;text-align:right;flex:0 0 auto}
+.rkb{font-family:var(--head);font-weight:500;font-size:.72rem;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--dim);border:1px solid var(--hair);
+  padding:5px 8px;display:inline-block;white-space:nowrap}
+.rkb.top{color:var(--amber);border-color:var(--amber)}
+.more{display:inline-block;margin-top:20px;font-family:var(--head);
+  font-weight:500;font-size:.72rem;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--teal);text-decoration:none}
+.more:hover{text-decoration:underline}
+.back{display:inline-block;margin-top:20px;color:var(--teal);
+  text-decoration:none;font-family:var(--head);font-weight:500;font-size:.72rem;
+  letter-spacing:.13em;text-transform:uppercase}
+.back:hover{text-decoration:underline}
+@media (max-width:559px){
+  .sum h2{font-size:1.6rem} .sum .tm{font-size:1.7rem;margin-left:0}
+  .srow .sd,.srow .sw{display:none}
+  .srow .sn{font-size:1.22rem}
+  .srow .sr{width:80px}
+  .stp{gap:12px;padding:18px 0}
+  .stp .sn{font-size:1.6rem;width:24px}
+  .stp h3{font-size:1.3rem}
+  .gbtn{display:block;text-align:center}
+}
+{% endblock %}
+
+{% block content %}
+
+{% if stage == 'ask' %}
+<div class="sec"><h2>That's me</h2><span>your card, and your card only</span></div>
+<p class="lead">Everybody's times are on the results page. Your finisher card
+  has your name on it, so we check it is you first.</p>
+
+<form class="me" method="post" action="/l/{{ token }}/me">
+  <div class="fld">
+    <label for="email">The email you registered with</label>
+    <input id="email" name="email" type="email" inputmode="email"
+           autocomplete="email" autocapitalize="none" spellcheck="false"
+           required>
+  </div>
+  <div class="fld">
+    <label for="age">Your age</label>
+    <input id="age" name="age" type="number" inputmode="numeric"
+           min="5" max="110" required>
+    <p class="hint">The one you gave us on the day.</p>
+  </div>
+  <button class="go" type="submit">Find my card</button>
+</form>
+
+{% if err == 'nomatch' %}
+<div class="bad"><b>That pair doesn't match anybody</b>
+  Check the address is the one you registered with, and that the age is the one
+  you gave on the day. If it still won't have it, message us and we'll sort it.</div>
+{% elif err == 'slow' %}
+<div class="bad"><b>Too many tries</b>
+  Give it fifteen minutes and have another go.</div>
+{% endif %}
+
+<a class="back" href="/l/{{ token }}/results">&larr; All results</a>
+
+{% else %}
+
+<div class="sum">
+  <span class="fl">{{ who.flag }}</span>
+  <h2>{{ who.full }}</h2>
+  {% if who.done %}
+  <span class="tm"><i>Finish time</i>{{ who.finish }}</span>
+  {% endif %}
+</div>
+
+<div class="stp{{ ' lit' if opened }}" id="stp1">
+  <div class="sn">1</div>
+  <div class="sb">
+    <h3>How was your race?</h3>
+    <p>We were happy to see you out there. Thirty seconds on Google is how the
+      next person finds us &mdash; and you can say whatever you actually
+      thought.</p>
+    {% if opened %}
+      <p class="said">&#10003; Thank you &mdash; that really helps us.</p>
+    {% else %}
+      <div class="strs">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+      {# Through our own address rather than straight to Google, because a
+         link that goes straight there is a link we never hear about. #}
+      <a class="gbtn" id="rvbtn" href="/l/{{ token }}/me/review"
+         target="_blank" rel="noopener">Review us on Google</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="stp{{ ' lit' if opened }}" id="stp2">
+  <div class="sn">2</div>
+  <div class="sb">
+    <h3>Your race, station by station</h3>
+    {% if opened %}
+      <p>Every split, every transition, and where each one put you in the
+        field.</p>
+    {% else %}
+      <p>Every split, every transition, and where each one put you against
+        everybody who raced it. It opens as soon as you've been to Google.</p>
+      <a class="anyway" href="/l/{{ token }}/me?open=1">Already reviewed us,
+        or reviewing later? Open it anyway</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if opened and rows %}
+<div class="sec"><h3>Station by station</h3>
+  <span>{{ rows|length }} stations</span></div>
+{% for r in rows %}
+  <div class="srow">
+    <span class="sn">{{ r.name }}</span>
+    <span class="sd">{% if r.count is not none %}{{ r.count }} / {{ r.target }}
+      {{ r.unit }}{% else %}&mdash;{% endif %}</span>
+    <span class="ss{{ '' if r.split else ' na' }}">{{ r.split or '—' }}</span>
+    <span class="sw{{ '' if r.walk else ' na' }}">{{ r.walk or '—' }}</span>
+    <span class="sr">{% if r.place %}<span class="rkb{{ ' top'
+      if r.place <= 3 }}">{{ r.place }} of {{ r.of }}</span>
+      {% else %}<span class="rkb">&mdash;</span>{% endif %}</span>
+  </div>
+{% endfor %}
+{# The dots, the radar and the rest of it live on the athlete page, which is
+   public. No point rebuilding them here. #}
+<a class="more" href="/l/{{ token }}/p/{{ who.pid }}">See how you compare
+  against the field &rarr;</a>
+{% endif %}
+
+<a class="back" href="/l/{{ token }}/results">&larr; All results</a>
+
+{% if not opened %}
+<script>
+(function(){
+  var btn = document.getElementById("rvbtn");
+  if (!btn) { return; }
+  /* The stamp is written by the address the button points at, so by the time
+     they are back the server already knows. Nothing here decides anything -
+     it only saves them reloading the page by hand. */
+  var went = false;
+  btn.addEventListener("click", function(){ went = true; });
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible" && went) {
+      went = false;
+      location.reload();
+    }
+  });
+})();
+</script>
+{% endif %}
+
+{% endif %}
+{% endblock %}

@@ -2427,6 +2427,15 @@ class EventParticipant(Base):
     #: the desk should not be asked their age again in front of a queue.
     #: Not a date of birth — nobody at a trestle table is doing that sum.
     age = Column(Integer)
+    #: When they tapped through to Google to leave a review.
+    #:
+    #: Named for what actually happened, because that is all anybody can know.
+    #: Google tells a website nothing about its own reviews - no callback, no
+    #: return URL, and the reviews API hands back a display name and a photo,
+    #: never an address to match a person by. So this is "they went", not "they
+    #: reviewed", and a report built on it will read high. Calling the column
+    #: reviewed_at would have made that error permanent and invisible.
+    review_opened_at = Column(DateTime(timezone=True))
     #: Which patch they earned, worked out from age and finish time, and when
     #: it was handed over. The stamp is what stops a second member of staff
     #: handing a second patch to somebody who already has theirs.

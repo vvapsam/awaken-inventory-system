@@ -846,6 +846,11 @@ def startup():
                 # and gets moved up by hand.
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  category VARCHAR NOT NULL DEFAULT 'open'; "
+                # Nullable on purpose: "we have never seen them go" and "they
+                # went at 09:14" are the only two states, and a default would
+                # invent a third.
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  review_opened_at TIMESTAMPTZ; "
                 "UPDATE event_participants SET heat_told_before = TRUE "
                 "  WHERE heat_email_at IS NOT NULL AND NOT heat_told_before; "
                 "END IF; END $$;"))
