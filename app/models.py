@@ -1532,6 +1532,12 @@ class Event(Base):
     #: Counted per person rather than from one fixed date, because somebody
     #: added to the list on the Thursday would otherwise inherit a deadline
     #: that expired on the Tuesday and lose a slot they were never asked about.
+    #: The day this event used to be on, when it has been moved. Set only by
+    #: a reschedule, and the only thing that makes the "date has changed" email
+    #: sayable: a new date printed on its own is read as the one already in
+    #: somebody's calendar, and they turn up on the wrong Sunday. Blank on an
+    #: event that has never moved, which is almost all of them.
+    moved_from = Column(DateTime(timezone=True))
     confirm_hours = Column(Integer, nullable=False, default=48)
     #: A hard backstop, whatever the per-person clock says — the point past
     #: which an unanswered slot has to go to the waitlist so there is still

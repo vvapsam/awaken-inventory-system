@@ -1101,12 +1101,20 @@ def register(app, deps):
             db.commit()
             return RedirectResponse(back, status_code=303)
 
-        handle = clean_handle(instagram)
-        if rsvp != RSVP_YES or not handle or ack != "on":
+        # A handle already on file stands in for one the form did not send,
+        # and an agreement already given stands in for the tickbox. This is
+        # what makes a re-confirmation a single tap: somebody being asked again
+        # because the day moved has already handed over both, and asking twice
+        # for a thing we are holding is how a one-question page turns back into
+        # a form. Anything they do type still wins - the field is still there
+        # for anybody whose handle has changed.
+        handle = clean_handle(instagram) or clean_handle(p.instagram or "")
+        agreed = ack == "on" or p.acknowledged_at is not None
+        if rsvp != RSVP_YES or not handle or not agreed:
             return RedirectResponse(back + "?missing=1", status_code=303)
         p.rsvp, p.rsvp_at = RSVP_YES, now
         p.instagram = handle
-        p.acknowledged_at = now
+        p.acknowledged_at = p.acknowledged_at or now
         db.commit()
         # Their pass, straight away, while they are still holding the phone.
         _send_pass(db, p.event, p, base_url(request))
@@ -1806,7 +1814,7 @@ def register(app, deps):
             reel_hours: str = Form("48"), confirm_hours: str = Form("48"),
             reels_paused: str = Form(""), heat_open_mins: str = Form(""),
             reels_on: str = Form(""),
-            confirm_by: str = Form(""),
+            confirm_by: str = Form(""), moved_from: str = Form(""),
             mode: str = Form(EVENT_INVITE), signup_open: str = Form(""),
             signup_closes: str = Form(""), slug: str = Form(""),
             external_url: str = Form(""), external_label: str = Form(""),
@@ -1879,6 +1887,9 @@ def register(app, deps):
         # hands the whole job to the fixed date below.
         ev.confirm_hours = num(confirm_hours, 48)
         ev.confirm_by = dt(confirm_by)
+        # Blank is the normal state and has to stay reachable: an event that
+        # was moved and then moved back has not moved.
+        ev.moved_from = dt(moved_from)
 
         def price(text):
             try:
@@ -3722,6 +3733,7 @@ def register(app, deps):
             build = {"reel": _reel_mail, "finish": _finish_mail,
                      "returned": _returned_mail,
                      "lastcall": _lastcall_mail, "payby": _payby_mail,
+                     "reconfirm": _reconfirm_mail,
                      "cancelled": _cancelled_mail,
                      "heat": _heat_mail}.get(kind, _invite_mail)
             # One button, two wordings. Somebody who has never had a time from
@@ -3816,6 +3828,12 @@ def register(app, deps):
                       "For anyone asked who hasn't answered.",
              "ok": True,
              "why": "" if not openreg else "usually invite events"},
+            {"key": "reconfirm", "name": "The date has changed",
+             "blurb": "\u201cWe\u2019ve moved the class \u2014 can you still "
+                      "make it?\u201d Prints the old date beside the new one.",
+             "ok": bool(ev.moved_from),
+             "why": "" if ev.moved_from else "set \u201cMoved from\u201d in "
+                                             "Settings first"},
             {"key": "reel", "name": "The Reel email",
              "blurb": "\u201cThank you \u2014 submit your Reel and pick your "
                       "reward.\u201d",
@@ -3888,6 +3906,14 @@ def register(app, deps):
                          and not p.last_call_at],
             "lastcall_all": [p for p in invitable
                              if p.invited_at and not p.confirmed],
+            # The date has changed: everybody still on the list who has not
+            # answered for the new day. Deliberately not filtered on
+            # invited_at the way the last call is - a reschedule is news to
+            # everyone holding a slot, including anybody added since, and
+            # somebody who never got the original invitation is exactly the
+            # person who must not now be left out of the one that moves it.
+            "reconfirm": [p for p in invitable if not p.confirmed],
+            "reconfirm_all": invitable,
             # The Reel email: everyone who came and hasn't been asked yet.
             "reel": ([p for p in confirmed if not p.reel_email_at]
                      if wants_reels(ev) else []),
@@ -4056,6 +4082,7 @@ def register(app, deps):
         build = {"reel": _reel_mail, "finish": _finish_mail,
                  "returned": _returned_mail,
                  "lastcall": _lastcall_mail, "payby": _payby_mail,
+                 "reconfirm": _reconfirm_mail,
                  "cancelled": _cancelled_mail, "heatnew": _heat_new_mail,
                  "heat": _heat_mail}.get(kind, _invite_mail)
         # A preview that shows a different email from the one that would
@@ -4558,6 +4585,9 @@ def _mail_values(ev, p, url, key) -> dict:
                         else ev.tier_b_label) or "",
         "record.amount": money(p.amount),
         "record.deadline": _fmt_when(confirm_deadline(p)),
+        # Empty on an event that has never moved, which is the signal the
+        # "date has changed" email should not be going out at all.
+        "event.was": _fmt_when(ev.moved_from) if ev.moved_from else "",
         # Not yet sent means not yet stamped, and a preview reading "Pay by ."
         # would be worse than useless. What it will be is the honest stand-in.
         "record.pay_deadline": _fmt_when(
@@ -4666,6 +4696,32 @@ def _heat_day(ev) -> str:
     return to_local(ev.starts_at).strftime("%a %d %b").replace(" 0", " ")
 
 
+def _moved_block(ev) -> str:
+    """The old day and the new one, one above the other.
+
+    Struck through rather than removed, and labelled Was and Now rather than
+    left to be inferred. A rescheduled date printed on its own is read as
+    confirmation of the date already in somebody's calendar - the two have to
+    be in the same glance for the change to register at all.
+
+    Nothing at all if the event has not moved, so an email sent by mistake
+    reads as odd rather than as a date that has gone missing.
+    """
+    if not ev.moved_from:
+        return ""
+    return (
+        '<table style="background:#f3f5f7;border-radius:8px;width:100%%;'
+        'margin:0 0 18px"><tbody>'
+        '<tr><td style="color:#6b7683;font-size:14px;padding:15px 12px 4px 17px;'
+        'width:56px">Was</td><td style="font-size:14px;color:#8a939c;'
+        'text-decoration:line-through;padding:15px 17px 4px 0">%s</td></tr>'
+        '<tr><td style="color:#6b7683;font-size:14px;padding:4px 12px 15px 17px">'
+        'Now</td><td style="font-size:14px;font-weight:700;color:#008080;'
+        'padding:4px 17px 15px 0">%s</td></tr>'
+        '</tbody></table>'
+        % (_esc(_fmt_when(ev.moved_from)), _esc(ev.when_text or "")))
+
+
 def _mail_blocks(ev, p, url, key) -> tuple:
     """The pieces the system builds, and the one you wrap your own words in."""
     blocks = {
@@ -4675,6 +4731,7 @@ def _mail_blocks(ev, p, url, key) -> tuple:
         "block.checklist": lambda *a: _checklist(ev, p),
         "block.qr": lambda *a: _qr_block(ev, p),
         "block.heat": lambda *a: _heat_block(ev, p),
+        "block.moved": lambda *a: _moved_block(ev),
     }
     pairs = {"block.note": lambda inner, *a: _window_note(inner),
              "block.warn": lambda inner, *a: _warn_note(inner)}
@@ -4706,6 +4763,10 @@ def _returned_mail(db, ev, p, url):
 
 def _lastcall_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "lastcall")
+
+
+def _reconfirm_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "reconfirm")
 
 
 def _reel_mail(db, ev, p, url):

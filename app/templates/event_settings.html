@@ -227,6 +227,13 @@
             rescheduled — instead of the window opening by itself a few hours after the end
             time still sitting in the diary. Untick it when the new date is set.</span></span>
       </label></div>
+    <div><label class="small" style="font-weight:600">Moved from</label>
+      <input type="datetime-local" name="moved_from"
+        value="{{ ev.moved_from|local_dt if ev.moved_from }}">
+      <div class="muted small" style="margin:3px 0 0">Only when a date has changed. Fill in
+        the <b>old</b> day here and put the new one at the top, and the &ldquo;date has
+        changed&rdquo; email prints them together &mdash; a new date on its own gets read as
+        the one already in somebody&rsquo;s calendar. Leave it empty otherwise.</div></div>
     <div><label class="small" style="font-weight:600">Answer by</label>
       <input type="datetime-local" name="confirm_by"
         value="{{ ev.confirm_by|local_dt if ev.confirm_by }}">

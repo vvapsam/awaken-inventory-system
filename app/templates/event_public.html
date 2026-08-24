@@ -292,18 +292,33 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
   <div class="clock">⏳ Your slot is held for <b>{{ confirm_left }}</b></div>
   {% endif %}
   <div class="body">
-    <div class="hi">Hey {{ p.name.split()[0] }} 👋</div>
+    {# Somebody who has already handed over a handle and already agreed to the
+       sponsor bit is being asked again for one reason - the day moved - and
+       the page says so and asks one question. Re-presenting two fields we are
+       already holding turns a tap into a form, and a form is what makes a
+       person close the tab and mean to come back. #}
+    {% set again = p.instagram and p.acknowledged_at %}
+    <div class="hi">{% if again %}Can you still make it, {{ p.name.split()[0] }}?
+      {% else %}Hey {{ p.name.split()[0] }} 👋{% endif %}</div>
+    {% if again %}
+    <p><b>{{ ev.name }} has a new date.</b> Your slot is still yours if the new
+      day works &mdash; we just need to hear from everybody again, because a yes
+      for the old date doesn't carry over.{% if confirm_by %} Let us know by
+      {{ confirm_by }}.{% endif %}</p>
+    {% else %}
     <p>Three quick things and you're set.{% if confirm_by %} Let us know by
       {{ confirm_by }} — after that your slot goes to the next person.{% endif %}</p>
+    {% endif %}
 
     {% if request.query_params.get('missing') %}
-    <div class="alert bad">We need all three — pick yes, add your handle, and tick the box.
+    <div class="alert bad">{% if again %}Pick one — yes or no.{% else %}We need
+      all three — pick yes, add your handle, and tick the box.{% endif %}
       Or choose "I can't make it" if plans changed.</div>
     {% endif %}
 
     <form method="post" action="/e/{{ p.token }}/confirm">
       <div class="grp">
-        <div class="lbl">1 · Are you coming?</div>
+        <div class="lbl">{% if not again %}1 · {% endif %}Are you coming?</div>
         <label class="opt">
           <input type="radio" name="rsvp" value="yes" checked>
           <span><span class="t">Yes, I'll be there</span>
@@ -318,6 +333,20 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
         </label>
       </div>
 
+      {# Folded shut rather than removed. We have their handle, so nothing has
+         to be typed - but somebody who changed it since August can open this
+         and fix it in the same tap. The server falls back to what is on file
+         when the field comes back empty. #}
+      {% if again %}
+      <details class="grp" style="padding-top:4px">
+        <summary class="hint" style="cursor:pointer;list-style:none">
+          Instagram changed since last time? Update it</summary>
+        <div class="ig" style="margin-top:9px"><span class="at">@</span>
+          <input id="ig" name="instagram" value="{{ p.instagram or '' }}"
+                 autocapitalize="none" autocorrect="off" spellcheck="false"
+                 placeholder="yourhandle"></div>
+      </details>
+      {% else %}
       <div class="grp">
         <div class="lbl">2 · Your Instagram</div>
         <label class="fl" for="ig">So we can find your Reel and re-share it</label>
@@ -327,8 +356,9 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
                  required placeholder="yourhandle"></div>
         <div class="hint">Public account, please — we can't see or re-share a private one.</div>
       </div>
+      {% endif %}
 
-      {% if ev.handle_list or ev.hashtag %}
+      {% if (ev.handle_list or ev.hashtag) and not again %}
       <div class="grp">
         <div class="lbl">3 · The sponsor bit</div>
         <div class="ack">
@@ -357,7 +387,8 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
       <input type="hidden" name="ack" value="on">
       {% endif %}
 
-      <button class="go">Confirm my slot</button>
+      <button class="go">{% if again %}Yes, I can make the new date
+        {% else %}Confirm my slot{% endif %}</button>
     </form>
 
     {% if wants_reels(ev) %}{{ rewards_panel(ev, 'Once you\'ve posted') }}{% endif %}

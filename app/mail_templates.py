@@ -67,6 +67,31 @@ ${block.facts}
    Use the same link to let us know — it means somebody on the waitlist gets to
    train, and that's genuinely useful to us.</p>"""
 
+#: The one you send when the day itself moved. Different from a last call in
+#: the only way that matters: they did answer, and the answer no longer means
+#: anything. Leading with "please confirm again" invites the reply "I already
+#: did" - so it leads with the change instead, and the old answer obviously
+#: does not carry without anybody being told so.
+#:
+#: The old date and the new one are printed together. A new date on its own is
+#: read as the one already in their calendar, and somebody turns up on the
+#: wrong Sunday.
+RECONFIRM_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 12px">Can you still make it, ${record.first_name}?</h1>
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">We've had to reschedule
+   <b>${event.name}</b> \u2014 sorry for the shuffle.${if event.sponsor} ${event.sponsor}
+   are still fuelling us after,${/if} and your slot is still yours if the new day
+   works.</p>
+${block.moved}
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">Because the day changed,
+   <b>we need to hear from everybody again</b> \u2014 a yes for the old date
+   doesn't carry over.</p>
+${if record.deadline}${block.note}<b>Let us know by ${record.deadline}.</b> After that the slot goes to somebody on the waitlist.${/block.note}${/if}
+${block.button "Yes, I can make the new date \u2192"}
+${block.facts}
+<p style="font-size:14px;margin:16px 0 0;color:#6b7683">Can't make the new date?
+   Same link, tap <b>I can't make it</b> \u2014 it means somebody on the waitlist
+   gets to train, and that's genuinely useful to us.</p>"""
+
 PASS_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">You're in, ${record.first_name} ✅</h1>
 <p style="font-size:15px;margin:0 0 18px;color:#2b3642">Show this at the door —
    we'll scan it. No need to print anything.</p>
@@ -184,6 +209,20 @@ TEMPLATES = [
                    "block.rewards": "both offers, with the “or”"},
         "pairs": {"block.note": "the bordered callout"},
         "body": LASTCALL_BODY,
+    },
+    {
+        "key": "reconfirm", "name": "The date has changed",
+        "blurb": "\u201cWe've moved the class \u2014 can you still make it?\u201d",
+        "where": "any event that has been rescheduled",
+        "subject": "Can you still make it? \u2014 new date for ${event.name}",
+        "values": dict(EVENT_VALUES, **PERSON_VALUES,
+                       **{"record.deadline": "Wed 26 Aug, 5:00 PM",
+                          "event.was": "Sun 9 Aug, 10:00 AM"}),
+        "blocks": {"block.moved": "the old date struck through, above the new one",
+                   "block.facts": "When \u00b7 Where \u00b7 Bring \u00b7 After",
+                   "block.button": "the teal call-to-action"},
+        "pairs": {"block.note": "the bordered callout"},
+        "body": RECONFIRM_BODY,
     },
     {
         "key": "pass", "name": "Your pass",

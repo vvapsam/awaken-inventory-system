@@ -851,6 +851,8 @@ def startup():
                 # invent a third.
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  review_opened_at TIMESTAMPTZ; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  moved_from TIMESTAMPTZ; "
                 "UPDATE event_participants SET heat_told_before = TRUE "
                 "  WHERE heat_email_at IS NOT NULL AND NOT heat_told_before; "
                 "END IF; END $$;"))
