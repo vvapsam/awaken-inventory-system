@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div><h1 style="margin:0">{{ r.name }}</h1>
+    {% if r.notes %}<p class="muted small" style="margin:2px 0 0">{{ r.notes }}</p>{% endif %}</div>
+  <div class="hdact">
+    <a class="btn" href="/saved-reports">&larr; Reports</a>
+    <a class="btn" href="/saved-reports/{{ r.id }}/edit">&#9998; Edit</a>
+    {% if cols %}
+    <a class="btn primary" href="/saved-reports/{{ r.id }}.csv{{ '?event=%d'|format(eid) if eid }}">&#10515; CSV</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if events %}
+{# One report, every event. The picker only exists because the query asked
+   for :event_id - a report that does not mention it never grows one. #}
+<form method="get" class="card" style="margin-top:12px;display:flex;gap:10px;
+      align-items:center;flex-wrap:wrap">
+  <label class="small" style="font-weight:600">Event</label>
+  <select name="event" style="max-width:420px" onchange="this.form.submit()">
+    <option value="">Pick one&hellip;</option>
+    {% for e in events %}
+    <option value="{{ e.id }}" {{ 'selected' if eid == e.id }}>{{ e.name }}{%
+      if e.when_text %} &middot; {{ e.when_text }}{% endif %}</option>
+    {% endfor %}
+  </select>
+  <noscript><button class="btn">Run</button></noscript>
+</form>
+{% endif %}
+
+{% if needs_event %}
+<div class="card" style="margin-top:12px">
+  <p class="muted" style="margin:0">Pick an event above and this runs.</p></div>
+{% elif err %}
+<div class="alert bad" style="margin-top:12px"><b>That query didn't run.</b>
+  <div class="mono small" style="margin-top:6px;white-space:pre-wrap">{{ err }}</div></div>
+{% elif not cols %}
+<div class="card" style="margin-top:12px">
+  <p class="muted" style="margin:0">No rows.</p></div>
+{% else %}
+
+<div class="row-between" style="margin-top:14px;align-items:baseline">
+  <p class="muted small" style="margin:0">{{ total }} row{{ '' if total == 1 else 's' }}{%
+    if total > preview %} &middot; showing the first {{ preview }}{% endif %}{%
+    if capped %} &middot; <b>capped</b>{% endif %}</p>
+</div>
+
+<div style="overflow-x:auto;margin-top:6px">
+<table>
+  <thead><tr>{% for c in cols %}<th style="white-space:nowrap">{{ c }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr>{% for v in row %}<td style="white-space:nowrap">{{ cell(v) or '—' }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if total > preview %}
+<p class="muted small" style="margin:10px 0 0">The CSV has all {{ total }}.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

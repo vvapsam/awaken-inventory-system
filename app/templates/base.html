@@ -193,6 +193,10 @@
       {% endif %}
 
       {% if can(staff, 'view_reports') %}{% call nav('/admin/reports', 'Reports', p.startswith('/admin/reports')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>{% endcall %}{% endif %}
+      {# A different thing from Reports above, which is the inventory's own.
+         This one is saved SQL, admin only, and named so nobody goes looking
+         for stock movements in it. #}
+      {% if staff.role == 'admin' %}{% call nav('/saved-reports', 'Saved reports', p.startswith('/saved-reports')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>{% endcall %}{% endif %}
       {% if can_any(staff, ['view_reports','sales.edit','sales.delete','receive.edit','receive.delete','adjust.edit','adjust.delete']) %}{% call nav('/records', 'Records', p.startswith('/records')) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>{% endcall %}{% endif %}
     </nav>
     <div class="side-foot">

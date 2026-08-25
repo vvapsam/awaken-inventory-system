@@ -3779,6 +3779,15 @@ from . import card_routes  # noqa: E402
 card_routes.register(app, {"render": render, "templates": templates})
 
 
+# Saved reports: a question kept as the SELECT that answers it, so "everybody's
+# splits and what patch they earned" is a link rather than a deploy. Admin
+# only, and read-only at the database - see report_routes for why that is the
+# guard that matters rather than the one that reads best.
+from . import report_routes  # noqa: E402
+
+report_routes.register(app, {"render": render, "require": require})
+
+
 # The words those emails are made of, editable under the gear rather than in a
 # release. Registered after the events section because it renders its preview
 # through exactly the same builders a real send uses.

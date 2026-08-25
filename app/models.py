@@ -2303,6 +2303,45 @@ def race_status(p, now=None, derived_only=False) -> str:
     return "registered"
 
 
+class SavedReport(Base):
+    """One report: a name, and the SELECT that answers it.
+
+    The point is that the question lives in the database rather than in a
+    deploy. "Everybody's splits and what patch they earned" is a real question
+    that will be asked again next event, and the previous answer was somebody
+    reading thirty-eight rows off a screen into a spreadsheet.
+
+    The SQL is stored, not the results. A report is a question, and the answer
+    changes every time somebody finishes.
+
+    What makes storing SQL safe is not this table, it is how it is run - see
+    `run_report` in report_routes: one statement, SELECT only, inside a
+    read-only transaction with a timeout and a row cap. A row here cannot
+    delete anything however it is written, which is the only footing on which
+    a text box that executes SQL belongs in an admin at all.
+    """
+
+    __tablename__ = "saved_reports"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    #: What it answers, in a sentence, for whoever opens the list in a year.
+    notes = Column(Text)
+    sql = Column(Text, nullable=False)
+    #: Set on the ones this file ships. Used once, to decide whether the report
+    #: has been seeded yet - never to overwrite. Somebody who edits a shipped
+    #: report keeps their edit through every future deploy, because the day
+    #: your own changes get silently reverted is the day you stop trusting it.
+    builtin_key = Column(String, unique=True)
+    created_at = Column(DateTime(timezone=True),
+                        default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True))
+
+    def __repr__(self):
+        return "<SavedReport %s>" % (self.name,)
+
+
+
 class EventStation(Base):
     """One workout station on an event, in the order it is raced.
 

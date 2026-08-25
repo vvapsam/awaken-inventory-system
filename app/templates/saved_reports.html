@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div><h1 style="margin:0">Reports</h1>
+    <p class="muted small" style="margin:2px 0 0">A question, saved as the query
+      that answers it. Run it whenever, export the CSV.</p></div>
+  <div class="hdact"><a class="btn primary" href="/saved-reports/new">+ New report</a></div>
+</div>
+
+{% if not reports %}
+<div class="card" style="margin-top:12px">
+  <p class="muted" style="margin:0">Nothing saved yet.</p></div>
+{% else %}
+<table style="margin-top:12px">
+  <thead><tr><th>Report</th><th style="width:150px">Last edited</th>
+    <th style="width:170px"></th></tr></thead>
+  <tbody>
+  {% for r in reports %}
+  <tr>
+    <td><b>{{ r.name }}</b>
+      {% if r.notes %}<div class="muted small" style="margin:2px 0 0">{{ r.notes }}</div>{% endif %}</td>
+    <td class="muted small">{% if r.updated_at %}{{ (r.updated_at|local).strftime('%d %b, %H:%M') }}
+      {% else %}&mdash;{% endif %}</td>
+    <td><a class="btn" href="/saved-reports/{{ r.id }}">Run</a>
+      <a class="btn" href="/saved-reports/{{ r.id }}/edit">&#9998;</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<div class="card" style="margin-top:16px">
+  <p class="muted small" style="margin:0"><b>Reports can only read.</b> Every one
+    runs inside a read-only transaction, so a query that tries to change
+    anything is refused by the database itself rather than by us noticing.
+    There is one way to change data in this system and it is a screen that
+    knows what it is changing.</p>
+</div>
+{% endblock %}

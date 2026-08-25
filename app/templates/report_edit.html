@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div><h1 style="margin:0">{{ 'Edit report' if r and r.id else 'New report' }}</h1></div>
+  <div class="hdact"><a class="btn" href="/saved-reports">&larr; Reports</a></div>
+</div>
+
+{% if err %}<div class="alert bad" style="margin-top:12px"><b>{{ err }}</b></div>{% endif %}
+
+<form method="post" action="{{ '/saved-reports/%d.|format(r.id) if r and r.id else '/reports' }}">
+<div class="card" style="margin-top:12px">
+  <div><label class="small" style="font-weight:600">Name</label>
+    <input name="name" value="{{ (r.name if r else '') or '' }}" required
+           style="width:100%;max-width:520px"></div>
+  <div style="margin-top:10px"><label class="small" style="font-weight:600">What it
+    answers</label>
+    <input name="notes" value="{{ (r.notes if r else '') or '' }}"
+           style="width:100%" placeholder="One line, for whoever opens this in a year."></div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <label class="small" style="font-weight:600">The query</label>
+  <p class="muted small" style="margin:3px 0 9px">SELECT or WITH, one statement.
+    Write <span class="mono">:event_id</span> anywhere and the report grows an
+    event picker &mdash; that is how one report serves every event.</p>
+  <textarea name="sql" rows="22" required spellcheck="false"
+    style="width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;line-height:1.5"
+    >{{ (r.sql if r else '') or '' }}</textarea>
+</div>
+
+<div class="hdact" style="margin-top:14px">
+  <button class="btn primary">Save</button>
+  <a class="btn" href="/saved-reports">Cancel</a>
+</div>
+</form>
+
+{% if r and r.id %}
+<form method="post" action="/saved-reports/{{ r.id }}/delete" style="margin-top:22px"
+      onsubmit="return confirm('Delete this report? The query goes; nothing it read is touched.')">
+  <button class="btn">Delete this report</button>
+</form>
+{% endif %}
+{% endblock %}
