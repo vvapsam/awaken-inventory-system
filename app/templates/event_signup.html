@@ -96,13 +96,6 @@ a.go{display:block;text-align:center;text-decoration:none;background:var(--black
 .note.warn{background:var(--amber-bg);color:var(--amber)}
 .note.bad{background:var(--red-bg);color:var(--red)}
 .note.ok{background:var(--teal-tint);color:var(--teal-dark)}
-.steps{margin:4px 0 0}
-.steps .s{display:flex;gap:11px;padding:11px 0;font-size:.92rem;align-items:flex-start}
-.steps .s + .s{border-top:1px solid var(--line)}
-.steps .i{width:23px;height:23px;border-radius:50%;background:var(--panel);color:var(--muted);
-  font-size:.76rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
-.steps .s.now .i{background:var(--black);color:#fff}
-.steps small{display:block;color:var(--muted);font-size:.83rem}
 .qrbox{text-align:center;border:1px solid var(--line);border-radius:12px;padding:16px}
 .qrbox img{width:186px;height:186px;display:block;margin:0 auto;object-fit:contain}
 .qrbox .t{font-size:.9rem;font-weight:650;margin-top:10px}
@@ -184,17 +177,17 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
   <p>{% if ev.starts_at %}{{ ev.when_text }}{% endif %}{%
      if ev.venue %} · {{ ev.venue }}{% endif %}</p>
 
-  <div class="steps">
-    <div class="s now"><div class="i">1</div><div><b>Your details</b>
-      <small>{{ "A few questions" if pagecount > 1 else "Name, email, and which rate applies" }}</small></div></div>
-    {% if ev.external_url %}
-    <div class="s"><div class="i">2</div><div><b>{{ ev.external_label or 'Register with the organiser' }}</b>
-      <small>On their own site — we can't do this bit for you</small></div></div>
-    {% endif %}
-    <div class="s"><div class="i">{{ 3 if ev.external_url else 2 }}</div>
-      <div><b>Pay and send the receipt</b>
-      <small>We check it and come back within {{ ev.review_hours }} hours</small></div></div>
-  </div>
+  {# No numbered list of what is about to happen. The rail at the top already
+     says how far along they are, and every step announces itself when they
+     get to it - the list was the page explaining itself instead of starting.
+
+     The one thing that genuinely has to be said in advance is the trip out to
+     the organiser's own site, because it costs money to do in the wrong
+     order. #}
+  {% if ev.external_url %}
+  <div class="note grey" style="margin-top:14px">After your details there's a
+    step on the {{ ev.external_label or 'organiser' }} site, then payment.</div>
+  {% endif %}
 
   {% if ev.signup_closes %}
   {# Stated once, plainly. A countdown that ticks would turn a deadline into a

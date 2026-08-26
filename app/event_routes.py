@@ -969,6 +969,33 @@ def register(app, deps):
                         httponly=True, samesite="lax")
         return resp
 
+    def _free(p) -> bool:
+        """Does this registration cost anything?
+
+        Read off the participant, not the event: the amount was copied onto
+        the row when they picked their rate, so a class that is free today and
+        priced tomorrow does not rewrite what anybody already did.
+        """
+        return not p.amount or Decimal(p.amount) <= 0
+
+    def _let_in(db, p) -> None:
+        """Straight in, for a registration with nothing to pay.
+
+        The same state approving a payment leaves behind, because it is the
+        same thing: a confirmed slot. The pass email is left unsent rather
+        than fired here - passes go out when the gym sends them, and a free
+        class should not start emailing on its own.
+        """
+        if p.pay_status == PAY_APPROVED:
+            return
+        now = datetime.now(timezone.utc)
+        p.pay_status = PAY_APPROVED
+        p.reviewed_at = p.reviewed_at or now
+        p.review_note = None
+        p.rsvp, p.rsvp_at = RSVP_YES, p.rsvp_at or now
+        p.acknowledged_at = p.acknowledged_at or now
+        db.commit()
+
     def _reg(db, slug, token):
         """Their row on this event's registration, at whatever stage.
 
@@ -1009,6 +1036,12 @@ def register(app, deps):
             step = 0
         elif ev.external_url and not p.external_done_at:
             step = 2
+        elif _free(p):
+            # Nothing to pay, so nothing to send us and nothing for anybody to
+            # check. A receipt step on a free class is a locked door with no
+            # room behind it.
+            _let_in(db, p)
+            step = 5
         else:
             step = 3
         if step == 0:
