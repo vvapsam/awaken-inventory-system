@@ -74,6 +74,16 @@ a.go{display:block;text-align:center;text-decoration:none;background:var(--black
 .pghead{margin:22px 0 4px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .pghead .pgt{font-size:1.02rem;font-weight:650}
 .pghead p{margin:3px 0 0;color:var(--muted);font-size:.88rem}
+/* Terms: the text in its own scrolling panel, the tick attached under it. */
+.terms{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:#fff}
+.terms .tscroll{max-height:190px;overflow:auto;padding:14px 15px;font-size:.85rem;
+  line-height:1.6;color:#4b535b;background:var(--wash);white-space:pre-wrap;
+  -webkit-overflow-scrolling:touch}
+.terms .agree{display:flex;gap:11px;align-items:flex-start;padding:14px 15px;
+  border-top:1px solid var(--line);cursor:pointer;font-size:.92rem}
+.terms .agree input{margin-top:2px;width:18px;height:18px;flex:0 0 auto;
+  accent-color:var(--teal)}
+.terms .agree:has(input:checked){background:var(--teal-tint)}
 .pgof{margin:18px 0 -8px;font-size:.72rem;font-weight:700;letter-spacing:.12em;
   text-transform:uppercase;color:var(--muted);text-align:right}
 .pgnav{display:flex;gap:9px;align-items:stretch}

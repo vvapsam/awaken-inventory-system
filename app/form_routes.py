@@ -26,6 +26,7 @@ not a counting exercise.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import Depends, Form, Request
@@ -36,7 +37,8 @@ from .db import get_db
 from .models import (BUILTIN_FIELDS, BUILTIN_KEYS, BUILTIN_LOCKED,
                      Event, EventParticipant, EventQuestion, EventRate,
                      ParticipantAnswer, QUESTION_KINDS, QUESTION_KIND_KEYS,
-                     QUESTION_KINDS_WITH_OPTIONS, RATE_LOOKS, RATE_LOOK_KEYS)
+                     QUESTION_KINDS_WITH_OPTIONS, RATE_LOOKS, RATE_LOOK_KEYS,
+                     to_local)
 
 
 def clean_kind(raw: str) -> str:
@@ -177,6 +179,16 @@ def read_answers(form, ev) -> tuple:
         if not q.stores_answer or q.hidden:
             continue
         key = "q%d" % q.id
+        if q.is_terms:
+            # One box. Ticked or not, and the answer is the moment it
+            # happened - what was agreed to is copied on in save_answers,
+            # from the question, because that is where the wording lives.
+            ticked = bool((form.get(key) or "").strip())
+            if q.required and not ticked:
+                missing.append(q)
+            if ticked:
+                out[q.id] = "Agreed \u00b7 " + agreed_at()
+            continue
         if q.kind == "checks":
             # Several boxes share one name, so take them all and keep the
             # order the options are written in rather than the order the
@@ -194,6 +206,12 @@ def read_answers(form, ev) -> tuple:
     return out, missing
 
 
+def agreed_at() -> str:
+    """Now, in gym time, as somebody reading a roster would write it."""
+    return to_local(datetime.now(timezone.utc)).strftime(
+        "%d %b %Y, %I:%M %p").lstrip("0").replace(" 0", " ")
+
+
 def save_answers(db, p, answers) -> None:
     """Write them, replacing whatever was there.
 
@@ -201,13 +219,20 @@ def save_answers(db, p, answers) -> None:
     resubmits is correcting themselves, not answering twice.
     """
     have = {a.question_id: a for a in (p.answers or [])}
+    terms = {q.id: q.options for q in p.event.questions if q.is_terms}
     for qid, value in answers.items():
         row = have.get(qid)
         if row is None:
-            db.add(ParticipantAnswer(participant_id=p.id, question_id=qid,
-                                     value=value))
+            row = ParticipantAnswer(participant_id=p.id, question_id=qid,
+                                    value=value)
+            db.add(row)
         else:
             row.value = value
+        if qid in terms:
+            # The wording as it read when they ticked it. Copied, not looked
+            # up later: the terms are editable and an agreement that points at
+            # today's text is a record of nothing.
+            row.snapshot = terms[qid]
     db.flush()
 
 
@@ -296,6 +321,7 @@ def field_json(q) -> dict:
         "help": q.help or "",
         "kind": "tier" if q.builtin == "tier" else (q.kind or "text"),
         "opts": q.options or "",
+        "tick": q.tick or "",
         "req": 1 if q.required else 0,
         "off": 1 if q.hidden else 0,
         "builtin": q.builtin or "",
@@ -396,6 +422,7 @@ def save_doc(db, ev, body) -> None:
             else:
                 q.kind = clean_kind(f.get("kind"))
                 q.options = (f.get("opts") or "").strip() or None
+                q.tick = (f.get("tick") or "").strip()[:200] or None
                 q.required = bool(f.get("req"))
                 q.hidden = False
             q.position, pos = pos, pos + 1

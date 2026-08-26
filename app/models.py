@@ -2348,6 +2348,10 @@ QUESTION_KINDS = [
     ("checks",  "Tick all that apply"),
     ("select",  "Dropdown"),
     ("date",    "Date"),
+    # A wall of text and one tick box. Not a question so much as a thing you
+    # have to have agreed to, which is why what somebody agreed to is copied
+    # onto the answer - see ParticipantAnswer.snapshot.
+    ("terms",   "Terms and conditions"),
     # Asks nothing. Everything below it, until the next one, is on its own
     # page - which is the whole of how pagination works. A page break is a
     # thing in the list rather than a setting beside it, so it reorders and
@@ -2418,6 +2422,10 @@ class EventQuestion(Base):
     options = Column(Text)
     required = Column(Boolean, nullable=False, default=False)
     position = Column(Integer, nullable=False, default=0)
+    #: The line beside the tick box, on a terms field only. The terms
+    #: themselves go in `options`, which is already the column for "the long
+    #: text this kind of question needs" and would otherwise sit empty.
+    tick = Column(String)
     #: Set when this row stands for one of the sign-up's own fields rather
     #: than a question somebody wrote - see BUILTIN_FIELDS. The row exists so
     #: the field can be moved and switched off; what it draws is still the
@@ -2446,6 +2454,16 @@ class EventQuestion(Base):
         return not self.builtin and self.kind == "section"
 
     @property
+    def is_terms(self) -> bool:
+        return not self.builtin and self.kind == "terms"
+
+    @property
+    def tick_line(self) -> str:
+        """What it says next to the box, with a sensible default."""
+        return (self.tick or "").strip() or \
+            "I have read and agree to the terms and conditions"
+
+    @property
     def locked(self) -> bool:
         """Required, and not up for discussion.
 
@@ -2470,6 +2488,9 @@ class ParticipantAnswer(Base):
     is then a report somebody writes once, instead of a spreadsheet somebody
     counts every time.
 
+    An agreement to a set of terms also carries a copy of the terms as they
+    read at the moment it was given - see `snapshot`.
+
     Ticked boxes are stored as one row with the choices joined by a newline.
     They are read back as a list and written out joined by a comma, and that
     is the whole of it - a second table so that "Large, Medium" could be two
@@ -2488,6 +2509,14 @@ class ParticipantAnswer(Base):
                          ForeignKey("event_questions.id", ondelete="CASCADE"),
                          nullable=False, index=True)
     value = Column(Text)
+    #: Only ever set on a terms field: the exact wording that was on screen
+    #: when they ticked the box.
+    #:
+    #: Copied rather than referenced on purpose. The terms are editable, and
+    #: an agreement that points at whatever the text says today is not a
+    #: record of anything - the forty people who signed in August have to keep
+    #: the August wording however many times it is rewritten afterwards.
+    snapshot = Column(Text)
 
     question = relationship("EventQuestion")
     participant = relationship("EventParticipant", backref=backref(

@@ -81,6 +81,21 @@
     we'll sort it out if it doesn't match.</div>
   {% endif %}
 
+{% elif q.kind == 'terms' %}
+  {# A wall of text and one box. The text scrolls in its own panel rather than
+     pushing the rest of the form a mile down the page, and the box is
+     attached to the bottom of it so it reads as part of the same thing. #}
+  <div class="lbl">{{ q.title }}{% if req %}<span class="req">*</span>{% endif %}</div>
+  {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
+  <div class="terms">
+    <div class="tscroll">{{ q.options or '' }}</div>
+    <label class="agree">
+      <input type="checkbox" name="q{{ q.id }}" value="yes"
+             {{ 'required' if req }} {{ 'checked' if was.get(q.id) }}>
+      <span>{{ q.tick_line }}{% if req %}<span class="req">&nbsp;*</span>{% endif %}</span>
+    </label>
+  </div>
+
 {% else %}
   <div class="lbl">{{ q.title }}{% if req %}<span class="req">*</span>
     {% else %}<span class="opt">&nbsp;&mdash; optional</span>{% endif %}</div>

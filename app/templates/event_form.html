@@ -137,6 +137,14 @@ textarea.fbin{margin-top:10px;font-family:inherit;resize:vertical}
 .lk.on .fbpv{border-color:var(--teal,#008080)}
 .lk.on .fbpv::before,.lk.on .fbpv::after{background:var(--teal,#008080)}
 
+textarea.tbody{width:100%;font-family:inherit;font-size:.88rem;line-height:1.5;
+  resize:vertical;margin-top:0}
+.tprev{border:1px solid var(--line);border-radius:11px;background:#fff;overflow:hidden}
+.tprev .tscroll{max-height:150px;overflow:auto;padding:13px 15px;font-size:.85rem;
+  line-height:1.55;color:#4b535b;background:var(--wash,#f1f2f4);white-space:pre-wrap}
+.tline{display:flex;gap:10px;align-items:flex-start;padding:12px 15px;font-size:.88rem;
+  border-top:1px solid var(--line)}
+.tline input{margin-top:3px;width:16px;height:16px;flex:0 0 auto}
 .addq{display:block;width:calc(100% - 34px);margin:4px 17px 13px;padding:10px;
   border:1px dashed #cdd5dc;border-radius:10px;background:#fff;color:var(--muted);
   font:inherit;font-size:.85rem;cursor:pointer;text-align:center}
@@ -262,6 +270,9 @@ function kindLabel(f){
   return 'Short answer';
 }
 function subLine(f){
+  if (!f.builtin && f.kind === 'terms')
+    return f.opts ? esc(f.opts.replace(/\s+/g, ' ').slice(0, 90)) + '…'
+                  : '<b style="color:#8c2c20">No terms written yet</b>';
   if (f.builtin === 'tier') {
     if (!D.rates.length) return 'No rates yet';
     return D.rates.map(function(r){
@@ -308,6 +319,26 @@ function ratesHTML(){
   return h;
 }
 
+function termsHTML(f){
+  var tick = f.tick || 'I have read and agree to the terms and conditions';
+  var h = '<div class="rates">';
+  h += '<div class="rlbl">The terms &mdash; paste them here</div>';
+  h += '<textarea class="fbin tbody" rows="9" data-k="opts" ' +
+       'placeholder="Paste or type the terms people are agreeing to.">' +
+       esc(f.opts) + '</textarea>';
+  h += '<div class="rlbl" style="margin-top:15px">The line beside the tick box</div>';
+  h += '<input class="fbin" data-k="tick" value="' + esc(f.tick) +
+       '" placeholder="I have read and agree to the terms and conditions">';
+  h += '<div class="rlbl" style="margin-top:15px">What people see</div>';
+  h += '<div class="tprev"><div class="tscroll">' +
+       (esc(f.opts) || '<span class="muted">Nothing yet</span>') +
+       '</div><label class="tline"><input type="checkbox" disabled><span>' +
+       esc(tick) + (f.req ? ' <b style="color:#c0392b">*</b>' : '') +
+       '</span></label></div>';
+  h += '</div>';
+  return h;
+}
+
 function fieldHTML(f){
   var withOpts = !f.builtin && WITH.indexOf(f.kind) >= 0;
   var h = '<div class="fld' + (withOpts?' has-opts':'') + (f.off?' gone':'') +
@@ -334,9 +365,13 @@ function fieldHTML(f){
     h += '</select>';
   }
   h += '</div>';
-  h += '<div class="opts"><textarea class="fbin" rows="3" data-k="opts" ' +
-       'placeholder="The options &mdash; one per line">'+esc(f.opts)+'</textarea></div>';
+  // Terms keep their body in the same column, so the options box must not
+  // exist alongside it - two inputs writing one value is a bug waiting.
+  if (f.builtin || f.kind !== 'terms')
+    h += '<div class="opts"><textarea class="fbin" rows="3" data-k="opts" ' +
+         'placeholder="The options &mdash; one per line">'+esc(f.opts)+'</textarea></div>';
   if (f.builtin === 'tier') h += ratesHTML();
+  if (!f.builtin && f.kind === 'terms') h += termsHTML(f);
 
   h += '<div class="edfoot">';
   if (f.lock) {
@@ -495,7 +530,18 @@ function onEdit(e){
   else got.f[k] = el.value;
 
   var card = el.closest('.fld');
-  if (k === 'kind') card.classList.toggle('has-opts', WITH.indexOf(el.value) >= 0);
+  if (k === 'kind') {
+    // Terms bring a whole editor of their own, so switching in or out of it
+    // is a redraw rather than a class toggle.
+    if (el.value === 'terms' || card.querySelector('.tprev')) {
+      // The same column holds a list of options and a set of terms, so
+      // crossing that line starts empty rather than turning three shirt
+      // sizes into somebody's liability wording.
+      got.f.opts = '';
+      draw(); push(true); return;
+    }
+    card.classList.toggle('has-opts', WITH.indexOf(el.value) >= 0);
+  }
   var chips = card.querySelectorAll('.fbchip');
   if (chips[0]) chips[0].textContent = kindLabel(got.f);
   if (chips[1]) {
@@ -503,6 +549,15 @@ function onEdit(e){
     chips[1].className = 'fbchip' + (got.f.off ? ' off' : (got.f.req ? ' req' : ''));
   }
   card.classList.toggle('gone', !!got.f.off);
+  if (k === 'opts' || k === 'tick' || k === 'req') {
+    var prev = card.querySelector('.tprev');
+    if (prev) {
+      prev.querySelector('.tscroll').textContent = got.f.opts || 'Nothing yet';
+      prev.querySelector('.tline span').textContent =
+        (got.f.tick || 'I have read and agree to the terms and conditions') +
+        (got.f.req ? ' *' : '');
+    }
+  }
   push(false);
 }
 

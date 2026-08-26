@@ -942,6 +942,15 @@ def startup():
                 "  builtin VARCHAR; "
                 "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
                 "  hidden BOOLEAN NOT NULL DEFAULT FALSE; "
+                "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
+                "  tick VARCHAR; "
+                "END IF; END $$;"))
+            # What somebody actually agreed to, kept on the agreement itself.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.participant_answers') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE participant_answers ADD COLUMN IF NOT EXISTS "
+                "  snapshot TEXT; "
                 "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
