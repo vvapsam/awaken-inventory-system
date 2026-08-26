@@ -103,10 +103,6 @@ a.go{display:block;text-align:center;text-decoration:none;background:var(--black
   font-size:.76rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
 .steps .s.now .i{background:var(--black);color:#fff}
 .steps small{display:block;color:var(--muted);font-size:.83rem}
-.price{border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.price .r{display:flex;justify-content:space-between;padding:12px 14px;font-size:.92rem}
-.price .r + .r{border-top:1px solid var(--line)}
-.price b{font-variant-numeric:tabular-nums}
 .qrbox{text-align:center;border:1px solid var(--line);border-radius:12px;padding:16px}
 .qrbox img{width:186px;height:186px;display:block;margin:0 auto;object-fit:contain}
 .qrbox .t{font-size:.9rem;font-weight:650;margin-top:10px}
@@ -208,14 +204,9 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     from now.{% endif %}</div>
   {% endif %}
 
-  {% if tiers %}
-  <div class="lbl">What it costs</div>
-  <div class="price">
-    {% for t in tiers %}
-    <div class="r"><span>{{ t.label }}</span><b>{{ t.money }}</b></div>
-    {% endfor %}
-  </div>
-  {% endif %}
+  {# No price list up here. The rates are a field on the form now, with the
+     label and the amount on the tile somebody actually picks - saying it
+     twice on one screen was the form arguing with itself. #}
 
   {% if err %}
   <div class="note bad">
