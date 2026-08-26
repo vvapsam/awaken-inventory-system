@@ -59,7 +59,8 @@ from .models import (
     PAY_RETURNED,
     PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
-    Event, EventParticipant, EventOrganiserLink, EventStation, StationRun,
+    Event, EventParticipant, EventOrganiserLink, EventRate, EventStation,
+    StationRun,
     HeatPlan, HeatSlot,
     ORGANISER_LINK_DAYS, ORGANISER_DEFAULT_PASS,
     from_local, to_local,
@@ -768,21 +769,33 @@ def register(app, deps):
 
     # ------------------------------------------------- open registration ----
 
-    def _tiers(ev):
-        """The rates on offer, as (key, label, price). Empty if none are set."""
-        out = []
-        for key, label, price in (("a", ev.tier_a_label, ev.tier_a_price),
-                                  ("b", ev.tier_b_label, ev.tier_b_price)):
-            if (label or "").strip():
-                out.append({"key": key, "label": label,
-                            "price": price, "money": money(price)})
-        return out
+    def _rate(r):
+        return {"key": r.key, "label": r.label, "price": r.amount,
+                "money": money(r.amount), "closed": bool(r.closed)}
+
+    def _tiers(ev, db=None):
+        """The rates somebody new may pick. Empty if none are set."""
+        if db is not None:
+            form_routes.ensure_rates(db, ev)
+        return [_rate(r) for r in ev.rates_open() if (r.label or "").strip()]
 
     def _tier(ev, key):
-        return next((t for t in _tiers(ev) if t["key"] == key), None)
+        """The rate somebody picked, closed or not.
 
-    def _signup_ctx(request, ev, p=None, **kw):
-        ctx = {"request": request, "ev": ev, "p": p, "tiers": _tiers(ev),
+        Closed ones are found on purpose. An early-bird price that is no longer
+        offered is still what that person picked, and every screen that says
+        what they owe has to be able to name it.
+        """
+        r = ev.rate(key)
+        return _rate(r) if r else None
+
+    def _pickable(ev, key):
+        """The rate somebody may pick right now, or nothing."""
+        t = _tier(ev, key)
+        return None if (t is None or t["closed"]) else t
+
+    def _signup_ctx(request, ev, p=None, db=None, **kw):
+        ctx = {"request": request, "ev": ev, "p": p, "tiers": _tiers(ev, db),
                # Formatted here, with the same function the email uses. The
                # page and the email are quoting one deadline; spelling it two
                # ways is how somebody ends up believing there are two.
@@ -861,7 +874,7 @@ def register(app, deps):
                 return RedirectResponse("/r/%s/%s" % (slug, tok), status_code=303)
         salt, challenge, (qa, qb) = _mint_pow(request, ev)
         return templates.TemplateResponse("event_signup.html", _signup_ctx(
-            request, ev, step=0, salt=salt, challenge=challenge,
+            request, ev, db=db, step=0, salt=salt, challenge=challenge,
             qa=qa, qb=qb, err=request.query_params.get("err", "")))
 
     @app.post("/r/{slug}")
@@ -892,7 +905,8 @@ def register(app, deps):
         # a board, not a thing worth turning anybody away over.
         country = country_code(form.get("country"))
         tier = (form.get("tier") or "").strip()
-        picked = _tier(ev, tier)
+        form_routes.ensure_rates(db, ev)
+        picked = _pickable(ev, tier)
         # What is required is whatever the form builder says is required, not
         # what this function used to assume. Name, email and a rate are the
         # three that cannot be switched off; the rest is the gym's business.
@@ -1000,10 +1014,10 @@ def register(app, deps):
         if step == 0:
             salt, challenge, (qa, qb) = _mint_pow(request, ev)
             return templates.TemplateResponse("event_signup.html", _signup_ctx(
-                request, ev, p, step=0, salt=salt, challenge=challenge,
+                request, ev, p, db=db, step=0, salt=salt, challenge=challenge,
                 qa=qa, qb=qb, err=request.query_params.get("err", "")))
         return templates.TemplateResponse("event_signup.html", _signup_ctx(
-            request, ev, p, step=step, tier=_tier(ev, p.tier),
+            request, ev, p, db=db, step=step, tier=_tier(ev, p.tier),
             err=request.query_params.get("err", "")))
 
     @app.post("/r/{slug}/{token}/external")
@@ -1852,8 +1866,6 @@ def register(app, deps):
             signup_closes: str = Form(""), slug: str = Form(""),
             external_url: str = Form(""), external_label: str = Form(""),
             external_note: str = Form(""),
-            tier_a_label: str = Form(""), tier_a_price: str = Form(""),
-            tier_b_label: str = Form(""), tier_b_price: str = Form(""),
             pay_qr_caption: str = Form(""), bank_details: str = Form(""),
             pay_note: str = Form(""), review_hours: str = Form("24"),
             pay_qr: UploadFile = None, drop_pay_qr: str = Form(""),
@@ -1951,8 +1963,9 @@ def register(app, deps):
         ev.external_url = external_url.strip()[:500]
         ev.external_label = external_label.strip()[:80]
         ev.external_note = external_note.strip()
-        ev.tier_a_label, ev.tier_a_price = tier_a_label.strip()[:60], price(tier_a_price)
-        ev.tier_b_label, ev.tier_b_price = tier_b_label.strip()[:60], price(tier_b_price)
+        # The rates are edited on the registration form now - see the note on
+        # Event.tier_a_label. This page must not write them, or a save here
+        # would quietly blank the only record of what the event used to charge.
         ev.pay_qr_caption = pay_qr_caption.strip()[:120]
         ev.bank_details = bank_details.strip()
         ev.pay_note = pay_note.strip()[:200]
@@ -4615,8 +4628,7 @@ def _mail_values(ev, p, url, key) -> dict:
         "record.first_name": first,
         "record.email": p.email or "",
         "record.link": url,
-        "record.rate": (ev.tier_a_label if p.tier == "a"
-                        else ev.tier_b_label) or "",
+        "record.rate": ev.rate_label(p.tier),
         "record.amount": money(p.amount),
         "record.deadline": _fmt_when(confirm_deadline(p)),
         # Empty on an event that has never moved, which is the signal the
@@ -4922,9 +4934,13 @@ def _sample_pair():
         reward_b_value="Free",
         confirm_hours=48, reel_hours=48, review_hours=24, code_prefix="KR",
     )
+    # Two rates, unsaved like the rest of this, so a preview of the email can
+    # say which one Marc picked.
+    ev.rates = [EventRate(id=1, label="Member", amount=Decimal("1500"), position=0),
+                EventRate(id=2, label="Non-member", amount=Decimal("1800"), position=1)]
     p = EventParticipant(
         id=0, name="Marc Damil", first_name="Marc", last_name="Damil",
-        email="marc@example.com", token="sample", tier="a",
+        email="marc@example.com", token="sample", tier="1",
         amount=Decimal("1500"), review_note="The photo is too dark to read "
         "the amount.", invited_at=now - timedelta(hours=3),
     )

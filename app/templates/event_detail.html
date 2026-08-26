@@ -489,8 +489,7 @@
       {% else %}<span class="muted small">—</span>{% endif %}</td>
     {% endif %}
     {% if 'entry' in cols %}
-    <td class="sub">{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label)
-      if p.tier else '—' }}</td>
+    <td class="sub">{{ ev.rate_label(p.tier) or '—' }}</td>
     {% endif %}
     {% if 'payment' in cols %}
     <td style="white-space:nowrap">
@@ -823,7 +822,7 @@
       <div class="sub">{{ p.email }}{% if p.mobile %} · {{ p.mobile }}{% endif %}{%
         if p.sex %} · {{ 'Male' if p.sex == 'm' else 'Female' }}{% endif %}</div></td>
     <td><div class="primary">{{ money(p.amount) }}</div>
-      <div class="sub">{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label) or '—' }}</div></td>
+      <div class="sub">{{ ev.rate_label(p.tier) or '—' }}</div></td>
     <td>{% if p.proof %}
       {# Same viewer as the main list, so a receipt behaves the same way
          wherever you meet it. #}
@@ -901,7 +900,7 @@
         data-mail="{{ 1 if p.email else 0 }}"></td>
     <td><b>{{ p.full_name }}</b>
       <div class="muted small" style="margin:0">{{ p.email or 'no email on record' }}</div></td>
-    <td>{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label) or '—' }}
+    <td>{{ ev.rate_label(p.tier) or '—' }}
       <div class="muted small" style="margin:0">{{ money(p.amount) }}</div></td>
     <td>
       {% if ev.external_url and not p.external_done_at %}
@@ -1032,8 +1031,7 @@
       {% else %}<span class="muted small">—</span>{% endif %}</td>
     {% endif %}
     {% if 'entry' in gone_cols %}
-    <td class="sub">{{ (ev.tier_a_label if p.tier == 'a' else ev.tier_b_label)
-      if p.tier else '—' }}</td>
+    <td class="sub">{{ ev.rate_label(p.tier) or '—' }}</td>
     {% endif %}
     {# Money is the reason this tab most often needs more than three columns:
        somebody who paid and then dropped out is a refund, not a free slot. #}

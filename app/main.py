@@ -898,6 +898,37 @@ def startup():
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  pay_due_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
+            # Rates: from two columns on the event to a row each.
+            #
+            # Copied once per event, guarded on the event having no rows yet,
+            # and then the participants who picked 'a' or 'b' are pointed at
+            # the row that letter became. Re-running finds no letters left, so
+            # the remap is safe however many times it happens.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_rates') IS NOT NULL "
+                "AND to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  rate_look VARCHAR NOT NULL DEFAULT 'tiles'; "
+                "INSERT INTO event_rates (event_id, label, amount, position, closed) "
+                "  SELECT e.id, btrim(e.tier_a_label), e.tier_a_price, 0, FALSE "
+                "    FROM events e WHERE btrim(coalesce(e.tier_a_label,'')) <> '' "
+                "     AND NOT EXISTS (SELECT 1 FROM event_rates r WHERE r.event_id = e.id); "
+                "INSERT INTO event_rates (event_id, label, amount, position, closed) "
+                "  SELECT e.id, btrim(e.tier_b_label), e.tier_b_price, 1, FALSE "
+                "    FROM events e WHERE btrim(coalesce(e.tier_b_label,'')) <> '' "
+                "     AND NOT EXISTS (SELECT 1 FROM event_rates r WHERE r.event_id = e.id "
+                "                       AND r.position = 1); "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_rates') IS NOT NULL "
+                "AND to_regclass('public.event_participants') IS NOT NULL THEN "
+                "UPDATE event_participants ep SET tier = r.id::text "
+                "  FROM event_rates r "
+                " WHERE r.event_id = ep.event_id AND r.position = 0 AND ep.tier = 'a'; "
+                "UPDATE event_participants ep SET tier = r.id::text "
+                "  FROM event_rates r "
+                " WHERE r.event_id = ep.event_id AND r.position = 1 AND ep.tier = 'b'; "
+                "END IF; END $$;"))
             # The sign-up form builder. The table itself is new enough that
             # create_all makes it, but a gym that got the first version of it
             # has the table already, so the columns added since need saying

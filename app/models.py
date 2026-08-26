@@ -1468,12 +1468,20 @@ class Event(Base):
     external_url = Column(String)
     external_label = Column(String)          # "Register on HYROX"
     external_note = Column(Text)             # why, and why before paying
-    #: Two rates. Same shape as the two rewards, for the same reason: one price
-    #: for members and one for everybody else covers almost every event.
+    #: The first two rates this system ever had, and now only the seed the
+    #: event_rates rows were made from - see EventRate and the block in
+    #: main.py that copies them across once. Nothing reads them any more;
+    #: they stay because throwing away the only record of what an event
+    #: charged before the migration would be throwing away history.
     tier_a_label = Column(String)            # "Members"
     tier_a_price = Column(Numeric(10, 2))
     tier_b_label = Column(String)            # "Non-members"
     tier_b_price = Column(Numeric(10, 2))
+    #: How the rates are drawn on the sign-up: side-by-side tiles, one per
+    #: line, or a dropdown. Tiles read best at two or three and get cramped
+    #: on a phone at five, which is the whole reason this is a choice.
+    rate_look = Column(String, nullable=False, default="tiles",
+                       server_default="tiles")
     #: How to pay. A QR to scan, free-text bank details, or both.
     pay_qr = Column(LargeBinary)
     pay_qr_mime = Column(String)
@@ -1690,6 +1698,31 @@ class Event(Base):
         if closes.tzinfo is None:
             closes = closes.replace(tzinfo=timezone.utc)
         return now >= closes
+
+    # ---------------------------------------------------------------- rates
+    def rate_rows(self) -> list:
+        """Every rate this event has, in the order they are drawn."""
+        return sorted(self.rates or [], key=lambda r: (r.position, r.id))
+
+    def rates_open(self) -> list:
+        """The ones somebody new may still pick."""
+        return [r for r in self.rate_rows() if not r.closed]
+
+    def rate(self, key):
+        """The rate a participant picked, closed or not.
+
+        Closed ones are found on purpose: somebody who paid the early-bird
+        price still picked the early-bird rate, and the roster has to be able
+        to say so.
+        """
+        want = (key or "").strip()
+        if not want:
+            return None
+        return next((r for r in self.rate_rows() if r.key == want), None)
+
+    def rate_label(self, key) -> str:
+        r = self.rate(key)
+        return r.label if r else ""
 
     @property
     def when_note(self) -> str:
@@ -2507,6 +2540,59 @@ class SavedReport(Base):
 
 
 
+#: How the rates are drawn. Three, because there are only three shapes a
+#: short list of priced choices takes, and a fourth would be decoration.
+RATE_LOOKS = [
+    ("tiles", "Tiles"),
+    ("list", "List"),
+    ("drop", "Dropdown"),
+]
+RATE_LOOK_KEYS = [k for k, _l in RATE_LOOKS]
+
+
+class EventRate(Base):
+    """One rate somebody can pick on the sign-up: a label and what it costs.
+
+    There were two, in four columns on the event, and two covers almost every
+    event right up until the one it doesn't - early bird, student, walk-in,
+    the coach who brings four people. A row each instead, so there can be as
+    many as the gym charges.
+
+    A participant stores this row's id, and separately the amount they were
+    charged at the time. That second copy is the important one: the rate can
+    be renamed or repriced tomorrow without restating what somebody paid
+    today.
+
+    Which is also why a rate in use is never deleted, only closed. Deleting it
+    would leave a registration pointing at nothing - the money is still on the
+    row, but what they picked would have no name.
+    """
+
+    __tablename__ = "event_rates"
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"),
+                      nullable=False, index=True)
+    label = Column(String, nullable=False)
+    amount = Column(Numeric(10, 2))
+    position = Column(Integer, nullable=False, default=0)
+    #: Still valid on the registrations that picked it, no longer offered to
+    #: anybody new. The honest version of deleting an early-bird price.
+    closed = Column(Boolean, nullable=False, default=False)
+
+    event = relationship("Event", backref=backref(
+        "rates", cascade="all, delete-orphan",
+        order_by="EventRate.position"))
+
+    @property
+    def key(self) -> str:
+        """What a participant's `tier` holds. A string, because that column is."""
+        return str(self.id)
+
+    def __repr__(self):
+        return "<EventRate %s>" % (self.label,)
+
+
 class EventStation(Base):
     """One workout station on an event, in the order it is raced.
 
@@ -2752,7 +2838,10 @@ class EventParticipant(Base):
     #: default rather than nullable: everybody has a country, and a board where
     #: half the rows have no flag looks broken rather than private.
     country = Column(String, nullable=False, default="PH", server_default="PH")
-    tier = Column(String)                    # 'a' / 'b'
+    #: Which rate they picked, as the EventRate id in a string. It was 'a' or
+    #: 'b' when there could only ever be two; the migration rewrote those to
+    #: ids and nothing writes a letter any more.
+    tier = Column(String)
     #: What they owed, stored per person rather than read off the event — so a
     #: price change tomorrow never restates what somebody paid today.
     amount = Column(Numeric(10, 2))

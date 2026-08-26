@@ -60,12 +60,23 @@
   {% if tiers %}
   <div class="lbl">{{ q.title }}<span class="req">*</span></div>
   {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
-  <div class="seg">
+  {# Three shapes for the same list. Tiles read best at two or three and get
+     cramped on a phone at five, which is the whole reason this is a choice. #}
+  {% if ev.rate_look == 'drop' %}
+  <select class="q" name="tier" required>
+    <option value="">Choose&hellip;</option>
+    {% for t in tiers %}
+    <option value="{{ t.key }}">{{ t.label }} &mdash; {{ t.money }}</option>
+    {% endfor %}
+  </select>
+  {% else %}
+  <div class="seg"{% if ev.rate_look == 'list' %} style="grid-template-columns:1fr"{% endif %}>
     {% for t in tiers %}
     <label><input type="radio" name="tier" value="{{ t.key }}" required>
       {{ t.label }}<small>{{ t.money }}</small></label>
     {% endfor %}
   </div>
+  {% endif %}
   <div class="note grey">We check this on our side &mdash; pick honestly and
     we'll sort it out if it doesn't match.</div>
   {% endif %}

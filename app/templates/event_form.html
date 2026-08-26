@@ -1,120 +1,597 @@
+{# The registration form, as the thing it is: a list you drag.
+
+   The whole page is JavaScript over one document, rather than a form per
+   question, because what is being edited is the *order* as much as the
+   questions - and an order is a whole-document fact. Every change posts the
+   document to /form/save, so there is nothing to press.
+
+   The sign-up's own fields are in the list too, with a padlock on the three
+   that cannot be switched off. Sections are the containers: everything inside
+   one is a page of the form. #}
 {% extends "base.html" %}
 {% block body %}
+<style>
+.fb-save{display:inline-flex;align-items:center;gap:7px;font-size:.8rem;color:var(--muted);
+  padding:6px 11px;border-radius:20px;background:var(--wash,#f1f2f4);white-space:nowrap}
+.fb-save.busy{color:var(--teal-dark,#006a6a);background:var(--teal-tint,#e6f2f2)}
+.fb-save.bad{color:#8c2c20;background:#fdf2f2}
+.fb-save .dot{width:7px;height:7px;border-radius:50%;background:#b6bec6}
+.fb-save.busy .dot{background:var(--teal,#008080);animation:fbp .8s infinite}
+.fb-save.done .dot{background:var(--teal,#008080)}
+.fb-save.bad .dot{background:#8c2c20}
+@keyframes fbp{50%{opacity:.25}}
+
+.sec{background:#fff;border:1px solid var(--line);border-radius:14px;margin-top:16px;
+  box-shadow:0 1px 2px rgba(16,24,32,.04);overflow:hidden}
+.sec.drag{opacity:.4}
+.sechd{display:flex;align-items:flex-start;gap:11px;padding:15px 17px 14px;
+  border-bottom:1px solid var(--line);background:linear-gradient(#fbfcfd,#fff)}
+.sechd .fbpill{flex:0 0 auto;font-size:.66rem;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--teal-dark,#006a6a);background:var(--teal-tint,#e6f2f2);
+  padding:5px 9px;border-radius:6px;margin-top:3px}
+.sechd .fbwho{flex:1;min-width:0}
+.sectitle{width:100%;border:0;border-bottom:1px solid transparent;font:inherit;
+  font-size:1.05rem;font-weight:650;padding:3px 4px;background:transparent;color:var(--ink)}
+.secnote{width:100%;border:0;border-bottom:1px solid transparent;font:inherit;
+  font-size:.85rem;padding:3px 4px;background:transparent;color:var(--muted);margin-top:2px}
+.sectitle:hover,.secnote:hover{border-bottom-color:var(--line)}
+.sectitle:focus,.secnote:focus{outline:0;border-bottom-color:var(--teal,#008080);background:#fbfdfd}
+.secx{flex:0 0 auto;border:0;background:transparent;color:var(--muted);cursor:pointer;
+  font:inherit;font-size:1rem;padding:4px 7px;border-radius:7px}
+.secx:hover{background:var(--wash,#f1f2f4);color:#8c2c20}
+.grip{flex:0 0 auto;cursor:grab;color:#c2c9d0;font-size:1rem;line-height:1;
+  padding:6px 2px;user-select:none;letter-spacing:-2px}
+.grip:active{cursor:grabbing}
+.sec:hover .grip{color:#93a0ab}
+
+.qlist{padding:6px 0}
+.fld{display:flex;align-items:flex-start;gap:11px;padding:11px 17px;cursor:pointer;
+  border-left:3px solid transparent;position:relative}
+.fld:hover{background:#fbfcfd}
+.fld.open{background:#fbfdfd;border-left-color:var(--teal,#008080);cursor:default;
+  padding-top:14px;padding-bottom:16px}
+.fld.drag{opacity:.35}
+.fld + .fld{border-top:1px solid #f2f5f7}
+.fld.open + .fld,.fld + .fld.open{border-top-color:transparent}
+.fld .fbwho{flex:1;min-width:0}
+.ttl{font-weight:600;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.sub{color:var(--muted);font-size:.81rem;margin-top:1px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.fbchip{flex:0 0 auto;font-size:.74rem;color:var(--muted);background:var(--wash,#f1f2f4);
+  border:1px solid var(--line);border-radius:6px;padding:3px 8px;white-space:nowrap}
+.fbchip.req{color:#8a4a14;background:#fdf4e3;border-color:#f2e2c4}
+.fbchip.off{color:var(--muted);
+  background:repeating-linear-gradient(45deg,#f6f7f9,#f6f7f9 5px,#eef1f4 5px,#eef1f4 10px)}
+.fld.gone .ttl,.fld.gone .sub{opacity:.45}
+
+.ed{margin-top:10px;display:none}
+.fld.open .ed{display:block}
+.fld.open .sub,.fld.open .ttl{display:none}
+.fbin{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+  font:inherit;font-size:.92rem;background:#fff;color:var(--ink)}
+.fbin:focus{outline:0;border-color:var(--teal,#008080);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
+.fbin.big{font-size:1rem;font-weight:600}
+.fbin.note{font-size:.85rem;color:var(--muted);margin-top:8px}
+.two{display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap}
+select.fbin{max-width:210px;flex:0 0 auto}
+textarea.fbin{margin-top:10px;font-family:inherit;resize:vertical}
+.opts{display:none}
+.fld.has-opts .opts{display:block}
+.sw{display:inline-flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer;
+  color:var(--ink);user-select:none;position:relative}
+.sw input{position:absolute;opacity:0;pointer-events:none}
+.sw .track{width:36px;height:20px;border-radius:20px;background:#d5dbe1;position:relative;
+  transition:background .15s}
+.sw .track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+  border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw input:checked + .track{background:var(--teal,#008080)}
+.sw input:checked + .track::after{transform:translateX(16px)}
+.sw.dim{opacity:.45;cursor:not-allowed}
+.edfoot{display:flex;align-items:center;gap:14px;margin-top:13px;padding-top:12px;
+  border-top:1px solid var(--line);flex-wrap:wrap}
+.edfoot .sp{flex:1}
+.lnk{border:0;background:transparent;font:inherit;font-size:.83rem;color:var(--muted);
+  cursor:pointer;padding:5px 8px;border-radius:7px}
+.lnk:hover{background:var(--wash,#f1f2f4);color:var(--ink)}
+.lnk.bad:hover{color:#8c2c20}
+.locked{font-size:.8rem;color:var(--muted)}
+
+.rates{margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+.rlbl{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:9px}
+.rhd,.rrow{display:grid;grid-template-columns:22px 1fr 138px 96px;gap:9px;align-items:center}
+.rhd{font-size:.72rem;color:var(--muted);margin-bottom:5px}
+.rrow{margin-top:7px}
+.rrow.shut{opacity:.55}
+.rgrip{padding:2px;font-size:.9rem}
+.amt{display:flex;align-items:center;border:1px solid var(--line);border-radius:9px;
+  background:#fff;overflow:hidden}
+.amt:focus-within{border-color:var(--teal,#008080);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
+.amt span{padding:0 2px 0 11px;color:var(--muted);font-size:.92rem}
+.amt .fbin{border:0;box-shadow:none;padding-left:4px}
+.rend{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+.rx{border:0;background:transparent;color:#b9c1c8;cursor:pointer;font-size:.8rem;
+  padding:5px 7px;border-radius:7px;font-family:inherit;white-space:nowrap}
+.rx:hover{background:var(--wash,#f1f2f4);color:#8c2c20}
+.rx.mild:hover{color:var(--ink)}
+.used{font-size:.72rem;color:var(--muted);white-space:nowrap}
+.addr{margin-top:9px;border:1px dashed #cdd5dc;background:#fff;border-radius:9px;
+  padding:8px 13px;font:inherit;font-size:.83rem;color:var(--muted);cursor:pointer}
+.addr:hover{border-color:var(--teal,#008080);color:var(--teal-dark,#006a6a);
+  background:var(--teal-tint,#e6f2f2)}
+.looks{display:flex;gap:9px;flex-wrap:wrap}
+.lk{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;
+  padding:9px 13px;font-size:.85rem;cursor:pointer;background:#fff;position:relative}
+.lk input{position:absolute;opacity:0;pointer-events:none}
+.lk.on{border-color:var(--teal,#008080);background:var(--teal-tint,#e6f2f2);
+  color:var(--teal-dark,#006a6a);font-weight:600;box-shadow:inset 0 0 0 1px var(--teal,#008080)}
+.fbpv{width:26px;height:18px;border-radius:4px;background:#fff;border:1px solid #ccd4db;
+  position:relative;flex:0 0 auto}
+.fbpv::before,.fbpv::after{content:"";position:absolute;background:#c6cfd6;border-radius:1px}
+.fbpv-tiles::before{left:2px;top:2px;width:9px;height:13px}
+.fbpv-tiles::after{right:2px;top:2px;width:9px;height:13px}
+.fbpv-list::before{left:3px;top:4px;width:19px;height:3px}
+.fbpv-list::after{left:3px;top:11px;width:19px;height:3px}
+.fbpv-drop::before{left:3px;top:6px;width:12px;height:5px}
+.fbpv-drop::after{right:3px;top:8px;width:4px;height:2px}
+.lk.on .fbpv{border-color:var(--teal,#008080)}
+.lk.on .fbpv::before,.lk.on .fbpv::after{background:var(--teal,#008080)}
+
+.addq{display:block;width:calc(100% - 34px);margin:4px 17px 13px;padding:10px;
+  border:1px dashed #cdd5dc;border-radius:10px;background:#fff;color:var(--muted);
+  font:inherit;font-size:.85rem;cursor:pointer;text-align:center}
+.addq:hover{border-color:var(--teal,#008080);color:var(--teal-dark,#006a6a);
+  background:var(--teal-tint,#e6f2f2)}
+.addsec{display:flex;align-items:center;gap:12px;margin:18px 0 2px}
+.addsec .ln{flex:1;height:1px;background:#dde3e9}
+.addsec button{border:1px solid var(--line);background:#fff;border-radius:9px;
+  padding:8px 15px;font:inherit;font-size:.85rem;cursor:pointer;color:var(--ink);
+  box-shadow:0 1px 2px rgba(16,24,32,.05)}
+.addsec button:hover{border-color:var(--teal,#008080);color:var(--teal-dark,#006a6a)}
+.mark{height:2px;background:var(--teal,#008080);margin:0 17px;border-radius:2px;display:none}
+.mark.on{display:block}
+.warn{background:#fdf2f2;border:1px solid #f2d8d5;color:#8c2c20;border-radius:9px;
+  padding:10px 13px;font-size:.85rem;margin-top:11px}
+#fb{max-width:840px}
+</style>
+
 <div class="row-between">
   <div><h1 style="margin:0">Registration form</h1>
     <p class="muted small" style="margin:2px 0 0">{{ ev.name }} &middot; this is the
       form people fill in on the sign-up link, top to bottom.</p></div>
-  <div class="hdact">
+  <div class="hdact" style="align-items:center">
+    <span class="fb-save done" id="fbsave"><span class="dot"></span><span id="fbsavet">All changes saved</span></span>
     <a class="btn" href="/r/{{ ev.slug }}" target="_blank">See it</a>
     <a class="btn" href="/events/{{ ev.id }}">&larr; The event</a></div>
 </div>
 
-<div class="card" style="margin-top:12px">
-  <p class="muted small" style="margin:0">Four things are always asked, because
-    nothing works without them: <b>name</b>, <b>email</b>, <b>which rate applies</b>
-    and the <b>payment</b> that follows. They are marked &#128274; below and can be
-    moved and reworded, just not switched off. Everything else &mdash; mobile,
-    country, gender, and anything you add &mdash; is yours to arrange, make
-    optional, or turn off.</p>
-  {% if pagecount > 1 %}
-  <p class="small" style="margin:8px 0 0"><b>{{ pagecount }} pages.</b> People
-    see one at a time, with Next and Back, and nothing is saved until the last
-    page is sent.</p>
-  {% endif %}
-</div>
+<div id="fb">
+  <div class="card" style="margin-top:12px">
+    <p class="muted small" style="margin:0">Four things are always asked, because
+      nothing works without them: <b>name</b>, <b>email</b>, <b>which rate applies</b>
+      and the <b>payment</b> that follows. They&rsquo;re marked &#128274; &mdash; you
+      can move and reword them, just not switch them off. Everything else is yours.
+      <b>Drag by the handle</b> to reorder, or to move a question onto another page.
+      Nothing needs saving.</p>
+  </div>
 
-{% for q in qs %}
-{% if q.is_section %}
-{# A page break. Drawn as a divider rather than a card, because that is what it
-   does to the form and seeing it any other way invites putting it in the wrong
-   place. #}
-<div style="margin:20px 0 4px;display:flex;align-items:center;gap:10px">
-  <div style="flex:0 0 auto" class="small muted">&mdash;&mdash; new page &mdash;&mdash;</div>
-  <div style="flex:1;height:1px;background:var(--line)"></div>
-</div>
-{% endif %}
-<div class="card" style="margin-top:12px{{ ';opacity:.55' if q.hidden }}">
-  <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}">
-    <div class="row-between" style="align-items:flex-start;gap:12px;flex-wrap:wrap">
-      <div style="flex:1 1 320px;min-width:260px">
-        <div style="display:flex;align-items:center;gap:7px">
-          {% if q.locked %}<span title="Always asked">&#128274;</span>{% endif %}
-          <input name="title" value="{{ q.title }}" required
-                 style="flex:1;font-weight:600;font-size:1rem">
-        </div>
-        <input name="help" value="{{ q.help or '' }}" style="width:100%;margin-top:7px"
-               placeholder="Description &mdash; the small line under the question, optional">
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        {% if q.builtin %}
-        <span class="small muted" style="white-space:nowrap">The sign-up&rsquo;s own field</span>
-        {% else %}
-        <select name="kind" style="max-width:210px" onchange="this.form.querySelector('.opts').hidden = !{{ with_options|tojson }}.includes(this.value)">
-          {% for key, label in kinds %}
-          <option value="{{ key }}" {{ 'selected' if q.kind == key }}>{{ label }}</option>
-          {% endfor %}
-        </select>
-        {% endif %}
-        {% if not q.is_section %}
-        <label class="small" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
-          <input type="checkbox" name="required" {{ 'checked' if q.required }}
-                 {{ 'disabled' if q.locked }}> Required</label>
-        {% endif %}
-        {% if q.builtin and not q.locked %}
-        <label class="small" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
-          <input type="checkbox" name="hidden" {{ 'checked' if q.hidden }}> Don&rsquo;t ask</label>
-        {% endif %}
-      </div>
-    </div>
+  <div id="canvas"></div>
 
-    {# Only three kinds have options, so the box only exists for those. It is
-       one per line because that is the fastest way anybody has found to type
-       six of them. #}
-    <div class="opts" style="margin-top:10px" {{ 'hidden' if not q.wants_options }}>
-      <label class="small" style="font-weight:600">The options &mdash; one per line</label>
-      <textarea name="options" rows="4" style="width:100%;max-width:460px;font-size:.9rem"
-        placeholder="Small&#10;Medium&#10;Large">{{ q.options or '' }}</textarea>
-    </div>
-
-    <div class="hdact" style="margin-top:11px">
-      <button class="btn primary">Save</button>
-    </div>
-  </form>
-
-  <div class="hdact" style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line)">
-    <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}/move" style="display:inline">
-      <input type="hidden" name="dir" value="up">
-      <button class="btn" {{ 'disabled' if loop.first }}>&uarr;</button></form>
-    <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}/move" style="display:inline">
-      <input type="hidden" name="dir" value="down">
-      <button class="btn" {{ 'disabled' if loop.last }}>&darr;</button></form>
-    {% if q.builtin %}
-    <span class="small muted" style="margin-left:6px">
-      {% if q.locked %}Always asked{% else %}Untick &ldquo;Required&rdquo; to make it optional, or
-      &ldquo;Don&rsquo;t ask&rdquo; to drop it{% endif %}</span>
-    {% else %}
-    <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}/delete" style="display:inline"
-          onsubmit="return confirm({{ ('Delete this? Every answer anybody has given to it goes too.') | tojson }})">
-      <button class="btn">Delete</button></form>
-    {% endif %}
+  <div class="addsec">
+    <div class="ln"></div>
+    <button id="addsec" type="button">+ &nbsp;Add section</button>
+    <div class="ln"></div>
   </div>
 </div>
-{% endfor %}
 
-<div class="card" style="margin-top:16px">
-  <form method="post" action="/events/{{ ev.id }}/form/add"
-        style="display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap">
-    <div style="flex:1 1 300px">
-      <label class="small" style="font-weight:600">Add a question</label>
-      <input name="title" required style="width:100%"
-             placeholder="What do you want to ask?"></div>
-    <select name="kind" style="max-width:210px">
-      {% for key, label in kinds %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
-    </select>
-    <button class="btn primary">Add</button>
-  </form>
-  <p class="muted small" style="margin:9px 0 0">Pick <b>Section</b> to break the
-    form into pages &mdash; everything below it, until the next one, is a page
-    of its own. What you type is the heading people see at the top of it.</p>
-</div>
+<script>
+(function(){
+var EID = {{ ev.id }};
+var D = {{ doc|tojson }};
+var deleted = [], ratesGone = [], tmp = -1, open = null;
+
+var WITH = D.withOpts, KINDS = D.kinds, LOOKS = D.looks;
+var BUILTIN_NAME = {name:"First and last name", email:"Email address",
+  mobile:"Phone number", country:"Country, with its flag", sex:"Male or female",
+  tier:"One of your rates"};
+
+// ------------------------------------------------------------- saving
+var timer = null, flying = false, again = false;
+function pill(cls, txt){
+  var el = document.getElementById('fbsave');
+  el.className = 'fb-save ' + cls;
+  document.getElementById('fbsavet').textContent = txt;
+}
+function push(resync){
+  if (timer) clearTimeout(timer);
+  pill('busy', 'Saving…');
+  timer = setTimeout(function(){ send(resync); }, resync ? 0 : 450);
+}
+function send(resync){
+  if (flying) { again = true; return; }
+  flying = true;
+  // A resync replaces the document, and the card being edited is identified
+  // by an id the server is about to hand out for real. Remember where it is
+  // instead, and reopen whatever ends up there.
+  var spot = resync ? find(open) : null;
+  var body = {pages: D.pages, deleted: deleted, rates: D.rates,
+              ratesGone: ratesGone, look: D.look};
+  fetch('/events/' + EID + '/form/save', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function(j){
+      flying = false;
+      deleted = []; ratesGone = [];
+      // The server has just handed out real ids, and may have refused to
+      // delete a rate somebody paid. Take its word for the shape of things.
+      if (resync) {
+        D = j.doc;
+        if (spot) {
+          var pg = D.pages[spot.p], f = pg && pg.fields[spot.i];
+          open = f ? f.id : null;
+        }
+        draw();
+      }
+      else { D.rates = j.doc.rates; syncIds(j.doc); }
+      pill('done', 'All changes saved');
+      if (again) { again = false; push(true); }
+    })
+    .catch(function(){
+      flying = false;
+      pill('bad', 'Not saved — check your connection');
+    });
+}
+function syncIds(fresh){
+  // Only the ids, so typing is never interrupted by a redraw.
+  for (var p=0;p<D.pages.length && p<fresh.pages.length;p++){
+    D.pages[p].sid = fresh.pages[p].sid;
+    for (var f=0;f<D.pages[p].fields.length && f<fresh.pages[p].fields.length;f++)
+      D.pages[p].fields[f].id = fresh.pages[p].fields[f].id;
+  }
+}
+
+// ------------------------------------------------------------- drawing
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function peso(v){ return v === '' || v == null ? '—'
+  : '₱' + Number(v).toLocaleString(); }
+function kindLabel(f){
+  if (f.builtin) return "The sign-up's own field";
+  for (var i=0;i<KINDS.length;i++) if (KINDS[i][0] === f.kind) return KINDS[i][1];
+  return 'Short answer';
+}
+function subLine(f){
+  if (f.builtin === 'tier') {
+    if (!D.rates.length) return 'No rates yet';
+    return D.rates.map(function(r){
+      return esc(r.label || '(no name)') + ' ' + peso(r.amt) + (r.closed ? ' (closed)' : '');
+    }).join('  ·  ');
+  }
+  if (f.help) return esc(f.help);
+  if (f.builtin) return BUILTIN_NAME[f.builtin] || '';
+  if (WITH.indexOf(f.kind) >= 0 && f.opts)
+    return esc(f.opts.split('\n').filter(Boolean).join(' · '));
+  return kindLabel(f);
+}
+
+function ratesHTML(){
+  var h = '<div class="rates">';
+  h += '<div class="rlbl">The rates &mdash; what somebody picks, and what it costs</div>';
+  h += '<div class="rhd"><span></span><span>Label</span><span>Amount</span><span></span></div>';
+  for (var i=0;i<D.rates.length;i++){
+    var r = D.rates[i];
+    h += '<div class="rrow' + (r.closed ? ' shut' : '') + '" data-r="'+i+'">';
+    h += '<span class="grip rgrip" data-rgrip="1">⠿⠿</span>';
+    h += '<input class="fbin" data-rk="label" value="'+esc(r.label)+'" placeholder="Member">';
+    h += '<div class="amt"><span>₱</span><input class="fbin" data-rk="amt" ' +
+         'inputmode="numeric" value="'+esc(r.amt)+'" placeholder="0"></div>';
+    h += '<div class="rend">';
+    if (r.used) h += '<span class="used">'+r.used+' picked</span>';
+    if (r.closed) h += '<button type="button" class="rx mild" data-reopen="'+i+'">Reopen</button>';
+    else if (r.used) h += '<button type="button" class="rx mild" data-close="'+i+'">Close</button>';
+    else h += '<button type="button" class="rx" data-rdel="'+i+'">Remove</button>';
+    h += '</div></div>';
+  }
+  h += '<button type="button" class="addr" data-addrate="1">+ &nbsp;Add a rate</button>';
+  if (!D.rates.filter(function(r){ return !r.closed && r.label; }).length)
+    h += '<div class="warn"><b>No rates yet.</b> Nobody can register until there is ' +
+         'at least one, because the sign-up has nothing to charge.</div>';
+  h += '<div class="rlbl" style="margin-top:15px">How it looks on the form</div>';
+  h += '<div class="looks">';
+  for (var j=0;j<LOOKS.length;j++)
+    h += '<label class="lk'+(D.look===LOOKS[j][0]?' on':'')+'">' +
+         '<input type="radio" name="look" data-k="look" value="'+LOOKS[j][0]+'"'+
+         (D.look===LOOKS[j][0]?' checked':'')+'>' +
+         '<span class="fbpv fbpv-'+LOOKS[j][0]+'"></span>'+LOOKS[j][1]+'</label>';
+  h += '</div></div>';
+  return h;
+}
+
+function fieldHTML(f){
+  var withOpts = !f.builtin && WITH.indexOf(f.kind) >= 0;
+  var h = '<div class="fld' + (withOpts?' has-opts':'') + (f.off?' gone':'') +
+          '" data-f="'+f.id+'">';
+  h += '<div class="grip" title="Drag to move">⠿⠿</div>';
+  h += '<div class="fbwho">';
+  h += '<div class="ttl">' + (esc(f.title) || '<span class="muted">Untitled question</span>') +
+       (f.lock?' <span title="Always asked">&#128274;</span>':'') + '</div>';
+  h += '<div class="sub">' + subLine(f) + '</div>';
+
+  h += '<div class="ed">';
+  h += '<input class="fbin big" data-k="title" value="'+esc(f.title)+'" placeholder="Question">';
+  h += '<input class="fbin note" data-k="help" value="'+esc(f.help)+'" ' +
+       'placeholder="Description &mdash; the small line under it, optional">';
+  h += '<div class="two">';
+  if (f.builtin) {
+    h += '<span class="locked">' + (BUILTIN_NAME[f.builtin]||'') +
+         ' &mdash; the sign-up draws this one itself</span>';
+  } else {
+    h += '<select class="fbin" data-k="kind">';
+    for (var i=0;i<KINDS.length;i++)
+      h += '<option value="'+KINDS[i][0]+'"'+(f.kind===KINDS[i][0]?' selected':'')+'>'+
+           esc(KINDS[i][1])+'</option>';
+    h += '</select>';
+  }
+  h += '</div>';
+  h += '<div class="opts"><textarea class="fbin" rows="3" data-k="opts" ' +
+       'placeholder="The options &mdash; one per line">'+esc(f.opts)+'</textarea></div>';
+  if (f.builtin === 'tier') h += ratesHTML();
+
+  h += '<div class="edfoot">';
+  if (f.lock) {
+    h += '<span class="sw dim"><input type="checkbox" checked disabled><span class="track"></span>Required</span>';
+    h += '<span class="locked">Always asked</span>';
+  } else {
+    h += '<label class="sw"><input type="checkbox" data-k="req"'+(f.req?' checked':'')+
+         '><span class="track"></span>Required</label>';
+    if (f.builtin)
+      h += '<label class="sw"><input type="checkbox" data-k="ask"'+(f.off?'':' checked')+
+           '><span class="track"></span>Ask this</label>';
+  }
+  h += '<div class="sp"></div>';
+  h += '<button type="button" class="lnk" data-do="up">Move up</button>';
+  h += '<button type="button" class="lnk" data-do="down">Move down</button>';
+  if (!f.builtin) h += '<button type="button" class="lnk bad" data-do="del">Delete</button>';
+  h += '<button type="button" class="lnk" data-do="done">Done</button>';
+  h += '</div></div></div>';
+  h += '<span class="fbchip">'+esc(kindLabel(f))+'</span>';
+  h += f.off ? '<span class="fbchip off">Not asked</span>'
+             : '<span class="fbchip'+(f.req?' req':'')+'">'+(f.req?'Required':'Optional')+'</span>';
+  h += '</div>';
+  return h;
+}
+
+function draw(){
+  var out = '';
+  for (var s=0;s<D.pages.length;s++){
+    var pg = D.pages[s];
+    out += '<div class="sec" data-s="'+s+'">';
+    out += '<div class="sechd"><span class="fbpill">Page '+(s+1)+'</span>';
+    if (s) out += '<div class="grip" data-secgrip="1" title="Drag the whole page">⠿⠿</div>';
+    out += '<div class="fbwho">';
+    out += '<input class="sectitle" data-sk="title" value="'+esc(pg.title)+'" placeholder="'+
+           (s ? 'Section title' : 'First page — a heading here if you want one')+'">';
+    out += '<input class="secnote" data-sk="help" value="'+esc(pg.help)+'" ' +
+           'placeholder="A line under the heading, optional">';
+    out += '</div>';
+    if (s) out += '<button type="button" class="secx" data-secdel="'+s+
+                  '" title="Remove this page break">✕</button>';
+    out += '</div>';
+    out += '<div class="qlist" data-list="'+s+'">';
+    for (var i=0;i<pg.fields.length;i++) out += fieldHTML(pg.fields[i]);
+    out += '</div>';
+    out += '<button type="button" class="addq" data-add="'+s+
+           '">+ &nbsp;Add a question to this page</button>';
+    out += '</div>';
+  }
+  document.getElementById('canvas').innerHTML = out;
+  if (open != null) {
+    var el = document.querySelector('.fld[data-f="'+open+'"]');
+    if (el) el.classList.add('open');
+  }
+}
+
+// ------------------------------------------------------------- finding
+function find(id){
+  for (var p=0;p<D.pages.length;p++)
+    for (var i=0;i<D.pages[p].fields.length;i++)
+      if (String(D.pages[p].fields[i].id) === String(id))
+        return {p:p, i:i, f:D.pages[p].fields[i]};
+  return null;
+}
+
+var cv = document.getElementById('canvas');
+
+cv.addEventListener('click', function(e){
+  var t;
+  if ((t = e.target.closest('[data-add]'))) {
+    var pg = D.pages[+t.getAttribute('data-add')];
+    var f = {id: tmp--, title:'', help:'', kind:'text', opts:'', req:0, off:0,
+             builtin:'', lock:0};
+    pg.fields.push(f); open = f.id; draw(); focusOpen(); push(true); return;
+  }
+  if ((t = e.target.closest('[data-secdel]'))) {
+    var n = +t.getAttribute('data-secdel');
+    if (D.pages[n].sid) deleted.push(D.pages[n].sid);
+    // Its questions move up onto the page above rather than going with it.
+    D.pages[n-1].fields = D.pages[n-1].fields.concat(D.pages[n].fields);
+    D.pages.splice(n,1); draw(); push(true); return;
+  }
+  if ((t = e.target.closest('[data-addrate]'))) {
+    D.rates.push({id:null, label:'', amt:'', closed:false, used:0});
+    draw();
+    var boxes = document.querySelectorAll('.fld.open .rrow [data-rk="label"]');
+    if (boxes.length) boxes[boxes.length-1].focus();
+    return;
+  }
+  if ((t = e.target.closest('[data-rdel]'))) {
+    var r = D.rates.splice(+t.getAttribute('data-rdel'), 1)[0];
+    if (r && r.id) ratesGone.push(r.id);
+    draw(); push(true); return;
+  }
+  if ((t = e.target.closest('[data-close]'))) {
+    D.rates[+t.getAttribute('data-close')].closed = true; draw(); push(true); return;
+  }
+  if ((t = e.target.closest('[data-reopen]'))) {
+    D.rates[+t.getAttribute('data-reopen')].closed = false; draw(); push(true); return;
+  }
+  if ((t = e.target.closest('[data-do]'))) {
+    var got = find(t.closest('.fld').getAttribute('data-f')), what = t.getAttribute('data-do');
+    if (what === 'del') {
+      if (got.f.id > 0) deleted.push(got.f.id);
+      D.pages[got.p].fields.splice(got.i,1); open = null; draw(); push(true); return;
+    }
+    if (what === 'up' || what === 'down') { nudge(got, what); return; }
+    open = null; draw(); return;
+  }
+  var card = e.target.closest('.fld');
+  if (card && !card.classList.contains('open')) {
+    open = card.getAttribute('data-f'); draw(); focusOpen();
+  }
+});
+
+function focusOpen(){
+  var t = document.querySelector('.fld.open .fbin.big');
+  if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+}
+
+function nudge(got, dir){
+  // The keyboard's answer to the drag handle, and the phone's.
+  var pg = D.pages[got.p], f = pg.fields.splice(got.i,1)[0];
+  var j = got.i + (dir === 'up' ? -1 : 1);
+  if (j < 0) {
+    if (got.p === 0) { pg.fields.splice(got.i,0,f); return; }
+    D.pages[got.p-1].fields.push(f);
+  } else if (j > pg.fields.length) {
+    if (got.p === D.pages.length-1) { pg.fields.splice(got.i,0,f); return; }
+    D.pages[got.p+1].fields.unshift(f);
+  } else {
+    pg.fields.splice(j,0,f);
+  }
+  draw(); push(true);
+}
+
+// Typing is saving.
+cv.addEventListener('change', onEdit);
+cv.addEventListener('input', onEdit);
+function onEdit(e){
+  var el = e.target, k = el.getAttribute('data-k'), sk = el.getAttribute('data-sk'),
+      rk = el.getAttribute('data-rk');
+  if (sk) {
+    D.pages[+el.closest('.sec').getAttribute('data-s')][sk] = el.value;
+    push(false); return;
+  }
+  if (rk) {
+    D.rates[+el.closest('.rrow').getAttribute('data-r')][rk] = el.value;
+    push(false); return;
+  }
+  if (!k) return;
+  var got = find(el.closest('.fld').getAttribute('data-f'));
+  if (!got) return;
+  if (k === 'look') { D.look = el.value; draw(); push(true); return; }
+  if (k === 'ask') got.f.off = el.checked ? 0 : 1;
+  else if (k === 'req') got.f.req = el.checked ? 1 : 0;
+  else got.f[k] = el.value;
+
+  var card = el.closest('.fld');
+  if (k === 'kind') card.classList.toggle('has-opts', WITH.indexOf(el.value) >= 0);
+  var chips = card.querySelectorAll('.fbchip');
+  if (chips[0]) chips[0].textContent = kindLabel(got.f);
+  if (chips[1]) {
+    chips[1].textContent = got.f.off ? 'Not asked' : (got.f.req ? 'Required' : 'Optional');
+    chips[1].className = 'fbchip' + (got.f.off ? ' off' : (got.f.req ? ' req' : ''));
+  }
+  card.classList.toggle('gone', !!got.f.off);
+  push(false);
+}
+
+document.getElementById('addsec').addEventListener('click', function(){
+  D.pages.push({sid:null, title:'', help:'', fields:[]});
+  draw(); push(true);
+  var all = document.querySelectorAll('.sectitle');
+  all[all.length-1].focus();
+});
+
+// ------------------------------------------------------------- drag & drop
+var dragging = null, dragSec = null, mark = document.createElement('div');
+mark.className = 'mark';
+
+cv.addEventListener('mousedown', function(e){
+  var g = e.target.closest('.grip');
+  if (!g || g.getAttribute('data-rgrip')) return;
+  var host = g.getAttribute('data-secgrip') ? g.closest('.sec') : g.closest('.fld');
+  if (host) host.draggable = true;
+});
+cv.addEventListener('dragstart', function(e){
+  var el = e.target.closest('.fld,.sec');
+  if (!el || !el.draggable) return;
+  if (el.classList.contains('sec')) dragSec = el; else dragging = el;
+  el.classList.add('drag');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', ''); } catch(x){}
+});
+cv.addEventListener('dragend', function(){
+  Array.prototype.forEach.call(document.querySelectorAll('.drag'), function(x){
+    x.classList.remove('drag'); x.draggable = false; });
+  mark.classList.remove('on');
+  if (mark.parentNode) mark.parentNode.removeChild(mark);
+  dragging = dragSec = null;
+});
+cv.addEventListener('dragover', function(e){
+  if (!dragging && !dragSec) return;
+  e.preventDefault();
+  if (dragSec) {
+    var overS = e.target.closest('.sec');
+    if (!overS || overS === dragSec || overS.getAttribute('data-s') === '0') return;
+    var r = overS.getBoundingClientRect();
+    overS.parentNode.insertBefore(dragSec,
+      e.clientY < r.top + r.height/2 ? overS : overS.nextSibling);
+    return;
+  }
+  var list = e.target.closest('.qlist');
+  if (!list) return;
+  var over = e.target.closest('.fld');
+  mark.classList.add('on');
+  if (over && over !== dragging) {
+    var rr = over.getBoundingClientRect();
+    list.insertBefore(mark, e.clientY < rr.top + rr.height/2 ? over : over.nextSibling);
+  } else if (!over) { list.appendChild(mark); }
+});
+cv.addEventListener('drop', function(e){
+  e.preventDefault();
+  if (dragSec) { commitSections(); return; }
+  if (!dragging || !mark.parentNode) return;
+  mark.parentNode.insertBefore(dragging, mark);
+  commitFields();
+});
+
+function commitFields(){
+  var byId = {};
+  D.pages.forEach(function(p){ p.fields.forEach(function(f){ byId[f.id] = f; }); });
+  D.pages.forEach(function(p, n){
+    var list = cv.querySelector('.qlist[data-list="'+n+'"]');
+    if (!list) return;
+    p.fields = Array.prototype.map.call(list.querySelectorAll('.fld'), function(el){
+      return byId[el.getAttribute('data-f')]; }).filter(Boolean);
+  });
+  draw(); push(true);
+}
+function commitSections(){
+  var order = Array.prototype.map.call(cv.querySelectorAll('.sec'), function(el){
+    return D.pages[+el.getAttribute('data-s')]; });
+  // Page one stays page one: it is where the form starts.
+  var first = D.pages[0];
+  D.pages = [first].concat(order.filter(function(p){ return p !== first; }));
+  draw(); push(true);
+}
+
+// Somebody who closes the tab mid-keystroke should not lose it.
+window.addEventListener('beforeunload', function(e){
+  if (timer || flying) { send(false); e.preventDefault(); e.returnValue = ''; }
+});
+
+draw();
+})();
+</script>
 {% endblock %}

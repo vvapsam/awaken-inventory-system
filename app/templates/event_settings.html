@@ -153,17 +153,24 @@
 
   <h3 class="small" style="margin:20px 0 10px;letter-spacing:.06em;text-transform:uppercase;
       color:var(--muted)">What it costs</h3>
-  <div class="grid2">
-    <div><label class="small" style="font-weight:600">Rate A</label>
-      <input name="tier_a_label" value="{{ ev.tier_a_label or '' }}" placeholder="Members"></div>
-    <div><label class="small" style="font-weight:600">A · price</label>
-      <input name="tier_a_price" value="{{ ev.tier_a_price|round(0)|int if ev.tier_a_price else '' }}"
-             placeholder="1500" style="width:140px"></div>
-    <div><label class="small" style="font-weight:600">Rate B</label>
-      <input name="tier_b_label" value="{{ ev.tier_b_label or '' }}" placeholder="Non-members"></div>
-    <div><label class="small" style="font-weight:600">B · price</label>
-      <input name="tier_b_price" value="{{ ev.tier_b_price|round(0)|int if ev.tier_b_price else '' }}"
-             placeholder="2000" style="width:140px"></div>
+  {# The rates live on the registration form, with the field that asks for
+     them. Two places to edit one price is how they end up disagreeing. #}
+  <div class="card" style="margin:0;background:var(--panel, #f3f5f7)">
+    {% if ev.rate_rows() %}
+    <div style="display:flex;flex-wrap:wrap;gap:8px 22px">
+      {% for r in ev.rate_rows() %}
+      <div{% if r.closed %} style="opacity:.5"{% endif %}>
+        <b>{{ r.label }}</b> &middot; {{ peso(r.amount) }}
+        {% if r.closed %}<span class="small muted">closed</span>{% endif %}</div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="small" style="margin:0;color:#8c2c20"><b>No rates yet.</b> Nobody can
+      register until there is at least one.</p>
+    {% endif %}
+    <p class="muted small" style="margin:9px 0 0">Edited on the
+      <a href="/events/{{ ev.id }}/form">registration form</a>, next to the
+      question that asks for them.</p>
   </div>
 
   <h3 class="small" style="margin:20px 0 10px;letter-spacing:.06em;text-transform:uppercase;

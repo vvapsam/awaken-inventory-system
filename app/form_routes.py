@@ -25,15 +25,18 @@ not a counting exercise.
 
 from __future__ import annotations
 
+import re
+from decimal import Decimal, InvalidOperation
+
 from fastapi import Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from .db import get_db
 from .models import (BUILTIN_FIELDS, BUILTIN_KEYS, BUILTIN_LOCKED,
-                     Event, EventQuestion,
+                     Event, EventParticipant, EventQuestion, EventRate,
                      ParticipantAnswer, QUESTION_KINDS, QUESTION_KIND_KEYS,
-                     QUESTION_KINDS_WITH_OPTIONS)
+                     QUESTION_KINDS_WITH_OPTIONS, RATE_LOOKS, RATE_LOOK_KEYS)
 
 
 def clean_kind(raw: str) -> str:
@@ -208,6 +211,251 @@ def save_answers(db, p, answers) -> None:
     db.flush()
 
 
+# ------------------------------------------------------------------ rates
+
+def money_in(raw) -> Decimal:
+    """What somebody typed into an amount box, as a number or nothing.
+
+    Deliberately forgiving: "1,500", "P1500", "1500.00" and " 1500 " are all
+    the same amount, and refusing any of them would be pedantry aimed at the
+    person least able to do anything about it.
+    """
+    txt = re.sub(r"[^0-9.]", "", str(raw or ""))
+    if not txt:
+        return None
+    try:
+        return Decimal(txt)
+    except InvalidOperation:
+        return None
+
+
+def money_out(v) -> str:
+    """A stored amount, as it should appear back in the box."""
+    if v is None:
+        return ""
+    q = Decimal(v)
+    return str(int(q)) if q == q.to_integral_value() else str(q)
+
+
+def rate_use(db, ev) -> dict:
+    """{rate id: how many people picked it}.
+
+    The number that decides whether a rate may be deleted at all. One person
+    on it and deleting stops being tidying up and starts being erasing what
+    somebody paid for.
+    """
+    out = {}
+    rows = (db.query(EventParticipant.tier)
+            .filter(EventParticipant.event_id == ev.id).all())
+    for (t,) in rows:
+        if t:
+            out[t] = out.get(t, 0) + 1
+    return {r.id: out.get(r.key, 0) for r in ev.rate_rows()}
+
+
+def ensure_rates(db, ev) -> list:
+    """Copy an event's two old rates into rows, once, if nobody has yet.
+
+    The same thing the startup block does in SQL, in Python, for the event in
+    front of us. Both exist on purpose: the startup pass catches every event
+    at once, and this catches an event created by something that never ran it
+    - a fixture, a restore, a copy from another environment. Running twice
+    finds rows already there and does nothing.
+    """
+    if ev.rates:
+        return ev.rate_rows()
+    old = [(ev.tier_a_label, ev.tier_a_price), (ev.tier_b_label, ev.tier_b_price)]
+    made = []
+    for i, (label, price) in enumerate(old):
+        if not (label or "").strip():
+            continue
+        r = EventRate(event_id=ev.id, label=label.strip(), amount=price,
+                      position=i)
+        db.add(r)
+        made.append((("a", "b")[i], r))
+    if not made:
+        return []
+    db.flush()
+    # Whoever already picked 'a' or 'b' picked the row that letter became.
+    for letter, r in made:
+        (db.query(EventParticipant)
+           .filter(EventParticipant.event_id == ev.id,
+                   EventParticipant.tier == letter)
+           .update({"tier": r.key}, synchronize_session=False))
+    db.commit()
+    db.expire(ev, ["rates"])
+    return ev.rate_rows()
+
+
+# ------------------------------------------------------------- the document
+
+def field_json(q) -> dict:
+    return {
+        "id": q.id,
+        "title": q.title or "",
+        "help": q.help or "",
+        "kind": "tier" if q.builtin == "tier" else (q.kind or "text"),
+        "opts": q.options or "",
+        "req": 1 if q.required else 0,
+        "off": 1 if q.hidden else 0,
+        "builtin": q.builtin or "",
+        "lock": 1 if q.locked else 0,
+    }
+
+
+def doc(db, ev) -> dict:
+    """The whole form as one object, which is what the builder edits.
+
+    The builder is a page of JavaScript over this, rather than a form per
+    question, for one reason: the thing being edited is the *order* as much as
+    the questions, and an order is a whole-document fact. Sending the document
+    back means a drag, a rename and a new question are all the same save.
+    """
+    rows = ensure_builtins(db, ev)
+    ensure_rates(db, ev)
+    pages, cur = [], {"sid": None, "title": "", "help": "", "fields": []}
+    for q in rows:
+        if q.is_section:
+            if cur["fields"] or cur["sid"] is not None or pages:
+                pages.append(cur)
+            cur = {"sid": q.id, "title": q.title or "", "help": q.help or "",
+                   "fields": []}
+        else:
+            cur["fields"].append(field_json(q))
+    pages.append(cur)
+    # A leading section means page one *is* that section, not an empty page
+    # above it.
+    if len(pages) > 1 and not pages[0]["fields"] and pages[0]["sid"] is None:
+        pages = pages[1:]
+
+    use = rate_use(db, ev)
+    return {
+        "pages": pages,
+        "kinds": [[k, l] for k, l in QUESTION_KINDS if k != "section"],
+        "withOpts": list(QUESTION_KINDS_WITH_OPTIONS),
+        "looks": [[k, l] for k, l in RATE_LOOKS],
+        "look": ev.rate_look or "tiles",
+        "rates": [{"id": r.id, "label": r.label, "amt": money_out(r.amount),
+                   "closed": bool(r.closed), "used": use.get(r.id, 0)}
+                  for r in ev.rate_rows()],
+    }
+
+
+def save_doc(db, ev, body) -> None:
+    """Write the document back.
+
+    Two rules make this safe to run on every keystroke.
+
+    Nothing is deleted implicitly. A question that is simply absent from the
+    document is left alone; only the ids in `deleted` go, which means a bug in
+    the page cannot quietly take a question and its answers with it.
+
+    And a built-in is only ever edited in the ways a built-in can be. What it
+    asks for is not in this payload at all, so no amount of posting can turn
+    the mobile field into a dropdown.
+    """
+    rows = {q.id: q for q in ev.questions}
+    pos, seen = 0, set()
+
+    for n, page in enumerate(body.get("pages") or []):
+        title = (page.get("title") or "").strip()[:200]
+        help_ = (page.get("help") or "").strip()[:300]
+        sid = page.get("sid")
+        sec = rows.get(sid) if sid else None
+        if sec is not None and not sec.is_section:
+            sec = None
+        if n == 0 and not title and not help_:
+            # Page one with no heading needs no page break in front of it.
+            if sec is not None:
+                db.delete(sec)
+                sec = None
+        elif sec is None:
+            sec = EventQuestion(event_id=ev.id, title=title, kind="section",
+                                position=pos)
+            db.add(sec)
+            db.flush()
+            rows[sec.id] = sec
+        if sec is not None:
+            sec.title, sec.help = title, help_ or None
+            sec.position, pos = pos, pos + 1
+            seen.add(sec.id)
+
+        for f in page.get("fields") or []:
+            q = rows.get(f.get("id"))
+            if q is None:
+                q = EventQuestion(event_id=ev.id, title="", kind="text",
+                                  position=pos)
+                db.add(q)
+                db.flush()
+                rows[q.id] = q
+            q.title = (f.get("title") or "").strip()[:200]
+            q.help = (f.get("help") or "").strip()[:300] or None
+            if q.builtin:
+                q.required = True if q.locked else bool(f.get("req"))
+                q.hidden = False if q.locked else bool(f.get("off"))
+            else:
+                q.kind = clean_kind(f.get("kind"))
+                q.options = (f.get("opts") or "").strip() or None
+                q.required = bool(f.get("req"))
+                q.hidden = False
+            q.position, pos = pos, pos + 1
+            seen.add(q.id)
+
+    for qid in (body.get("deleted") or []):
+        q = rows.get(qid)
+        if q is not None and not q.builtin and q.id not in seen:
+            db.delete(q)
+
+    save_rates(db, ev, body)
+    db.flush()
+    db.expire(ev, ["questions"])
+    ensure_builtins(db, ev)
+    db.commit()
+
+
+def save_rates(db, ev, body) -> None:
+    """The rates, in the order they are drawn.
+
+    A rate somebody has already picked is never deleted here, whatever the
+    page asks for. It is closed instead - off the sign-up, still on their
+    registration - because the alternative is a paid row pointing at a rate
+    with no name.
+    """
+    if "rates" not in body:
+        return
+    have = {r.id: r for r in ev.rate_rows()}
+    use = rate_use(db, ev)
+    keep = set()
+    for i, item in enumerate(body.get("rates") or []):
+        label = (item.get("label") or "").strip()[:80]
+        r = have.get(item.get("id"))
+        if r is None:
+            if not label:
+                continue          # a blank new row is somebody who changed their mind
+            r = EventRate(event_id=ev.id, label=label, position=i)
+            db.add(r)
+            db.flush()
+            have[r.id] = r
+        r.label = label
+        r.amount = money_in(item.get("amt"))
+        r.closed = bool(item.get("closed"))
+        r.position = i
+        keep.add(r.id)
+
+    for rid in (body.get("ratesGone") or []):
+        r = have.get(rid)
+        if r is None or rid in keep:
+            continue
+        if use.get(rid, 0):
+            r.closed = True       # somebody paid this. It stops being offered, not history.
+        else:
+            db.delete(r)
+
+    look = (body.get("look") or "").strip()
+    if look in RATE_LOOK_KEYS:
+        ev.rate_look = look
+
+
 def register(app, deps):
     render = deps["render"]
     require = deps["require"]
@@ -230,12 +478,28 @@ def register(app, deps):
         ev = _ev(db, eid)
         if not ev:
             return RedirectResponse("/events", status_code=303)
-        rows = ensure_builtins(db, ev)
         return render(request, "event_form.html", db, staff, active="events",
-                      ev=ev, kinds=QUESTION_KINDS,
-                      with_options=QUESTION_KINDS_WITH_OPTIONS,
-                      pagecount=len([q for q in rows if q.is_section]) + 1,
-                      qs=rows)
+                      ev=ev, doc=doc(db, ev))
+
+    @app.post("/events/{eid}/form/save")
+    async def form_save_all(request: Request, eid: int,
+                            db: Session = Depends(get_db)):
+        """The whole document, on every change. There is no Save button.
+
+        Returns the document as it now stands rather than just "ok", because
+        the page has just invented ids for anything new and needs the real
+        ones - and because a rate it asked to delete may have come back as
+        closed instead, which it has to be able to show.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return JSONResponse({"ok": False}, status_code=403)
+        ev = _ev(db, eid)
+        if not ev:
+            return JSONResponse({"ok": False}, status_code=404)
+        body = await request.json()
+        save_doc(db, ev, body)
+        return JSONResponse({"ok": True, "doc": doc(db, ev)})
 
     @app.post("/events/{eid}/form/add")
     def form_add(request: Request, eid: int, title: str = Form(""),
