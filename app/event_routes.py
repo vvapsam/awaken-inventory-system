@@ -791,10 +791,16 @@ def register(app, deps):
                "sexes": SEXES, "money": money, "shut": ev.signups_shut(),
                "closes_left": left_until(ev.signup_closes),
                "pow_bits": POW_BITS, "step": kw.pop("step", 1),
-               # The gym's own questions, in order. `was` is what they typed
-               # last time round, so a form that comes back with one field
-               # missing does not throw away the other five.
-               "qs": sorted(ev.questions, key=lambda q: (q.position, q.id)),
+               # Every field on the form, in the order the builder puts them,
+               # and the same list cut into pages at each section. The page's
+               # own fields are in there too - they are rows like any other
+               # now, which is what lets the rate sit on page one.
+               #
+               # `was` is what they typed last time round, so a form that
+               # comes back with one box missing does not throw away the
+               # other five.
+               "pages": form_routes.pages(form_routes.plan(ev)),
+               "pagecount": len(form_routes.pages(form_routes.plan(ev))),
                "was": kw.pop("was", {})}
         ctx.update(kw)
         return ctx
@@ -887,9 +893,20 @@ def register(app, deps):
         country = country_code(form.get("country"))
         tier = (form.get("tier") or "").strip()
         picked = _tier(ev, tier)
-        if not (first and last and mobile and sex in ("m", "f") and picked
-                and looks_like_email(email)):
+        # What is required is whatever the form builder says is required, not
+        # what this function used to assume. Name, email and a rate are the
+        # three that cannot be switched off; the rest is the gym's business.
+        need = {q.builtin for q in form_routes.plan(ev)
+                if q.builtin and q.required}
+        if not (first and last and picked and looks_like_email(email)):
             return RedirectResponse("/r/%s?err=missing" % slug, status_code=303)
+        if ("mobile" in need and not mobile) or \
+                ("sex" in need and sex not in ("m", "f")):
+            return RedirectResponse("/r/%s?err=missing" % slug, status_code=303)
+        if sex not in ("m", "f"):
+            # An event that does not ask leaves it unset, which the board has
+            # had an "Unlisted" column for since the day it was written.
+            sex = None
         # The gym's own questions. A required one left blank is refused the
         # same way a missing email is - and the browser catches almost all of
         # them first, so this is the floor rather than the door.

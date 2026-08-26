@@ -2307,18 +2307,47 @@ def race_status(p, now=None, derived_only=False) -> str:
 #: sign-up form, not a survey tool, and every type here is one somebody would
 #: recognise from a Google Form without being told.
 QUESTION_KINDS = [
-    ("text",   "Short answer"),
-    ("para",   "Paragraph"),
-    ("number", "Number"),
-    ("choice", "Choose one"),
-    ("checks", "Tick all that apply"),
-    ("select", "Dropdown"),
-    ("date",   "Date"),
+    ("text",    "Short answer"),
+    ("para",    "Paragraph"),
+    ("number",  "Number"),
+    ("email",   "Email address"),
+    ("choice",  "Choose one"),
+    ("checks",  "Tick all that apply"),
+    ("select",  "Dropdown"),
+    ("date",    "Date"),
+    # Asks nothing. Everything below it, until the next one, is on its own
+    # page - which is the whole of how pagination works. A page break is a
+    # thing in the list rather than a setting beside it, so it reorders and
+    # deletes with the same two buttons as everything else.
+    ("section", "Section \u2014 starts a new page"),
 ]
 QUESTION_KIND_LABELS = dict(QUESTION_KINDS)
 QUESTION_KIND_KEYS = [k for k, _l in QUESTION_KINDS]
 #: The three that need a list of options written for them.
 QUESTION_KINDS_WITH_OPTIONS = ("choice", "checks", "select")
+#: Asks nothing and stores nothing.
+QUESTION_KINDS_NO_ANSWER = ("section",)
+
+#: The fields the sign-up has always had, in the order it has always drawn
+#: them. They live in the same list as everything else so they can be moved,
+#: which is the only way "put the rate on page one" is ever possible.
+#:
+#: `locked` is the honest short list: without a name and an address there is
+#: nobody to email, and without a rate there is nothing to pay. Everything
+#: else - mobile, country, gender - is a question this gym happens to ask, and
+#: the board has carried an "Unlisted" column for people with no gender since
+#: the day it was written.
+BUILTIN_FIELDS = [
+    ("name",   "Name",             True),
+    ("email",  "Email",            True),
+    ("mobile", "Mobile",           False),
+    ("country", "Country",         False),
+    ("sex",    "Gender",           False),
+    ("tier",   "Which rate applies", True),
+]
+BUILTIN_LABELS = {k: l for k, l, _r in BUILTIN_FIELDS}
+BUILTIN_LOCKED = {k for k, _l, r in BUILTIN_FIELDS if r}
+BUILTIN_KEYS = [k for k, _l, _r in BUILTIN_FIELDS]
 
 
 class EventQuestion(Base):
@@ -2356,6 +2385,16 @@ class EventQuestion(Base):
     options = Column(Text)
     required = Column(Boolean, nullable=False, default=False)
     position = Column(Integer, nullable=False, default=0)
+    #: Set when this row stands for one of the sign-up's own fields rather
+    #: than a question somebody wrote - see BUILTIN_FIELDS. The row exists so
+    #: the field can be moved and switched off; what it draws is still the
+    #: markup the page has always drawn, because a name field is not a text
+    #: question and pretending otherwise loses the autocomplete.
+    builtin = Column(String)
+    #: Not asked at all. Only ever true on a built-in that is not locked -
+    #: deleting a question is how you get rid of a question, and a built-in
+    #: cannot be deleted because it would come back on the next visit.
+    hidden = Column(Boolean, nullable=False, default=False)
 
     event = relationship("Event", backref=backref(
         "questions", cascade="all, delete-orphan",
@@ -2367,7 +2406,24 @@ class EventQuestion(Base):
 
     @property
     def wants_options(self) -> bool:
-        return self.kind in QUESTION_KINDS_WITH_OPTIONS
+        return not self.builtin and self.kind in QUESTION_KINDS_WITH_OPTIONS
+
+    @property
+    def is_section(self) -> bool:
+        return not self.builtin and self.kind == "section"
+
+    @property
+    def locked(self) -> bool:
+        """Required, and not up for discussion.
+
+        Name, email and the rate. Without the first two there is nobody to
+        email; without the third there is nothing to pay.
+        """
+        return self.builtin in BUILTIN_LOCKED
+
+    @property
+    def stores_answer(self) -> bool:
+        return not self.builtin and self.kind not in QUESTION_KINDS_NO_ANSWER
 
     def __repr__(self):
         return "<EventQuestion %s>" % (self.title,)
@@ -2436,10 +2492,11 @@ class SavedReport(Base):
     #: What it answers, in a sentence, for whoever opens the list in a year.
     notes = Column(Text)
     sql = Column(Text, nullable=False)
-    #: Set on the ones this file ships. Used once, to decide whether the report
-    #: has been seeded yet - never to overwrite. Somebody who edits a shipped
-    #: report keeps their edit through every future deploy, because the day
-    #: your own changes get silently reverted is the day you stop trusting it.
+    #: Set on the ones this file ships. A corrected shipped report reaches the
+    #: database on the next deploy, but only while `updated_at` is still null:
+    #: somebody who edits a shipped report keeps their edit through every
+    #: future deploy, because the day your own changes get silently reverted
+    #: is the day you stop trusting it.
     builtin_key = Column(String, unique=True)
     created_at = Column(DateTime(timezone=True),
                         default=lambda: datetime.now(timezone.utc))

@@ -4,11 +4,19 @@ Registered from main.py via ``register(app, deps)`` like the other feature
 modules, so this file never imports main.
 
 A Google Form, scoped to the one thing it is for. Add a question, pick a type,
-say whether it is required, drag it up or down. That is the whole feature, and
-the restraint is the point: the fields the system actually reads - name, email,
-gender, category, rate, payment - are not in here and cannot be broken from
-here. Anything in this file is a question the gym wants to ask, which is
-exactly why it can be anything.
+say whether it is required, move it up or down.
+
+The sign-up's own fields are in the same list. They have to be: "put the rate
+on the first page" and "ask for the mobile after the shirt size" are ordinary
+requests, and they are impossible if half the form is in the list and half is
+nailed into the template. So each built-in field gets a row too, marked with
+`builtin`, and the page draws the markup it always drew for it - a name field
+is not a short-answer question, and pretending otherwise loses the browser's
+autocomplete.
+
+Three of them cannot be switched off: name, email, and the rate. Without the
+first two there is nobody to email; without the third there is nothing to pay.
+Everything else, built-in or not, is a question this gym happens to ask.
 
 Answers land in their own table rather than a blob on the participant, so the
 saved-reports feature can read them. "Shirt sizes by count" is then a report,
@@ -22,8 +30,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import (Event, EventQuestion, ParticipantAnswer,
-                     QUESTION_KINDS, QUESTION_KIND_KEYS,
+from .models import (BUILTIN_FIELDS, BUILTIN_KEYS, BUILTIN_LOCKED,
+                     Event, EventQuestion,
+                     ParticipantAnswer, QUESTION_KINDS, QUESTION_KIND_KEYS,
                      QUESTION_KINDS_WITH_OPTIONS)
 
 
@@ -41,6 +50,103 @@ def renumber(ev) -> None:
     """
     for i, q in enumerate(sorted(ev.questions, key=lambda x: (x.position, x.id))):
         q.position = i
+
+
+class Ghost:
+    """A built-in field on an event whose form has never been opened.
+
+    The rows get written the first time somebody opens the builder. Until
+    then the sign-up page still has to draw six fields in the right order, so
+    it draws these: the same shape, in the order the page has always used, and
+    nothing written to the database by somebody merely looking at a form.
+    """
+
+    id = None
+    kind = "builtin"
+    options = None
+    option_list = []
+    hidden = False
+    is_section = False
+    stores_answer = False
+    wants_options = False
+
+    def __init__(self, key, label, locked, position):
+        self.builtin = key
+        self.title = label
+        self.help = None
+        self.locked = locked
+        self.required = locked
+        self.position = position
+
+
+def ensure_builtins(db, ev) -> list:
+    """Give this event's built-in fields their rows, once.
+
+    Written on the first visit to the builder rather than when the event is
+    created, so every event that already exists gets them too, and in the
+    order the sign-up page has always drawn them. Any questions already
+    written move down to sit after them - which is where they already were.
+    """
+    have = {q.builtin for q in ev.questions if q.builtin}
+    missing = [f for f in BUILTIN_FIELDS if f[0] not in have]
+    if not missing:
+        renumber(ev)
+        return sorted(ev.questions, key=lambda q: (q.position, q.id))
+    # Existing questions keep their order, below everything built-in.
+    for q in sorted(ev.questions, key=lambda q: (q.position, q.id)):
+        if not q.builtin:
+            q.position += 1000
+    for i, (key, label, locked) in enumerate(BUILTIN_FIELDS):
+        if key in have:
+            continue
+        db.add(EventQuestion(event_id=ev.id, title=label, kind="builtin",
+                             builtin=key, required=locked,
+                             position=BUILTIN_KEYS.index(key)))
+    db.flush()
+    db.expire(ev, ["questions"])
+    renumber(ev)
+    db.commit()
+    return sorted(ev.questions, key=lambda q: (q.position, q.id))
+
+
+def plan(ev) -> list:
+    """Every field on this event's sign-up, in the order it is asked.
+
+    Real rows if the builder has been opened, ghosts if it has not, and the
+    hidden ones dropped - so the page that draws the form and the page that
+    reads it back are looking at the same list.
+    """
+    rows = sorted(ev.questions, key=lambda q: (q.position, q.id))
+    have = {q.builtin for q in rows if q.builtin}
+    if not have:
+        ghosts = [Ghost(k, l, r, i) for i, (k, l, r) in enumerate(BUILTIN_FIELDS)]
+        return ghosts + [q for q in rows if not q.hidden]
+    out = [q for q in rows if not q.hidden]
+    # A field added to BUILTIN_FIELDS after this event was seeded would
+    # otherwise vanish from the form. Put it back, at the end.
+    for i, (k, l, r) in enumerate(BUILTIN_FIELDS):
+        if k not in have:
+            out.append(Ghost(k, l, r, 900 + i))
+    return out
+
+
+def pages(rows) -> list:
+    """The plan, cut into pages at every section.
+
+    A list of (section-or-None, [fields]). One page and no section header is
+    the ordinary case and the one that must stay ordinary: a form with no
+    sections is a form with no Next button.
+    """
+    out, head, cur = [], None, []
+    for q in rows:
+        if q.is_section:
+            if cur or head is not None:
+                out.append((head, cur))
+            head, cur = q, []
+        else:
+            cur.append(q)
+    out.append((head, cur))
+    return out
 
 
 def answers_for(p) -> list:
@@ -63,6 +169,10 @@ def read_answers(form, ev) -> tuple:
     """
     out, missing = {}, []
     for q in sorted(ev.questions, key=lambda x: (x.position, x.id)):
+        # A section asks nothing, and a built-in's answer is a column on the
+        # participant, not a row in here.
+        if not q.stores_answer or q.hidden:
+            continue
         key = "q%d" % q.id
         if q.kind == "checks":
             # Several boxes share one name, so take them all and keep the
@@ -120,10 +230,12 @@ def register(app, deps):
         ev = _ev(db, eid)
         if not ev:
             return RedirectResponse("/events", status_code=303)
+        rows = ensure_builtins(db, ev)
         return render(request, "event_form.html", db, staff, active="events",
                       ev=ev, kinds=QUESTION_KINDS,
                       with_options=QUESTION_KINDS_WITH_OPTIONS,
-                      qs=sorted(ev.questions, key=lambda q: (q.position, q.id)))
+                      pagecount=len([q for q in rows if q.is_section]) + 1,
+                      qs=rows)
 
     @app.post("/events/{eid}/form/add")
     def form_add(request: Request, eid: int, title: str = Form(""),
@@ -134,9 +246,14 @@ def register(app, deps):
         ev = _ev(db, eid)
         if not ev:
             return RedirectResponse("/events", status_code=303)
+        ensure_builtins(db, ev)
         clean = title.strip()[:200]
         if not clean:
-            return back(eid)
+            # A section is a page break, and a page break with no name is a
+            # perfectly ordinary thing to want.
+            if clean_kind(kind) != "section":
+                return back(eid)
+            clean = "Next"
         db.add(EventQuestion(event_id=eid, title=clean, kind=clean_kind(kind),
                              position=len(ev.questions)))
         db.commit()
@@ -146,7 +263,7 @@ def register(app, deps):
     def form_save(request: Request, eid: int, qid: int, title: str = Form(""),
                   help: str = Form(""), kind: str = Form("text"),
                   options: str = Form(""), required: str = Form(""),
-                  db: Session = Depends(get_db)):
+                  hidden: str = Form(""), db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
             return redir
@@ -157,9 +274,15 @@ def register(app, deps):
         if clean:
             q.title = clean
         q.help = help.strip()[:300] or None
-        q.kind = clean_kind(kind)
-        q.options = options.strip() or None
-        q.required = required == "on"
+        if not q.builtin:
+            q.kind = clean_kind(kind)
+            q.options = options.strip() or None
+        # A built-in can be reworded, moved, and - unless it is one of the
+        # three - switched off. What it asks for is not up for editing: a
+        # mobile field that has become a dropdown is not a mobile field.
+        q.required = True if q.locked else (required == "on")
+        if q.builtin and not q.locked:
+            q.hidden = hidden == "on"
         db.commit()
         return back(eid)
 
@@ -196,13 +319,17 @@ def register(app, deps):
         The cascade is deliberate. An answer to a question nobody can read any
         more is not a record, it is a column of orphaned text that shows up in
         an export with no heading.
+
+        Built-in fields do not go this way. Deleting one would only mean it
+        came back on the next visit, so the ones that can be switched off are
+        switched off instead.
         """
         staff, redir = guard(request, db)
         if redir:
             return redir
         ev = _ev(db, eid)
         q = db.get(EventQuestion, qid)
-        if ev and q and q.event_id == eid:
+        if ev and q and q.event_id == eid and not q.builtin:
             db.delete(q)
             db.flush()
             renumber(ev)

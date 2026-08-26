@@ -2,41 +2,68 @@
 {% block body %}
 <div class="row-between">
   <div><h1 style="margin:0">Registration form</h1>
-    <p class="muted small" style="margin:2px 0 0">{{ ev.name }} &middot; extra
-      questions, asked after the usual details and before the payment step.</p></div>
-  <div class="hdact"><a class="btn" href="/events/{{ ev.id }}">&larr; The event</a></div>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }} &middot; this is the
+      form people fill in on the sign-up link, top to bottom.</p></div>
+  <div class="hdact">
+    <a class="btn" href="/r/{{ ev.slug }}" target="_blank">See it</a>
+    <a class="btn" href="/events/{{ ev.id }}">&larr; The event</a></div>
 </div>
 
 <div class="card" style="margin-top:12px">
-  <p class="muted small" style="margin:0">Name, email, gender, category, rate and
-    payment are always asked &mdash; the heats, the board and the results are
-    built from them, so they are not in this list. Everything here is yours.</p>
+  <p class="muted small" style="margin:0">Four things are always asked, because
+    nothing works without them: <b>name</b>, <b>email</b>, <b>which rate applies</b>
+    and the <b>payment</b> that follows. They are marked &#128274; below and can be
+    moved and reworded, just not switched off. Everything else &mdash; mobile,
+    country, gender, and anything you add &mdash; is yours to arrange, make
+    optional, or turn off.</p>
+  {% if pagecount > 1 %}
+  <p class="small" style="margin:8px 0 0"><b>{{ pagecount }} pages.</b> People
+    see one at a time, with Next and Back, and nothing is saved until the last
+    page is sent.</p>
+  {% endif %}
 </div>
-
-{% if not qs %}
-<div class="card" style="margin-top:12px">
-  <p class="muted" style="margin:0">No extra questions yet. Add one below and it
-    appears on the sign-up link straight away.</p></div>
-{% endif %}
 
 {% for q in qs %}
-<div class="card" style="margin-top:12px">
+{% if q.is_section %}
+{# A page break. Drawn as a divider rather than a card, because that is what it
+   does to the form and seeing it any other way invites putting it in the wrong
+   place. #}
+<div style="margin:20px 0 4px;display:flex;align-items:center;gap:10px">
+  <div style="flex:0 0 auto" class="small muted">&mdash;&mdash; new page &mdash;&mdash;</div>
+  <div style="flex:1;height:1px;background:var(--line)"></div>
+</div>
+{% endif %}
+<div class="card" style="margin-top:12px{{ ';opacity:.55' if q.hidden }}">
   <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}">
     <div class="row-between" style="align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div style="flex:1 1 320px;min-width:260px">
-        <input name="title" value="{{ q.title }}" required
-               style="width:100%;font-weight:600;font-size:1rem">
+        <div style="display:flex;align-items:center;gap:7px">
+          {% if q.locked %}<span title="Always asked">&#128274;</span>{% endif %}
+          <input name="title" value="{{ q.title }}" required
+                 style="flex:1;font-weight:600;font-size:1rem">
+        </div>
         <input name="help" value="{{ q.help or '' }}" style="width:100%;margin-top:7px"
                placeholder="Description &mdash; the small line under the question, optional">
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select name="kind" style="max-width:190px" onchange="this.form.querySelector('.opts').hidden = !{{ with_options|tojson }}.includes(this.value)">
+        {% if q.builtin %}
+        <span class="small muted" style="white-space:nowrap">The sign-up&rsquo;s own field</span>
+        {% else %}
+        <select name="kind" style="max-width:210px" onchange="this.form.querySelector('.opts').hidden = !{{ with_options|tojson }}.includes(this.value)">
           {% for key, label in kinds %}
           <option value="{{ key }}" {{ 'selected' if q.kind == key }}>{{ label }}</option>
           {% endfor %}
         </select>
+        {% endif %}
+        {% if not q.is_section %}
         <label class="small" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
-          <input type="checkbox" name="required" {{ 'checked' if q.required }}> Required</label>
+          <input type="checkbox" name="required" {{ 'checked' if q.required }}
+                 {{ 'disabled' if q.locked }}> Required</label>
+        {% endif %}
+        {% if q.builtin and not q.locked %}
+        <label class="small" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+          <input type="checkbox" name="hidden" {{ 'checked' if q.hidden }}> Don&rsquo;t ask</label>
+        {% endif %}
       </div>
     </div>
 
@@ -61,9 +88,15 @@
     <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}/move" style="display:inline">
       <input type="hidden" name="dir" value="down">
       <button class="btn" {{ 'disabled' if loop.last }}>&darr;</button></form>
+    {% if q.builtin %}
+    <span class="small muted" style="margin-left:6px">
+      {% if q.locked %}Always asked{% else %}Untick &ldquo;Required&rdquo; to make it optional, or
+      &ldquo;Don&rsquo;t ask&rdquo; to drop it{% endif %}</span>
+    {% else %}
     <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}/delete" style="display:inline"
-          onsubmit="return confirm('Delete this question? Every answer anybody has given to it goes too.')">
+          onsubmit="return confirm({{ ('Delete this? Every answer anybody has given to it goes too.') | tojson }})">
       <button class="btn">Delete</button></form>
+    {% endif %}
   </div>
 </div>
 {% endfor %}
@@ -75,10 +108,13 @@
       <label class="small" style="font-weight:600">Add a question</label>
       <input name="title" required style="width:100%"
              placeholder="What do you want to ask?"></div>
-    <select name="kind" style="max-width:190px">
+    <select name="kind" style="max-width:210px">
       {% for key, label in kinds %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
     </select>
     <button class="btn primary">Add</button>
   </form>
+  <p class="muted small" style="margin:9px 0 0">Pick <b>Section</b> to break the
+    form into pages &mdash; everything below it, until the next one, is a page
+    of its own. What you type is the heading people see at the top of it.</p>
 </div>
 {% endblock %}

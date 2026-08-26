@@ -898,6 +898,20 @@ def startup():
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  pay_due_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
+            # The sign-up form builder. The table itself is new enough that
+            # create_all makes it, but a gym that got the first version of it
+            # has the table already, so the columns added since need saying
+            # out loud: the description line, and the two that let a built-in
+            # field sit in the same list as the questions.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_questions') IS NOT NULL THEN "
+                "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
+                "  help VARCHAR; "
+                "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
+                "  builtin VARCHAR; "
+                "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
+                "  hidden BOOLEAN NOT NULL DEFAULT FALSE; "
+                "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
             # visible and reversible.

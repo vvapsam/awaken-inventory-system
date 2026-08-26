@@ -69,6 +69,18 @@ button.go{width:100%;background:var(--teal);color:#fff;border:0;border-radius:11
 button.go:disabled{background:#dfe4e9;color:#96a0a9;cursor:default}
 a.go{display:block;text-align:center;text-decoration:none;background:var(--black);
   color:#fff;border-radius:11px;padding:15px;font-weight:650;font-size:1rem;margin-top:6px}
+/* The small grey line under a question. */
+.hint{font-size:.84rem;color:var(--muted);margin:-4px 0 8px;line-height:1.4}
+.pghead{margin:22px 0 4px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.pghead .pgt{font-size:1.02rem;font-weight:650}
+.pghead p{margin:3px 0 0;color:var(--muted);font-size:.88rem}
+.pgof{margin:18px 0 -8px;font-size:.72rem;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);text-align:right}
+.pgnav{display:flex;gap:9px;align-items:stretch}
+.pgnav .go{flex:1}
+.pgnav .back{flex:0 0 auto;background:#fff;color:var(--muted);border:1px solid var(--line);
+  border-radius:11px;padding:15px 20px;font-weight:650;font-size:1rem;
+  font-family:inherit;cursor:pointer;margin-top:20px}
 .note{border-radius:9px;padding:12px 14px;font-size:.85rem;margin:14px 0 0}
 .note.grey{background:var(--wash);border:1px solid var(--wash-line);color:#4b535b}
 .note.warn{background:var(--amber-bg);color:var(--amber)}
@@ -168,7 +180,7 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
 
   <div class="steps">
     <div class="s now"><div class="i">1</div><div><b>Your details</b>
-      <small>Name, email, mobile</small></div></div>
+      <small>{{ "A few questions" if pagecount > 1 else "Name, email, and which rate applies" }}</small></div></div>
     {% if ev.external_url %}
     <div class="s"><div class="i">2</div><div><b>{{ ev.external_label or 'Register with the organiser' }}</b>
       <small>On their own site — we can't do this bit for you</small></div></div>
@@ -216,54 +228,22 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     <div class="hp"><label>Website<input type="text" name="website" tabindex="-1"
       autocomplete="off"></label></div>
 
-    {# Pre-filled when we already have a row for them — somebody put on the
-       list by hand, following the link in their email. Asking a person to
-       retype the name you already addressed the email to reads as not having
-       been expected. #}
-    <div class="lbl">Name<span class="req">*</span></div>
-    <div class="row2">
-      <input type="text" name="first_name" placeholder="First" required
-             autocomplete="given-name" value="{{ p.given if p }}">
-      <input type="text" name="last_name" placeholder="Last" required
-             autocomplete="family-name" value="{{ p.family if p }}">
+    {# Every field, in the order the form builder puts them, cut into pages
+       at each section. All of them are in the page; JavaScript shows one at a
+       time. One form and one submit, so Back never loses anything, nothing
+       half-finished is ever written, and with no JavaScript at all it is one
+       long page that still works. #}
+    {% for head, fields in pages %}
+    <div class="pg" data-pg="{{ loop.index }}" {{ 'hidden' if not loop.first }}>
+      {% if head %}
+      <div class="pghead">
+        <div class="pgt">{{ head.title }}</div>
+        {% if head.help %}<p>{{ head.help }}</p>{% endif %}
+      </div>
+      {% endif %}
+      {% for q in fields %}{% include "_field.html" %}{% endfor %}
     </div>
-    <div class="lbl">Email<span class="req">*</span></div>
-    <input type="email" name="email" placeholder="you@example.com" required
-           autocomplete="email" autocapitalize="none"
-           value="{{ p.email or '' if p }}">
-    <div class="lbl">Mobile<span class="req">*</span></div>
-    <input type="tel" name="mobile" placeholder="0917 000 0000" required
-           autocomplete="tel" value="{{ p.mobile or '' if p }}">
-    <div class="lbl">Country</div>
-    <select name="country" autocomplete="country">
-      {% for code, cname in COUNTRIES %}
-      <option value="{{ code }}" {{ 'selected' if country_code(p.country if p else None) == code }}>{{ flag(code) }} {{ cname }}</option>
-      {% endfor %}
-    </select>
-    <div class="note grey">For the flag beside your name on the board.</div>
-    <div class="lbl">Gender<span class="req">*</span></div>
-    <div class="seg">
-      {% for k, label in sexes %}
-      <label><input type="radio" name="sex" value="{{ k }}" required
-        {{ 'checked' if p and p.sex == k }}>{{ label }}</label>
-      {% endfor %}
-    </div>
-    {% if tiers %}
-    <div class="lbl">Which rate applies<span class="req">*</span></div>
-    <div class="seg">
-      {% for t in tiers %}
-      <label><input type="radio" name="tier" value="{{ t.key }}" required>
-        {{ t.label }}<small>{{ t.money }}</small></label>
-      {% endfor %}
-    </div>
-    <div class="note grey">We check this on our side — pick honestly and we'll
-      sort it out if it doesn't match.</div>
-    {% endif %}
-
-    {# The gym's own questions. After the details, before the payment step:
-       nobody abandons a sign-up at the shirt size and plenty abandon at the
-       payment. #}
-    {% if qs %}{% include "_questions.html" %}{% endif %}
+    {% endfor %}
 
     {# Only drawn if the puzzle could not run at all. #}
     <div id="fallback" hidden>
@@ -272,7 +252,16 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
         <input type="text" name="qanswer" inputmode="numeric" autocomplete="off"></div>
     </div>
 
+    {% if pages|length > 1 %}
+    <div class="pgof" id="pgof">1 of {{ pages|length }}</div>
+    <div class="pgnav">
+      <button type="button" class="back" id="back" hidden>Back</button>
+      <button type="button" class="go next" id="next">Next</button>
+      <button class="go" id="submit" disabled hidden>Just a moment…</button>
+    </div>
+    {% else %}
     <button class="go" id="submit" disabled>Just a moment…</button>
+    {% endif %}
   </form>
   {% endif %}
 </div>
@@ -390,6 +379,49 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
 </div>
 
 {% if step == 0 and not shut %}
+<script>
+// The form in pages. Everything is already in the page; this shows one chunk
+// at a time and sends the lot in one go at the end.
+//
+// One POST, not one per page, and that is the whole reason it is done here
+// rather than on the server: nothing half-finished is ever written, Back
+// costs nothing and loses nothing, and with this script blocked the form is
+// simply one long page that still works.
+(function(){
+  var pgs = [].slice.call(document.querySelectorAll('#reg .pg'));
+  if (pgs.length < 2) return;
+  var next = document.getElementById('next'), back = document.getElementById('back'),
+      send = document.getElementById('submit'), of = document.getElementById('pgof'),
+      at = 0;
+  function show(i){
+    at = i;
+    pgs.forEach(function(pg, n){ pg.hidden = n !== i; });
+    back.hidden = i === 0;
+    next.hidden = i === pgs.length - 1;
+    send.hidden = i !== pgs.length - 1;
+    of.textContent = (i + 1) + ' of ' + pgs.length;
+    window.scrollTo(0, 0);
+  }
+  // Only this page's fields, or the browser refuses to move on because of a
+  // required box three pages down that nobody has reached yet.
+  function ok(i){
+    var bad = null;
+    [].slice.call(pgs[i].querySelectorAll('input,select,textarea')).forEach(function(el){
+      if (!el.checkValidity() && !bad) bad = el;
+    });
+    if (bad) { bad.reportValidity(); return false; }
+    return true;
+  }
+  next.addEventListener('click', function(){ if (ok(at)) show(at + 1); });
+  back.addEventListener('click', function(){ show(at - 1); });
+  // Enter on a text box should mean Next, not send the half-filled form.
+  document.getElementById('reg').addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && at < pgs.length - 1 &&
+        e.target.tagName !== 'TEXTAREA') { e.preventDefault(); next.click(); }
+  });
+  show(0);
+})();
+</script>
 <script>
 // A small sum the browser has to do before the form will send. Half a second on
 // a phone and nobody notices, because they are still typing — but a script

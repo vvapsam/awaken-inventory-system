@@ -1,0 +1,130 @@
+{# One field on the sign-up form, whether it is one of the page's own or a
+   question the gym wrote.
+
+   Both live in the same list so both can be moved, which is the only way
+   "put the rate on the first page" is ever possible. What each one draws is
+   still what it always drew: a name field is not a short-answer question, and
+   treating it as one loses the browser's autocomplete and the phone's
+   keyboard.
+
+   Questions come back as `q<id>` - the id rather than the title, because a
+   question that gets retitled is still the same question and the answers
+   already given to it must not come loose. #}
+{% set req = q.required %}
+
+{% if q.builtin == 'name' %}
+  <div class="lbl">{{ q.title }}<span class="req">*</span></div>
+  {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
+  <div class="row2">
+    <input type="text" name="first_name" placeholder="First" required
+           autocomplete="given-name" value="{{ p.given if p }}">
+    <input type="text" name="last_name" placeholder="Last" required
+           autocomplete="family-name" value="{{ p.family if p }}">
+  </div>
+
+{% elif q.builtin == 'email' %}
+  <div class="lbl">{{ q.title }}<span class="req">*</span></div>
+  {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
+  <input type="email" name="email" placeholder="you@example.com" required
+         autocomplete="email" autocapitalize="none"
+         value="{{ p.email or '' if p }}">
+
+{% elif q.builtin == 'mobile' %}
+  <div class="lbl">{{ q.title }}{% if req %}<span class="req">*</span>
+    {% else %}<span class="opt">&nbsp;&mdash; optional</span>{% endif %}</div>
+  {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
+  <input type="tel" name="mobile" placeholder="0917 000 0000" {{ 'required' if req }}
+         autocomplete="tel" value="{{ p.mobile or '' if p }}">
+
+{% elif q.builtin == 'country' %}
+  <div class="lbl">{{ q.title }}</div>
+  <select name="country" autocomplete="country">
+    {% for code, cname in COUNTRIES %}
+    <option value="{{ code }}" {{ 'selected' if country_code(p.country if p else None) == code }}>{{ flag(code) }} {{ cname }}</option>
+    {% endfor %}
+  </select>
+  <div class="note grey">{{ q.help or 'For the flag beside your name on the board.' }}</div>
+
+{% elif q.builtin == 'sex' %}
+  <div class="lbl">{{ q.title }}{% if req %}<span class="req">*</span>
+    {% else %}<span class="opt">&nbsp;&mdash; optional</span>{% endif %}</div>
+  {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
+  <div class="seg">
+    {% for k, label in sexes %}
+    <label><input type="radio" name="sex" value="{{ k }}" {{ 'required' if req }}
+      {{ 'checked' if p and p.sex == k }}>{{ label }}</label>
+    {% endfor %}
+  </div>
+
+{% elif q.builtin == 'tier' %}
+  {% if tiers %}
+  <div class="lbl">{{ q.title }}<span class="req">*</span></div>
+  {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
+  <div class="seg">
+    {% for t in tiers %}
+    <label><input type="radio" name="tier" value="{{ t.key }}" required>
+      {{ t.label }}<small>{{ t.money }}</small></label>
+    {% endfor %}
+  </div>
+  <div class="note grey">We check this on our side &mdash; pick honestly and
+    we'll sort it out if it doesn't match.</div>
+  {% endif %}
+
+{% else %}
+  <div class="lbl">{{ q.title }}{% if req %}<span class="req">*</span>
+    {% else %}<span class="opt">&nbsp;&mdash; optional</span>{% endif %}</div>
+  {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
+
+  {% if q.kind == 'para' %}
+    <textarea name="q{{ q.id }}" rows="3" {{ 'required' if req }}
+      maxlength="2000">{{ was.get(q.id, '') }}</textarea>
+
+  {% elif q.kind == 'number' %}
+    <input type="text" inputmode="numeric" name="q{{ q.id }}"
+           value="{{ was.get(q.id, '') }}" {{ 'required' if req }}
+           pattern="[0-9]*">
+
+  {% elif q.kind == 'email' %}
+    {# The browser does the checking, and the phone offers the @ key. #}
+    <input type="email" name="q{{ q.id }}" value="{{ was.get(q.id, '') }}"
+           {{ 'required' if req }} autocapitalize="none" maxlength="200"
+           placeholder="name@example.com">
+
+  {% elif q.kind == 'date' %}
+    <input type="date" name="q{{ q.id }}" value="{{ was.get(q.id, '') }}"
+           {{ 'required' if req }}>
+
+  {% elif q.kind == 'select' %}
+    <select class="q" name="q{{ q.id }}" {{ "required" if req }}>
+      <option value="">Choose&hellip;</option>
+      {% for o in q.option_list %}
+      <option value="{{ o }}" {{ 'selected' if was.get(q.id) == o }}>{{ o }}</option>
+      {% endfor %}
+    </select>
+
+  {% elif q.kind == 'choice' %}
+    {# One column rather than two: an option here is a sentence, not "Male". #}
+    <div class="seg" style="grid-template-columns:1fr">
+      {% for o in q.option_list %}
+      <label><input type="radio" name="q{{ q.id }}" value="{{ o }}"
+        {{ 'checked' if was.get(q.id) == o }} {{ 'required' if req }}>{{ o }}</label>
+      {% endfor %}
+    </div>
+
+  {% elif q.kind == 'checks' %}
+    {# Several boxes share one name, and none of them carries `required`: the
+       browser would then demand every box rather than at least one. The
+       server decides - see form_routes.read_answers. #}
+    {% set ticked = (was.get(q.id, '') or '').split('\n') %}
+    <div class="seg" style="grid-template-columns:1fr">
+      {% for o in q.option_list %}
+      <label><input type="checkbox" name="q{{ q.id }}" value="{{ o }}"
+        {{ 'checked' if o in ticked }}>{{ o }}</label>
+      {% endfor %}
+    </div>
+
+  {% else %}
+    <input type="text" name="q{{ q.id }}" value="{{ was.get(q.id, '') }}"
+           {{ 'required' if req }} maxlength="500">
+  {% endif %}
+{% endif %}

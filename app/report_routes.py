@@ -115,8 +115,8 @@ def cell(v) -> str:
     return str(v)
 
 
-#: The report this file ships with. Seeded once, by key, and never overwritten
-#: afterwards - see SavedReport.builtin_key.
+#: The report this file ships with. Seeded by key, and kept current until
+#: somebody edits it - see seed() and SavedReport.builtin_key.
 #:
 #: Every derived number in it is also computed in Python somewhere, which is
 #: the risk with a report written in SQL: two definitions of the same thing,
@@ -157,7 +157,9 @@ split AS (
   SELECT
     sr.participant_id,
     lower(es.name) AS station,
-    EXTRACT(EPOCH FROM (sr.ended_at - sr.started_at))::int AS secs
+    -- floor, not round: Python's int() truncates, and every screen in
+    -- the system reads these through it.
+    floor(EXTRACT(EPOCH FROM (sr.ended_at - sr.started_at)))::int AS secs
   FROM station_runs sr
   JOIN event_stations es ON es.id = sr.station_id
   WHERE sr.started_at IS NOT NULL AND sr.ended_at IS NOT NULL
@@ -178,7 +180,10 @@ total AS (
   SELECT
     h.*,
     CASE WHEN h.finished_at IS NOT NULL AND h.heat_start IS NOT NULL
-         THEN EXTRACT(EPOCH FROM (h.finished_at - h.heat_start))::int
+         -- floor for the same reason as the splits above: race_seconds is
+         -- an int() of the difference, and ::int alone would round a 20:21.5
+         -- finish up to 20:22 while every other screen said 20:21.
+         THEN floor(EXTRACT(EPOCH FROM (h.finished_at - h.heat_start)))::int
     END AS total_s
   FROM heat h
 )
@@ -251,13 +256,22 @@ BUILTINS = [
 
 
 def seed(db: Session) -> None:
-    """Put the shipped reports in, once each, and never touch them again."""
+    """Put the shipped reports in, and keep the untouched ones current.
+
+    `updated_at` is only ever set by somebody saving a report, so a shipped
+    one that still has none is a report nobody has edited - and correcting the
+    SQL in this file is meant to reach it. The moment anybody saves it, it is
+    theirs: the day your own changes get silently reverted is the day you stop
+    trusting the thing.
+    """
     for b in BUILTINS:
-        if db.query(SavedReport).filter(
-                SavedReport.builtin_key == b["key"]).first():
-            continue
-        db.add(SavedReport(name=b["name"], notes=b["notes"], sql=b["sql"],
-                           builtin_key=b["key"]))
+        row = db.query(SavedReport).filter(
+            SavedReport.builtin_key == b["key"]).first()
+        if row is None:
+            db.add(SavedReport(name=b["name"], notes=b["notes"], sql=b["sql"],
+                               builtin_key=b["key"]))
+        elif row.updated_at is None and row.sql != b["sql"]:
+            row.sql, row.name, row.notes = b["sql"], b["name"], b["notes"]
     db.commit()
 
 
