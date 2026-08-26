@@ -49,7 +49,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
   color:var(--muted);margin:18px 0 8px}
 .lbl .req{color:#c0392b;margin-left:3px}
 .lbl .opt{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted)}
-input[type=text],input[type=email],input[type=tel]{width:100%;border:1px solid var(--line);
+input[type=text],input[type=email],input[type=tel],input[type=date],
+textarea,select.q{width:100%;border:1px solid var(--line);
   border-radius:9px;padding:12px 13px;font-size:.97rem;font-family:inherit;color:var(--ink);
   outline:0;background:#fff}
 input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
@@ -258,6 +259,11 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     <div class="note grey">We check this on our side — pick honestly and we'll
       sort it out if it doesn't match.</div>
     {% endif %}
+
+    {# The gym's own questions. After the details, before the payment step:
+       nobody abandons a sign-up at the shirt size and plenty abandon at the
+       payment. #}
+    {% if qs %}{% include "_questions.html" %}{% endif %}
 
     {# Only drawn if the puzzle could not run at all. #}
     <div id="fallback" hidden>

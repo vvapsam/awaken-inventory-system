@@ -2303,6 +2303,110 @@ def race_status(p, now=None, derived_only=False) -> str:
     return "registered"
 
 
+#: The question types, and what each one is for. Deliberately short: this is a
+#: sign-up form, not a survey tool, and every type here is one somebody would
+#: recognise from a Google Form without being told.
+QUESTION_KINDS = [
+    ("text",   "Short answer"),
+    ("para",   "Paragraph"),
+    ("number", "Number"),
+    ("choice", "Choose one"),
+    ("checks", "Tick all that apply"),
+    ("select", "Dropdown"),
+    ("date",   "Date"),
+]
+QUESTION_KIND_LABELS = dict(QUESTION_KINDS)
+QUESTION_KIND_KEYS = [k for k, _l in QUESTION_KINDS]
+#: The three that need a list of options written for them.
+QUESTION_KINDS_WITH_OPTIONS = ("choice", "checks", "select")
+
+
+class EventQuestion(Base):
+    """One extra question on one event's sign-up form.
+
+    The fields the system needs - name, email, gender, category, rate, payment
+    - stay exactly where they are, in the page, in code. These are the ones the
+    gym wants to ask on top: shirt size, injuries, whether they have raced
+    before. Nothing here is read by the heats, the board or the results, which
+    is what lets them be anything at all.
+
+    Ordered by `position`, and drawn after the fixed fields on the first step.
+    Before the payment step, never after: nobody abandons a sign-up at the
+    shirt size and plenty abandon at the payment.
+    """
+
+    __tablename__ = "event_questions"
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"),
+                      nullable=False, index=True)
+    title = Column(String, nullable=False)
+    #: The small grey line under the question. Optional, and worth having for
+    #: anything where the answer depends on knowing something first.
+    help = Column(String)
+    kind = Column(String, nullable=False, default="text")
+    #: One option per line, for the three kinds that have them. Text rather
+    #: than a table: an option has no identity worth keeping - renaming one is
+    #: renaming a word, not migrating a row - and a textarea is the fastest
+    #: way anybody has found to type six of them.
+    options = Column(Text)
+    required = Column(Boolean, nullable=False, default=False)
+    position = Column(Integer, nullable=False, default=0)
+
+    event = relationship("Event", backref=backref(
+        "questions", cascade="all, delete-orphan",
+        order_by="EventQuestion.position"))
+
+    @property
+    def option_list(self) -> list:
+        return [x.strip() for x in (self.options or "").splitlines() if x.strip()]
+
+    @property
+    def wants_options(self) -> bool:
+        return self.kind in QUESTION_KINDS_WITH_OPTIONS
+
+    def __repr__(self):
+        return "<EventQuestion %s>" % (self.title,)
+
+
+class ParticipantAnswer(Base):
+    """What one person answered to one question.
+
+    A row per answer rather than a JSON blob on the participant, for one
+    reason: the saved-reports feature can read a table. "Shirt sizes by count"
+    is then a report somebody writes once, instead of a spreadsheet somebody
+    counts every time.
+
+    Ticked boxes are stored as one row with the choices joined by a newline.
+    They are read back as a list and written out joined by a comma, and that
+    is the whole of it - a second table so that "Large, Medium" could be two
+    rows would buy nothing anybody has asked for.
+    """
+
+    __tablename__ = "participant_answers"
+    __table_args__ = (UniqueConstraint("participant_id", "question_id"),)
+
+    id = Column(Integer, primary_key=True)
+    participant_id = Column(Integer,
+                            ForeignKey("event_participants.id",
+                                       ondelete="CASCADE"),
+                            nullable=False, index=True)
+    question_id = Column(Integer,
+                         ForeignKey("event_questions.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    value = Column(Text)
+
+    question = relationship("EventQuestion")
+    participant = relationship("EventParticipant", backref=backref(
+        "answers", cascade="all, delete-orphan"))
+
+    @property
+    def shown(self) -> str:
+        """The answer as a person reads it."""
+        return ", ".join(x for x in (self.value or "").splitlines() if x) \
+            if "\n" in (self.value or "") else (self.value or "")
+
+
 class SavedReport(Base):
     """One report: a name, and the SELECT that answers it.
 

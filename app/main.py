@@ -3788,6 +3788,14 @@ from . import report_routes  # noqa: E402
 report_routes.register(app, {"render": render, "require": require})
 
 
+# The extra questions on an event's sign-up form. A Google Form scoped to the
+# one thing it is for: the fields the heats and the board are built from are
+# not in it and cannot be broken from it.
+from . import form_routes  # noqa: E402
+
+form_routes.register(app, {"render": render, "require": require})
+
+
 # The words those emails are made of, editable under the gear rather than in a
 # release. Registered after the events section because it renders its preview
 # through exactly the same builders a real send uses.

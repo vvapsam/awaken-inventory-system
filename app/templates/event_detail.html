@@ -119,6 +119,12 @@
        without you opening anything. #}
     <a class="btn" href="/events/{{ ev.id }}/stations">🏋 Stations{%
       if ev.stations %} · {{ ev.stations|length }}{% endif %}</a>
+    {# The extra questions on the sign-up form. Only on events that have a
+       sign-up form at all - an invite-only event has no page to put them on. #}
+    {% if ev.mode == 'open' %}
+    <a class="btn" href="/events/{{ ev.id }}/form">📝 Form{%
+      if ev.questions %} · {{ ev.questions|length }}{% endif %}</a>
+    {% endif %}
     {# Only once there is a race to count. A link to an empty coach app on an
        event with no stations is a link that teaches people it's broken. #}
     {% if ev.stations %}<a class="btn" href="/race/e/{{ ev.id }}">📱 Coach app</a>{% endif %}
@@ -670,6 +676,19 @@
               {{ 'selected' if (p.category or 'open') == key }}>{{ label }}</option>
             {% endfor %}
           </select></div>
+        {% if p.answers %}
+        {# What they said to the gym's own questions. Read-only here: an answer
+           is theirs, and a screen that lets somebody quietly rewrite what a
+           person said is a screen that makes the record worthless. #}
+        <div style="grid-column:1/-1;border-top:1px solid var(--line);
+             margin-top:4px;padding-top:10px">
+          <div class="small" style="font-weight:600;margin-bottom:5px">Their answers</div>
+          {% for a in p.answers|sort(attribute='question.position') %}
+          <div class="small" style="margin-bottom:4px">
+            <span class="muted">{{ a.question.title }}</span><br>{{ a.shown or '—' }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
         <div>
           {# Until now this was only ever filled in at the awarding table, so
              most rows have none. It is half of what somebody answers to reach

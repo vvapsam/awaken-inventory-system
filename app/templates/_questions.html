@@ -1,0 +1,62 @@
+{# The gym's own questions, drawn on the sign-up form.
+
+   Uses the page's existing classes rather than new ones - .lbl for the
+   question, .seg for a grid of options - so a question looks like it was
+   always part of the form instead of bolted onto it.
+
+   Values come back as `q<id>`. The id rather than the title, because a
+   question that gets retitled is still the same question and the answers
+   already given to it must not come loose. #}
+{% for q in qs %}
+<div class="lbl">{{ q.title }}{% if q.required %}<span class="req">*</span>{% endif %}
+  {% if not q.required %}<span class="opt">&mdash; optional</span>{% endif %}</div>
+{% if q.help %}<div style="font-size:.84rem;color:var(--muted);
+  margin:-4px 0 8px;line-height:1.4">{{ q.help }}</div>{% endif %}
+
+{% if q.kind == 'para' %}
+  <textarea name="q{{ q.id }}" rows="3" {{ 'required' if q.required }}
+    maxlength="2000">{{ was.get(q.id, '') }}</textarea>
+
+{% elif q.kind == 'number' %}
+  <input type="text" inputmode="numeric" name="q{{ q.id }}"
+         value="{{ was.get(q.id, '') }}" {{ 'required' if q.required }}
+         pattern="[0-9]*">
+
+{% elif q.kind == 'date' %}
+  <input type="date" name="q{{ q.id }}" value="{{ was.get(q.id, '') }}"
+         {{ 'required' if q.required }}>
+
+{% elif q.kind == 'select' %}
+  <select class="q" name="q{{ q.id }}" {{ "required" if q.required }}>
+    <option value="">Choose&hellip;</option>
+    {% for o in q.option_list %}
+    <option value="{{ o }}" {{ 'selected' if was.get(q.id) == o }}>{{ o }}</option>
+    {% endfor %}
+  </select>
+
+{% elif q.kind == 'choice' %}
+  {# One column rather than two: an option here is a sentence, not "Male". #}
+  <div class="seg" style="grid-template-columns:1fr">
+    {% for o in q.option_list %}
+    <label><input type="radio" name="q{{ q.id }}" value="{{ o }}"
+      {{ 'checked' if was.get(q.id) == o }} {{ 'required' if q.required }}>{{ o }}</label>
+    {% endfor %}
+  </div>
+
+{% elif q.kind == 'checks' %}
+  {# Several boxes share one name, and none of them carries `required`: the
+     browser would then demand every box rather than at least one. The server
+     decides - see form_routes.read_answers. #}
+  {% set ticked = (was.get(q.id, '') or '').split('\n') %}
+  <div class="seg" style="grid-template-columns:1fr">
+    {% for o in q.option_list %}
+    <label><input type="checkbox" name="q{{ q.id }}" value="{{ o }}"
+      {{ 'checked' if o in ticked }}>{{ o }}</label>
+    {% endfor %}
+  </div>
+
+{% else %}
+  <input type="text" name="q{{ q.id }}" value="{{ was.get(q.id, '') }}"
+         {{ 'required' if q.required }} maxlength="500">
+{% endif %}
+{% endfor %}

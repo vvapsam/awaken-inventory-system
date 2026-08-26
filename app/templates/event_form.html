@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div><h1 style="margin:0">Registration form</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }} &middot; extra
+      questions, asked after the usual details and before the payment step.</p></div>
+  <div class="hdact"><a class="btn" href="/events/{{ ev.id }}">&larr; The event</a></div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <p class="muted small" style="margin:0">Name, email, gender, category, rate and
+    payment are always asked &mdash; the heats, the board and the results are
+    built from them, so they are not in this list. Everything here is yours.</p>
+</div>
+
+{% if not qs %}
+<div class="card" style="margin-top:12px">
+  <p class="muted" style="margin:0">No extra questions yet. Add one below and it
+    appears on the sign-up link straight away.</p></div>
+{% endif %}
+
+{% for q in qs %}
+<div class="card" style="margin-top:12px">
+  <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}">
+    <div class="row-between" style="align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div style="flex:1 1 320px;min-width:260px">
+        <input name="title" value="{{ q.title }}" required
+               style="width:100%;font-weight:600;font-size:1rem">
+        <input name="help" value="{{ q.help or '' }}" style="width:100%;margin-top:7px"
+               placeholder="Help text under the question &mdash; optional">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select name="kind" style="max-width:190px" onchange="this.form.querySelector('.opts').hidden = !{{ with_options|tojson }}.includes(this.value)">
+          {% for key, label in kinds %}
+          <option value="{{ key }}" {{ 'selected' if q.kind == key }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <label class="small" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+          <input type="checkbox" name="required" {{ 'checked' if q.required }}> Required</label>
+      </div>
+    </div>
+
+    {# Only three kinds have options, so the box only exists for those. It is
+       one per line because that is the fastest way anybody has found to type
+       six of them. #}
+    <div class="opts" style="margin-top:10px" {{ 'hidden' if not q.wants_options }}>
+      <label class="small" style="font-weight:600">The options &mdash; one per line</label>
+      <textarea name="options" rows="4" style="width:100%;max-width:460px;font-size:.9rem"
+        placeholder="Small&#10;Medium&#10;Large">{{ q.options or '' }}</textarea>
+    </div>
+
+    <div class="hdact" style="margin-top:11px">
+      <button class="btn primary">Save</button>
+    </div>
+  </form>
+
+  <div class="hdact" style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line)">
+    <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}/move" style="display:inline">
+      <input type="hidden" name="dir" value="up">
+      <button class="btn" {{ 'disabled' if loop.first }}>&uarr;</button></form>
+    <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}/move" style="display:inline">
+      <input type="hidden" name="dir" value="down">
+      <button class="btn" {{ 'disabled' if loop.last }}>&darr;</button></form>
+    <form method="post" action="/events/{{ ev.id }}/form/{{ q.id }}/delete" style="display:inline"
+          onsubmit="return confirm('Delete this question? Every answer anybody has given to it goes too.')">
+      <button class="btn">Delete</button></form>
+  </div>
+</div>
+{% endfor %}
+
+<div class="card" style="margin-top:16px">
+  <form method="post" action="/events/{{ ev.id }}/form/add"
+        style="display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap">
+    <div style="flex:1 1 300px">
+      <label class="small" style="font-weight:600">Add a question</label>
+      <input name="title" required style="width:100%"
+             placeholder="What do you want to ask?"></div>
+    <select name="kind" style="max-width:190px">
+      {% for key, label in kinds %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button class="btn primary">Add</button>
+  </form>
+</div>
+{% endblock %}

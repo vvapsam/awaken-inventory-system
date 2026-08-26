@@ -77,6 +77,7 @@ from .countries import country_code, country_name, flag as country_flag
 # board shows the same marks at the same relative weights rather than
 # keeping a second copy that can drift from it.
 from .card_routes import SPONSORS
+from . import form_routes
 # One definition of a clock, borrowed rather than copied. patch_routes owns it
 # because that is where a time is first read out loud to somebody.
 from .patch_routes import mmss
@@ -789,7 +790,12 @@ def register(app, deps):
                else "",
                "sexes": SEXES, "money": money, "shut": ev.signups_shut(),
                "closes_left": left_until(ev.signup_closes),
-               "pow_bits": POW_BITS, "step": kw.pop("step", 1)}
+               "pow_bits": POW_BITS, "step": kw.pop("step", 1),
+               # The gym's own questions, in order. `was` is what they typed
+               # last time round, so a form that comes back with one field
+               # missing does not throw away the other five.
+               "qs": sorted(ev.questions, key=lambda q: (q.position, q.id)),
+               "was": kw.pop("was", {})}
         ctx.update(kw)
         return ctx
 
@@ -884,6 +890,12 @@ def register(app, deps):
         if not (first and last and mobile and sex in ("m", "f") and picked
                 and looks_like_email(email)):
             return RedirectResponse("/r/%s?err=missing" % slug, status_code=303)
+        # The gym's own questions. A required one left blank is refused the
+        # same way a missing email is - and the browser catches almost all of
+        # them first, so this is the floor rather than the door.
+        answers, missing = form_routes.read_answers(form, ev)
+        if missing:
+            return RedirectResponse("/r/%s?err=missing" % slug, status_code=303)
         # One registration per address. Coming back with the same email lands
         # you on your own row rather than making a second one.
         seen = (db.query(EventParticipant)
@@ -906,6 +918,7 @@ def register(app, deps):
                 seen.amount = picked["price"]
                 seen.pay_status = PAY_DRAFT
                 seen.submitted_at = None
+                form_routes.save_answers(db, seen, answers)
                 db.commit()
             resp = RedirectResponse("/r/%s/%s" % (slug, seen.token), status_code=303)
             resp.set_cookie("reg_%d" % ev.id, seen.token, max_age=60 * 60 * 24 * 60,
@@ -917,6 +930,8 @@ def register(app, deps):
             sex=sex, country=country, tier=picked["key"],
             amount=picked["price"], pay_status=PAY_DRAFT)
         db.add(p)
+        db.flush()
+        form_routes.save_answers(db, p, answers)
         db.commit()
         resp = RedirectResponse("/r/%s/%s" % (slug, p.token), status_code=303)
         resp.set_cookie("reg_%d" % ev.id, p.token, max_age=60 * 60 * 24 * 60,
