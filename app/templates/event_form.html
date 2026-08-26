@@ -27,7 +27,7 @@
         <input name="title" value="{{ q.title }}" required
                style="width:100%;font-weight:600;font-size:1rem">
         <input name="help" value="{{ q.help or '' }}" style="width:100%;margin-top:7px"
-               placeholder="Help text under the question &mdash; optional">
+               placeholder="Description &mdash; the small line under the question, optional">
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select name="kind" style="max-width:190px" onchange="this.form.querySelector('.opts').hidden = !{{ with_options|tojson }}.includes(this.value)">

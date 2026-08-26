@@ -2341,8 +2341,12 @@ class EventQuestion(Base):
     event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"),
                       nullable=False, index=True)
     title = Column(String, nullable=False)
-    #: The small grey line under the question. Optional, and worth having for
-    #: anything where the answer depends on knowing something first.
+    #: The description: the small grey line under the question. Optional, and
+    #: worth having for anything where the answer depends on knowing something
+    #: first - "we order a week ahead" is why somebody bothers to pick a size.
+    #:
+    #: Called `help` in here and "Description" everywhere a person sees it,
+    #: because that is the word people use for it.
     help = Column(String)
     kind = Column(String, nullable=False, default="text")
     #: One option per line, for the three kinds that have them. Text rather
