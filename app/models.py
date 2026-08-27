@@ -2365,6 +2365,38 @@ QUESTION_KINDS_WITH_OPTIONS = ("choice", "checks", "select")
 #: Asks nothing and stores nothing.
 QUESTION_KINDS_NO_ANSWER = ("section",)
 
+#: The columns on a participant row that a question may be pointed at, and the
+#: question types that fit each.
+#:
+#: Deliberately two. A form that can write to any column is a form that can
+#: break the heats, the money or the door - see the note on save_doc. These
+#: two are the opposite case: real fields the system reads, that the sign-up
+#: had no way to collect, so the answer was being typed in again by hand
+#: later or not captured at all.
+#:
+#: (key, label, allowed kinds, why it matters)
+MAPPABLE = [
+    ("age", "Age", ("number",),
+     "The patch check reads this \u2014 which patch a time earns depends on it."),
+    ("instagram", "Instagram handle", ("text",),
+     "The Reel chase and the tag check read this."),
+]
+MAP_KEYS = [k for k, _l, _kinds, _why in MAPPABLE]
+MAP_LABELS = {k: l for k, l, _kinds, _why in MAPPABLE}
+MAP_WHY = {k: w for k, _l, _kinds, w in MAPPABLE}
+MAP_KINDS = {k: kinds for k, _l, kinds, _why in MAPPABLE}
+
+
+def map_fits(key, kind) -> bool:
+    """Can a question of this type be pointed at this column?
+
+    Asked on the way in as well as in the page. A number field is the only
+    thing that can honestly fill an integer column, and "twenty-six" in an
+    age is worse than a blank one.
+    """
+    return bool(key) and key in MAP_KINDS and kind in MAP_KINDS[key]
+
+
 #: The fields the sign-up has always had, in the order it has always drawn
 #: them. They live in the same list as everything else so they can be moved,
 #: which is the only way "put the rate on page one" is ever possible.
@@ -2422,6 +2454,12 @@ class EventQuestion(Base):
     options = Column(Text)
     required = Column(Boolean, nullable=False, default=False)
     position = Column(Integer, nullable=False, default=0)
+    #: Which column on the participant row this question fills, if any - see
+    #: MAPPABLE. The answer is written to the answers table either way; this
+    #: is an *extra* copy, into the field the rest of the system already
+    #: reads, so "how old are you?" on the form ends up where the patch check
+    #: looks rather than in a row only a report can see.
+    maps_to = Column(String)
     #: The line beside the tick box, on a terms field only. The terms
     #: themselves go in `options`, which is already the column for "the long
     #: text this kind of question needs" and would otherwise sit empty.
@@ -2452,6 +2490,10 @@ class EventQuestion(Base):
     @property
     def is_section(self) -> bool:
         return not self.builtin and self.kind == "section"
+
+    @property
+    def maps_label(self) -> str:
+        return MAP_LABELS.get(self.maps_to or "", "")
 
     @property
     def is_terms(self) -> bool:

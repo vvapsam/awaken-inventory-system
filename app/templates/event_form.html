@@ -95,6 +95,11 @@ textarea.fbin{margin-top:10px;font-family:inherit;resize:vertical}
 .lnk:hover{background:var(--wash,#f1f2f4);color:var(--ink)}
 .lnk.bad:hover{color:#8c2c20}
 .locked{font-size:.8rem;color:var(--muted)}
+.fbchip.map{color:var(--teal-dark,#006a6a);background:var(--teal-tint,#e6f2f2);
+  border-color:#bcdcdc}
+.mapnote{margin-top:9px;font-size:.83rem;color:var(--teal-dark,#006a6a);
+  background:var(--teal-tint,#e6f2f2);border:1px solid #bcdcdc;border-radius:9px;
+  padding:9px 12px}
 
 .rates{margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
 .rlbl{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
@@ -169,6 +174,7 @@ textarea.tbody{width:100%;font-family:inherit;font-size:.88rem;line-height:1.5;
       form people fill in on the sign-up link, top to bottom.</p></div>
   <div class="hdact" style="align-items:center">
     <span class="fb-save done" id="fbsave"><span class="dot"></span><span id="fbsavet">All changes saved</span></span>
+    <a class="btn" href="/events/{{ ev.id }}/form/map">Where it&rsquo;s stored</a>
     <a class="btn" href="/r/{{ ev.slug }}" target="_blank">See it</a>
     <a class="btn" href="/events/{{ ev.id }}">&larr; The event</a></div>
 </div>
@@ -198,7 +204,7 @@ var EID = {{ ev.id }};
 var D = {{ doc|tojson }};
 var deleted = [], ratesGone = [], tmp = -1, open = null;
 
-var WITH = D.withOpts, KINDS = D.kinds, LOOKS = D.looks;
+var WITH = D.withOpts, KINDS = D.kinds, LOOKS = D.looks, MAPS = D.maps;
 var BUILTIN_NAME = {name:"First and last name", email:"Email address",
   mobile:"Phone number", country:"Country, with its flag", sex:"Male or female",
   tier:"One of your rates"};
@@ -264,6 +270,10 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function peso(v){ return v === '' || v == null ? '—'
   : '₱' + Number(v).toLocaleString(); }
+function mapLabel(key){
+  var m = MAPS.filter(function(x){ return x[0] === key; })[0];
+  return m ? m[1] : '';
+}
 function kindLabel(f){
   if (f.builtin) return "The sign-up's own field";
   for (var i=0;i<KINDS.length;i++) if (KINDS[i][0] === f.kind) return KINDS[i][1];
@@ -363,8 +373,24 @@ function fieldHTML(f){
       h += '<option value="'+KINDS[i][0]+'"'+(f.kind===KINDS[i][0]?' selected':'')+'>'+
            esc(KINDS[i][1])+'</option>';
     h += '</select>';
+    // Where the answer also goes. Only the columns this type can honestly
+    // fill are offered, so the list is usually empty and says nothing.
+    var fits = MAPS.filter(function(m){ return m[2].indexOf(f.kind) >= 0; });
+    if (fits.length) {
+      h += '<select class="fbin" data-k="map"><option value="">' +
+           'Store it in \u2014 just the answers</option>';
+      for (var j=0;j<fits.length;j++)
+        h += '<option value="'+fits[j][0]+'"'+(f.map===fits[j][0]?' selected':'')+
+             '>Store it in \u2014 '+esc(fits[j][1])+'</option>';
+      h += '</select>';
+    }
   }
   h += '</div>';
+  if (!f.builtin && f.map) {
+    var why = (MAPS.filter(function(m){ return m[0] === f.map; })[0] || [])[3] || '';
+    h += '<div class="mapnote">Also written to <b>' + esc(mapLabel(f.map)) +
+         '</b> on their row. ' + esc(why) + '</div>';
+  }
   // Terms keep their body in the same column, so the options box must not
   // exist alongside it - two inputs writing one value is a bug waiting.
   if (f.builtin || f.kind !== 'terms')
@@ -390,9 +416,12 @@ function fieldHTML(f){
   if (!f.builtin) h += '<button type="button" class="lnk bad" data-do="del">Delete</button>';
   h += '<button type="button" class="lnk" data-do="done">Done</button>';
   h += '</div></div></div>';
-  h += '<span class="fbchip">'+esc(kindLabel(f))+'</span>';
-  h += f.off ? '<span class="fbchip off">Not asked</span>'
-             : '<span class="fbchip'+(f.req?' req':'')+'">'+(f.req?'Required':'Optional')+'</span>';
+  h += '<span class="fbchip kindchip">'+esc(kindLabel(f))+'</span>';
+  if (!f.builtin && f.map)
+    h += '<span class="fbchip map">\u2192 '+esc(mapLabel(f.map))+'</span>';
+  h += f.off ? '<span class="fbchip reqchip off">Not asked</span>'
+             : '<span class="fbchip reqchip'+(f.req?' req':'')+'">'+
+               (f.req?'Required':'Optional')+'</span>';
   h += '</div>';
   return h;
 }
@@ -530,6 +559,7 @@ function onEdit(e){
   else got.f[k] = el.value;
 
   var card = el.closest('.fld');
+  if (k === 'map') { draw(); push(true); return; }
   if (k === 'kind') {
     // Terms bring a whole editor of their own, so switching in or out of it
     // is a redraw rather than a class toggle.
@@ -538,15 +568,20 @@ function onEdit(e){
       // crossing that line starts empty rather than turning three shirt
       // sizes into somebody's liability wording.
       got.f.opts = '';
+      got.f.map = '';
       draw(); push(true); return;
     }
-    card.classList.toggle('has-opts', WITH.indexOf(el.value) >= 0);
+    // A column a text question could fill is not one a date question can.
+    var still = MAPS.filter(function(m){
+      return m[0] === got.f.map && m[2].indexOf(el.value) >= 0; });
+    if (got.f.map && !still.length) got.f.map = '';
+    draw(); push(true); return;
   }
-  var chips = card.querySelectorAll('.fbchip');
-  if (chips[0]) chips[0].textContent = kindLabel(got.f);
-  if (chips[1]) {
-    chips[1].textContent = got.f.off ? 'Not asked' : (got.f.req ? 'Required' : 'Optional');
-    chips[1].className = 'fbchip' + (got.f.off ? ' off' : (got.f.req ? ' req' : ''));
+  var kc = card.querySelector('.kindchip'), rc = card.querySelector('.reqchip');
+  if (kc) kc.textContent = kindLabel(got.f);
+  if (rc) {
+    rc.textContent = got.f.off ? 'Not asked' : (got.f.req ? 'Required' : 'Optional');
+    rc.className = 'fbchip reqchip' + (got.f.off ? ' off' : (got.f.req ? ' req' : ''));
   }
   card.classList.toggle('gone', !!got.f.off);
   if (k === 'opts' || k === 'tick' || k === 'req') {

@@ -1,0 +1,69 @@
+{# Where every answer on this form actually ends up.
+
+   A read-only page, and the point of it is that it is read-only: it is the
+   one place you can check that the thing you asked for is being kept, and
+   kept somewhere something reads, without opening a database. #}
+{% extends "base.html" %}
+{% block body %}
+<style>
+.mapt{width:100%;border-collapse:collapse}
+.mapt th{text-align:left;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);padding:10px 14px;border-bottom:1px solid var(--line);
+  font-weight:800;background:linear-gradient(#fbfcfd,#fff)}
+.mapt td{padding:10px 14px;vertical-align:top;border-top:1px solid #f2f5f7;
+  font-size:.9rem}
+.mapt tr.pagerow td{background:var(--panel,#f3f5f7);font-weight:650;font-size:.8rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mapt tr.off td{opacity:.5}
+.col{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;
+  background:var(--wash,#f1f2f4);border:1px solid var(--line);border-radius:5px;
+  padding:1px 6px;white-space:nowrap;display:inline-block;margin:1px 0}
+.col.hot{background:var(--teal-tint,#e6f2f2);border-color:#bcdcdc;
+  color:var(--teal-dark,#006a6a)}
+.why{color:var(--muted);font-size:.82rem;margin-top:3px}
+.mark{font-size:.72rem;color:#8a4a14;background:#fdf4e3;border:1px solid #f2e2c4;
+  border-radius:5px;padding:1px 6px;margin-left:5px;white-space:nowrap}
+</style>
+
+<div class="row-between">
+  <div><h1 style="margin:0">Where it&rsquo;s stored</h1>
+    <p class="muted small" style="margin:2px 0 0">{{ ev.name }} &middot; every field
+      on the registration form, and the exact column its answer lands in.</p></div>
+  <div class="hdact">
+    <a class="btn" href="/events/{{ ev.id }}/form">&larr; The form</a>
+    <a class="btn" href="/events/{{ ev.id }}">The event</a></div>
+</div>
+
+<div class="card" style="margin-top:12px;padding:0;overflow:hidden">
+<table class="mapt">
+  <tr><th style="width:34%">Field</th><th style="width:20%">Type</th>
+      <th>Stored in</th></tr>
+  {% for head, fields in pages %}
+  <tr class="pagerow"><td colspan="3">Page {{ loop.index }}{% if head and head.title %}
+    &middot; {{ head.title }}{% endif %}</td></tr>
+  {% for q in fields %}
+  <tr class="{{ 'off' if q.hidden }}">
+    <td><b>{{ q.title or 'Untitled' }}</b>
+      {% if q.required %}<span class="mark">Required</span>{% endif %}
+      {% if q.hidden %}<span class="mark">Not asked</span>{% endif %}
+      {% if q.help %}<div class="why">{{ q.help }}</div>{% endif %}</td>
+    <td class="muted">{{ q.type_label }}</td>
+    <td>
+      {% for col in q.cols %}<span class="col {{ 'hot' if col.hot }}">{{ col.name }}</span>{% if not loop.last %} <br>{% endif %}{% endfor %}
+      {% if q.note %}<div class="why">{{ q.note }}</div>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  {% endfor %}
+</table>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <p class="muted small" style="margin:0"><b>Two places, on purpose.</b> Every
+    answer somebody types goes to <span class="col">participant_answers.value</span>
+    &mdash; that is the form&rsquo;s own record of what was said, and it never
+    depends on a mapping being right. A field pointed at a column writes there
+    <i>as well</i>, so the rest of the system finds it where it already looks.
+    Change the mapping later and nothing already collected is lost.</p>
+</div>
+{% endblock %}

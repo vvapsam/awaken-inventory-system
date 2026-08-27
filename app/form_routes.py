@@ -38,7 +38,7 @@ from .models import (BUILTIN_FIELDS, BUILTIN_KEYS, BUILTIN_LOCKED,
                      Event, EventParticipant, EventQuestion, EventRate,
                      ParticipantAnswer, QUESTION_KINDS, QUESTION_KIND_KEYS,
                      QUESTION_KINDS_WITH_OPTIONS, RATE_LOOKS, RATE_LOOK_KEYS,
-                     to_local)
+                     MAPPABLE, MAP_LABELS, map_fits, to_local)
 
 
 def clean_kind(raw: str) -> str:
@@ -206,6 +206,34 @@ def read_answers(form, ev) -> tuple:
     return out, missing
 
 
+def write_maps(p, answers) -> None:
+    """Copy the mapped answers onto the participant row itself.
+
+    An *extra* copy, never instead of the answer: the answers table stays the
+    record of what somebody typed into the form, and this is the same value
+    put where the rest of the system already looks for it. If a mapping is
+    later removed or repointed, nothing that was collected is lost.
+
+    A value that will not convert is skipped rather than forced. "twenty-six"
+    in an age column is worse than an empty one - the answer is still on the
+    answer row, and somebody can read it.
+    """
+    for q in (p.event.questions or []):
+        if not q.maps_to or q.id not in answers:
+            continue
+        raw = (answers.get(q.id) or "").strip()
+        if not raw:
+            continue
+        if q.maps_to == "age":
+            digits = re.sub(r"[^0-9]", "", raw)
+            if digits and 1 <= int(digits) <= 120:
+                p.age = int(digits)
+        elif q.maps_to == "instagram":
+            # Stored without the @: it is a handle, and half of them type it
+            # and half do not.
+            p.instagram = raw.lstrip("@").strip()[:60] or None
+
+
 def agreed_at() -> str:
     """Now, in gym time, as somebody reading a roster would write it."""
     return to_local(datetime.now(timezone.utc)).strftime(
@@ -233,6 +261,7 @@ def save_answers(db, p, answers) -> None:
             # up later: the terms are editable and an agreement that points at
             # today's text is a record of nothing.
             row.snapshot = terms[qid]
+    write_maps(p, answers)
     db.flush()
 
 
@@ -322,6 +351,7 @@ def field_json(q) -> dict:
         "kind": "tier" if q.builtin == "tier" else (q.kind or "text"),
         "opts": q.options or "",
         "tick": q.tick or "",
+        "map": q.maps_to or "",
         "req": 1 if q.required else 0,
         "off": 1 if q.hidden else 0,
         "builtin": q.builtin or "",
@@ -360,11 +390,66 @@ def doc(db, ev) -> dict:
         "kinds": [[k, l] for k, l in QUESTION_KINDS if k != "section"],
         "withOpts": list(QUESTION_KINDS_WITH_OPTIONS),
         "looks": [[k, l] for k, l in RATE_LOOKS],
+        "maps": [[k, l, list(kinds), why] for k, l, kinds, why in MAPPABLE],
         "look": ev.rate_look or "tiles",
         "rates": [{"id": r.id, "label": r.label, "amt": money_out(r.amount),
                    "closed": bool(r.closed), "used": use.get(r.id, 0)}
                   for r in ev.rate_rows()],
     }
+
+
+#: What each built-in field actually writes. Spelled out here rather than
+#: inferred, because the page's job is to be checkable and "name" quietly
+#: filling three columns is exactly the kind of thing somebody needs told.
+BUILTIN_COLS = {
+    "name": (["event_participants.first_name", "event_participants.last_name",
+              "event_participants.name"], ""),
+    "email": (["event_participants.email"], ""),
+    "mobile": (["event_participants.mobile"], ""),
+    "country": (["event_participants.country"], "Two letters, ISO-3166."),
+    "sex": (["event_participants.sex"], "'m' or 'f'."),
+    "tier": (["event_participants.tier", "event_participants.amount"],
+             "The rate's id, and what it cost at the moment they picked it."),
+}
+
+
+def map_rows(db, ev) -> list:
+    """The form, page by page, with where every answer goes.
+
+    Built from the same plan the sign-up page draws, so the two cannot
+    disagree - a field that is not on this list is not on the form.
+    """
+    ensure_builtins(db, ev)
+    kinds = dict(QUESTION_KINDS)
+    out = []
+    for head, fields in pages(plan(ev)):
+        shown = []
+        for q in fields:
+            if q.builtin:
+                cols, note = BUILTIN_COLS.get(q.builtin, ([], ""))
+                cols = [{"name": c, "hot": False} for c in cols]
+                label = "The sign-up's own field"
+            elif q.is_terms:
+                cols = [{"name": "participant_answers.value", "hot": False},
+                        {"name": "participant_answers.snapshot", "hot": False}]
+                note = ("The agreement, and a copy of the wording as it read "
+                        "when they ticked it.")
+                label = kinds.get(q.kind, q.kind)
+            else:
+                cols = [{"name": "participant_answers.value", "hot": False}]
+                note = ""
+                label = kinds.get(q.kind, q.kind)
+                if q.maps_to:
+                    cols.append({"name": "event_participants." + q.maps_to,
+                                 "hot": True})
+                    note = MAP_LABELS.get(q.maps_to, "")
+            shown.append({
+                "title": q.title, "help": q.help, "required": q.required,
+                "hidden": getattr(q, "hidden", False),
+                "type_label": label, "cols": cols, "note": note,
+            })
+        out.append((head, shown))
+    return out
 
 
 def save_doc(db, ev, body) -> None:
@@ -423,10 +508,29 @@ def save_doc(db, ev, body) -> None:
                 q.kind = clean_kind(f.get("kind"))
                 q.options = (f.get("opts") or "").strip() or None
                 q.tick = (f.get("tick") or "").strip()[:200] or None
+                # Where the answer *also* goes. Checked here rather than
+                # trusted, twice over: the column has to be one of the two we
+                # offer, and the question has to be a type that can honestly
+                # fill it. A form that could name its own column is a form
+                # that can write to the payment status.
+                want = (f.get("map") or "").strip()
+                q.maps_to = want if map_fits(want, q.kind) else None
                 q.required = bool(f.get("req"))
                 q.hidden = False
             q.position, pos = pos, pos + 1
             seen.add(q.id)
+
+    # One column, one question. Two questions both writing to age is not a
+    # mapping, it is a race - whichever answer is saved last wins and nobody
+    # can tell which was asked. First one in the form keeps it.
+    claimed = set()
+    for q in sorted(rows.values(), key=lambda x: (x.position, x.id)):
+        if not q.maps_to:
+            continue
+        if q.maps_to in claimed:
+            q.maps_to = None
+        else:
+            claimed.add(q.maps_to)
 
     for qid in (body.get("deleted") or []):
         q = rows.get(qid)
@@ -507,6 +611,18 @@ def register(app, deps):
             return RedirectResponse("/events", status_code=303)
         return render(request, "event_form.html", db, staff, active="events",
                       ev=ev, doc=doc(db, ev))
+
+    @app.get("/events/{eid}/form/map", response_class=HTMLResponse)
+    def form_map(request: Request, eid: int, db: Session = Depends(get_db)):
+        """Every field, and the column its answer lands in. Read-only."""
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = _ev(db, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        return render(request, "form_map.html", db, staff, active="events",
+                      ev=ev, pages=map_rows(db, ev))
 
     @app.post("/events/{eid}/form/save")
     async def form_save_all(request: Request, eid: int,

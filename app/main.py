@@ -946,6 +946,8 @@ def startup():
                 "  hidden BOOLEAN NOT NULL DEFAULT FALSE; "
                 "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
                 "  tick VARCHAR; "
+                "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
+                "  maps_to VARCHAR; "
                 "END IF; END $$;"))
             # What somebody actually agreed to, kept on the agreement itself.
             conn.execute(text(
