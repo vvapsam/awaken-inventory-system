@@ -897,6 +897,8 @@ def startup():
                 "DO $$ BEGIN IF to_regclass('public.event_participants') IS NOT NULL THEN "
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  pay_due_at TIMESTAMPTZ; "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  signup_email_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
             # Rates: from two columns on the event to a row each.
             #

@@ -951,6 +951,8 @@ def register(app, deps):
                 seen.submitted_at = None
                 form_routes.save_answers(db, seen, answers)
                 db.commit()
+                if picked["price"]:
+                    _send_signup(db, ev, seen, base_url(request))
             resp = RedirectResponse("/r/%s/%s" % (slug, seen.token), status_code=303)
             resp.set_cookie("reg_%d" % ev.id, seen.token, max_age=60 * 60 * 24 * 60,
                             httponly=True, samesite="lax")
@@ -964,6 +966,11 @@ def register(app, deps):
         db.flush()
         form_routes.save_answers(db, p, answers)
         db.commit()
+        # "We've got it", now, while they are still looking at the screen that
+        # sent it. A free registration gets its pass instead, a moment later,
+        # when the next page lets them in.
+        if picked["price"]:
+            _send_signup(db, ev, p, base_url(request))
         resp = RedirectResponse("/r/%s/%s" % (slug, p.token), status_code=303)
         resp.set_cookie("reg_%d" % ev.id, p.token, max_age=60 * 60 * 24 * 60,
                         httponly=True, samesite="lax")
@@ -978,13 +985,12 @@ def register(app, deps):
         """
         return not p.amount or Decimal(p.amount) <= 0
 
-    def _let_in(db, p) -> None:
+    def _let_in(db, p, base=None) -> None:
         """Straight in, for a registration with nothing to pay.
 
         The same state approving a payment leaves behind, because it is the
-        same thing: a confirmed slot. The pass email is left unsent rather
-        than fired here - passes go out when the gym sends them, and a free
-        class should not start emailing on its own.
+        same thing: a confirmed slot. And the same email: their pass, with the
+        QR on it, because for a free class that *is* the confirmation.
         """
         if p.pay_status == PAY_APPROVED:
             return
@@ -994,7 +1000,10 @@ def register(app, deps):
         p.review_note = None
         p.rsvp, p.rsvp_at = RSVP_YES, p.rsvp_at or now
         p.acknowledged_at = p.acknowledged_at or now
+        p.signup_email_at = p.signup_email_at or now
         db.commit()
+        if base:
+            _send_pass(db, p.event, p, base)
 
     def _reg(db, slug, token):
         """Their row on this event's registration, at whatever stage.
@@ -1040,7 +1049,7 @@ def register(app, deps):
             # Nothing to pay, so nothing to send us and nothing for anybody to
             # check. A receipt step on a free class is a locked door with no
             # room behind it.
-            _let_in(db, p)
+            _let_in(db, p, base_url(request))
             step = 5
         else:
             step = 3
@@ -4212,6 +4221,42 @@ def register(app, deps):
             ok = False
         if ok:
             p.pass_email_at = datetime.now(timezone.utc)
+            db.commit()
+
+    def _send_signup(db, ev, p, base):
+        """"We've got it" — the moment somebody finishes the form.
+
+        Best effort, and never in the way of a registration: the row is
+        already written by the time we get here, and a mail server having a
+        bad minute must not turn a completed sign-up into an error page.
+
+        Stamped so it goes exactly once. Somebody who comes back to their link
+        and resubmits is correcting themselves, not registering again.
+
+        Only for a registration with something to pay. A free one is already
+        in, and gets the pass instead - telling somebody to go and pay for a
+        class that costs nothing is worse than saying nothing at all.
+        """
+        if p.signup_email_at or not looks_like_email(p.email or ""):
+            return
+        mailer = Mailer()
+        if not mailer.cfg.configured:
+            return
+        url = "%s/r/%s/%s" % (base, ev.slug, p.token)
+        subject, text, html = _finish_mail(db, ev, p, url)
+        inline = {}
+        logo = _logo_bytes()
+        if logo:
+            inline[LOGO_CID] = logo
+        if ev.sponsor_logo:
+            inline[SPONSOR_CID] = ev.sponsor_logo
+        try:
+            ok, _ = mailer.send(p.email, subject, text, html=html,
+                                inline=inline or None)
+        except Exception:
+            ok = False
+        if ok:
+            p.signup_email_at = datetime.now(timezone.utc)
             db.commit()
 
     def _send_returned(db, ev, p, base):

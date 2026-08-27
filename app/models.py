@@ -2875,6 +2875,10 @@ class EventParticipant(Base):
     #: price change tomorrow never restates what somebody paid today.
     amount = Column(Numeric(10, 2))
     external_done_at = Column(DateTime(timezone=True))
+    #: When we told them we had their registration - sent the moment they
+    #: finish the form. A stamp rather than a flag so it can never go twice,
+    #: and so the roster can say when.
+    signup_email_at = Column(DateTime(timezone=True))
     proof = Column(LargeBinary)
     proof_mime = Column(String)
     proof_ref = Column(String)
