@@ -389,7 +389,17 @@ function fieldHTML(f){
   if (!f.builtin && f.map) {
     var why = (MAPS.filter(function(m){ return m[0] === f.map; })[0] || [])[3] || '';
     h += '<div class="mapnote">Also written to <b>' + esc(mapLabel(f.map)) +
-         '</b> on their row. ' + esc(why) + '</div>';
+         '</b> on their row. ' + esc(why);
+    // Answers collected before the mapping existed. They were never lost -
+    // they are in the answers table - so this copies them across.
+    if (f.fillable)
+      h += '<div style="margin-top:9px"><button type="button" class="addr" ' +
+           'data-fill="'+f.id+'" style="margin:0">Fill in the ' + f.fillable +
+           ' already answered</button></div>';
+    else if (f.answered)
+      h += '<div style="margin-top:7px">All ' + f.answered +
+           ' answers are already on their rows.</div>';
+    h += '</div>';
   }
   // Terms keep their body in the same column, so the options box must not
   // exist alongside it - two inputs writing one value is a bug waiting.
@@ -499,6 +509,20 @@ cv.addEventListener('click', function(e){
   }
   if ((t = e.target.closest('[data-reopen]'))) {
     D.rates[+t.getAttribute('data-reopen')].closed = false; draw(); push(true); return;
+  }
+  if ((t = e.target.closest('[data-fill]'))) {
+    var fid = t.getAttribute('data-fill');
+    t.disabled = true; t.textContent = 'Filling…';
+    pill('busy', 'Saving…');
+    fetch('/events/' + EID + '/form/' + fid + '/fill', {method:'POST'})
+      .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function(j){
+        D = j.doc; draw();
+        pill('done', j.filled + ' filled in');
+        setTimeout(function(){ pill('done', 'All changes saved'); }, 2500);
+      })
+      .catch(function(){ pill('bad', 'Could not fill those in'); draw(); });
+    return;
   }
   if ((t = e.target.closest('[data-do]'))) {
     var got = find(t.closest('.fld').getAttribute('data-f')), what = t.getAttribute('data-do');

@@ -341,9 +341,73 @@ def ensure_rates(db, ev) -> list:
     return ev.rate_rows()
 
 
+def fill_counts(db, ev) -> dict:
+    """Per mapped question: how many answers exist, and how many would land.
+
+    "Would land" is the number that matters and the one that is not obvious:
+    an answer whose target column is already filled is left alone, so the
+    button can say what it will actually do rather than how many rows it will
+    look at.
+    """
+    out = {}
+    mapped = [q for q in ev.questions if q.maps_to]
+    if not mapped:
+        return out
+    rows = (db.query(ParticipantAnswer, EventParticipant)
+            .join(EventParticipant,
+                  EventParticipant.id == ParticipantAnswer.participant_id)
+            .filter(EventParticipant.event_id == ev.id).all())
+    by_q = {}
+    for a, p in rows:
+        by_q.setdefault(a.question_id, []).append((a, p))
+    for q in mapped:
+        got = by_q.get(q.id, [])
+        fillable = 0
+        for a, p in got:
+            if not (a.value or "").strip():
+                continue
+            if getattr(p, q.maps_to, None) in (None, ""):
+                fillable += 1
+        out[q.id] = {"answered": len(got), "fillable": fillable}
+    return out
+
+
+def fill_from_answers(db, ev, q) -> int:
+    """Write a mapped question's existing answers onto the rows, once.
+
+    For the case this was built for: the question was already being asked and
+    answered before anybody thought to point it at a column. The answers were
+    never lost - they are in participant_answers, which is the whole reason
+    the value goes to two places - so filling the column afterwards is a copy,
+    not a recovery.
+
+    Only ever fills a blank. Somebody whose handle was typed in by hand keeps
+    what was typed; a form answer does not get to overwrite a correction.
+    """
+    if not q or not q.maps_to:
+        return 0
+    rows = (db.query(ParticipantAnswer, EventParticipant)
+            .join(EventParticipant,
+                  EventParticipant.id == ParticipantAnswer.participant_id)
+            .filter(EventParticipant.event_id == ev.id,
+                    ParticipantAnswer.question_id == q.id).all())
+    done = 0
+    for a, p in rows:
+        if getattr(p, q.maps_to, None) not in (None, ""):
+            continue
+        before = getattr(p, q.maps_to, None)
+        write_maps(p, {q.id: a.value})
+        if getattr(p, q.maps_to, None) != before:
+            done += 1
+    if done:
+        db.commit()
+    return done
+
+
 # ------------------------------------------------------------- the document
 
-def field_json(q) -> dict:
+def field_json(q, counts=None) -> dict:
+    n = (counts or {}).get(q.id) or {}
     return {
         "id": q.id,
         "title": q.title or "",
@@ -356,6 +420,8 @@ def field_json(q) -> dict:
         "off": 1 if q.hidden else 0,
         "builtin": q.builtin or "",
         "lock": 1 if q.locked else 0,
+        "answered": n.get("answered", 0),
+        "fillable": n.get("fillable", 0),
     }
 
 
@@ -369,6 +435,7 @@ def doc(db, ev) -> dict:
     """
     rows = ensure_builtins(db, ev)
     ensure_rates(db, ev)
+    counts = fill_counts(db, ev)
     pages, cur = [], {"sid": None, "title": "", "help": "", "fields": []}
     for q in rows:
         if q.is_section:
@@ -377,7 +444,7 @@ def doc(db, ev) -> dict:
             cur = {"sid": q.id, "title": q.title or "", "help": q.help or "",
                    "fields": []}
         else:
-            cur["fields"].append(field_json(q))
+            cur["fields"].append(field_json(q, counts))
     pages.append(cur)
     # A leading section means page one *is* that section, not an empty page
     # above it.
@@ -623,6 +690,26 @@ def register(app, deps):
             return RedirectResponse("/events", status_code=303)
         return render(request, "form_map.html", db, staff, active="events",
                       ev=ev, pages=map_rows(db, ev))
+
+    @app.post("/events/{eid}/form/{qid}/fill")
+    def form_fill(request: Request, eid: int, qid: int,
+                  db: Session = Depends(get_db)):
+        """Copy a mapped question's existing answers onto the rows.
+
+        For the form that was already collecting something before anybody
+        pointed it at a column. Nothing was lost in the meantime - it is all
+        in participant_answers - so this is a copy across, and it only ever
+        fills a blank.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return JSONResponse({"ok": False}, status_code=403)
+        ev = _ev(db, eid)
+        q = db.get(EventQuestion, qid)
+        if not ev or not q or q.event_id != eid:
+            return JSONResponse({"ok": False}, status_code=404)
+        done = fill_from_answers(db, ev, q)
+        return JSONResponse({"ok": True, "filled": done, "doc": doc(db, ev)})
 
     @app.post("/events/{eid}/form/save")
     async def form_save_all(request: Request, eid: int,
