@@ -170,6 +170,21 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
     {{ ev.closes_text }}.{% else %}This one isn't taking any more sign-ups.{% endif %}
     Follow {{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }} — the
     next one goes up there first.</p>
+  {% elif full %}
+  {# Full is its own answer. Somebody who reads "closed" assumes they were
+     late by days; somebody who reads "full" knows a cancellation is a real
+     chance and that asking is worth it. #}
+  <div class="hi">This one's full</div>
+  {% if err == 'full' %}
+  <div class="note warn" style="margin:0 0 14px">The last slot went while you
+    were filling that in — we're sorry. Nothing of yours was saved.</div>
+  {% else %}
+  <p>All {{ capacity }} slots are taken{% if ev.starts_at %} for
+    {{ ev.when_text }}{% endif %}.</p>
+  {% endif %}
+  <div class="note grey" style="text-align:left">People do drop out. DM
+    <b>{{ ev.handle_list[0] if ev.handle_list else '@awakengymph' }}</b> and
+    we'll put you on the waitlist — and the next class goes up there first.</div>
   {% else %}
   <div class="hi">{% if p %}Finish your registration{% else %}Reserve your slot{% endif %}</div>
   {% if p %}<p class="note grey" style="margin-top:0">You're on our list already —

@@ -802,6 +802,10 @@ def register(app, deps):
                "pay_due_text": _fmt_when(p.pay_due_at) if p and p.pay_due_at
                else "",
                "sexes": SEXES, "money": money, "shut": ev.signups_shut(),
+               # Full is not the same as closed, and saying "closed" to
+               # somebody who could have had the next cancellation is a
+               # different, worse sentence.
+               "full": _full(ev), "capacity": ev.capacity or 0,
                "closes_left": left_until(ev.signup_closes),
                "pow_bits": POW_BITS, "step": kw.pop("step", 1),
                # Every field on the form, in the order the builder puts them,
@@ -933,6 +937,15 @@ def register(app, deps):
                 .filter(EventParticipant.event_id == ev.id,
                         func.lower(EventParticipant.email) == email.lower())
                 .first())
+        # Full is checked here, at the moment of writing, rather than only
+        # when the page was drawn - two people filling the form at once would
+        # otherwise both get in on the last slot.
+        #
+        # Somebody already on the list is never turned away by it. They are
+        # finishing a registration, not taking a new slot, and refusing them
+        # would strand a row that already exists.
+        if seen is None and _full(ev):
+            return RedirectResponse("/r/%s?err=full" % slug, status_code=303)
         if seen:
             # Somebody put on the list by hand, now registering themselves.
             # Their row has a name and an email and nothing else — no rate, no
@@ -975,6 +988,25 @@ def register(app, deps):
         resp.set_cookie("reg_%d" % ev.id, p.token, max_age=60 * 60 * 24 * 60,
                         httponly=True, samesite="lax")
         return resp
+
+    def _taken(ev) -> int:
+        """How many slots are actually held.
+
+        The same set the tracker counts in "29 of 30", deliberately: the
+        number on the door and the number on your screen must be the same
+        number, or one of them is lying.
+
+        A registration mid-payment is not in it. That is the existing rule
+        everywhere else - approving is what takes the slot, not submitting -
+        and the finish-your-registration email says so in as many words.
+        """
+        return len([p for p in ev.participants
+                    if not p.waitlist and not p.released_at and p.confirmed])
+
+    def _full(ev) -> bool:
+        """Is the room full? No capacity set means no limit, as before."""
+        cap = ev.capacity or 0
+        return cap > 0 and _taken(ev) >= cap
 
     def _free(p) -> bool:
         """Does this registration cost anything?
