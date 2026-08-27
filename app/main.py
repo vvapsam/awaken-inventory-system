@@ -3058,10 +3058,14 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
         except (ValueError, TypeError):
             selected_customer = None
 
+    # The sheet opens on today. Every other range is one click away, but the
+    # page you land on is the day you are working in - opening it should not
+    # mean waiting for every sale ever rung up to be drawn.
     range_key = qp.get("range", "") or rng
     from_s, to_s = qp.get("from", ""), qp.get("to", "")
-    explicit_date = bool(qp.get("range") or from_s or to_s)
-    if range_key == "7d":
+    if range_key == "today":
+        start, end_d = today0, today0
+    elif range_key == "7d":
         start, end_d = today0 - timedelta(days=6), today0
     elif range_key == "month":
         start, end_d = today0.replace(day=1), today0
@@ -3070,11 +3074,10 @@ def sales_sheet(request: Request, rng: str = "", db: Session = Depends(get_db)):
     elif from_s or to_s:
         start = _parse_date(from_s, tz) or today0
         end_d = _parse_date(to_s, tz) or today0
-    elif selected_customer:  # customer view defaults to all their history
+    elif selected_customer:  # one customer: their whole history, which is short
         range_key, start, end_d = "all", None, today0
-    else:  # default: show everything (all sales, every entry point incl. mobile)
-        range_key = range_key or "all"
-        start, end_d = None, today0
+    else:
+        range_key, start, end_d = "today", today0, today0
 
     q = db.query(Transaction).filter(Transaction.type == TX_CASH_SALE)
     if selected_customer:

@@ -94,15 +94,17 @@ tr.entry td{background:var(--teal-tint);border-bottom:2px solid var(--teal);z-in
   {% endif %}
 </div>
 
-<!-- FILTER: default today + date range -->
+<!-- FILTER: opens on today; every other range is one click -->
+{% set cq = '&customer=' ~ cust.id if cust else '' %}
 <div class="filter">
   <div class="quick">
-    <a class="pill2 {% if range_key=='today' %}on{% endif %}" href="/sales?range=today">Today</a>
-    <a class="pill2 {% if range_key=='7d' %}on{% endif %}" href="/sales?range=7d">Last 7 days</a>
-    <a class="pill2 {% if range_key=='month' %}on{% endif %}" href="/sales?range=month">This month</a>
-    <a class="pill2 {% if range_key=='all' %}on{% endif %}" href="/sales?range=all">All</a>
+    <a class="pill2 {% if range_key=='today' %}on{% endif %}" href="/sales?range=today{{ cq }}">Today</a>
+    <a class="pill2 {% if range_key=='7d' %}on{% endif %}" href="/sales?range=7d{{ cq }}">Last 7 days</a>
+    <a class="pill2 {% if range_key=='month' %}on{% endif %}" href="/sales?range=month{{ cq }}">This month</a>
+    <a class="pill2 {% if range_key=='all' %}on{% endif %}" href="/sales?range=all{{ cq }}">All</a>
   </div>
   <form class="range" method="get" action="/sales">
+    {% if cust %}<input type="hidden" name="customer" value="{{ cust.id }}">{% endif %}
     <span>From</span><input type="date" name="from" value="{{ from_s }}">
     <span>to</span><input type="date" name="to" value="{{ to_s }}">
     <button class="pill2" type="submit">Show</button>
