@@ -956,6 +956,30 @@ def startup():
                 "ALTER TABLE participant_answers ADD COLUMN IF NOT EXISTS "
                 "  snapshot TEXT; "
                 "END IF; END $$;"))
+            # The thank-you email: an event's own header image, the offer it
+            # carries, and the stamp that stops it being sent twice. The
+            # review link itself is company-wide and sits on company_info.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS banner BYTEA; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS banner_mime VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  reward_amount NUMERIC(12,2); "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  reward_by TIMESTAMPTZ; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  thanks_email_at TIMESTAMPTZ; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.company_info') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE company_info ADD COLUMN IF NOT EXISTS "
+                "  review_url VARCHAR; "
+                "END IF; END $$;"))
             # Sessions struck out by hand: the export said they happened, they
             # didn't. Kept on the row rather than deleted so the exclusion is
             # visible and reversible.

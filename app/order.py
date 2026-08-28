@@ -598,6 +598,7 @@ async def order_settings_save(
     request: Request,
     bank_name: str = Form(""),
     account_name: str = Form(""),
+    review_url: str = Form(""),
     qr: UploadFile = File(None),
     logo: UploadFile = File(None),
     db: Session = Depends(get_db),
@@ -608,6 +609,10 @@ async def order_settings_save(
     ps = get_settings(db)
     ps.bank_name = bank_name.strip()
     ps.account_name = account_name.strip()
+    # One link for the whole gym. Blank is a real answer — no link means the
+    # review button is not drawn at all, which is better than a button that
+    # opens nowhere.
+    ps.review_url = review_url.strip()
     if qr is not None and getattr(qr, "filename", ""):
         try:
             ps.qr, ps.qr_mime = _read_image(qr)

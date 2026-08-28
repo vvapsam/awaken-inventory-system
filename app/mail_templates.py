@@ -37,10 +37,11 @@ PAY_VALUES = {
     "record.amount": "₱1,500",
 }
 
-SHELL_BODY = """<tr><td style="background:#14171a;padding:26px 30px 24px;text-align:center">
+SHELL_BODY = """${if event.banner}<tr><td style="padding:0;font-size:0;line-height:0">${block.banner}</td></tr>${/if}
+${if event.plain_header}<tr><td style="background:#14171a;padding:26px 30px 24px;text-align:center">
   ${block.logo}
   ${block.sponsor}
-</td></tr>
+</td></tr>${/if}
 <tr><td style="padding:28px 30px 30px">${block.body}</td></tr>
 <tr><td style="background:#f3f5f7;padding:18px 30px;text-align:center;font-size:12px;
   color:#6b7683">Questions? Just reply to this email.<br>AWAKEN Fitness Center</td></tr>"""
@@ -163,6 +164,22 @@ ${block.button "Submit my Reel &amp; get my code →" "Takes about 20 seconds"}
 ${if record.reel_deadline}${block.note}<b>Your window is open until ${record.reel_deadline}.</b> Tag ${event.handles}${if event.hashtag}, use <b>${event.hashtag}</b>${/if} and you're done.${/block.note}${/if}
 ${block.rewards "Your reward"}"""
 
+#: Sent after the class. Three things in one email and in this order: thank
+#: them, ask for the review, then the offer for anybody who leaves one. The
+#: order matters — money next to the ask makes the ask look bought, and the
+#: whole of the top half is the part somebody reads before deciding.
+THANKS_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">Thank you for training with us, ${record.first_name}</h1>
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">It was a pleasure having you in the
+   room. We hope the session was worth your time${if event.has_sponsor} \u2014 and our thanks to
+   ${event.sponsor} for looking after everyone afterwards${/if}.</p>
+${block.stars}We&rsquo;d be grateful for your honest review.${/block.stars}
+${block.review "Write a review \u2192" "Takes about 30 seconds"}
+${if event.reward}<hr style="border:0;border-top:1px solid #e4e8ed;margin:26px 0 22px">
+${block.voucher}<b>Show us your review at the front desk and it&rsquo;s yours.</b><br>That&rsquo;s all we need &mdash; no code, no voucher to keep.${/block.voucher}
+${block.terms}Review required. One per person. Not valid with other discounts or promos. No cash value.${/block.terms}${/if}
+<p style="font-size:15px;margin:22px 0 0;color:#2b3642">We look forward to seeing you at the
+   next session.</p>"""
+
 #: name, blurb, where it's used, the values it may reference, the blocks it may
 #: place, the paired blocks, and the shipped wording.
 TEMPLATES = [
@@ -171,8 +188,12 @@ TEMPLATES = [
         "blurb": "The black header, the AWAKEN mark, the footer line. "
                  "Wraps every email below.",
         "where": "wraps them all", "subject": None,
-        "values": dict(EVENT_VALUES),
-        "blocks": {"block.logo": "the AWAKEN mark",
+        "values": dict(EVENT_VALUES, **{
+            "event.banner": "set when the event has its own header image",
+            "event.plain_header": "set when it has not",
+        }),
+        "blocks": {"block.logo": "the AWAKEN mark, or the event's banner",
+                   "block.banner": "the event's banner, full width",
                    "block.sponsor": "“in partnership with …”, when there is one",
                    "block.body": "the email itself — leave this in"},
         "pairs": {},
@@ -318,6 +339,25 @@ TEMPLATES = [
         "pairs": {"block.note": "the bordered callout",
                   "block.warn": "the same callout, in amber"},
         "body": CANCELLED_BODY,
+    },
+    {
+        "key": "thanks", "name": "Thank you & review",
+        "blurb": "\u201cThank you for training with us.\u201d Asks for a review, "
+                 "and carries the offer for anybody who leaves one.",
+        "where": "every event",
+        "subject": "Thank you for training with us",
+        "values": dict(EVENT_VALUES, **PERSON_VALUES, **{
+            "event.reward": "\u20b1100",
+            "event.reward_by": "Tue 15 Sep 2026",
+            "event.has_sponsor": "set when the event has a sponsor",
+        }),
+        "blocks": {"block.review": "the teal review button",
+                   "block.facts": "When \u00b7 Where \u00b7 Bring \u00b7 After"},
+        "pairs": {"block.stars": "five stars, with your words underneath",
+                  "block.voucher": "the dashed offer box, round your words",
+                  "block.terms": "the small print, centred and small",
+                  "block.note": "the bordered callout"},
+        "body": THANKS_BODY,
     },
     {
         "key": "reel", "name": "The Reel email",

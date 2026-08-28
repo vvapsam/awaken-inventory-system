@@ -53,6 +53,45 @@
         </div>
       </div>
     </div>
+    {# The event's own header image. It replaces the black bar and the AWAKEN
+       mark on every email this class sends, so it is uploaded once here rather
+       than chosen eight times in the editor. #}
+    <div style="grid-column:1/-1">
+      <label class="small" style="font-weight:600">Email banner</label>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        {% if ev.banner %}
+        <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;
+                    flex:none;max-width:280px">
+          <img src="/events/{{ ev.id }}/banner" alt="{{ ev.name }}"
+               style="display:block;width:100%;height:auto"></div>
+        {% endif %}
+        <div style="flex:1;min-width:220px">
+          <input type="file" name="banner" accept="image/png,image/jpeg"
+                 style="padding:7px 9px">
+          <div class="muted small" style="margin:4px 0 0">Sits full width across the top of
+            every email for this class, in place of the black header. Wide and short works
+            best &mdash; around 1120&times;340. Under 3 MB. Leave it empty and the AWAKEN
+            mark is used, as before.</div>
+          {% if ev.banner %}
+          <label class="check small" style="margin-top:7px">
+            <input type="checkbox" name="drop_banner" value="on"> Remove the banner</label>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {# The thank-you offer. Two boxes, because both of them print into the
+       email word for word and neither can be guessed. #}
+    <div><label class="small" style="font-weight:600">Review reward</label>
+      <input name="reward_amount" inputmode="decimal" placeholder="100"
+             value="{{ '%g'|format(ev.reward_amount) if ev.reward_amount else '' }}">
+      <div class="muted small" style="margin:3px 0 0">Pesos off their next plan, for anybody
+        who leaves a review and shows it at the front desk. Leave blank and the
+        thank-you email carries no offer at all.</div></div>
+    <div><label class="small" style="font-weight:600">Claim by</label>
+      <input type="date" name="reward_by"
+             value="{{ ev.reward_by|local_dt|truncate(10, True, '') if ev.reward_by }}">
+      <div class="muted small" style="margin:3px 0 0">The last day it can be used. Stored as
+        the end of that day &mdash; nobody&rsquo;s discount expires at breakfast.</div></div>
     <div><label class="small" style="font-weight:600">Starts</label>
       <input type="datetime-local" name="starts_at" required
         value="{{ ev.starts_at|local_dt if ev.starts_at }}">

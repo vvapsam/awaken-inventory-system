@@ -419,6 +419,10 @@ class PaymentSetting(Base):
     logo = Column(LargeBinary)                 # storefront logo (customer /order header)
     logo_mime = Column(String)
     waiver_key = Column(String)                # secret token embedded in the /waiver QR
+    #: Where "Write a review" sends people. One link for the whole gym — it is
+    #: the gym being reviewed, not the class — so it is typed here once rather
+    #: than pasted onto every event and mistyped on one of them.
+    review_url = Column(String)
     updated_at = Column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
 
@@ -1640,6 +1644,22 @@ class Event(Base):
     sponsor_logo = Column(LargeBinary)
     sponsor_logo_mime = Column(String)
 
+    #: The event's own header image, replacing the black bar and the AWAKEN
+    #: mark at the top of its emails. Per event rather than per email: a class
+    #: that has a look should carry it on everything it sends, and one image
+    #: uploaded once is easier to get right than the same image chosen eight
+    #: times. Rides by Content-ID for the same reason the other two do.
+    banner = Column(LargeBinary)
+    banner_mime = Column(String)
+
+    #: The thank-you offer: money off for anybody who reviews us, and the day
+    #: it stops. Both live on the event because the offer belongs to the class
+    #: — a Christmas promo can be worth more than a Tuesday morning one — while
+    #: the review link itself is the gym's and is typed once under Settings.
+    #: No amount means no offer, and the box is not drawn at all.
+    reward_amount = Column(Numeric(12, 2))
+    reward_by = Column(DateTime(timezone=True))
+
     created_at = Column(DateTime(timezone=True), default=now_utc)
     created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
 
@@ -1674,6 +1694,23 @@ class Event(Base):
             return ""
         fmt = "%a %d %b" if self.time_tba else "%a %d %b, %I:%M %p"
         return to_local(self.starts_at).strftime(fmt).replace(" 0", " ")
+
+    @property
+    def reward_text(self) -> str:
+        """The offer, written as money. Empty when there is no offer."""
+        if not self.reward_amount:
+            return ""
+        amt = float(self.reward_amount)
+        return "\u20b1%s" % (("%.2f" % amt).rstrip("0").rstrip(".")
+                             if amt % 1 else "{:,.0f}".format(amt))
+
+    @property
+    def reward_by_text(self) -> str:
+        """The last day to claim it, in gym time. No clock: a discount that
+        expires at 11:59 is a discount somebody argues about at 12:05."""
+        if not self.reward_by:
+            return ""
+        return to_local(self.reward_by).strftime("%a %d %b %Y").replace(" 0", " ")
 
     @property
     def closes_text(self) -> str:
@@ -2790,6 +2827,9 @@ class EventParticipant(Base):
     #: defaults to whoever has not had it — a cancellation that arrives twice
     #: reads as a second cancellation, and somebody rings to ask which.
     cancel_email_at = Column(DateTime(timezone=True))
+    #: When the thank-you went out. What keeps "send to everyone who hasn't
+    #: had it" from meaning "send it to Marc for the third time".
+    thanks_email_at = Column(DateTime(timezone=True))
     #: Their place in the arrival order, and the start time it earned them.
     #: The number is kept as well as the time because it is what makes the
     #: assignment checkable — "why am I in the second wave" has an answer.
@@ -3006,6 +3046,7 @@ class EventParticipant(Base):
             (self.last_call_at, "Last call sent"),
             (self.nudged_at, "Nudged"),
             (self.reel_email_at, "Reel email sent"),
+            (self.thanks_email_at, "Thank-you sent"),
             (self.pass_email_at, "Pass sent"),
             (self.invited_at, "Invited"),
             (self.pay_due_at, "Last call to pay sent"),

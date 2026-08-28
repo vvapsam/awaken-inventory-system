@@ -27,6 +27,13 @@
   <label>Account name</label>
   <input name="account_name" value="{{ ps.account_name or '' }}" placeholder="e.g. AWAKEN Fitness Center">
 
+  <label style="margin-top:18px">Google review link</label>
+  <input name="review_url" value="{{ ps.review_url or '' }}"
+         placeholder="https://g.page/r/…/review">
+  <p class="muted small" style="margin-top:6px">Where the &ldquo;Write a review&rdquo; button in
+    the thank-you email sends people. One link for the whole gym &mdash; it is the gym being
+    reviewed, not the class. Leave it empty and the button is not shown at all.</p>
+
   <label style="margin-top:18px">Payment QR image</label>
   <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
     <div>

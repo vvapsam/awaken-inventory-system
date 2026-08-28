@@ -35,7 +35,7 @@ import os
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlparse, urlsplit, parse_qsl, urlencode
 
@@ -60,7 +60,7 @@ from .models import (
     PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
     Event, EventParticipant, EventOrganiserLink, EventRate, EventStation,
-    StationRun,
+    PaymentSetting, StationRun,
     HeatPlan, HeatSlot,
     ORGANISER_LINK_DAYS, ORGANISER_DEFAULT_PASS,
     from_local, to_local,
@@ -101,6 +101,7 @@ PANEL = "#f3f5f7"
 
 #: The sponsor's logo rides under this Content-ID when the event has one.
 SPONSOR_CID = "sponsor-logo"
+BANNER_CID = "event-banner"
 
 #: The logo rides inside the message under this Content-ID, so it renders
 #: without the reader having to allow remote images.
@@ -1951,6 +1952,8 @@ def register(app, deps):
             reward_b: str = Form(""), reward_b_detail: str = Form(""),
             reward_b_value: str = Form(""),
             sponsor_logo: UploadFile = None, drop_logo: str = Form(""),
+            banner: UploadFile = None, drop_banner: str = Form(""),
+            reward_amount: str = Form(""), reward_by: str = Form(""),
             db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
         if redir:
@@ -2077,6 +2080,35 @@ def register(app, deps):
             if raw and len(raw) <= 2 * 1024 * 1024:
                 ev.sponsor_logo = raw
                 ev.sponsor_logo_mime = (sponsor_logo.content_type or "image/png")
+        if drop_banner == "on":
+            ev.banner, ev.banner_mime = None, None
+        elif banner is not None and getattr(banner, "filename", ""):
+            raw = banner.file.read()
+            # Wider than a logo, so a wider ceiling — but still a ceiling. A
+            # 6 MB header image is a message the recipient's mail server
+            # bounces, and a bounce is not a thing anybody goes looking for.
+            if raw and len(raw) <= 3 * 1024 * 1024:
+                ev.banner = raw
+                ev.banner_mime = (banner.content_type or "image/png")
+        # The offer. Blank means no offer at all rather than zero pesos off:
+        # the box simply is not drawn, and the thank-you is a thank-you.
+        amt = (reward_amount or "").replace(",", "").replace("\u20b1", "").strip()
+        try:
+            ev.reward_amount = Decimal(amt) if amt else None
+        except (InvalidOperation, ValueError):
+            pass
+        by = (reward_by or "").strip()
+        # A date, not a moment: what is typed is the last day it can be
+        # claimed, so it is stored as the end of that day rather than its
+        # first second. Nobody's discount should expire at breakfast.
+        if not by:
+            ev.reward_by = None
+        else:
+            try:
+                ev.reward_by = from_local(
+                    datetime.fromisoformat(by).replace(hour=23, minute=59))
+            except ValueError:
+                pass
         db.commit()
         return RedirectResponse(f"/events/{eid}/settings?saved=1", status_code=303)
 
@@ -3820,6 +3852,8 @@ def register(app, deps):
             inline[LOGO_CID] = logo
         if ev.sponsor_logo:
             inline[SPONSOR_CID] = ev.sponsor_logo
+        if ev.banner:
+            inline[BANNER_CID] = ev.banner
         # The deadline you typed, read as gym time — whoever fills that box is
         # looking at a clock on a wall in Pasig. Parsed once for the whole
         # send, so twenty people get one deadline rather than twenty that
@@ -3856,6 +3890,7 @@ def register(app, deps):
                      "lastcall": _lastcall_mail, "payby": _payby_mail,
                      "reconfirm": _reconfirm_mail,
                      "cancelled": _cancelled_mail,
+                     "thanks": _thanks_mail,
                      "heat": _heat_mail}.get(kind, _invite_mail)
             # One button, two wordings. Somebody who has never had a time from
             # us gets "Your heat time"; somebody who has gets "Your heat time
@@ -3885,6 +3920,8 @@ def register(app, deps):
                     p.reel_email_at = now
                 elif kind == "cancelled":
                     p.cancel_email_at = now
+                elif kind == "thanks":
+                    p.thanks_email_at = now
                 elif kind == "payby":
                     # Already stamped, before the send — the email quotes this
                     # exact moment, so it has to be decided before the words
@@ -3981,6 +4018,12 @@ def register(app, deps):
                       "one.\u201d Sent automatically to anybody who was already "
                       "told a different time.",
              "ok": True, "why": "chosen for you when you send heat times"},
+            {"key": "thanks", "name": "Thank you & review",
+             "blurb": "\u201cThank you for training with us.\u201d Asks for a "
+                      "review, and carries the offer for anybody who leaves one.",
+             "ok": True,
+             "why": "" if ev.reward_text else "set the reward under Settings "
+                                              "to show the offer"},
             {"key": "cancelled", "name": "Called off",
              "blurb": "\u201cToday's class is cancelled.\u201d Goes to everyone "
                       "who thinks they're coming, and everyone still deciding.",
@@ -4038,6 +4081,12 @@ def register(app, deps):
             # The Reel email: everyone who came and hasn't been asked yet.
             "reel": ([p for p in confirmed if not p.reel_email_at]
                      if wants_reels(ev) else []),
+            # The thank-you: everyone who came and hasn't had it. Confirmed
+            # rather than arrived, because the door is not always scanned and
+            # a class that nobody checked in would otherwise offer an empty
+            # list — the tick boxes remain there for the exceptions.
+            "thanks": [p for p in confirmed if not p.thanks_email_at],
+            "thanks_all": confirmed,
             # The nudge: everyone who was asked and still hasn't posted. A
             # separate list because sending the first ask again to somebody who
             # already posted is the fastest way to sour this.
@@ -4140,6 +4189,8 @@ def register(app, deps):
         elif kind == "cancelled":
             pool = (lists["cancelled_all"] if who == "all"
                     else lists["cancelled"])
+        elif kind == "thanks":
+            pool = lists["thanks_all"] if who == "all" else lists["thanks"]
         elif kind == "heat":
             pool = lists["heat_all"] if who == "all" else lists["heat"]
         elif kind == "returned":
@@ -4205,6 +4256,7 @@ def register(app, deps):
                  "lastcall": _lastcall_mail, "payby": _payby_mail,
                  "reconfirm": _reconfirm_mail,
                  "cancelled": _cancelled_mail, "heatnew": _heat_new_mail,
+                 "thanks": _thanks_mail,
                  "heat": _heat_mail}.get(kind, _invite_mail)
         # A preview that shows a different email from the one that would
         # actually go out is worse than no preview: it is the page you check
@@ -4219,6 +4271,8 @@ def register(app, deps):
         html = html.replace("cid:%s" % LOGO_CID, "/static/email-logo.png")
         html = html.replace("cid:%s" % SPONSOR_CID,
                             "/events/%d/sponsor-logo" % ev.id)
+        html = html.replace("cid:%s" % BANNER_CID,
+                            "/events/%d/banner" % ev.id)
         banner = (
             "<div style=\"font:14px system-ui;background:#1a232e;color:#fff;"
             "padding:11px 16px\">Preview &middot; <b>%s</b> &middot; as %s "
@@ -4247,6 +4301,8 @@ def register(app, deps):
             inline[LOGO_CID] = logo
         if ev.sponsor_logo:
             inline[SPONSOR_CID] = ev.sponsor_logo
+        if ev.banner:
+            inline[BANNER_CID] = ev.banner
         try:
             ok, _ = mailer.send(p.email, subject, text, html=html, inline=inline)
         except Exception:
@@ -4282,6 +4338,8 @@ def register(app, deps):
             inline[LOGO_CID] = logo
         if ev.sponsor_logo:
             inline[SPONSOR_CID] = ev.sponsor_logo
+        if ev.banner:
+            inline[BANNER_CID] = ev.banner
         try:
             ok, _ = mailer.send(p.email, subject, text, html=html,
                                 inline=inline or None)
@@ -4306,6 +4364,8 @@ def register(app, deps):
             inline[LOGO_CID] = logo
         if ev.sponsor_logo:
             inline[SPONSOR_CID] = ev.sponsor_logo
+        if ev.banner:
+            inline[BANNER_CID] = ev.banner
         try:
             mailer.send(p.email, subject, text, html=html, inline=inline or None)
         except Exception:
@@ -4323,6 +4383,17 @@ def register(app, deps):
             return Response(status_code=404)
         return Response(content=ev.sponsor_logo,
                         media_type=ev.sponsor_logo_mime or "image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/events/{eid}/banner")
+    def event_banner(eid: int, db: Session = Depends(get_db)):
+        """The event's header image. Public, like the sponsor's mark: it is the
+        top of an email anybody on the list already has in their inbox."""
+        ev = db.get(Event, eid)
+        if not ev or not ev.banner:
+            return Response(status_code=404)
+        return Response(content=ev.banner,
+                        media_type=ev.banner_mime or "image/png",
                         headers={"Cache-Control": "public, max-age=86400"})
 
     # --------------------------------------------------- organiser roster ----
@@ -4729,11 +4800,20 @@ def _mail_values(ev, p, url, key) -> dict:
         "event.when": ev.when_text,
         "event.venue": ev.venue or "",
         "event.sponsor": ev.sponsor or "Our sponsor",
+        # The stand-in above is what an email says when a sponsor exists but
+        # nobody typed the name. It is never empty, so it cannot be tested —
+        # this is the one that answers "is there a sponsor at all?", which is
+        # a different question and the one a sentence about them depends on.
+        "event.has_sponsor": "1" if (ev.sponsor or "").strip() else "",
         "event.bring": ev.bring or "",
         "event.perk": ev.perk or "",
         "event.closes": ev.closes_text,
         "event.handles": " and ".join(ev.handle_list),
         "event.hashtag": ev.hashtag or "",
+        # Empty when no offer has been set, which is what makes the whole
+        # bottom half of the thank-you disappear rather than promise nothing.
+        "event.reward": ev.reward_text,
+        "event.reward_by": ev.reward_by_text,
         "record.name": p.full_name or p.name or "",
         "record.first_name": first,
         "record.email": p.email or "",
@@ -4879,7 +4959,69 @@ def _moved_block(ev) -> str:
         % (_esc(_fmt_when(ev.moved_from)), _esc(ev.when_text or "")))
 
 
-def _mail_blocks(ev, p, url, key) -> tuple:
+def _stars_block(inner) -> str:
+    """Five stars, then your sentence.
+
+    The stars are the picture, not the ask: the words underneath say "a
+    review", never "a five-star review". Asking for the rating rather than the
+    opinion is what gets a listing's reviews filtered, and it buys nothing —
+    somebody who liked the class was going to give five anyway.
+    """
+    return ('<table width="100%%" style="margin:2px 0 0"><tr><td align="center">'
+            '<div style="font-size:30px;letter-spacing:7px;color:#f5a623;'
+            'line-height:1.15">&#9733;&#9733;&#9733;&#9733;&#9733;</div>'
+            '<div style="font-size:15px;color:#2b3642;margin-top:12px">%s</div>'
+            '</td></tr></table>' % inner)
+
+
+def _review_button(db, label, sub) -> str:
+    """The button, pointed at the gym's review link.
+
+    Nothing at all when no link has been set. A button that opens nowhere is
+    worse than no button: the person taps it, gets a broken page, and the one
+    thing you asked them to do is now the thing that went wrong.
+    """
+    url = ((db.get(PaymentSetting, 1) or PaymentSetting()).review_url or "").strip()
+    return _button(url, label, sub) if url else ""
+
+
+def _voucher_block(ev, inner) -> str:
+    """The offer, with the numbers from the event and the words from you.
+
+    Drawn only when there is an amount. The alternative — an empty box, or a
+    box reading "&#8369;0 off" — is an email that promises something the front
+    desk then has to refuse.
+    """
+    if not ev.reward_text:
+        return ""
+    till = ('<div style="font-size:12px;color:#6b7683;margin-top:9px">Claim by %s</div>'
+            % _esc(ev.reward_by_text)) if ev.reward_by_text else ""
+    return (
+        '<table width="100%%" cellpadding="0" cellspacing="0" style="margin:4px 0 0">'
+        '<tr><td align="center" style="border:1px dashed %s;background:%s;'
+        'border-radius:10px;padding:18px 20px">'
+        '<div style="display:inline-block;background:%s;color:#fff;font-size:10px;'
+        'font-weight:800;letter-spacing:1.8px;text-transform:uppercase;'
+        'border-radius:4px;padding:4px 10px;margin-bottom:11px">For reviewers</div>'
+        '<div style="font-size:27px;font-weight:800;color:#006a6a;'
+        'letter-spacing:-.02em">%s off</div>'
+        '<div style="font-size:14px;color:#2b3642;margin-top:6px;line-height:1.55">%s</div>'
+        '%s</td></tr></table>'
+        % (TEAL, TEAL_TINT, TEAL, _esc(ev.reward_text), inner, till))
+
+
+def _terms_line(inner) -> str:
+    """The small print, and deliberately small.
+
+    Centred under the box so it reads as a footnote to the offer rather than a
+    paragraph of its own, and at the size print like this is read at — which is
+    to say, when somebody is already standing at the desk arguing about it.
+    """
+    return ('<div style="font-size:9px;color:#9aa3ab;margin:10px 0 0;'
+            'line-height:1.5;text-align:center">%s</div>' % inner)
+
+
+def _mail_blocks(db, ev, p, url, key) -> tuple:
     """The pieces the system builds, and the one you wrap your own words in."""
     blocks = {
         "block.facts": lambda *a: _facts(ev, p),
@@ -4889,15 +5031,20 @@ def _mail_blocks(ev, p, url, key) -> tuple:
         "block.qr": lambda *a: _qr_block(ev, p),
         "block.heat": lambda *a: _heat_block(ev, p),
         "block.moved": lambda *a: _moved_block(ev),
+        "block.review": lambda label="Write a review \u2192", sub="":
+            _review_button(db, label, sub),
     }
     pairs = {"block.note": lambda inner, *a: _window_note(inner),
-             "block.warn": lambda inner, *a: _warn_note(inner)}
+             "block.warn": lambda inner, *a: _warn_note(inner),
+             "block.stars": lambda inner, *a: _stars_block(inner),
+             "block.voucher": lambda inner, *a: _voucher_block(ev, inner),
+             "block.terms": lambda inner, *a: _terms_line(inner)}
     return blocks, pairs
 
 def _compose(db, ev, p, url, key, src=None) -> tuple:
     """(subject, text, html) for one email to one person."""
     values = _mail_values(ev, p, url, key)
-    blocks, pairs = _mail_blocks(ev, p, url, key)
+    blocks, pairs = _mail_blocks(db, ev, p, url, key)
     subject, text, body = mail_templates.build(db, key, values, blocks, pairs,
                                                src=src)
     return subject, text, _shell(db, ev, body, src=src if key == "shell" else None)
@@ -4916,6 +5063,10 @@ def _finish_mail(db, ev, p, url):
 
 def _returned_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "returned")
+
+
+def _thanks_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "thanks")
 
 
 def _lastcall_mail(db, ev, p, url):
@@ -4990,17 +5141,40 @@ def _shell(db, ev, body, src=None) -> str:
             '<div style="color:%s;font-size:10px;font-weight:600;letter-spacing:2.2px;'
             'text-transform:uppercase;margin-top:14px">in partnership with</div>%s'
             % (BLACK_SOFT, mark))
-    logo = ('<img src="cid:%s" alt="AWAKEN" width="142" style="display:block;'
-            'margin:0 auto;width:142px;height:auto">' % LOGO_CID)
+    # An event with its own banner shows it instead of the AWAKEN mark. The
+    # mark is in the banner already — that is what a banner is — so the header
+    # carries one logo rather than two.
+    #
+    # Two ways it can land, because the wrapper is editable. The shipped
+    # wrapper has a full-bleed row for it; a wrapper somebody edited before
+    # this existed has no such row, so `block.logo` hands back the banner too.
+    # Inset on black rather than edge to edge, but never the wrong image.
+    banner_img = ('<img src="cid:%s" alt="%s" width="560" style="display:block;'
+                  'width:100%%;max-width:560px;height:auto;border:0">'
+                  % (BANNER_CID, _esc(ev.name or "AWAKEN"))) if ev.banner else ""
+    # A banner takes the whole header, so the sponsor would drop off the top of
+    # the email entirely. They get their own black strip underneath it instead
+    # — the same words, still above the fold, and the sponsor still named on
+    # every message we send about their class.
+    banner = banner_img + (
+        '<table width="100%%" cellpadding="0" cellspacing="0"><tr>'
+        '<td style="background:#14171a;padding:4px 30px 20px;text-align:center">'
+        '%s</td></tr></table>' % sponsor_bar if banner_img and sponsor_bar else "")
+    logo = banner_img or (
+        '<img src="cid:%s" alt="AWAKEN" width="142" style="display:block;'
+        'margin:0 auto;width:142px;height:auto">' % LOGO_CID)
     rows = mail_templates.build(
         db, "shell",
-        {"event.name": ev.name or "", "event.when": ev.when_text,
+        {"event.banner": "1" if ev.banner else "",
+         "event.plain_header": "" if ev.banner else "1",
+         "event.name": ev.name or "", "event.when": ev.when_text,
          "event.venue": ev.venue or "", "event.sponsor": ev.sponsor or "",
          "event.bring": ev.bring or "", "event.perk": ev.perk or "",
          "event.closes": ev.closes_text,
          "event.handles": " and ".join(ev.handle_list),
          "event.hashtag": ev.hashtag or ""},
         {"block.logo": lambda *a: logo,
+         "block.banner": lambda *a: banner,
          "block.sponsor": lambda *a: sponsor_bar,
          "block.body": lambda *a: body},
         {}, src=src)[2]
@@ -5090,7 +5264,7 @@ def sample_email(db, key, subject_src, body_src) -> tuple:
         # The wrapper has nothing to wrap on its own, so it gets the shipped
         # invitation inside it — you are looking at the header and the footer.
         values = _mail_values(ev, p, url, "invite")
-        blocks, pairs = _mail_blocks(ev, p, url, "invite")
+        blocks, pairs = _mail_blocks(db, ev, p, url, "invite")
         body = mail_templates.build(db, "invite", values, blocks, pairs)[2]
         return None, _shell(db, ev, body, src=src)
     subject, _text, html = _compose(db, ev, p, url, key, src=src)
