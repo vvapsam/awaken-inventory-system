@@ -419,6 +419,11 @@
     &ldquo;{{ 'answer by ' ~ (ev.confirm_by|local).strftime('%a %d %b, %I:%M %p')|replace(' 0', ' ')
       if ev.confirm_by else 'answer by' }}&rdquo; deadline rather than getting a
     private clock of their own.{% endif %}
+    <b>Everybody gets a new code.</b> The pass QR is nothing but that code, so
+    every pass already sitting in an inbox stops working the moment you press
+    this &mdash; which is the point, or somebody not in this time could hold up
+    the old one at the door and be scanned straight in. Their old personal link
+    dies with it; the email you send next carries the new one.
     The sponsor agreement is cleared with the answer &mdash; it was given for a
     class on a particular day, and this is a different day. Links, history and
     emails are untouched, and nobody who already told you they can&rsquo;t come
@@ -431,6 +436,8 @@
           ~ ' back to not confirmed?'
           ~ ('\n\nTheir approved payments go back to To review. Nothing is '
              'refused and no money is touched.' if ev.mode == 'open' else '')
+          ~ '\n\nEveryone gets a new code, so every pass and personal link '
+             'already sent stops working.'
           ~ '\n\nNo email is sent. Send them the one that explains it.')
           | tojson }})">
     <button class="btn danger">Reset confirmations</button></form>

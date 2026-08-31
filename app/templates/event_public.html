@@ -597,6 +597,20 @@ button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
       often than you'd think.</div>
   </div>
 
+  {# The room filled while they were deciding. Deliberately not the "you've
+     just missed it" wording above: they did not run out of time, and being
+     told they were slow when they were not is the one thing that turns a
+     disappointment into a grievance. #}
+  {% elif stage == 'full' %}
+  <div class="done">
+    <h2 style="margin-top:8px">This one filled up 😔</h2>
+    <p>Slots went in the order the confirmations came in, and they're gone.
+      Nothing of yours was lost &mdash; you're still on our list.</p>
+    <div class="tiny">We'll come to you first for the next one, before it goes
+      public. People drop out more often than you'd think, so if a place opens
+      up we'll be in touch.</div>
+  </div>
+
   {# ------------------------------------------------------------- late ---- #}
   {% elif stage == 'late' %}
   <div class="body">

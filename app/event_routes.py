@@ -730,7 +730,15 @@ def register(app, deps):
             return "declined"
         if p.rsvp == RSVP_NONE:
             by = confirm_deadline(p, now)
-            return "lapsed" if (by and now > by) else "confirm"
+            if by and now > by:
+                return "lapsed"
+            # The class filled up while they were deciding. Not "lapsed" —
+            # they did not run out of time, the room ran out of space, and
+            # those read differently to the person holding the phone. Somebody
+            # already in never sees it: they are not asking for a slot.
+            if _full(ev) and not p.confirmed:
+                return "full"
+            return "confirm"
         # Confirmed from here on.
         if p.posted:
             return "rewarded"
@@ -1201,6 +1209,9 @@ def register(app, deps):
         # and letting them take it back would hand one place to two people.
         # Putting somebody back is a decision made on the tracker, where you
         # can see what is actually free.
+        # Checked here and not only when the page was drawn: two people
+        # tapping Confirm at once would otherwise both take the last slot, and
+        # this is the exact moment a slot is claimed.
         if _stage(p, now) not in ("confirm", "ready"):
             return RedirectResponse(back, status_code=303)
 
@@ -2274,6 +2285,24 @@ def register(app, deps):
         return RedirectResponse(f"/events/{eid}?tab=gone&back={pid}",
                                 status_code=303)
 
+    def _new_code(p) -> None:
+        """A fresh token, which is a fresh QR and a dead old one.
+
+        The pass QR is nothing but this token, so re-sending a pass without
+        changing it hands somebody the same picture back. Worse, the old pass
+        still scans: an unapproved person could hold up the pass they were
+        emailed for the class that moved and be checked straight in, because
+        the door reads the code and nothing else.
+
+        Rotating it kills every pass already in an inbox at the moment the room
+        is re-asked, which is exactly when they should die. Their old personal
+        link dies with it — that is the same fact, not an extra cost, and the
+        email that re-asks them carries the new one.
+        """
+        p.token = new_token()
+        # So a pass is actually sent again rather than skipped as already-sent.
+        p.pass_email_at = None
+
     @app.post("/events/{eid}/confirmations/reset")
     def event_reset_confirmations(request: Request, eid: int,
                                   db: Session = Depends(get_db)):
@@ -2330,6 +2359,7 @@ def register(app, deps):
                 p.released_at = None
                 p.acknowledged_at = None
                 p.rsvp, p.rsvp_at = RSVP_NONE, None
+                _new_code(p)
                 n += 1
                 continue
             if p.rsvp != RSVP_YES:
@@ -2341,6 +2371,7 @@ def register(app, deps):
             # again costs one tick box, and not asking means holding somebody
             # to a thing they agreed to about something else.
             p.acknowledged_at = None
+            _new_code(p)
             # Cleared, not set: with no personal window they fall back to the
             # event's own announced deadline, which is the one date the email
             # quotes and the only one that can be true for everybody at once.
