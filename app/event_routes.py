@@ -628,7 +628,11 @@ def counts(event: Event) -> dict:
         "handles": len([p for p in confirmed if p.handle]),
         "invited": len([p for p in live if p.invited_at]),
         "reel_emailed": len([p for p in confirmed if p.reel_email_at]),
-        "to_review": len([p for p in ps if p.pay_status == PAY_SUBMITTED]),
+        # A free registration never reaches this queue. There is no receipt
+        # to look at, so a row sitting here would be a job that cannot be
+        # done — and the person is already in on the strength of their answer.
+        "to_review": len([p for p in ps
+                          if p.pay_status == PAY_SUBMITTED and not p.free]),
         "unfinished": len([p for p in ps if p.pay_status == PAY_DRAFT]),
         "to_nudge": len([p for p in ps
                          if p.pay_status == PAY_DRAFT and not p.nudged_at]),
@@ -1581,7 +1585,8 @@ def register(app, deps):
         people = [p for p in rest if not (p.declined or p.released_at)]
         # Oldest first: somebody who has been waiting nineteen hours on a
         # 24-hour promise is the one to look at, not the newest arrival.
-        review = sorted([x for x in rest if x.pay_status == PAY_SUBMITTED],
+        review = sorted([x for x in rest
+                         if x.pay_status == PAY_SUBMITTED and not x.free],
                         key=lambda x: _aware(x.submitted_at) or datetime.now(timezone.utc))
         # Longest-stalled first — the row id is the order they arrived in.
         unfinished = sorted([x for x in rest if x.pay_status == PAY_DRAFT],
@@ -2343,7 +2348,11 @@ def register(app, deps):
             # paid one it is a payment we approved — EventParticipant.confirmed
             # reads the payment and ignores the button entirely — so clearing
             # rsvp there would clear nothing and quietly report success.
-            if p.pay_status == PAY_APPROVED:
+            # On a free class the approved stamp is not a payment, it is how
+            # "they are in" is written down. Moving it to "waiting on us"
+            # invents a receipt nobody sent and a job nobody can do; clearing
+            # the answer is the whole of the reset there.
+            if p.pay_status == PAY_APPROVED and not p.free:
                 # Back to the queue, not refused: the receipt, the amount, the
                 # rate and their place in the list all stay exactly where they
                 # were. Approving is what takes a slot, so this frees the room
@@ -3693,12 +3702,21 @@ def register(app, deps):
             p.released_at = None
             p.rsvp, p.rsvp_at = RSVP_NONE, None
         else:
-            # Back on the list, with a fresh window — whatever deadline
-            # applied has almost certainly passed by now.
-            p.rsvp, p.rsvp_at = RSVP_NONE, None
+            # Back on the list. A yes survives: somebody released, or marked
+            # off by hand after they had already answered, is being put back
+            # into the slot they claimed — blanking their answer would make
+            # them ask for it a second time, and now that a tap is what takes
+            # a slot it would hand their place to whoever asked next while
+            # they were doing it.
+            #
+            # A no does not survive, because undoing it is the whole point of
+            # putting somebody back. They get a fresh window with it, since
+            # whatever deadline applied has almost certainly passed.
+            if p.rsvp != RSVP_YES:
+                p.rsvp, p.rsvp_at = RSVP_NONE, None
+                p.confirm_due = now + timedelta(hours=ev.confirm_hours or 24)
             p.released_at = None
             p.waitlist = False
-            p.confirm_due = now + timedelta(hours=ev.confirm_hours or 24)
         p.edited_at = now
         name = p.name
         db.commit()

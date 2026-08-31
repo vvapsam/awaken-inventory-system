@@ -3098,11 +3098,25 @@ class EventParticipant(Base):
 
     @property
     def confirmed(self) -> bool:
-        # A registration that has been paid for and approved is a confirmed
-        # slot: they said yes with money, which is a firmer yes than a button.
-        if self.pay_status is not None:
+        # A free registration is confirmed by the person saying yes, and by
+        # nothing else. There is no payment to approve, so the pay_status a
+        # free sign-up carries is bookkeeping rather than an answer — reading
+        # it as one is how a class that costs nothing ended up with twenty
+        # people sitting in a payment review queue, and how somebody who had
+        # pressed Confirm read "Payment in review" on a class with no payments.
+        if self.pay_status is not None and not self.free:
             return self.pay_status == PAY_APPROVED
         return self.rsvp == RSVP_YES
+
+    @property
+    def free(self) -> bool:
+        """Did this registration cost anything?
+
+        Read off the row, not the event: the amount is copied here when they
+        pick their rate, so a class that is free today and priced tomorrow
+        does not rewrite what somebody already did.
+        """
+        return not self.amount or Decimal(self.amount) <= 0
 
     @property
     def declined(self) -> bool:
