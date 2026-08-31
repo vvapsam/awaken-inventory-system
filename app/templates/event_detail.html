@@ -568,15 +568,29 @@
     {% endif %}
     {% if 'confirmed' in cols %}
     <td>
+      {# This column answers one question: are they holding a slot? That is the
+         same question the door asks, so the two can never disagree — and a
+         person who pressed Confirm reads Yes here whether or not their payment
+         has been looked at yet, because the tap is what took the place.
+
+         It used to read `confirmed`, which on a paid class means "payment
+         approved" — so somebody who had said yes, agreed to the terms and was
+         occupying a slot fell all the way through to "Not invited", which was
+         both untrue and unanswerable: on open registration nobody is invited,
+         they sign themselves up. #}
       {% if p.released_at %}<span class="tag bad">Window closed</span>
         <div class="muted small" style="margin:0">Slot released</div>
-      {% elif p.confirmed %}<span class="tag">Yes</span>
+      {% elif p.confirmed or p.rsvp == 'yes' %}<span class="tag">Yes</span>
         <div class="muted small" style="margin:0">{{ (p.rsvp_at|local).strftime('%d %b, %H:%M') if p.rsvp_at }}</div>
+        {% if p.pay_status and not p.confirmed %}
+        <div class="muted small" style="margin:0">Payment in review</div>{% endif %}
       {% elif p.declined %}<span class="tag grey">Can't make it</span>
       {# "No", not "Not yet". After a reset the whole room sits here, and a
          column of "Not yet" reads like a queue of people we are waiting on
-         rather than the plain fact that nobody is in. #}
-      {% elif p.invited_at %}<span class="tag amber">No</span>
+         rather than the plain fact that nobody is in. Somebody who registered
+         themselves gets it too: they are not waiting on an invitation that was
+         never coming, they simply have not answered. #}
+      {% elif p.invited_at or p.pay_status %}<span class="tag amber">No</span>
       {% else %}<span class="muted small">Not invited</span>{% endif %}
     </td>
     {% endif %}
