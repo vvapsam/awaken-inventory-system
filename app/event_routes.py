@@ -991,18 +991,8 @@ def register(app, deps):
         return resp
 
     def _taken(ev) -> int:
-        """How many slots are actually held.
-
-        The same set the tracker counts in "29 of 30", deliberately: the
-        number on the door and the number on your screen must be the same
-        number, or one of them is lying.
-
-        A registration mid-payment is not in it. That is the existing rule
-        everywhere else - approving is what takes the slot, not submitting -
-        and the finish-your-registration email says so in as many words.
-        """
-        return len([p for p in ev.participants
-                    if not p.waitlist and not p.released_at and p.confirmed])
+        """How many slots are actually held. See slots_taken."""
+        return slots_taken(ev)
 
     def _full(ev) -> bool:
         """Is the room full? No capacity set means no limit, as before."""
@@ -3975,7 +3965,7 @@ def register(app, deps):
                      "lastcall": _lastcall_mail, "payby": _payby_mail,
                      "reconfirm": _reconfirm_mail,
                      "cancelled": _cancelled_mail,
-                     "thanks": _thanks_mail,
+                     "thanks": _thanks_mail, "backon": _backon_mail,
                      "heat": _heat_mail}.get(kind, _invite_mail)
             # One button, two wordings. Somebody who has never had a time from
             # us gets "Your heat time"; somebody who has gets "Your heat time
@@ -4103,6 +4093,13 @@ def register(app, deps):
                       "one.\u201d Sent automatically to anybody who was already "
                       "told a different time.",
              "ok": True, "why": "chosen for you when you send heat times"},
+            {"key": "backon", "name": "Back on \u2014 limited slots",
+             "blurb": "\u201cWe\u2019re back on, but smaller.\u201d Prints the old "
+                      "date beside the new one and says slots go in the order "
+                      "answers arrive.",
+             "ok": bool(ev.moved_from),
+             "why": "" if ev.moved_from else "set \u201cMoved from\u201d in "
+                                             "Settings first"},
             {"key": "thanks", "name": "Thank you & review",
              "blurb": "\u201cThank you for training with us.\u201d Asks for a "
                       "review, and carries the offer for anybody who leaves one.",
@@ -4166,6 +4163,18 @@ def register(app, deps):
             # The Reel email: everyone who came and hasn't been asked yet.
             "reel": ([p for p in confirmed if not p.reel_email_at]
                      if wants_reels(ev) else []),
+            # Back on: everybody who still owes you an answer for the new
+            # date. Not the ones who said no — they answered, and asking a
+            # person who declined to hurry up and re-declare it is the email
+            # that makes somebody mute you.
+            # askable, not invitable: on an open class everybody registered
+            # themselves, and `invitable` deliberately excludes exactly those
+            # people because an *invitation* would step on their registration.
+            # This is not an invitation. It is the class they already signed up
+            # for, telling them it moved — and leaving the whole room out of it
+            # would have been silent, which is the worst way for this to fail.
+            "backon": [p for p in askable if not p.confirmed],
+            "backon_all": askable,
             # The thank-you: everyone who came and hasn't had it. Confirmed
             # rather than arrived, because the door is not always scanned and
             # a class that nobody checked in would otherwise offer an empty
@@ -4276,6 +4285,8 @@ def register(app, deps):
                     else lists["cancelled"])
         elif kind == "thanks":
             pool = lists["thanks_all"] if who == "all" else lists["thanks"]
+        elif kind == "backon":
+            pool = lists["backon_all"] if who == "all" else lists["backon"]
         elif kind == "heat":
             pool = lists["heat_all"] if who == "all" else lists["heat"]
         elif kind == "returned":
@@ -4341,7 +4352,7 @@ def register(app, deps):
                  "lastcall": _lastcall_mail, "payby": _payby_mail,
                  "reconfirm": _reconfirm_mail,
                  "cancelled": _cancelled_mail, "heatnew": _heat_new_mail,
-                 "thanks": _thanks_mail,
+                 "thanks": _thanks_mail, "backon": _backon_mail,
                  "heat": _heat_mail}.get(kind, _invite_mail)
         # A preview that shows a different email from the one that would
         # actually go out is worse than no preview: it is the page you check
@@ -4875,6 +4886,24 @@ def _rewards_block(ev, title) -> str:
 # not. One path, so an edited email cannot take a different route through
 # the code from an unedited one.
 
+def slots_taken(ev) -> int:
+    """How many slots are actually held.
+
+    The same set the tracker counts in "29 of 30", deliberately: the number on
+    the door, the number on your screen and the number an email quotes must all
+    be the same number, or one of them is lying. Module level for exactly that
+    reason — the door checks it inside the sign-up, and the mail values need it
+    out here, and a second copy of this rule is a second answer waiting to
+    disagree with the first.
+
+    A registration mid-payment is not in it. That is the existing rule
+    everywhere else — approving is what takes the slot, not submitting — and
+    the finish-your-registration email says so in as many words.
+    """
+    return len([p for p in ev.participants
+                if not p.waitlist and not p.released_at and p.confirmed])
+
+
 def _mail_values(ev, p, url, key) -> dict:
     """Everything ${...} can stand for, for this person, on this email."""
     first = ((p.first_name or "").strip()
@@ -4899,6 +4928,12 @@ def _mail_values(ev, p, url, key) -> dict:
         # bottom half of the thank-you disappear rather than promise nothing.
         "event.reward": ev.reward_text,
         "event.reward_by": ev.reward_by_text,
+        # What is actually left, worked out the same way the door works it out
+        # — so an email that names a number and a sign-up that refuses somebody
+        # can never disagree. Empty when no capacity is set: "0 slots left" on
+        # a class with no limit would be a lie in the other direction.
+        "event.slots_left": (str(max(0, (ev.capacity or 0) - slots_taken(ev)))
+                             if (ev.capacity or 0) > 0 else ""),
         "record.name": p.full_name or p.name or "",
         "record.first_name": first,
         "record.email": p.email or "",
@@ -5152,6 +5187,10 @@ def _returned_mail(db, ev, p, url):
 
 def _thanks_mail(db, ev, p, url):
     return _compose(db, ev, p, url, "thanks")
+
+
+def _backon_mail(db, ev, p, url):
+    return _compose(db, ev, p, url, "backon")
 
 
 def _lastcall_mail(db, ev, p, url):

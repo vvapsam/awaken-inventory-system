@@ -164,6 +164,22 @@ ${block.button "Submit my Reel &amp; get my code →" "Takes about 20 seconds"}
 ${if record.reel_deadline}${block.note}<b>Your window is open until ${record.reel_deadline}.</b> Tag ${event.handles}${if event.hashtag}, use <b>${event.hashtag}</b>${/if} and you're done.${/block.note}${/if}
 ${block.rewards "Your reward"}"""
 
+#: The class moved, and came back smaller. Deliberately short, and the shortest
+#: thing in it is the one sentence that changes what confirming means: slots go
+#: in the order answers arrive. Somebody who confirms and does not get in has
+#: to have read that here, in this email, or they will believe they had a place
+#: and lost it.
+#:
+#: No number by default. "Limited" cannot go stale between writing this and
+#: sending it; a number can, and the whole point of the sentence is that it is
+#: true. ${event.slots_left} is in the palette for when you want to name it.
+BACKON_BODY = """<h1 style="font-size:20px;font-weight:650;margin:0 0 14px">We&rsquo;re back on, ${record.first_name}</h1>
+${block.moved}
+<p style="font-size:15px;margin:0 0 16px;color:#2b3642">Same class, new date. We&rsquo;re
+   running a smaller group this time, so we&rsquo;re asking everyone to confirm again.</p>
+${block.note}<b>Slots are limited and go in the order confirmations come in.</b> We&rsquo;ll email you back either way.${/block.note}
+${block.button "Confirm my slot \u2192" "Takes under a minute"}"""
+
 #: Sent after the class. Three things in one email and in this order: thank
 #: them, ask for the review, then the offer for anybody who leaves one. The
 #: order matters — money next to the ask makes the ask look bought, and the
@@ -339,6 +355,24 @@ TEMPLATES = [
         "pairs": {"block.note": "the bordered callout",
                   "block.warn": "the same callout, in amber"},
         "body": CANCELLED_BODY,
+    },
+    {
+        "key": "backon", "name": "Back on \u2014 limited slots",
+        "blurb": "\u201cWe\u2019re back on, but smaller.\u201d Prints the old date "
+                 "beside the new one and says slots go in the order answers arrive.",
+        "where": "a class that moved and came back smaller",
+        "subject": "${event.name} is back on \u2014 ${event.when}",
+        "values": dict(EVENT_VALUES, **PERSON_VALUES, **{
+            "event.was": "Sun 30 Aug, 10:00 AM",
+            "event.moved_why": "The room we had is smaller than we planned for.",
+            "event.slots_left": "12",
+        }),
+        "blocks": {"block.moved": "the old date struck through, beside the new",
+                   "block.button": "the teal call-to-action",
+                   "block.facts": "When \u00b7 Where \u00b7 Bring \u00b7 After"},
+        "pairs": {"block.note": "the bordered callout",
+                  "block.warn": "the amber one, for something they could lose"},
+        "body": BACKON_BODY,
     },
     {
         "key": "thanks", "name": "Thank you & review",
