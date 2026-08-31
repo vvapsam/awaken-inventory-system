@@ -419,9 +419,11 @@
     &ldquo;{{ 'answer by ' ~ (ev.confirm_by|local).strftime('%a %d %b, %I:%M %p')|replace(' 0', ' ')
       if ev.confirm_by else 'answer by' }}&rdquo; deadline rather than getting a
     private clock of their own.{% endif %}
-    Links, history and emails are untouched, and nobody who already told you
-    they can&rsquo;t come is put back on the list. <b>No email is sent</b>
-    &mdash; that one is yours to write.</p>
+    The sponsor agreement is cleared with the answer &mdash; it was given for a
+    class on a particular day, and this is a different day. Links, history and
+    emails are untouched, and nobody who already told you they can&rsquo;t come
+    is put back on the list. <b>No email is sent</b> &mdash; that one is yours
+    to write.</p>
   <form method="post" action="/events/{{ ev.id }}/confirmations/reset"
         style="margin:0"
         onsubmit="return confirm({{ ('Put ' ~ held

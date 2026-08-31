@@ -2338,12 +2338,19 @@ def register(app, deps):
                 p.reviewed_at = None
                 p.reviewed_by_id = None
                 p.released_at = None
+                p.acknowledged_at = None
+                p.rsvp, p.rsvp_at = RSVP_NONE, None
                 n += 1
                 continue
             if p.rsvp != RSVP_YES:
                 continue
             p.rsvp = RSVP_NONE
             p.rsvp_at = None
+            # The sponsor agreement goes with the answer. It was given for a
+            # class on a particular day, and this is a different day: asking
+            # again costs one tick box, and not asking means holding somebody
+            # to a thing they agreed to about something else.
+            p.acknowledged_at = None
             # Cleared, not set: with no personal window they fall back to the
             # event's own announced deadline, which is the one date the email
             # quotes and the only one that can be true for everybody at once.
