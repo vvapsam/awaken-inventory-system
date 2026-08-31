@@ -573,8 +573,10 @@
       {% elif p.confirmed %}<span class="tag">Yes</span>
         <div class="muted small" style="margin:0">{{ (p.rsvp_at|local).strftime('%d %b, %H:%M') if p.rsvp_at }}</div>
       {% elif p.declined %}<span class="tag grey">Can't make it</span>
-      {% elif p.invited_at %}<span class="tag amber">Not yet</span>
-        <div class="muted small" style="margin:0">Invited {{ (p.invited_at|local).strftime('%d %b') }}</div>
+      {# "No", not "Not yet". After a reset the whole room sits here, and a
+         column of "Not yet" reads like a queue of people we are waiting on
+         rather than the plain fact that nobody is in. #}
+      {% elif p.invited_at %}<span class="tag amber">No</span>
       {% else %}<span class="muted small">Not invited</span>{% endif %}
     </td>
     {% endif %}

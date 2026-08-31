@@ -420,7 +420,7 @@
         style="margin:0"
         onsubmit="return confirm({{ ('Clear the yes from ' ~ held
           ~ (' person?' if held == 1 else ' people?')
-          ~ '\n\nThey will all read Not confirmed until they answer again. '
+          ~ '\n\nThey will all read Not registered until they answer again. '
           ~ 'Send them the email that tells them why.') | tojson }})">
     <button class="btn danger">Reset confirmations</button></form>
 </div>

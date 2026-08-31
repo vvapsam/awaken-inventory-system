@@ -2306,10 +2306,11 @@ RACE_STATUSES = [
     # has not answered was reading "Registered" on the tracker, which is the
     # tracker asserting the one thing you are waiting to find out.
     #
-    # "Not confirmed" rather than "For confirmation": the tracker is a list of
+    # "Not registered" rather than "For confirmation": the tracker is a list of
     # facts about people, and the fact here is that this person has not
-    # answered. "For confirmation" reads like a task on your list instead.
-    ("for_confirmation", "Not confirmed"),
+    # answered. "For confirmation" reads like a task on your list instead, and
+    # it sits directly opposite "Registered", which is what a yes makes them.
+    ("for_confirmation", "Not registered"),
     ("registered",  "Registered"),
     ("checked_in",  "Checked in"),
     ("ready",       "Ready"),
