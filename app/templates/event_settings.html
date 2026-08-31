@@ -402,4 +402,27 @@
   <a class="btn" href="/events/{{ ev.id }}">Cancel</a>
 </div>
 </form>
+
+{# Outside the settings form on purpose: a button that changes thirty rows must
+   not be one keystroke away from the button that saves a venue. #}
+{% if held %}
+<div class="card" style="margin-top:22px;border-color:#f2e2c4;background:#fffdf8">
+  <h2 style="margin:0 0 4px;font-size:1rem">Ask the room again</h2>
+  <p class="muted small" style="margin:0 0 12px">Clears the <b>yes</b> from
+    {{ held }} {{ 'person' if held == 1 else 'people' }}, so everybody has to
+    confirm again for the new date. Their links, their history and their emails
+    are untouched, and nobody who already told you they can&rsquo;t come is put
+    back on the list. Everyone falls back to this event&rsquo;s own
+    &ldquo;{{ 'answer by ' ~ (ev.confirm_by|local).strftime('%a %d %b, %I:%M %p')|replace(' 0', ' ')
+      if ev.confirm_by else 'answer by' }}&rdquo; deadline rather than getting a
+    private clock of their own.</p>
+  <form method="post" action="/events/{{ ev.id }}/confirmations/reset"
+        style="margin:0"
+        onsubmit="return confirm({{ ('Clear the yes from ' ~ held
+          ~ (' person?' if held == 1 else ' people?')
+          ~ '\n\nThey will all read Not confirmed until they answer again. '
+          ~ 'Send them the email that tells them why.') | tojson }})">
+    <button class="btn danger">Reset confirmations</button></form>
+</div>
+{% endif %}
 {% endblock %}

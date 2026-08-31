@@ -2305,7 +2305,11 @@ RACE_STATUSES = [
     # Before registered, because they are not. Somebody who has been asked and
     # has not answered was reading "Registered" on the tracker, which is the
     # tracker asserting the one thing you are waiting to find out.
-    ("for_confirmation", "For confirmation"),
+    #
+    # "Not confirmed" rather than "For confirmation": the tracker is a list of
+    # facts about people, and the fact here is that this person has not
+    # answered. "For confirmation" reads like a task on your list instead.
+    ("for_confirmation", "Not confirmed"),
     ("registered",  "Registered"),
     ("checked_in",  "Checked in"),
     ("ready",       "Ready"),

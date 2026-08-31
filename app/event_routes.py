@@ -1919,6 +1919,10 @@ def register(app, deps):
             return RedirectResponse("/events", status_code=303)
         return render(request, "event_settings.html", db, staff, active="events",
                       ev=ev, statuses=EVENT_STATUSES, modes=EVENT_MODES,
+                      # How many yeses are standing. Nought means the reset has
+                      # nothing to clear, so the button is not drawn at all.
+                      held=len([p for p in ev.participants
+                                if p.rsvp == RSVP_YES]),
                       default_heat_open=HEAT_OPEN_MINS,
                       heat_open_min=HEAT_OPEN_MIN, heat_open_max=HEAT_OPEN_MAX,
                       base=base_url(request))
@@ -2276,6 +2280,57 @@ def register(app, deps):
                          + timedelta(hours=ev.confirm_hours or 24))
         db.commit()
         return RedirectResponse(f"/events/{eid}?tab=gone&back={pid}",
+                                status_code=303)
+
+    @app.post("/events/{eid}/confirmations/reset")
+    def event_reset_confirmations(request: Request, eid: int,
+                                  db: Session = Depends(get_db)):
+        """Ask the whole room again.
+
+        For the case this was built for: a class that moved and came back
+        smaller. Thirty-three people hold a yes to a Sunday morning that no
+        longer exists, and fifteen slots. Leaving those yeses standing means
+        the tracker says the class is full of people who agreed to something
+        else, and the door turns away the first person who answers the new
+        email.
+
+        Only a yes is cleared. A no is an answer, not a stale confirmation —
+        somebody who told you they can't come has not become undecided because
+        you moved the date, and putting them back on the list to be counted and
+        chased is the opposite of listening to them.
+
+        Nothing else is touched: their link, their history, their emails and
+        the reason anybody was released all survive, so this is a question
+        being asked again rather than a list being rebuilt.
+
+        And no per-person clock is stamped. That is the whole reason this
+        exists rather than clicking "put them back" thirty-three times — that
+        route hands out a fresh 24-hour window each, which on an event with one
+        announced deadline would quietly expire before the date printed in the
+        email everybody just received.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        ev = db.get(Event, eid)
+        if not ev:
+            return RedirectResponse("/events", status_code=303)
+        n = 0
+        for p in ev.participants:
+            if p.rsvp != RSVP_YES:
+                continue
+            p.rsvp = RSVP_NONE
+            p.rsvp_at = None
+            # Cleared, not set: with no personal window they fall back to the
+            # event's own announced deadline, which is the one date the email
+            # quotes and the only one that can be true for everybody at once.
+            p.confirm_due = None
+            # A slot that lapsed under the old date is not lapsed under the
+            # new one — they are being asked again, from now.
+            p.released_at = None
+            n += 1
+        db.commit()
+        return RedirectResponse("/events/%d?reset=%d" % (eid, n),
                                 status_code=303)
 
     #: What you can move somebody to by hand, and what each one means. Kept
