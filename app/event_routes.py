@@ -1922,7 +1922,9 @@ def register(app, deps):
                       # How many yeses are standing. Nought means the reset has
                       # nothing to clear, so the button is not drawn at all.
                       held=len([p for p in ev.participants
-                                if p.rsvp == RSVP_YES]),
+                                if p.pay_status == PAY_APPROVED
+                                or (p.pay_status is None
+                                    and p.rsvp == RSVP_YES)]),
                       default_heat_open=HEAT_OPEN_MINS,
                       heat_open_min=HEAT_OPEN_MIN, heat_open_max=HEAT_OPEN_MAX,
                       base=base_url(request))
@@ -2317,6 +2319,27 @@ def register(app, deps):
             return RedirectResponse("/events", status_code=303)
         n = 0
         for p in ev.participants:
+            # Two shapes of yes, because there are two shapes of event. On an
+            # invited class a yes is a button somebody pressed. On an open,
+            # paid one it is a payment we approved — EventParticipant.confirmed
+            # reads the payment and ignores the button entirely — so clearing
+            # rsvp there would clear nothing and quietly report success.
+            if p.pay_status == PAY_APPROVED:
+                # Back to the queue, not refused: the receipt, the amount, the
+                # rate and their place in the list all stay exactly where they
+                # were. Approving is what takes a slot, so this frees the room
+                # without losing the record that somebody paid for it — and
+                # approving the first fifteen who answer *is* first come,
+                # first served.
+                #
+                # No email. This is the tracker being made true; the message
+                # explaining it is one you send yourself, once, to everybody.
+                p.pay_status = PAY_SUBMITTED
+                p.reviewed_at = None
+                p.reviewed_by_id = None
+                p.released_at = None
+                n += 1
+                continue
             if p.rsvp != RSVP_YES:
                 continue
             p.rsvp = RSVP_NONE
