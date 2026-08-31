@@ -736,7 +736,7 @@ def register(app, deps):
             # they did not run out of time, the room ran out of space, and
             # those read differently to the person holding the phone. Somebody
             # already in never sees it: they are not asking for a slot.
-            if _full(ev) and not p.confirmed:
+            if _full(ev) and not holds_slot(p):
                 return "full"
             return "confirm"
         # Confirmed from here on.
@@ -4917,6 +4917,27 @@ def _rewards_block(ev, title) -> str:
 # not. One path, so an edited email cannot take a different route through
 # the code from an unedited one.
 
+def holds_slot(p) -> bool:
+    """Is this person occupying one of the places in the room?
+
+    Two ways to be holding one, and both are somebody saying yes rather than
+    us saying yes about them:
+
+    - they pressed Confirm on their own page, or
+    - their payment was approved, which is the same answer given with money.
+
+    The tap counts on its own, and that is the whole of it. Waiting for an
+    approval to count would mean a class could be told "first come, first
+    served" and then hand the last slot to whoever we happened to review
+    first — which is not first come, and not what the email promised.
+
+    A registration mid-payment, with no tap behind it, is still not in: nobody
+    has said yes yet.
+    """
+    return (not p.waitlist and not p.released_at
+            and (p.confirmed or p.rsvp == RSVP_YES))
+
+
 def slots_taken(ev) -> int:
     """How many slots are actually held.
 
@@ -4926,13 +4947,8 @@ def slots_taken(ev) -> int:
     reason — the door checks it inside the sign-up, and the mail values need it
     out here, and a second copy of this rule is a second answer waiting to
     disagree with the first.
-
-    A registration mid-payment is not in it. That is the existing rule
-    everywhere else — approving is what takes the slot, not submitting — and
-    the finish-your-registration email says so in as many words.
     """
-    return len([p for p in ev.participants
-                if not p.waitlist and not p.released_at and p.confirmed])
+    return len([p for p in ev.participants if holds_slot(p)])
 
 
 def _mail_values(ev, p, url, key) -> dict:
