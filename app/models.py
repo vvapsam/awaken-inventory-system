@@ -1433,6 +1433,11 @@ class Event(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     slug = Column(String, unique=True, nullable=False)
+    #: Every public link this event has retired, newest first, newline
+    #: separated. Kept rather than forgotten so an old link can say "this has
+    #: expired" instead of "we can't find that" — the first is our decision
+    #: and reads as one, the second reads like the person mistyped it.
+    old_slugs = Column(Text)
     sponsor = Column(String)
     status = Column(String, nullable=False, default=EVENT_DRAFT)
 
@@ -1694,6 +1699,20 @@ class Event(Base):
             return ""
         fmt = "%a %d %b" if self.time_tba else "%a %d %b, %I:%M %p"
         return to_local(self.starts_at).strftime(fmt).replace(" 0", " ")
+
+    def retired_slugs(self) -> list:
+        return [x for x in (self.old_slugs or "").split("\n") if x.strip()]
+
+    def retire_slug(self, fresh: str) -> None:
+        """Put the current link out of use and take a new one.
+
+        Capped, because this is a list nobody reads and every entry is a
+        string somebody could otherwise keep alive forever by never clearing
+        it. Twenty is more retirements than any class will ever have.
+        """
+        old = [self.slug] + [x for x in self.retired_slugs() if x != self.slug]
+        self.old_slugs = "\n".join(old[:20])
+        self.slug = fresh
 
     @property
     def reward_text(self) -> str:

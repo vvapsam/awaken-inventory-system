@@ -974,6 +974,12 @@ def startup():
                 "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
                 "  thanks_email_at TIMESTAMPTZ; "
                 "END IF; END $$;"))
+            # The public links this event has retired, so an old one can say
+            # it has expired rather than pretending it never existed.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS old_slugs TEXT; "
+                "END IF; END $$;"))
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.company_info') "
                 "IS NOT NULL THEN "

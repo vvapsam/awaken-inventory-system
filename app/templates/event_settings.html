@@ -12,6 +12,9 @@
   </div>
 </div>
 
+{% if request.query_params.get('newlink') %}
+<div class="notice">New link ready. The old one now says it has expired.</div>
+{% endif %}
 {% if request.query_params.get('saved') %}
 <div class="notice">Saved.</div>
 {% endif %}
@@ -166,6 +169,22 @@
       rather than ours.
       <a href="{{ base }}/r/{{ ev.slug }}" target="_blank" rel="noopener">Open
         the current one</a></div>
+    {# The same act as retyping the box above, minus having to invent a name
+       nobody has used. Its own form, because it must not ride on Save. #}
+    <div style="margin:9px 0 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="muted small">Shared further than you meant?</span>
+      <button class="btn" type="submit" form="newlink"
+              onclick="return confirm('Give this class a new public link?\n\n'
+                + 'The one you have already shared stops working straight away '
+                + 'and will tell anybody who opens it that it has expired.\n\n'
+                + 'Nobody already on the list is affected — their own page is '
+                + 'reached by their own code.')">Generate a new link</button>
+    </div>
+    {% if ev.retired_slugs() %}
+    <div class="muted small" style="margin:6px 0 0">Retired:
+      {% for old in ev.retired_slugs()[:3] %}<span class="mono">/r/{{ old }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+      &mdash; anybody opening one is told it has expired.</div>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -405,6 +424,8 @@
 
 {# Outside the settings form on purpose: a button that changes thirty rows must
    not be one keystroke away from the button that saves a venue. #}
+<form method="post" action="/events/{{ ev.id }}/link/new" id="newlink"></form>
+
 {% if held %}
 <div class="card" style="margin-top:22px;border-color:#f2e2c4;background:#fffdf8">
   <h2 style="margin:0 0 4px;font-size:1rem">Ask the room again</h2>
