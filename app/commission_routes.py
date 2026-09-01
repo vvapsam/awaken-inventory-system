@@ -944,6 +944,34 @@ def register(app, deps):
                       coach_types=COACH_TYPES, type_labels=COACH_TYPE_LABELS,
                       plans=plan_choices(db), active="rates")
 
+    # Registered BEFORE the {rid} route below, and it has to stay there.
+    # FastAPI matches in registration order, so with {rid} first a POST to
+    # .../new went to the update handler, which then tried to read "new"
+    # as a row id and answered with a validation dump - which is what
+    # adding a coach did for as long as this was the other way round.
+    #
+    # The literal path is the more specific one and belongs above the
+    # wildcard for the same reason everywhere else in this file.
+    @app.post("/admin/commission-rates/new")
+    def commission_rate_new(request: Request, coach: str = Form(""),
+                            staff_raw: str = Form(...), coach_id: str = Form(""),
+                            rate_type: str = Form(COMMISSION_PERCENT),
+                            rate_value: str = Form("0"),
+                            coach_type: str = Form(""),
+                            db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        cid = int(coach_id) if coach_id.strip().isdigit() else None
+        linked = db.get(Staff, cid) if cid else None
+        db.add(CommissionCoachRate(
+            coach=(linked.name if linked else coach.strip()),
+            coach_id=cid, staff_raw=staff_raw.strip(), rate_type=rate_type,
+            rate_value=_num(rate_value, rate_type),
+            coach_type=_coach_type(coach_type, linked)))
+        db.commit()
+        return RedirectResponse("/admin/commission-rates", status_code=303)
+
     @app.post("/admin/commission-rates/{rid}")
     def commission_rate_update(
             request: Request, rid: int,
@@ -1040,26 +1068,6 @@ def register(app, deps):
             db.commit()
         return RedirectResponse("/admin/commission-rates", status_code=303)
 
-    @app.post("/admin/commission-rates/new")
-    def commission_rate_new(request: Request, coach: str = Form(""),
-                            staff_raw: str = Form(...), coach_id: str = Form(""),
-                            rate_type: str = Form(COMMISSION_PERCENT),
-                            rate_value: str = Form("0"),
-                            coach_type: str = Form(""),
-                            db: Session = Depends(get_db)):
-        staff, redir = guard(request, db)
-        if redir:
-            return redir
-        cid = int(coach_id) if coach_id.strip().isdigit() else None
-        linked = db.get(Staff, cid) if cid else None
-        db.add(CommissionCoachRate(
-            coach=(linked.name if linked else coach.strip()),
-            coach_id=cid, staff_raw=staff_raw.strip(), rate_type=rate_type,
-            rate_value=_num(rate_value, rate_type),
-            coach_type=_coach_type(coach_type, linked)))
-        db.commit()
-        return RedirectResponse("/admin/commission-rates", status_code=303)
-
     @app.get("/admin/commission-delegators", response_class=HTMLResponse)
     def commission_delegators(request: Request, db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
@@ -1068,6 +1076,26 @@ def register(app, deps):
         rows = db.query(CommissionDelegator).order_by(CommissionDelegator.name).all()
         return render(request, "commission_delegators.html", db, staff,
                       delegators=rows, people=people(db), active="delegators")
+
+    # Above the wildcard, and it has to stay there: FastAPI matches in
+    # registration order, so with {did} first a POST here went to
+    # the update handler, which read "new" as a row id and answered with
+    # a raw validation dump. The same fault as the coach-rate add.
+    @app.post("/admin/commission-delegators/new")
+    def commission_delegator_new(request: Request, name: str = Form(...),
+                                 codes: str = Form(""), rate: str = Form("0"),
+                                 cost: str = Form("0"), ot_rate: str = Form("0"),
+                                 db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        db.add(CommissionDelegator(
+            name=name.strip(),
+            codes=",".join(c.strip().upper() for c in codes.split(",") if c.strip()),
+            rate=_num(rate, COMMISSION_FLAT), cost=_num(cost, COMMISSION_FLAT),
+            ot_rate=_num(ot_rate, COMMISSION_FLAT)))
+        db.commit()
+        return RedirectResponse("/admin/commission-delegators", status_code=303)
 
     @app.post("/admin/commission-delegators/{did}")
     def commission_delegator_update(
@@ -1095,22 +1123,6 @@ def register(app, deps):
         db.commit()
         return RedirectResponse("/admin/commission-delegators", status_code=303)
 
-    @app.post("/admin/commission-delegators/new")
-    def commission_delegator_new(request: Request, name: str = Form(...),
-                                 codes: str = Form(""), rate: str = Form("0"),
-                                 cost: str = Form("0"), ot_rate: str = Form("0"),
-                                 db: Session = Depends(get_db)):
-        staff, redir = guard(request, db)
-        if redir:
-            return redir
-        db.add(CommissionDelegator(
-            name=name.strip(),
-            codes=",".join(c.strip().upper() for c in codes.split(",") if c.strip()),
-            rate=_num(rate, COMMISSION_FLAT), cost=_num(cost, COMMISSION_FLAT),
-            ot_rate=_num(ot_rate, COMMISSION_FLAT)))
-        db.commit()
-        return RedirectResponse("/admin/commission-delegators", status_code=303)
-
     @app.get("/admin/commission-session-rates", response_class=HTMLResponse)
     def commission_session_rates(request: Request, db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
@@ -1126,6 +1138,31 @@ def register(app, deps):
         return render(request, "commission_session_rates.html", db, staff,
                       rates=rows, groups=sorted(groups.items()),
                       active="session_rates")
+
+    # Above the wildcard, and it has to stay there: FastAPI matches in
+    # registration order, so with {sid} first a POST here went to
+    # the update handler, which read "new" as a row id and answered with
+    # a raw validation dump. The same fault as the coach-rate add.
+    @app.post("/admin/commission-session-rates/new")
+    def commission_session_rate_new(
+            request: Request, plan: str = Form(...), program: str = Form(""),
+            sessions: str = Form(""), rate: str = Form("0"),
+            package_total: str = Form(""), effective_from: str = Form(""),
+            effective_to: str = Form(""), note: str = Form(""),
+            db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        db.add(CommissionSessionRate(
+            plan=plan.strip(), program=program.strip() or None,
+            sessions=int(sessions) if sessions.strip().isdigit() else None,
+            rate=_num(rate, COMMISSION_FLAT),
+            package_total=(_num(package_total, COMMISSION_FLAT)
+                           if package_total.strip() else None),
+            effective_from=_day(effective_from), effective_to=_day(effective_to),
+            note=note.strip() or None))
+        db.commit()
+        return RedirectResponse("/admin/commission-session-rates", status_code=303)
 
     @app.post("/admin/commission-session-rates/{sid}")
     def commission_session_rate_update(
@@ -1151,27 +1188,6 @@ def register(app, deps):
         r.effective_to = _day(effective_to)
         r.note = note.strip() or None
         r.is_active = (is_active == "on")
-        db.commit()
-        return RedirectResponse("/admin/commission-session-rates", status_code=303)
-
-    @app.post("/admin/commission-session-rates/new")
-    def commission_session_rate_new(
-            request: Request, plan: str = Form(...), program: str = Form(""),
-            sessions: str = Form(""), rate: str = Form("0"),
-            package_total: str = Form(""), effective_from: str = Form(""),
-            effective_to: str = Form(""), note: str = Form(""),
-            db: Session = Depends(get_db)):
-        staff, redir = guard(request, db)
-        if redir:
-            return redir
-        db.add(CommissionSessionRate(
-            plan=plan.strip(), program=program.strip() or None,
-            sessions=int(sessions) if sessions.strip().isdigit() else None,
-            rate=_num(rate, COMMISSION_FLAT),
-            package_total=(_num(package_total, COMMISSION_FLAT)
-                           if package_total.strip() else None),
-            effective_from=_day(effective_from), effective_to=_day(effective_to),
-            note=note.strip() or None))
         db.commit()
         return RedirectResponse("/admin/commission-session-rates", status_code=303)
 
