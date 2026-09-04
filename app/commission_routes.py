@@ -755,6 +755,25 @@ def delegated_rows(run: CommissionRun):
                   key=lambda b: (b.appointment_date or date.min, b.booking_ref or ""))
 
 
+def billed_rows(rows) -> list:
+    """The sessions a delegator is actually billed for, and therefore sees.
+
+    A cancelled session did not happen and costs nothing. Leaving it on the
+    schedule and in the session list put a line in front of somebody that
+    their invoice does not mention, which is the one thing guaranteed to
+    produce a question — and the answer is always "ignore that one".
+
+    Struck-out rows were already dropped for exactly this reason; this widens
+    it to the same rule the invoice uses, so the page and the bill can never
+    disagree about what a month contained.
+
+    It is not a list of statuses. A late cancel is billed at AWAKEN, so it
+    stays. A cancelled session somebody reviewed and approved is billed, so it
+    stays too. Anything that reaches the invoice reaches the page.
+    """
+    return [b for b in rows if b.is_commissionable]
+
+
 def delegator_rollup(run: CommissionRun, db: Session) -> list:
     """One row per delegator: volume, reach, and the margin on their sessions."""
     rows = delegated_rows(run)
@@ -776,8 +795,8 @@ def delegator_rollup(run: CommissionRun, db: Session) -> list:
         # Struck-out sessions did not happen, so they are not sessions this
         # delegator sent — same rule as the detail screen, which is what stops
         # the list and the page you reach from it disagreeing.
-        live = [b for b in d["rows"] if not b.voided]
-        counted = [b for b in live if b.is_commissionable]
+        live = billed_rows(d["rows"])
+        counted = live
         sessions_charged = sum(
             (Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
         cost = sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0))
@@ -788,7 +807,12 @@ def delegator_rollup(run: CommissionRun, db: Session) -> list:
             "delegator": d["delegator"],
             "sessions": len(live),
             "counting": len(counted),
-            "voided": len(d["rows"]) - len(live),
+            # Two different reasons a session is off the page, kept apart
+            # because they read differently: one is somebody's decision, the
+            # other is what the diary says happened.
+            "voided": len([b for b in d["rows"] if b.voided]),
+            "cancelled": len([b for b in d["rows"]
+                              if not b.voided and not b.is_commissionable]),
             "clients": len(d["clients"]),
             "coaches": len(d["coaches"]),
             "sessions_charged": sessions_charged,
@@ -1469,13 +1493,14 @@ def register(app, deps):
         it touches is `delegation_charge` and `ot_charge`, both of which are
         what the delegator is billed.
 
-        Struck-out sessions are absent for the same reason they are absent from
-        the invoice: they did not happen, so they are not billed, and showing
-        them would invite a query about a line that costs nothing.
+        Cancelled and struck-out sessions are absent for the same reason they
+        are absent from the invoice: they did not happen, so they are not
+        billed, and showing them would invite a query about a line that costs
+        nothing. See billed_rows.
         """
         rows = [b for b in delegated_rows(run) if b.delegator_id == delegator.id]
-        live = [b for b in rows if not b.voided]
-        counted = [b for b in live if b.is_commissionable]
+        live = billed_rows(rows)
+        counted = live
 
         fees = sum((Decimal(str(b.delegation_charge or 0)) for b in counted),
                    Decimal(0))
@@ -2142,8 +2167,8 @@ def register(app, deps):
         # is built from the live ones only. It survives in `rows`, struck
         # through in the sessions list, which is the one place you go to ask
         # what was removed and why.
-        live = [b for b in rows if not b.voided]
-        counted = [b for b in live if b.is_commissionable]
+        live = billed_rows(rows)
+        counted = live
         sessions_charged = sum(
             (Decimal(str(b.delegation_charge or 0)) for b in counted), Decimal(0))
         cost = sum((Decimal(str(b.commission or 0)) for b in counted), Decimal(0))
@@ -2180,7 +2205,9 @@ def register(app, deps):
             # rather than folded into the count: the delegator's invoice drops
             # by exactly this much, and a number that moved without
             # explanation is a number that gets queried.
-            voided=len(rows) - len(live),
+            voided=len([b for b in rows if b.voided]),
+            cancelled=len([b for b in rows
+                           if not b.voided and not b.is_commissionable]),
             charged=charged, cost=cost, margin=charged - cost,
             sessions_charged=sessions_charged, ot=ot, ot_hours=ot_hours,
             ot_sessions=sum(1 for b in counted if b.ot_hours),

@@ -44,7 +44,9 @@
     {# The three cards beside this one are built from `counting`, not
        `sessions`. When they differ, say why here rather than leaving the
        reader to work out which number the money used. #}
-    {% if voided %}<div class="small" style="color:#b0392b;margin-top:2px">{{ voided }} struck out</div>{% endif %}</div>
+    {% if voided %}<div class="small" style="color:#b0392b;margin-top:2px">{{ voided }} struck out</div>{% endif %}
+    {% if cancelled %}<div class="small muted" style="margin-top:2px">{{ cancelled }}
+      cancelled &mdash; not billed, not on the calendar</div>{% endif %}</div>
   <div class="card stat"><div class="stat-label">Charged</div><div class="stat-value">{{ peso(charged) }}</div>
     <div class="muted small">{{ counting }} × {{ peso(delegator.rate) }}{% if ot %}
       + {{ peso(ot) }} overtime{% endif %}</div></div>
@@ -301,7 +303,9 @@ document.querySelectorAll('[data-copy]').forEach(function(b){
   <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
     <td colspan="6">{{ sessions }} session{{ 's' if sessions != 1 }}{%
       if voided %} <span class="muted small" style="font-weight:400">·
-        {{ voided }} struck out, not billed</span>{% endif %}</td>
+        {{ voided }} struck out, not billed</span>{% endif %}{%
+      if cancelled %} <span class="muted small" style="font-weight:400">·
+        {{ cancelled }} cancelled</span>{% endif %}</td>
     <td style="text-align:right">{% if ot_hours %}{{ ot_hours|trim0 }} hr · {{ peso(ot) }}{% else %}—{% endif %}</td>
     <td style="text-align:right">{{ peso(charged) }}</td>
     <td style="text-align:right">{{ peso(cost) }}</td>

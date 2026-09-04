@@ -82,7 +82,8 @@
   <div class="s"><div class="l">Sessions</div><div class="v">{{ d.sessions }}</div>
     <div class="sub">{{ d.clients|length }} client{{ 's' if d.clients|length != 1 }} ·
       {{ d.coaches|length }} coach{{ 'es' if d.coaches|length != 1 }}{%
-      if d.voided %} · {{ d.voided }} struck out{% endif %}</div></div>
+      if d.voided %} · {{ d.voided }} struck out{% endif %}{%
+      if d.cancelled %} · {{ d.cancelled }} cancelled{% endif %}</div></div>
   <div class="s"><div class="l">Charged</div><div class="v">{{ peso(d.charged) }}</div>
     <div class="sub">{{ peso(dg_pick.delegator.rate) }} each</div></div>
   <div class="s"><div class="l">Paid to coaches</div><div class="v">{{ peso(d.cost) }}</div>
