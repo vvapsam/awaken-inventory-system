@@ -19,6 +19,7 @@ import secrets
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import quote as _q
 
 from fastapi import Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -38,6 +39,7 @@ from .models import (
     RUN_DRAFT, RUN_FINALIZED, RUN_SUPERSEDED,
     CommissionBooking, CommissionCharge, CommissionChargeLine, CommissionComment,
     COMMENT_MAX,
+    CommissionAdjustment,
     CommissionCoachOverride, CommissionCoachRate, CommissionDelegator, CommissionPayout,
     CommissionPayoutLine, CommissionRun, CommissionSetting, CommissionSignoff,
     CommissionDelegatorLink, DELEGATOR_LINK_DAYS, to_local,
@@ -772,6 +774,38 @@ def billed_rows(rows) -> list:
     stays too. Anything that reaches the invoice reaches the page.
     """
     return [b for b in rows if b.is_commissionable]
+
+
+# ── adjustments ────────────────────────────────────────────────────────────
+# An adjustment belongs to a coach, not to a run. It is created because of
+# something that happened outside the export — an overpayment found later, a
+# shirt charged at cost, a workshop covered at short notice — and it waits for
+# whichever payout comes next.
+
+def waiting_adjustments(db: Session, coach: str) -> list:
+    """Every adjustment for this coach that no payout has carried yet."""
+    if not coach:
+        return []
+    return (db.query(CommissionAdjustment)
+            .filter(CommissionAdjustment.coach == coach,
+                    CommissionAdjustment.payout_id.is_(None))
+            .order_by(CommissionAdjustment.occurred_on.asc().nullsfirst(),
+                      CommissionAdjustment.id.asc())
+            .all())
+
+
+def riding_adjustments(db: Session, run: CommissionRun, coach: str) -> list:
+    """The waiting ones still ticked for this run — what finalize would take.
+
+    Ticked is the default and unticking is per run, so this is "everything
+    waiting, minus what somebody skipped on this particular run".
+    """
+    return [a for a in waiting_adjustments(db, coach) if a.rides(run.id)]
+
+
+def adj_total(rows) -> Decimal:
+    """The signed sum of a list of adjustments."""
+    return sum((Decimal(str(a.amount or 0)) for a in rows), Decimal(0))
 
 
 def delegator_rollup(run: CommissionRun, db: Session) -> list:
@@ -1688,6 +1722,11 @@ def register(app, deps):
             "delegators": sorted({b.delegator.name for b in dele if b.delegator}),
             "buckets": buckets,
             "signoff": signoffs(run, db).get(coach),
+            # What the coach sees. A deduction that arrives as a smaller number
+            # with no explanation is the one that generates a message, so the
+            # title and the note travel with it.
+            "adjustments": riding_adjustments(db, run, coach),
+            "adj_total": adj_total(riding_adjustments(db, run, coach)),
         }
 
     @app.get("/statement/{token}", response_class=HTMLResponse)
@@ -2949,6 +2988,127 @@ def register(app, deps):
         return Response("\n".join(lines) + "\n", media_type="text/csv",
                         headers={"content-disposition": 'attachment; filename="%s"' % name})
 
+    # ── adjustments ────────────────────────────────────────────────────
+    # Registered above /commissions/{rid} and it has to stay there: FastAPI
+    # matches in registration order, so with the wildcard first a GET to
+    # /commissions/adjustments would be read as run id "adjustments".
+
+    @app.get("/commissions/adjustments", response_class=HTMLResponse)
+    def adjustments_page(request: Request, coach: str = "",
+                         db: Session = Depends(get_db)):
+        """Money owed to or from a coach that is not a session.
+
+        Not tied to a run, because the reason for one usually turns up after
+        the month it belongs to has been paid. Record it here; it waits.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        rates = (db.query(CommissionCoachRate)
+                 .order_by(CommissionCoachRate.coach).all())
+        rows = (db.query(CommissionAdjustment)
+                .order_by(CommissionAdjustment.occurred_on.desc().nullslast(),
+                          CommissionAdjustment.id.desc()).all())
+        # Every coach with a rate, plus anyone who already has an adjustment
+        # but no rate row — so a name can never go missing from this page.
+        names = sorted({r.coach for r in rates if r.coach}
+                       | {a.coach for a in rows if a.coach})
+        picked = coach.strip()
+        if picked and picked not in names:
+            picked = ""
+        shown = [a for a in rows if not picked or a.coach == picked]
+        people_by_name = {r.coach: r.coach_id for r in rates}
+        return render(
+            request, "commission_adjustments.html", db, staff,
+            active="adjustments", names=names, picked=picked, rows=shown,
+            coach_ids=people_by_name,
+            waiting=[a for a in shown if not a.is_paid],
+            waiting_total=adj_total([a for a in shown if not a.is_paid]),
+            today=datetime.now(tz()).date(),
+            can_pay=(getattr(staff, "role", "") == "admin"))
+
+    def _add_adjustment(db: Session, staff, *, coach: str, on: str, title: str,
+                        note: str, amount: str, sign: str,
+                        coach_id=None) -> CommissionAdjustment | None:
+        """Build one adjustment from form fields. Returns None if unusable.
+
+        The sign arrives as its own field rather than as a typed minus, so
+        "deduct 1,500" cannot become "add 1,500" through a missing character.
+        """
+        coach = (coach or "").strip()
+        title = (title or "").strip()
+        try:
+            value = Decimal((amount or "").replace(",", "").strip() or "0")
+        except (InvalidOperation, ValueError):
+            return None
+        value = abs(value).quantize(Decimal("0.01"))
+        if not coach or not title or value <= 0:
+            return None
+        if sign != "add":
+            value = -value
+        adj = CommissionAdjustment(
+            coach=coach, coach_id=coach_id,
+            occurred_on=_day(on) or datetime.now(tz()).date(),
+            title=title[:160], description=(note or "").strip(),
+            amount=value, created_by_id=getattr(staff, "id", None))
+        db.add(adj)
+        return adj
+
+    @app.post("/commissions/adjustments/new")
+    def adjustment_new(request: Request, coach: str = Form(""),
+                       on: str = Form(""), title: str = Form(""),
+                       note: str = Form(""), amount: str = Form("0"),
+                       sign: str = Form("deduct"), back: str = Form(""),
+                       db: Session = Depends(get_db)):
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        rate = (db.query(CommissionCoachRate)
+                .filter(CommissionCoachRate.coach == coach.strip()).first())
+        adj = _add_adjustment(db, staff, coach=coach, on=on, title=title,
+                              note=note, amount=amount, sign=sign,
+                              coach_id=rate.coach_id if rate else None)
+        db.commit()
+        where = back or ("/commissions/adjustments?coach=%s" % _q(coach.strip()))
+        if adj is None:
+            where += ("&" if "?" in where else "?") + "bad=1"
+        return RedirectResponse(where, status_code=303)
+
+    @app.post("/commissions/adjustments/{aid}/delete")
+    def adjustment_delete(request: Request, aid: int, back: str = Form(""),
+                          db: Session = Depends(get_db)):
+        """Delete a waiting adjustment. A paid one is a record, not a draft."""
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        adj = db.get(CommissionAdjustment, aid)
+        where = back or "/commissions/adjustments"
+        if adj and not adj.is_paid:
+            where = back or ("/commissions/adjustments?coach=%s" % _q(adj.coach))
+            db.delete(adj)
+            db.commit()
+        return RedirectResponse(where, status_code=303)
+
+    @app.post("/commissions/adjustments/{aid}/skip")
+    def adjustment_skip(request: Request, aid: int, run_id: str = Form(""),
+                        include: str = Form(""), back: str = Form(""),
+                        db: Session = Depends(get_db)):
+        """Tick or untick one adjustment for one run.
+
+        This is a decision about a payout, not about the adjustment. Unticking
+        leaves it waiting, and it comes back ticked on the next run — which is
+        how a deduction too large for one month gets split across two by hand.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        adj = db.get(CommissionAdjustment, aid)
+        rid = int(run_id) if run_id.strip().isdigit() else None
+        if adj and not adj.is_paid and rid:
+            adj.skipped_run_id = None if include == "on" else rid
+            db.commit()
+        return RedirectResponse(back or "/commissions", status_code=303)
+
     @app.get("/commissions/{rid}", response_class=HTMLResponse)
     def commission_run_view(request: Request, rid: int, tab: str = "coaches",
                             db: Session = Depends(get_db)):
@@ -3077,6 +3237,12 @@ def register(app, deps):
             manual_count=len([b for b in rows if b.rate_manual]),
             voided_rows=len([b for b in rows if b.voided]),
             signoff=signoffs(run, db).get(coach),
+            # Adjustments are offered here, ticked, and only what is still
+            # ticked when the run is finalized actually rides the payout.
+            adjustments=waiting_adjustments(db, coach),
+            adj_included=adj_total(riding_adjustments(db, run, coach)),
+            adj_included_n=len(riding_adjustments(db, run, coach)),
+            today=datetime.now(tz()).date(),
             rate_types=COMMISSION_RATE_TYPES,
             # Approving and repricing are admin-only; everyone else reads.
             can_pay=(getattr(staff, "role", "") == "admin"),
@@ -3106,6 +3272,7 @@ def register(app, deps):
         pdf = commission_pdf.statement(
             run, coach, rows,
             signoff=signoffs(run, db).get(coach),
+            adjustments=riding_adjustments(db, run, coach),
             generated_by=getattr(staff, "name", "") or "")
         name = "commission-%s-%s.pdf" % (
             re.sub(r"[^A-Za-z0-9]+", "-", coach).strip("-").lower(),
@@ -3113,6 +3280,30 @@ def register(app, deps):
         disp = "attachment" if download else "inline"
         return Response(pdf, media_type="application/pdf", headers={
             "Content-Disposition": '%s; filename="%s"' % (disp, name)})
+
+    @app.post("/commissions/{rid}/coach/{coach}/adjustment")
+    def commission_coach_adjustment(request: Request, rid: int, coach: str,
+                                    on: str = Form(""), title: str = Form(""),
+                                    note: str = Form(""), amount: str = Form("0"),
+                                    sign: str = Form("deduct"),
+                                    db: Session = Depends(get_db)):
+        """Add an adjustment while reviewing, without leaving the page.
+
+        It is the same record the adjustments page creates — recorded against
+        the coach, waiting, ticked for this run.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        rate = (db.query(CommissionCoachRate)
+                .filter(CommissionCoachRate.coach == coach).first())
+        adj = _add_adjustment(db, staff, coach=coach, on=on, title=title,
+                              note=note, amount=amount, sign=sign,
+                              coach_id=rate.coach_id if rate else None)
+        db.commit()
+        back = "/commissions/%d/coach/%s" % (rid, _q(coach))
+        return RedirectResponse(back + ("" if adj else "?adj=bad"),
+                                status_code=303)
 
     @app.post("/commissions/{rid}/coach/{coach}/signoff")
     def commission_signoff(request: Request, rid: int, coach: str,
@@ -3552,6 +3743,23 @@ def register(app, deps):
             return RedirectResponse(f"/commissions/{rid}?tab=documents",
                                     status_code=303)
         n = len(payouts) + len(charges)
+        # Adjustments outlive the payout that carried them. Releasing them back
+        # to waiting is the whole point: a payout that no longer exists cannot
+        # be what proves a coach was charged for a shirt. Anything this run's
+        # payouts *created* — a remainder it could not absorb — goes with them,
+        # or reopening would double the carry.
+        pids = [p.id for p in payouts]
+        if pids:
+            for a in (db.query(CommissionAdjustment)
+                      .filter(CommissionAdjustment.carried_from_id.in_(pids))
+                      .all()):
+                db.delete(a)
+            for a in (db.query(CommissionAdjustment)
+                      .filter(CommissionAdjustment.payout_id.in_(pids)).all()):
+                a.payout_id = None
+                a.paid_at = None
+                a.skipped_run_id = None
+            db.flush()
         for row in payouts + charges:
             db.delete(row)
         run.status = RUN_DRAFT
@@ -3605,9 +3813,50 @@ def register(app, deps):
                     payout_id=payout.id, booking_id=b.id, booking_ref=b.booking_ref,
                     occurred_on=b.appointment_date, description=desc, basis=basis,
                     amount=amount))
+            # Adjustments ride last, so the payout reads as the month's
+            # work first and then what changed about the payment.
+            riding = riding_adjustments(db, run, coach)
+            adjustment_total = Decimal(0)
+            for a in riding:
+                amount = Decimal(str(a.amount or 0))
+                adjustment_total += amount
+                db.add(CommissionPayoutLine(
+                    payout_id=payout.id, booking_id=None, booking_ref="",
+                    occurred_on=a.occurred_on,
+                    description=(a.title + (" — " + a.description
+                                            if a.description else "")),
+                    basis="Adjustment", amount=amount))
+                a.payout_id = payout.id
+                a.paid_at = datetime.now(timezone.utc)
+                a.skipped_run_id = None
+
+            net = commission_total + delegation_total + adjustment_total
+            if net < 0:
+                # A payout is never negative — that would be an invoice to a
+                # coach. Pay nothing this month and carry the remainder as a
+                # fresh waiting adjustment, so the money is neither forgiven
+                # nor silently taken out of a month that cannot cover it.
+                carry = -net
+                db.add(CommissionPayoutLine(
+                    payout_id=payout.id, booking_id=None, booking_ref="",
+                    occurred_on=None,
+                    description="Balance carried to the next payout",
+                    basis="Carried forward", amount=carry))
+                adjustment_total += carry
+                db.add(CommissionAdjustment(
+                    coach=coach, coach_id=payout.coach_id,
+                    occurred_on=datetime.now(tz()).date(),
+                    title="Carried from %s" % payout.number,
+                    description=("Deductions were larger than that payout, so "
+                                 "the remainder waits for this one."),
+                    amount=-carry, carried_from_id=payout.id,
+                    created_by_id=staff.id))
+                net = Decimal(0)
+
             payout.commission_total = _money(commission_total)
             payout.delegation_total = _money(delegation_total)
-            payout.total = _money(commission_total + delegation_total)
+            payout.adjustment_total = _money(adjustment_total)
+            payout.total = _money(net)
 
         by_del = {}
         for b in done:

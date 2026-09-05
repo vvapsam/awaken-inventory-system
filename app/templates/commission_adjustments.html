@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Adjustments</h1>
+    <p class="muted small" style="margin:2px 0 0">Money owed to or from a coach that isn't a session —
+      an overpayment found later, a shirt at cost, a workshop covered at short notice. Record it here and
+      it waits for the next payout that coach gets. It never changes what a month's sessions earned.</p>
+  </div>
+</div>
+{% include "_commission_tabs.html" %}
+
+{% if request.query_params.get('bad') %}
+<div class="alert bad"><b>That didn't save.</b> An adjustment needs a coach, a title and an amount above zero.</div>
+{% endif %}
+
+<div class="tfilter" style="margin:0 0 14px">
+  <a href="/commissions/adjustments" class="{{ 'on' if not picked }}">All coaches</a>
+  {% for n in names %}
+  <a href="/commissions/adjustments?coach={{ n|urlencode }}" class="{{ 'on' if picked == n }}">{{ n }}</a>
+  {% endfor %}
+</div>
+
+{% if waiting %}
+<div class="sumbar" style="margin-bottom:14px">
+  <div class="s hero"><div class="l">Waiting</div>
+    <div class="v"{% if waiting_total < 0 %} style="color:#a8392b"{% endif %}>{{ '−' if waiting_total < 0 else '+' }}{{ peso(waiting_total|abs) }}</div>
+    <div class="sub">{{ waiting|length }} adjustment{{ 's' if waiting|length != 1 }} riding the next payout</div></div>
+  <div class="s spacer"></div>
+</div>
+{% endif %}
+
+{% if rows %}
+<table>
+  <tr><th style="width:88px">Date</th><th>Coach</th><th>Adjustment</th>
+      <th style="text-align:right;width:120px">Amount</th><th style="width:150px">State</th>
+      {% if can_pay %}<th style="width:70px"></th>{% endif %}</tr>
+  {% for a in rows %}
+  <tr{% if not a.is_paid %} class="low"{% endif %}>
+    <td class="mono">{{ a.occurred_on.strftime('%d %b %Y') if a.occurred_on else '—' }}</td>
+    <td><b>{{ a.coach }}</b></td>
+    <td><b>{{ a.title }}</b>{% if a.description %}<br><span class="muted small">{{ a.description }}</span>{% endif %}</td>
+    <td style="text-align:right;font-weight:650{% if a.deducts %};color:#a8392b{% endif %}">
+      {{ '−' if a.deducts }}{{ peso(a.money|abs) }}</td>
+    <td>
+      {% if a.is_paid %}
+        <span class="tag">Paid</span>
+        {% if a.payout %}<div class="small"><a href="/commissions/payouts/{{ a.payout_id }}">{{ a.payout.number }}</a></div>{% endif %}
+      {% else %}
+        <span class="tag" style="background:#d9b45a;color:#4a3a12">Waiting</span>
+        <div class="muted small">on the next payout</div>
+      {% endif %}
+    </td>
+    {% if can_pay %}
+    <td>
+      {% if not a.is_paid %}
+      <form method="post" action="/commissions/adjustments/{{ a.id }}/delete" style="margin:0">
+        <input type="hidden" name="back" value="/commissions/adjustments{{ '?coach=' ~ picked|urlencode if picked }}">
+        <button class="btn" style="padding:2px 8px;font-size:.72rem">Delete</button>
+      </form>
+      {% endif %}
+    </td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="card"><p class="muted" style="margin:0">No adjustments{{ ' for ' ~ picked if picked }} yet.</p></div>
+{% endif %}
+
+{% if can_pay %}
+<div class="card" style="margin-top:18px">
+  <h3 style="margin:0 0 4px;font-size:.95rem">Add an adjustment</h3>
+  <p class="muted small" style="margin:0 0 10px">The description is what the coach reads on their statement,
+    so write it as the answer to "what is this?".</p>
+  {% set adj_action = "/commissions/adjustments/new" %}
+  {% set adj_coach = "" %}
+  {% set adj_back = "/commissions/adjustments" ~ ("?coach=" ~ picked|urlencode if picked else "") %}
+  {% include "_adjust_form.html" %}
+</div>
+{% endif %}
+
+<p class="muted small" style="margin-top:18px">A waiting adjustment is offered — already ticked — the next time
+  you review that coach in a run. Untick it there and it simply waits for the month after; nothing is lost.
+  Once a payout has carried it, it can't be edited: correct it by adding a new one the other way, so the
+  trail shows both.</p>
+{% endblock %}

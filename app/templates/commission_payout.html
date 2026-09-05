@@ -21,20 +21,24 @@
   <div class="card stat"><div class="stat-label">Sessions</div><div class="stat-value">{{ payout.sessions }}</div></div>
   <div class="card stat"><div class="stat-label">Commission</div><div class="stat-value">{{ peso(payout.commission_total) }}</div></div>
   <div class="card stat"><div class="stat-label">Delegation cost</div><div class="stat-value">{{ peso(payout.delegation_total) }}</div></div>
+  {% if payout.adjustment_total %}
+  <div class="card stat"><div class="stat-label">Adjustments</div>
+    <div class="stat-value"{% if payout.adjustment_total < 0 %} style="color:#a8392b"{% endif %}>{{ '−' if payout.adjustment_total < 0 else '+' }}{{ peso(payout.adjustment_total|abs) }}</div></div>
+  {% endif %}
   <div class="card stat warn" style="border-color:var(--teal)"><div class="stat-label">Total payable</div><div class="stat-value">{{ peso(payout.total) }}</div></div>
 </div>
 
-<h2>Lines — one per booking</h2>
+<h2>Lines</h2>
 <table>
   <tr><th>#</th><th>Booking</th><th>Date</th><th>Description</th><th>Basis</th><th style="text-align:right">Amount</th></tr>
   {% for l in payout.lines %}
   <tr>
     <td class="muted">{{ loop.index }}</td>
-    <td class="mono">{{ l.booking_ref }}</td>
-    <td>{{ l.occurred_on.strftime('%d %b') if l.occurred_on }}</td>
+    <td class="mono">{{ l.booking_ref or '—' }}</td>
+    <td>{{ l.occurred_on.strftime('%d %b') if l.occurred_on else '' }}</td>
     <td>{{ l.description }}</td>
     <td class="small">{{ l.basis }}</td>
-    <td style="text-align:right">{{ peso(l.amount) }}</td>
+    <td style="text-align:right{% if l.amount < 0 %};color:#a8392b{% endif %}">{{ '−' if l.amount < 0 }}{{ peso(l.amount|abs) }}</td>
   </tr>
   {% endfor %}
   <tr style="background:var(--teal-tint);font-weight:700;border-top:2px solid var(--teal)">
@@ -42,5 +46,9 @@
   </tr>
 </table>
 <p class="muted small">Payouts are stored separately from sales transactions, so nothing here can
-  be counted as revenue by the sales reports.</p>
+  be counted as revenue by the sales reports.
+  {% if payout.adjustment_total %}<br>Lines marked <b>Adjustment</b> are not sessions — they are money owed
+  to or from {{ payout.coach }} that was recorded separately and carried on this payout. The sessions total
+  {{ peso(payout.commission_total + payout.delegation_total) }} on its own, which is the figure the month's
+  reports use.{% endif %}</p>
 {% endblock %}

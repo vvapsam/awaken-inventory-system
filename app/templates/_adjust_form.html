@@ -1,0 +1,32 @@
+{# One adjustment. Included from the Adjustments page (coach is a dropdown) and
+   from a coach's page inside a run (coach is already decided).
+   Expects: adj_action, and optionally adj_coach, names, adj_back, today. #}
+<form method="post" action="{{ adj_action }}" class="adjgrid">
+  {% if adj_back %}<input type="hidden" name="back" value="{{ adj_back }}">{% endif %}
+  {% if adj_coach %}
+  <input type="hidden" name="coach" value="{{ adj_coach }}">
+  {% else %}
+  <div class="wide" style="max-width:320px"><label>Coach</label>
+    <select name="coach" required>
+      <option value="">— choose a coach —</option>
+      {% for n in names %}<option value="{{ n }}" {{ 'selected' if picked == n }}>{{ n }}</option>{% endfor %}
+    </select></div>
+  {% endif %}
+
+  <div><label>Date</label>
+    <input type="date" name="on" value="{{ today }}" required></div>
+  <div><label>Title</label>
+    <input name="title" required maxlength="160" placeholder="Overpaid July"></div>
+  <div><label>Amount</label>
+    <input name="amount" inputmode="decimal" required placeholder="0.00" style="text-align:right"></div>
+  <div><label>Direction</label>
+    <span class="signseg">
+      <label class="on-deduct"><input type="radio" name="sign" value="deduct" checked>&minus; Deduct from pay</label>
+      <label class="on-add"><input type="radio" name="sign" value="add">+ Add to pay</label>
+    </span></div>
+  <button class="btn primary">Save</button>
+
+  <div class="wide"><label>Description</label>
+    <input name="note" maxlength="400"
+           placeholder="Two sessions counted twice on the 14th."></div>
+</form>

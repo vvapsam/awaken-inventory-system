@@ -159,6 +159,36 @@ tr.notpaid td{background:#fcfcfd}
   </table>
   </div>
 
+  {# Adjustments. A deduction that arrives as a smaller number with no
+     explanation is the one that produces a message, so it is shown with the
+     reason attached and before the total it changes. #}
+  {% if adjustments %}
+  <div class="srow" style="margin-top:18px">
+    <h2 class="sec" style="margin:6px 0">Adjustments on this payout</h2>
+    <span class="sub">not sessions</span>
+  </div>
+  <div class="scroller">
+  <table>
+    <thead><tr><th>Date</th><th>What it is</th><th class="amt">Amount</th></tr></thead>
+    <tbody>
+    {% for a in adjustments %}
+    <tr>
+      <td class="dt">{{ a.occurred_on.strftime('%d %b') if a.occurred_on }}</td>
+      <td class="cl"><b>{{ a.title }}</b>{% if a.description %}<div class="sub">{{ a.description }}</div>{% endif %}</td>
+      <td class="amt">{{ '−' if a.deducts }}{{ peso(a.money|abs) }}</td>
+    </tr>
+    {% endfor %}
+    <tr><td colspan="2"><b>Commission {{ peso(total) }} {{ '−' if adj_total < 0 else '+' }}
+      adjustments {{ peso(adj_total|abs) }}</b></td>
+      <td class="amt"><b>{{ peso([total + adj_total, 0]|max) }}</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="sub" style="margin:8px 2px 0">Your commission for {{ run.period_label or run.period }} is
+    {{ peso(total) }}. The adjustments above are separate from the month's sessions and change only what
+    is paid out. If one of them doesn't look right, ask below.</p>
+  {% endif %}
+
   <div style="height:16px"></div>
   {% set mine = False %}
   {% set title = 'Questions about this?' %}

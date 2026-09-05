@@ -632,6 +632,17 @@ def startup():
                 "FROM commission_runs r WHERE r.id = c.run_id "
                 "  AND c.period_start IS NULL AND r.period_start IS NOT NULL; "
                 "END IF; END $$;"))
+            # A payout can now carry adjustments — money owed to or from a
+            # coach that is not a session. commission_adjustments is a new
+            # table, so create_all makes it; the payout's own column is not.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_payouts') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE commission_payouts ADD COLUMN IF NOT EXISTS "
+                "  adjustment_total NUMERIC(10,2) DEFAULT 0; "
+                "UPDATE commission_payouts SET adjustment_total = 0 "
+                "  WHERE adjustment_total IS NULL; "
+                "END IF; END $$;"))
             # The sponsor's logo, on the event rather than in the static
             # folder — a sponsor belongs to one event, and the next one should
             # be an upload rather than a deploy.

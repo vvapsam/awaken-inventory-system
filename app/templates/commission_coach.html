@@ -33,6 +33,14 @@
     <div class="sub">of {{ total_rows }} booking{{ 's' if total_rows != 1 }}{%
       if voided_rows %} · {{ voided_rows }} invalid{% endif %}</div></div>
   <div class="s"><div class="l">Revenue</div><div class="v">{{ peso(revenue) }}</div></div>
+  {% if adjustments %}
+  <div class="s"><div class="l">Adjustments</div>
+    <div class="v"{% if adj_included < 0 %} style="color:#a8392b"{% endif %}>{{ '−' if adj_included < 0 else '+' }}{{ peso(adj_included|abs) }}</div>
+    <div class="sub">{{ adj_included_n }} of {{ adjustments|length }} ticked</div></div>
+  <div class="s"><div class="l">To pay</div>
+    <div class="v">{{ peso([commission + adj_included, 0]|max) }}</div>
+    <div class="sub">on finalize</div></div>
+  {% endif %}
   {% if delegation_sessions %}
   <div class="s"><div class="l">Delegation</div><div class="v">{{ peso(delegation_total) }}</div>
     <div class="sub">{{ delegation_sessions }} session{{ 's' if delegation_sessions != 1 }}</div></div>
@@ -215,6 +223,73 @@
 </table>
 {% else %}
 <div class="card"><p class="muted" style="margin:0">No {{ pick|lower }} bookings for {{ coach }} in this run.</p></div>
+{% endif %}
+
+{# ── Adjustments ───────────────────────────────────────────────────────────
+   Not sessions. Money owed to or from this coach that turned up outside the
+   export, waiting for whichever payout comes next. They arrive ticked; only
+   what is still ticked when the run is finalized rides the payout. Unticking
+   is a decision about this month, not about the adjustment — it comes back
+   ticked on the next run, which is how a deduction too big for one month gets
+   split across two. #}
+{% if adjustments or (is_draft and can_pay) %}
+<div style="margin-top:20px">
+  <div class="row-between" style="align-items:baseline">
+    <h2 style="margin:0;font-size:1rem">Adjustments</h2>
+    <a class="muted small" href="/commissions/adjustments?coach={{ coach|urlencode }}">Manage all →</a>
+  </div>
+  {% if request.query_params.get('adj') == 'bad' %}
+  <div class="alert bad"><b>That didn't save.</b> An adjustment needs a title and an amount above zero.</div>
+  {% endif %}
+
+  {% if adjustments %}
+  <table class="adjtbl">
+    <tr><th style="width:86px">Use</th><th style="width:88px">Date</th><th>Adjustment</th>
+        <th style="text-align:right;width:120px">Amount</th></tr>
+    {% for a in adjustments %}
+    {% set on = a.rides(run.id) %}
+    <tr{% if not on %} class="adjoff"{% endif %}>
+      <td class="use">
+        {% if is_draft and can_pay %}
+        <form method="post" action="/commissions/adjustments/{{ a.id }}/skip" style="margin:0">
+          <input type="hidden" name="run_id" value="{{ run.id }}">
+          <input type="hidden" name="include" value="{{ 'off' if on else 'on' }}">
+          <input type="hidden" name="back" value="/commissions/{{ run.id }}/coach/{{ coach|urlencode }}">
+          <button class="btn{{ ' primary' if on }}" style="padding:2px 9px;font-size:.72rem"
+                  title="{{ 'Leave this out of this payout' if on else 'Put this back on this payout' }}">
+            {{ '✓ Included' if on else 'Skipped' }}</button>
+        </form>
+        {% elif on %}<span class="tag">Included</span>
+        {% else %}<span class="tag" style="background:#8a94a1">Skipped</span>{% endif %}
+      </td>
+      <td class="mono">{{ a.occurred_on.strftime('%d %b %Y') if a.occurred_on else '—' }}</td>
+      <td><b>{{ a.title }}</b>{% if a.description %}<br><span class="muted small">{{ a.description }}</span>{% endif %}
+        {% if not on %}<br><span class="muted small">Waits for the next run — nothing is lost.</span>{% endif %}</td>
+      <td class="amt adjamt{{ ' minus' if a.deducts }}">{{ '−' if a.deducts }}{{ peso(a.money|abs) }}</td>
+    </tr>
+    {% endfor %}
+    <tr style="background:#fafbfc;font-weight:650">
+      <td colspan="3">Riding on this payout · {{ adj_included_n }} of {{ adjustments|length }}</td>
+      <td class="amt adjamt{{ ' minus' if adj_included < 0 }}">{{ '−' if adj_included < 0 else '+' }}{{ peso(adj_included|abs) }}</td>
+    </tr>
+  </table>
+  {% endif %}
+
+  {% if is_draft and can_pay %}
+  <details class="addrow"{{ ' open' if request.query_params.get('adj') == 'bad' }}>
+    <summary>+ Add an adjustment for {{ coach }}</summary>
+    <div class="body">
+      {% set adj_action = '/commissions/' ~ run.id ~ '/coach/' ~ coach|urlencode ~ '/adjustment' %}
+      {% set adj_coach = coach %}
+      {% set adj_back = '' %}
+      {% include "_adjust_form.html" %}
+      <p class="muted small" style="margin:8px 0 0">It is recorded against {{ coach }}, not against this run —
+        so if you skip it here it is still waiting, ticked, next month. The description is what
+        {{ coach }} reads on their statement.</p>
+    </div>
+  </details>
+  {% endif %}
+</div>
 {% endif %}
 
 {% if is_draft and can_pay %}

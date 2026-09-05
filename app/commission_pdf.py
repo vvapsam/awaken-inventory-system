@@ -12,6 +12,7 @@ handled properly rather than by luck.
 
 from __future__ import annotations
 
+import html as _html
 import io
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -92,12 +93,18 @@ def _footer(canvas, doc):
 
 
 def statement(run, coach: str, rows, *, signoff=None, generated_by: str = "",
-              company: str = "AWAKEN Fitness Center") -> bytes:
+              adjustments=None, company: str = "AWAKEN Fitness Center") -> bytes:
     """Render one coach's statement for one run and return the PDF bytes.
 
     ``rows`` are the bookings that count — the caller decides that, using the
     same `is_commissionable` rule the screens use, so the statement can never
     disagree with the preview it was generated from.
+
+    ``adjustments`` are the ones that would ride the payout: money owed to or
+    from this coach that is not a session. They are printed after the sessions
+    and never folded into the commission figure — commission is what the
+    month's work earned, and it must read the same here as it does everywhere
+    else.
     """
     st = _styles()
     buf = io.BytesIO()
@@ -115,6 +122,11 @@ def statement(run, coach: str, rows, *, signoff=None, generated_by: str = "",
     revenue = sum((Decimal(str(b.revenue or 0)) for b in rows), Decimal(0))
     delegated = [b for b in rows if b.delegator_id]
     dele_total = sum((Decimal(str(b.commission or 0)) for b in delegated), Decimal(0))
+    adjustments = list(adjustments or [])
+    adj_total = sum((Decimal(str(a.amount or 0)) for a in adjustments), Decimal(0))
+    payable = total + adj_total
+    if payable < 0:
+        payable = Decimal(0)
 
     flow = []
     head = Table([[
@@ -152,6 +164,10 @@ def statement(run, coach: str, rows, *, signoff=None, generated_by: str = "",
     card = Table([[
         _card("TOTAL COMMISSION", "<b>%s</b>" % peso(total)),
         _card("SESSIONS", "<b>%d</b>" % len(rows)),
+        _card("PAYABLE THIS PAYOUT", "<b>%s</b>" % peso(payable),
+              "after %d adjustment%s" % (len(adjustments),
+                                         "" if len(adjustments) == 1 else "s"))
+        if adjustments else
         _card("OF WHICH DELEGATION", "<b>%s</b>" % peso(dele_total),
               "%d session%s" % (len(delegated),
                                 "" if len(delegated) == 1 else "s")),
@@ -220,6 +236,45 @@ def statement(run, coach: str, rows, *, signoff=None, generated_by: str = "",
         flow += [Spacer(1, 5), Paragraph(
             "Shaded rows carry a rate set by hand for that session rather than "
             "the standard rate.", st["note"])]
+
+    if adjustments:
+        flow += [Spacer(1, 12), Paragraph("ADJUSTMENTS", st["h2"]),
+                 Paragraph(
+                     "Money owed to or from you that is not a session. These do "
+                     "not change what the month's sessions earned — only what "
+                     "is paid out on this payout.", st["note"]),
+                 Spacer(1, 4)]
+        adata = [[Paragraph("<b>Date</b>", st["cell"]),
+                  Paragraph("<b>What it is</b>", st["cell"]),
+                  Paragraph("<b>Amount</b>", st["cellr"])]]
+        for a in adjustments:
+            what = "<b>%s</b>" % _html.escape(a.title or "")
+            if a.description:
+                what += "<br/>%s" % _html.escape(a.description)
+            amount = Decimal(str(a.amount or 0))
+            adata.append([
+                Paragraph(a.occurred_on.strftime("%d %b") if a.occurred_on else "",
+                          st["cell"]),
+                Paragraph(what, st["cell"]),
+                Paragraph(("&#8722;" if amount < 0 else "") + peso(abs(amount)),
+                          st["cellr"])])
+        adata.append([Paragraph("<b>Payable</b>", st["cell"]), "",
+                      Paragraph("<b>%s</b>" % peso(payable), st["cellr"])])
+        atable = Table(adata, repeatRows=1,
+                       colWidths=[16 * mm, 132 * mm, 26 * mm])
+        atable.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.8, INK),
+            ("LINEBELOW", (0, 1), (-1, -2), 0.4, LINE),
+            ("LINEABOVE", (0, -1), (-1, -1), 0.8, INK),
+            ("SPAN", (0, -1), (1, -1)),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#fafbfc")),
+        ]))
+        flow.append(atable)
 
     tail = [Paragraph("HOW THIS WAS CALCULATED", st["h2"]),
             Paragraph(

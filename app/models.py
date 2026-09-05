@@ -1189,6 +1189,11 @@ class CommissionPayout(Base):
     sessions = Column(Integer, nullable=False, default=0)
     commission_total = Column(Numeric(10, 2), default=0)    # non-delegated
     delegation_total = Column(Numeric(10, 2), default=0)    # delegated
+    #: Adjustments carried on this payout, signed. Held apart from the two
+    #: figures above on purpose: commission is what the month's work earned and
+    #: is what every margin and month-to-month comparison reads. An adjustment
+    #: changes what we pay, never what the month earned.
+    adjustment_total = Column(Numeric(10, 2), default=0)
     total = Column(Numeric(10, 2), default=0)
     created_at = Column(DateTime(timezone=True), default=now_utc)
     paid_at = Column(DateTime(timezone=True))
@@ -1210,6 +1215,70 @@ class CommissionPayoutLine(Base):
     amount = Column(Numeric(10, 2), default=0)
 
     booking = relationship("CommissionBooking")
+
+
+class CommissionAdjustment(Base):
+    """Money owed to or from a coach that is not a session.
+
+    It is recorded against the coach, not against a run, because the reason for
+    it usually turns up after the month it belongs to has already been paid:
+    an overpayment found in July, a shirt charged at cost, a workshop covered
+    at short notice. It waits, and it is offered on the next run reviewed for
+    that coach.
+
+    ``amount`` is signed. Negative deducts from pay; positive adds to it. The
+    sign is set by a segmented control on the form, so nobody has to remember
+    to type a minus.
+    """
+    __tablename__ = "commission_adjustments"
+    id = Column(Integer, primary_key=True)
+    #: The coach's display name — the same string the payout, the bookings and
+    #: the rate row use, so an adjustment finds its coach without a join
+    #: through a person record that may not exist yet.
+    coach = Column(String, nullable=False)
+    coach_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    occurred_on = Column(Date)
+    title = Column(String, nullable=False)
+    description = Column(Text, default="")
+    amount = Column(Numeric(10, 2), nullable=False, default=0)
+    #: Set when a payout carries it. Until then it is waiting.
+    payout_id = Column(Integer, ForeignKey("commission_payouts.id",
+                                           ondelete="SET NULL"))
+    paid_at = Column(DateTime(timezone=True))
+    #: The run somebody unticked it on. Unticking is a decision about one
+    #: payout, not about the adjustment: skipped in September, it is offered
+    #: again — ticked — in October. That is how a large deduction gets spread
+    #: over two months without editing anything.
+    skipped_run_id = Column(Integer, ForeignKey("commission_runs.id",
+                                                ondelete="SET NULL"))
+    #: Provenance for the remainder of a deduction a payout could not absorb.
+    carried_from_id = Column(Integer, ForeignKey("commission_payouts.id",
+                                                 ondelete="SET NULL"))
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+
+    payout = relationship("CommissionPayout", foreign_keys=[payout_id])
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+
+    @property
+    def money(self) -> Decimal:
+        return Decimal(str(self.amount or 0))
+
+    @property
+    def is_paid(self) -> bool:
+        return self.payout_id is not None
+
+    @property
+    def deducts(self) -> bool:
+        return self.money < 0
+
+    @property
+    def state(self) -> str:
+        return "paid" if self.is_paid else "waiting"
+
+    def rides(self, run_id) -> bool:
+        """Would this adjustment be included if that run were finalized now?"""
+        return self.payout_id is None and self.skipped_run_id != run_id
 
 
 class CommissionCharge(Base):
