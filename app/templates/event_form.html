@@ -105,6 +105,11 @@ textarea.fbin{margin-top:10px;font-family:inherit;resize:vertical}
 .rlbl{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
   color:var(--muted);margin-bottom:9px}
 .rhd,.rrow{display:grid;grid-template-columns:22px 1fr 138px 96px;gap:9px;align-items:center}
+/* A category has one more column than a rate: the places it holds. */
+.rhd4,.rrow4{grid-template-columns:22px 1fr 120px 78px 96px}
+.rnote{margin-top:9px;font-size:.82rem;color:var(--muted);background:var(--wash,#f4f6f8);
+  border-radius:9px;padding:9px 12px;line-height:1.5}
+.rnote b{color:var(--ink)}
 .rhd{font-size:.72rem;color:var(--muted);margin-bottom:5px}
 .rrow{margin-top:7px}
 .rrow.shut{opacity:.55}
@@ -202,12 +207,12 @@ textarea.tbody{width:100%;font-family:inherit;font-size:.88rem;line-height:1.5;
 (function(){
 var EID = {{ ev.id }};
 var D = {{ doc|tojson }};
-var deleted = [], ratesGone = [], tmp = -1, open = null;
+var deleted = [], ratesGone = [], catsGone = [], tmp = -1, open = null;
 
 var WITH = D.withOpts, KINDS = D.kinds, LOOKS = D.looks, MAPS = D.maps;
 var BUILTIN_NAME = {name:"First and last name", email:"Email address",
   mobile:"Phone number", country:"Country, with its flag", sex:"Male or female",
-  tier:"One of your rates"};
+  category:"One of your categories", tier:"One of your rates"};
 
 // ------------------------------------------------------------- saving
 var timer = null, flying = false, again = false;
@@ -229,14 +234,15 @@ function send(resync){
   // instead, and reopen whatever ends up there.
   var spot = resync ? find(open) : null;
   var body = {pages: D.pages, deleted: deleted, rates: D.rates,
-              ratesGone: ratesGone, look: D.look};
+              ratesGone: ratesGone, cats: D.cats, catsGone: catsGone,
+              look: D.look};
   fetch('/events/' + EID + '/form/save', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(body)
   }).then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
     .then(function(j){
       flying = false;
-      deleted = []; ratesGone = [];
+      deleted = []; ratesGone = []; catsGone = [];
       // The server has just handed out real ids, and may have refused to
       // delete a rate somebody paid. Take its word for the shape of things.
       if (resync) {
@@ -247,7 +253,7 @@ function send(resync){
         }
         draw();
       }
-      else { D.rates = j.doc.rates; syncIds(j.doc); }
+      else { D.rates = j.doc.rates; D.cats = j.doc.cats; syncIds(j.doc); }
       pill('done', 'All changes saved');
       if (again) { again = false; push(true); }
     })
@@ -284,10 +290,20 @@ function subLine(f){
     return f.opts ? esc(f.opts.replace(/\s+/g, ' ').slice(0, 90)) + '…'
                   : '<b style="color:#8c2c20">No terms written yet</b>';
   if (f.builtin === 'tier') {
+    if (catsPriced())
+      return 'Not asked \u2014 the categories carry the price';
     if (!D.rates.length) return 'No rates yet';
     return D.rates.map(function(r){
       return esc(r.label || '(no name)') + ' ' + peso(r.amt) + (r.closed ? ' (closed)' : '');
     }).join('  ·  ');
+  }
+  if (f.builtin === 'category') {
+    if (!D.cats.length) return 'No categories \u2014 this one is not asked';
+    return D.cats.map(function(c){
+      return esc(c.label || '(no name)') +
+             (c.cap ? ' \u00b7 ' + c.used + '/' + c.cap : '') +
+             (c.closed ? ' (closed)' : '');
+    }).join('  \u00b7  ');
   }
   if (f.help) return esc(f.help);
   if (f.builtin) return BUILTIN_NAME[f.builtin] || '';
@@ -326,6 +342,60 @@ function ratesHTML(){
          (D.look===LOOKS[j][0]?' checked':'')+'>' +
          '<span class="fbpv fbpv-'+LOOKS[j][0]+'"></span>'+LOOKS[j][1]+'</label>';
   h += '</div></div>';
+  return h;
+}
+
+function catsPriced(){
+  // The one rule that decides who carries the price. Mirrors
+  // Event.cats_priced on the server, and it is the same question: has
+  // anybody typed an amount on a category that is still being offered?
+  return D.cats.filter(function(c){
+    return !c.closed && c.label && c.amt !== '' && c.amt != null && +c.amt > 0;
+  }).length > 0;
+}
+
+function catsHTML(){
+  // Same shape as the rates, with one more column. A category is a pool of
+  // slots, so the number of places is not an afterthought on it - it is the
+  // reason the row exists.
+  var h = '<div class="rates">';
+  h += '<div class="rlbl">The categories &mdash; what somebody enters, ' +
+       'and how many places it holds</div>';
+  h += '<div class="rhd rhd4"><span></span><span>Label</span><span>Price</span>' +
+       '<span>Slots</span><span></span></div>';
+  for (var i=0;i<D.cats.length;i++){
+    var c = D.cats[i];
+    h += '<div class="rrow rrow4' + (c.closed ? ' shut' : '') + '" data-c="'+i+'">';
+    h += '<span class="grip rgrip" data-rgrip="1">&#10287;&#10287;</span>';
+    h += '<input class="fbin" data-ck="label" value="'+esc(c.label)+'" placeholder="Doubles">';
+    h += '<div class="amt"><span>&#8369;</span><input class="fbin" data-ck="amt" ' +
+         'inputmode="numeric" value="'+esc(c.amt)+'" placeholder="0"></div>';
+    h += '<input class="fbin" data-ck="cap" inputmode="numeric" value="' +
+         (c.cap ? esc(c.cap) : '') + '" placeholder="&#8734;">';
+    h += '<div class="rend">';
+    if (c.used) h += '<span class="used">'+c.used+' in</span>';
+    if (c.closed) h += '<button type="button" class="rx mild" data-creopen="'+i+'">Reopen</button>';
+    else if (c.used) h += '<button type="button" class="rx mild" data-cclose="'+i+'">Close</button>';
+    else h += '<button type="button" class="rx" data-cdel="'+i+'">Remove</button>';
+    h += '</div></div>';
+  }
+  h += '<button type="button" class="addr" data-addcat="1">+ &nbsp;Add a category</button>';
+  var live = D.cats.filter(function(c){ return !c.closed && c.label; });
+  if (!live.length)
+    h += '<div class="rnote">No categories, so this field is not asked at all ' +
+         'and everybody goes in one list. Add one the moment an event has ' +
+         'more than one thing to enter.</div>';
+  else if (catsPriced())
+    h += '<div class="rnote"><b>The categories carry the price.</b> ' +
+         'While any of them has an amount on it, the rate field is not asked ' +
+         '&mdash; one number, one question. Clear every price here and the ' +
+         'rates go back to deciding.</div>';
+  else
+    h += '<div class="rnote">No prices here, so the rates still decide what ' +
+         'people pay. These only decide which pool of slots somebody takes.</div>';
+  h += '<div class="rnote">Leave <b>Slots</b> empty for no limit of its own. ' +
+       'The event\'s own capacity is still the ceiling.</div>';
+  h += '</div>';
   return h;
 }
 
@@ -406,6 +476,7 @@ function fieldHTML(f){
   if (f.builtin || f.kind !== 'terms')
     h += '<div class="opts"><textarea class="fbin" rows="3" data-k="opts" ' +
          'placeholder="The options &mdash; one per line">'+esc(f.opts)+'</textarea></div>';
+  if (f.builtin === 'category') h += catsHTML();
   if (f.builtin === 'tier') h += ratesHTML();
   if (!f.builtin && f.kind === 'terms') h += termsHTML(f);
 
@@ -429,6 +500,9 @@ function fieldHTML(f){
   h += '<span class="fbchip kindchip">'+esc(kindLabel(f))+'</span>';
   if (!f.builtin && f.map)
     h += '<span class="fbchip map">\u2192 '+esc(mapLabel(f.map))+'</span>';
+  if (f.builtin === 'tier' && catsPriced())
+    h += '<span class="fbchip reqchip off">Not asked</span>';
+  else
   h += f.off ? '<span class="fbchip reqchip off">Not asked</span>'
              : '<span class="fbchip reqchip'+(f.req?' req':'')+'">'+
                (f.req?'Required':'Optional')+'</span>';
@@ -499,6 +573,24 @@ cv.addEventListener('click', function(e){
     if (boxes.length) boxes[boxes.length-1].focus();
     return;
   }
+  if ((t = e.target.closest('[data-addcat]'))) {
+    D.cats.push({id:null, label:'', amt:'', cap:0, closed:false, used:0});
+    draw();
+    var cb = document.querySelectorAll('.fld.open .rrow4 [data-ck="label"]');
+    if (cb.length) cb[cb.length-1].focus();
+    return;
+  }
+  if ((t = e.target.closest('[data-cdel]'))) {
+    var c = D.cats.splice(+t.getAttribute('data-cdel'), 1)[0];
+    if (c && c.id) catsGone.push(c.id);
+    draw(); push(true); return;
+  }
+  if ((t = e.target.closest('[data-cclose]'))) {
+    D.cats[+t.getAttribute('data-cclose')].closed = true; draw(); push(true); return;
+  }
+  if ((t = e.target.closest('[data-creopen]'))) {
+    D.cats[+t.getAttribute('data-creopen')].closed = false; draw(); push(true); return;
+  }
   if ((t = e.target.closest('[data-rdel]'))) {
     var r = D.rates.splice(+t.getAttribute('data-rdel'), 1)[0];
     if (r && r.id) ratesGone.push(r.id);
@@ -565,13 +657,17 @@ cv.addEventListener('change', onEdit);
 cv.addEventListener('input', onEdit);
 function onEdit(e){
   var el = e.target, k = el.getAttribute('data-k'), sk = el.getAttribute('data-sk'),
-      rk = el.getAttribute('data-rk');
+      rk = el.getAttribute('data-rk'), ck = el.getAttribute('data-ck');
   if (sk) {
     D.pages[+el.closest('.sec').getAttribute('data-s')][sk] = el.value;
     push(false); return;
   }
   if (rk) {
     D.rates[+el.closest('.rrow').getAttribute('data-r')][rk] = el.value;
+    push(false); return;
+  }
+  if (ck) {
+    D.cats[+el.closest('.rrow4').getAttribute('data-c')][ck] = el.value;
     push(false); return;
   }
   if (!k) return;

@@ -63,6 +63,11 @@ input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,128,128,.10)}
 .seg label:has(input:checked){border-color:var(--teal);background:var(--teal-tint);
   color:var(--teal-dark);font-weight:650;box-shadow:inset 0 0 0 1px var(--teal)}
 .seg label:has(input:checked) small{color:var(--teal-dark)}
+/* A category with no places left. Still on the list, visibly out of reach:
+   a list that silently shortens is the one somebody writes in about. */
+.seg label.gone{background:#f6f7f9;color:#9aa4ad;cursor:not-allowed;
+  border-style:dashed}
+.seg label.gone small{color:#b0392b;font-weight:600}
 button.go{width:100%;background:var(--teal);color:#fff;border:0;border-radius:11px;
   padding:15px;font-weight:650;font-size:1rem;font-family:inherit;cursor:pointer;
   margin-top:20px}
@@ -219,6 +224,8 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
   {% if err %}
   <div class="note bad">
     {% if err == 'missing' %}We need every box filled in — have another look.
+    {% elif err == 'catfull' %}That category filled up while you were typing —
+      we're sorry. Nothing of yours was saved. Pick another one below.
     {% elif err == 'stale' %}This page had been open a while. Your details are
       still below — send it again.
     {% elif err == 'fast' %}That came through faster than the page loads. Give

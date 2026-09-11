@@ -193,6 +193,26 @@
   <div class="s spacer"></div>
 </div>
 
+{# How full each category is. Under the headline count rather than inside it:
+   "18 of 30" is still the room, and this is where those eighteen went. Both
+   are counted with the same rule, so they can never disagree. #}
+{% if cat_fill %}
+<div class="catbar">
+  {% for c in cat_fill %}
+  <div class="cf{{ ' full' if c.full }}{{ ' shut' if c.closed }}">
+    <div class="cfhd"><b>{{ c.label }}</b>
+      <span>{% if c.cap %}{{ c.taken }}/{{ c.cap }}{% else %}{{ c.taken }} in{% endif %}</span></div>
+    {% if c.cap %}<div class="cfbar"><i style="width:{{ c.pct }}%"></i></div>{% endif %}
+    <div class="cfsub">{% if c.closed %}Closed — not offered
+      {% elif c.full %}Full
+      {% elif c.left is not none %}{{ c.left }} left
+      {% else %}No limit{% endif %}{%
+      if c.amount %} · {{ money(c.amount) }}{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {# Two emails, two buttons. They go out days apart, to different people, and
    ask for different things — one button that guesses from the event's status
    hides the second one, and you cannot press a button you cannot see. #}
@@ -378,6 +398,10 @@
 {% elif request.query_params.get('edit') == 'noname' %}
 <div class="alert bad"><b>A name is needed.</b>
   <span class="muted">It's how you'll find them on the day.</span></div>
+{% elif request.query_params.get('edit') == 'catfull' %}
+<div class="alert bad"><b>That category is full.</b>
+  <span class="muted">Nothing was changed. Raise its slot count on the form
+    builder first, or move somebody else out of it.</span></div>
 {% endif %}
 
 {{ searchbar('ppl', 'Search name, email, handle…') }}
@@ -420,6 +444,7 @@
     <th>Participant</th>
     {% if 'gender' in cols %}<th style="width:90px">Gender</th>{% endif %}
     {% if 'category' in cols %}<th style="width:88px">Category</th>{% endif %}
+    {% if 'entered' in cols %}<th style="width:110px">Entered in</th>{% endif %}
     {% if 'age' in cols %}<th style="width:64px">Age</th>{% endif %}
     {% if 'reviewed' in cols %}<th style="width:112px">Review</th>{% endif %}
     {% if 'mobile' in cols %}<th style="width:130px">Mobile</th>{% endif %}
@@ -468,6 +493,12 @@
     {# No dash here: there is no such thing as a participant without a
        category. Everybody is Open until somebody moves them up. #}
     <td>{{ CATEGORY_LABELS[p.category or 'open'] }}</td>
+    {% endif %}
+    {% if 'entered' in cols %}
+    {# A dash here is real: an event can have categories that somebody on the
+       list predates, and a row with none is a row holding a slot in no pool. #}
+    <td>{% if p.cat_name %}{{ p.cat_name }}
+      {% else %}<span class="muted small">&mdash;</span>{% endif %}</td>
     {% endif %}
     {% if 'age' in cols %}
     {# Half of what somebody answers to reach their own card, so a blank one is
@@ -691,6 +722,22 @@
               {{ 'selected' if (p.category or 'open') == key }}>{{ label }}</option>
             {% endfor %}
           </select></div>
+        {% if ev.cat_rows() %}
+        <div>
+          {# The other category: what they entered, and the pool their slot
+             came out of. Only here at all when the event has any, and a full
+             one is refused on save rather than silently overfilled. #}
+          <label class="small" style="font-weight:600;margin:0 0 4px">Entered in
+            <span class="muted">&mdash; which category holds their slot</span></label>
+          <select form="ed-{{ p.id }}" name="cat">
+            <option value="">&mdash; none &mdash;</option>
+            {% for c in ev.cat_rows() %}
+            <option value="{{ c.key }}" {{ 'selected' if p.cat_id == c.id }}>{{ c.label }}{%
+              if c.capacity %} · {{ cat_taken(ev, c.id) }}/{{ c.capacity }}{% endif %}{%
+              if c.closed %} (closed){% endif %}</option>
+            {% endfor %}
+          </select></div>
+        {% endif %}
         {% if p.answers %}
         {# What they said to the gym's own questions. Read-only here: an answer
            is theirs, and a screen that lets somebody quietly rewrite what a

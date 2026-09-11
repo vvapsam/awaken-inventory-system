@@ -121,6 +121,11 @@ from .models import CATEGORIES as _CATEGORIES
 templates.env.globals["CATEGORIES"] = _CATEGORIES
 from .models import CATEGORY_LABELS as _CATEGORY_LABELS
 templates.env.globals["CATEGORY_LABELS"] = _CATEGORY_LABELS
+# How full one of an event's categories is. A global rather than a value
+# passed into every render: the roster, the tracker and the sign-up all ask
+# the same question, and one of them would eventually be handed a stale count.
+from .event_routes import cat_taken as _cat_taken
+templates.env.globals["cat_taken"] = _cat_taken
 templates.env.globals["country_code"] = country_code
 templates.env.globals["country_name"] = country_name
 templates.env.globals["flag"] = flag
@@ -631,6 +636,25 @@ def startup():
                 "  period_start = r.period_start, period_end = r.period_end "
                 "FROM commission_runs r WHERE r.id = c.run_id "
                 "  AND c.period_start IS NULL AND r.period_start IS NOT NULL; "
+                "END IF; END $$;"))
+            # Categories on an event — Singles, Doubles, Relay — each with
+            # its own pool of slots. event_categories is a new table, so
+            # create_all makes it; the pointer on the registration is not.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
+                "  cat_id INTEGER; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') "
+                "IS NOT NULL AND to_regclass('public.event_categories') "
+                "IS NOT NULL AND NOT EXISTS ("
+                "  SELECT 1 FROM information_schema.table_constraints "
+                "  WHERE constraint_name = 'event_participants_cat_id_fkey') "
+                "THEN ALTER TABLE event_participants ADD CONSTRAINT "
+                "  event_participants_cat_id_fkey FOREIGN KEY (cat_id) "
+                "  REFERENCES event_categories(id) ON DELETE SET NULL; "
                 "END IF; END $$;"))
             # A payout can now carry adjustments — money owed to or from a
             # coach that is not a session. commission_adjustments is a new

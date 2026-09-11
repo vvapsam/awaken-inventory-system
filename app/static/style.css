@@ -1228,3 +1228,24 @@ tr.adjoff td:not(.use){opacity:.5}
 tr.adjoff td.amt{text-decoration:line-through}
 .adjamt{font-weight:650;text-align:right;white-space:nowrap}
 .adjamt.minus{color:#a8392b}
+
+/* ── Event categories ──────────────────────────────────────────────────────
+   One card per category, under the room's own count. The bar is the fastest
+   way to read "which one is about to close" off a page, and the number beside
+   it is there because a bar alone is a shape, not an answer. */
+.catbar{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  gap:10px;margin:10px 0 2px}
+.catbar .cf{border:1px solid var(--line);border-radius:11px;background:var(--bg);
+  padding:10px 13px}
+.catbar .cfhd{display:flex;justify-content:space-between;align-items:baseline;
+  gap:8px;font-size:.88rem}
+.catbar .cfhd span{font-variant-numeric:tabular-nums;color:var(--muted);
+  font-size:.82rem;white-space:nowrap}
+.catbar .cfbar{height:5px;border-radius:99px;background:var(--panel);margin:7px 0 5px;
+  overflow:hidden}
+.catbar .cfbar i{display:block;height:100%;background:var(--teal);border-radius:99px}
+.catbar .cfsub{font-size:.72rem;color:var(--muted)}
+.catbar .cf.full{border-color:var(--low-line);background:var(--low)}
+.catbar .cf.full .cfbar i{background:#b0392b}
+.catbar .cf.full .cfsub{color:#8a5a14;font-weight:600}
+.catbar .cf.shut{opacity:.6}
