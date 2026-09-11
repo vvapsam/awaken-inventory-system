@@ -56,49 +56,40 @@
     {% endfor %}
   </div>
 
-{% elif q.builtin == 'category' %}
-  {# Only drawn when there are categories to choose between. An event with one
-     room asks nothing, which is why this field is not locked and why it needs
-     no switching off by hand.
+{% elif q.builtin == 'tier' %}
+  {# One question and one list: what somebody is entering, what it costs, and
+     how many places are left in it. These were two fields once — a rate and a
+     category — which meant the same choice asked twice, and an event could end
+     up with one hidden and the other switched off, leaving a form with no way
+     to answer it.
 
-     A full category stays on the list rather than disappearing from it. Seeing
+     A full one stays on the list rather than disappearing from it. Seeing
      "Doubles — Full" is the answer to "where did Doubles go"; a list that
      silently shortens is the version somebody writes in about. #}
-  {% if cats %}
-  <div class="lbl">{{ q.title }}<span class="req">*</span></div>
-  {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
-  <div class="seg" style="grid-template-columns:1fr">
-    {% for c in cats %}
-    <label class="{{ 'gone' if c.full }}">
-      <input type="radio" name="cat" value="{{ c.key }}" required
-             {{ 'disabled' if c.full }}>
-      {{ c.label }}<small>{% if cats_priced %}{{ c.money }}{% if c.cap %} ·
-        {% endif %}{% endif %}{% if c.full %}Full{% elif c.left is not none
-        %}{{ c.left }} left{% endif %}</small></label>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-{% elif q.builtin == 'tier' %}
-  {# The rate is not asked when the categories carry the price: one number,
-     one question. See Event.cats_priced. #}
-  {% if tiers and not cats_priced %}
+  {% if tiers %}
   <div class="lbl">{{ q.title }}<span class="req">*</span></div>
   {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
   {# Three shapes for the same list. Tiles read best at two or three and get
-     cramped on a phone at five, which is the whole reason this is a choice. #}
-  {% if ev.rate_look == 'drop' %}
+     cramped on a phone at five, which is the whole reason this is a choice.
+     A dropdown cannot grey a full option out, so a full list falls back to
+     the tiles - being unable to see why you cannot pick something is worse
+     than a long list. #}
+  {% if ev.rate_look == 'drop' and not tiers|selectattr('full')|list %}
   <select class="q" name="tier" required>
     <option value="">Choose&hellip;</option>
     {% for t in tiers %}
-    <option value="{{ t.key }}">{{ t.label }} &mdash; {{ t.money }}</option>
+    <option value="{{ t.key }}">{{ t.label }} &mdash; {{ t.money }}{%
+      if t.left is not none %} &middot; {{ t.left }} left{% endif %}</option>
     {% endfor %}
   </select>
   {% else %}
-  <div class="seg"{% if ev.rate_look == 'list' %} style="grid-template-columns:1fr"{% endif %}>
+  <div class="seg"{% if ev.rate_look != 'tiles' or tiers|length > 3 %} style="grid-template-columns:1fr"{% endif %}>
     {% for t in tiers %}
-    <label><input type="radio" name="tier" value="{{ t.key }}" required>
-      {{ t.label }}<small>{{ t.money }}</small></label>
+    <label class="{{ 'gone' if t.full }}">
+      <input type="radio" name="tier" value="{{ t.key }}" required
+             {{ 'disabled' if t.full }}>
+      {{ t.label }}<small>{{ t.money }}{% if t.full %} &middot; Full{%
+        elif t.left is not none %} &middot; {{ t.left }} left{% endif %}</small></label>
     {% endfor %}
   </div>
   {% endif %}

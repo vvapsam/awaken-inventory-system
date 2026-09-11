@@ -124,8 +124,8 @@ templates.env.globals["CATEGORY_LABELS"] = _CATEGORY_LABELS
 # How full one of an event's categories is. A global rather than a value
 # passed into every render: the roster, the tracker and the sign-up all ask
 # the same question, and one of them would eventually be handed a stale count.
-from .event_routes import cat_taken as _cat_taken
-templates.env.globals["cat_taken"] = _cat_taken
+from .event_routes import rate_taken as _rate_taken
+templates.env.globals["rate_taken"] = _rate_taken
 templates.env.globals["country_code"] = country_code
 templates.env.globals["country_name"] = country_name
 templates.env.globals["flag"] = flag
@@ -637,26 +637,67 @@ def startup():
                 "FROM commission_runs r WHERE r.id = c.run_id "
                 "  AND c.period_start IS NULL AND r.period_start IS NOT NULL; "
                 "END IF; END $$;"))
-            # Categories on an event — Singles, Doubles, Relay — each with
-            # its own pool of slots. event_categories is a new table, so
-            # create_all makes it; the pointer on the registration is not.
+            # One list, not two. A rate and a category were the same choice
+            # asked twice — and an event could end up with the rate hidden and
+            # the category switched off, which is a form with no way to
+            # answer it. The rate now carries the slots.
             conn.execute(text(
-                "DO $$ BEGIN IF to_regclass('public.event_participants') "
+                "DO $$ BEGIN IF to_regclass('public.event_rates') IS NOT NULL "
+                "THEN ALTER TABLE event_rates ADD COLUMN IF NOT EXISTS "
+                "  capacity INTEGER NOT NULL DEFAULT 0; "
+                "END IF; END $$;"))
+            # Carry across anything that was typed while the two were apart.
+            # A category whose label already matches a rate lends it its slot
+            # count; one with no matching rate becomes a rate. Then every
+            # category is closed, which is what stops this running twice — a
+            # rate renamed afterwards must not resurrect the old label.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_categories') "
+                "IS NOT NULL AND to_regclass('public.event_rates') IS NOT NULL "
+                "THEN "
+                "UPDATE event_rates r SET capacity = c.capacity "
+                "  FROM event_categories c "
+                " WHERE c.event_id = r.event_id AND c.closed = FALSE "
+                "   AND lower(btrim(r.label)) = lower(btrim(c.label)) "
+                "   AND COALESCE(c.capacity, 0) > 0 "
+                "   AND COALESCE(r.capacity, 0) = 0; "
+                "INSERT INTO event_rates (event_id, label, amount, capacity, "
+                "                         position, closed) "
+                "SELECT c.event_id, c.label, c.amount, COALESCE(c.capacity, 0), "
+                "       100 + c.position, FALSE "
+                "  FROM event_categories c "
+                " WHERE c.closed = FALSE AND btrim(COALESCE(c.label, '')) <> '' "
+                "   AND NOT EXISTS (SELECT 1 FROM event_rates r "
+                "                    WHERE r.event_id = c.event_id "
+                "                      AND lower(btrim(r.label)) "
+                "                        = lower(btrim(c.label))); "
+                "END IF; END $$;"))
+            # Anybody who registered into a category, and only into a
+            # category, is pointed at the rate it became.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_categories') "
+                "IS NOT NULL AND to_regclass('public.event_rates') IS NOT NULL "
+                "AND EXISTS (SELECT 1 FROM information_schema.columns "
+                "            WHERE table_name = 'event_participants' "
+                "              AND column_name = 'cat_id') THEN "
+                "UPDATE event_participants p "
+                "   SET tier = r.id::text, amount = COALESCE(p.amount, r.amount) "
+                "  FROM event_categories c "
+                "  JOIN event_rates r ON r.event_id = c.event_id "
+                "   AND lower(btrim(r.label)) = lower(btrim(c.label)) "
+                " WHERE p.cat_id = c.id "
+                "   AND COALESCE(p.tier, '') = ''; "
+                "UPDATE event_categories SET closed = TRUE WHERE closed = FALSE; "
+                "END IF; END $$;"))
+            # And the field itself goes. It is no longer in BUILTIN_FIELDS, so
+            # a row left behind would be a question on the form that nothing
+            # knows how to draw.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_questions') "
                 "IS NOT NULL THEN "
-                "ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS "
-                "  cat_id INTEGER; "
+                "DELETE FROM event_questions WHERE builtin = 'category'; "
                 "END IF; END $$;"))
-            conn.execute(text(
-                "DO $$ BEGIN IF to_regclass('public.event_participants') "
-                "IS NOT NULL AND to_regclass('public.event_categories') "
-                "IS NOT NULL AND NOT EXISTS ("
-                "  SELECT 1 FROM information_schema.table_constraints "
-                "  WHERE constraint_name = 'event_participants_cat_id_fkey') "
-                "THEN ALTER TABLE event_participants ADD CONSTRAINT "
-                "  event_participants_cat_id_fkey FOREIGN KEY (cat_id) "
-                "  REFERENCES event_categories(id) ON DELETE SET NULL; "
-                "END IF; END $$;"))
-            # A payout can now carry adjustments — money owed to or from a
+            # A payout can now carry adjustments            # A payout can now carry adjustments — money owed to or from a
             # coach that is not a session. commission_adjustments is a new
             # table, so create_all makes it; the payout's own column is not.
             conn.execute(text(

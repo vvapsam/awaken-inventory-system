@@ -1849,45 +1849,6 @@ class Event(Base):
         r = self.rate(key)
         return r.label if r else ""
 
-    # --- categories -------------------------------------------------------
-
-    def cat_rows(self) -> list:
-        """Every category on this event, in the order they are drawn."""
-        return sorted(self.categories or [], key=lambda c: (c.position, c.id))
-
-    def cats_open(self) -> list:
-        """The ones somebody new may still pick."""
-        return [c for c in self.cat_rows()
-                if not c.closed and (c.label or "").strip()]
-
-    def cat(self, key):
-        """The category a participant picked, closed or not."""
-        want = str(key or "").strip()
-        if not want:
-            return None
-        return next((c for c in self.cat_rows() if c.key == want), None)
-
-    def cat_label(self, key) -> str:
-        c = self.cat(key)
-        return c.label if c else ""
-
-    @property
-    def has_cats(self) -> bool:
-        """Does this event ask which category somebody is entering?"""
-        return bool(self.cats_open())
-
-    @property
-    def cats_priced(self) -> bool:
-        """Do the categories carry the price, rather than the rates?
-
-        One rule, and it is decided by whether anybody typed an amount. Price
-        the categories and the category is the whole choice — the rate field
-        drops off the form, because asking twice for one number is how two
-        different answers end up on one registration. Leave them blank and the
-        rates decide exactly as they did before categories existed.
-        """
-        return any(c.priced for c in self.cats_open())
-
     @property
     def when_note(self) -> str:
         """The line that replaces a start time nobody has been given yet."""
@@ -2581,12 +2542,11 @@ BUILTIN_FIELDS = [
     ("mobile", "Mobile",           False),
     ("country", "Country",         False),
     ("sex",    "Gender",           False),
-    #: Which category they are entering — see EventCategory. Not locked and
-    #: not drawn at all until an event has categories, because most events
-    #: have one room and one list; the field appears the moment there is a
-    #: second thing to choose between.
-    ("category", "Category",       False),
-    ("tier",   "Which rate applies", True),
+    #: What somebody is entering — see EventRate. It is one question and one
+    #: list: the label, what it costs, and how many places it holds. Splitting
+    #: the price off from the slots meant two fields that were always the same
+    #: choice, and a form could end up asking neither.
+    ("tier",   "Category",         True),
 ]
 BUILTIN_LABELS = {k: l for k, l, _r in BUILTIN_FIELDS}
 BUILTIN_LOCKED = {k for k, _l, r in BUILTIN_FIELDS if r}
@@ -2820,6 +2780,11 @@ class EventRate(Base):
                       nullable=False, index=True)
     label = Column(String, nullable=False)
     amount = Column(Numeric(10, 2))
+    #: How many places this one holds. 0 means no limit of its own — the
+    #: event's capacity is still the ceiling. This is what makes a rate a
+    #: category: Solo has thirty places and Doubles has ten, and the room can
+    #: still have room while the one somebody wanted is full.
+    capacity = Column(Integer, nullable=False, default=0)
     position = Column(Integer, nullable=False, default=0)
     #: Still valid on the registrations that picked it, no longer offered to
     #: anybody new. The honest version of deleting an early-bird price.
@@ -2836,55 +2801,6 @@ class EventRate(Base):
 
     def __repr__(self):
         return "<EventRate %s>" % (self.label,)
-
-
-class EventCategory(Base):
-    """One category somebody can enter on an event, with its own slots.
-
-    A rate is what somebody pays. A category is what they are entering —
-    Singles, Doubles, Relay — and the point of it is that each one holds a
-    fixed number of people. The whole event can still have room while the
-    category somebody wanted is full, and that is the sentence the sign-up has
-    to be able to say.
-
-    It carries a price too, so an event whose categories cost different amounts
-    asks one question instead of two. Leave the prices blank and the event's
-    rates decide what people pay, exactly as before — see
-    ``Event.cats_priced``.
-
-    Like a rate, a category in use is never deleted, only closed: a
-    registration pointing at a category with no name would still hold a slot
-    nobody could account for.
-    """
-
-    __tablename__ = "event_categories"
-
-    id = Column(Integer, primary_key=True)
-    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"),
-                      nullable=False, index=True)
-    label = Column(String, nullable=False)
-    amount = Column(Numeric(10, 2))
-    #: How many places this category holds. 0 means no limit of its own — the
-    #: event's own capacity is still the ceiling.
-    capacity = Column(Integer, nullable=False, default=0)
-    position = Column(Integer, nullable=False, default=0)
-    #: Still valid on the registrations that picked it, no longer offered.
-    closed = Column(Boolean, nullable=False, default=False)
-
-    event = relationship("Event", backref=backref(
-        "categories", cascade="all, delete-orphan",
-        order_by="EventCategory.position"))
-
-    @property
-    def key(self) -> str:
-        return str(self.id)
-
-    @property
-    def priced(self) -> bool:
-        return self.amount is not None and Decimal(self.amount) > 0
-
-    def __repr__(self):
-        return "<EventCategory %s>" % (self.label,)
 
 
 class EventStation(Base):
@@ -3139,14 +3055,6 @@ class EventParticipant(Base):
     #: 'b' when there could only ever be two; the migration rewrote those to
     #: ids and nothing writes a letter any more.
     tier = Column(String)
-    #: Which category they entered — see EventCategory. Deliberately not the
-    #: `category` column above: that one is Advanced / Open, it crosses gender,
-    #: and it decides which column of the results board somebody appears in.
-    #: This one is Singles / Doubles / Relay, it is chosen by the person, and
-    #: it decides which pool of slots they took. Two different questions that
-    #: happen to share an English word.
-    cat_id = Column(Integer, ForeignKey("event_categories.id",
-                                        ondelete="SET NULL"))
     #: What they owed, stored per person rather than read off the event — so a
     #: price change tomorrow never restates what somebody paid today.
     amount = Column(Numeric(10, 2))
@@ -3306,22 +3214,6 @@ class EventParticipant(Base):
         does not rewrite what somebody already did.
         """
         return not self.amount or Decimal(self.amount) <= 0
-
-    @property
-    def cat(self):
-        """The category row they entered, or nothing.
-
-        Looked up through the event rather than held as a relationship, so a
-        category that was closed — or renamed — is still found. It is the row
-        their slot was taken from and the roster has to be able to name it.
-        """
-        ev = self.event
-        return ev.cat(self.cat_id) if (ev is not None and self.cat_id) else None
-
-    @property
-    def cat_name(self) -> str:
-        c = self.cat
-        return c.label if c else ""
 
     @property
     def declined(self) -> bool:

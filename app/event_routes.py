@@ -559,14 +559,14 @@ EVENT_COLUMNS = [
     # because the only way anybody gets out of Open is somebody reading
     # down the list and moving them.
     ("category",  "Category",      False, {"people": True,  "gone": False}),
-    # The other category: the pool somebody's slot came out of. Off by
-    # default, because most events have none and a column of dashes is worse
-    # than no column - it switches itself on the moment one is added, below.
-    ("entered",   "Entered in",    False, {"people": False, "gone": False}),
     ("age",       "Age",           False, {"people": True,  "gone": False}),
     ("reviewed",  "Review",        False, {"people": True,  "gone": False}),
     ("mobile",    "Mobile",        True,  {"people": False, "gone": False}),
-    ("entry",     "Entry",         True,  {"people": False, "gone": False}),
+    # What they entered - the category they picked and its price. On by
+    # default now that the category is the thing holding the slots: a roster
+    # that cannot tell you who is in Doubles is a roster you have to open
+    # somebody's row to read.
+    ("entry",     "Entry",         True,  {"people": True,  "gone": False}),
     ("slot",      "Slot",          False, {"people": False}),
     ("heat",      "Heat",          False, {"people": False, "gone": False}),
     ("status",    "Status",        False, {"people": True,  "gone": False}),
@@ -595,14 +595,8 @@ def columns_for(event: Event, scope: str = "people") -> list:
             continue
         if open_only and event.mode != "open":
             continue
-        on = defaults[scope] if chosen is None else key in chosen
-        # A column that only means anything on some events. It is off by
-        # default and a column of dashes helps nobody, so it switches itself
-        # on the day the event gets its first category - and the moment
-        # somebody touches the chooser their choice is what counts.
-        if key == "entered" and chosen is None and event.cat_rows():
-            on = True
-        out.append((key, label, on))
+        out.append((key, label,
+                    defaults[scope] if chosen is None else key in chosen))
     return out
 
 
@@ -792,15 +786,31 @@ def register(app, deps):
 
     # ------------------------------------------------- open registration ----
 
-    def _rate(r):
+    def _rate(ev, r):
+        """One category, with how much of it is left.
+
+        `left` is only a number when there is a limit. One with no limit of
+        its own says nothing about slots rather than claiming an infinity,
+        because "unlimited" beside three other numbers reads like a mistake.
+        """
+        cap = r.capacity or 0
+        taken = rate_taken(ev, r.id)
         return {"key": r.key, "label": r.label, "price": r.amount,
-                "money": money(r.amount), "closed": bool(r.closed)}
+                "money": money(r.amount), "closed": bool(r.closed),
+                "cap": cap, "taken": taken,
+                "left": max(cap - taken, 0) if cap else None,
+                "full": cap > 0 and taken >= cap}
 
     def _tiers(ev, db=None):
-        """The rates somebody new may pick. Empty if none are set."""
+        """The categories on offer. Empty if none are set.
+
+        A full one stays on the list. Seeing "Doubles — Full" is the answer to
+        "where did Doubles go"; a list that silently shortens is the version
+        somebody writes in about.
+        """
         if db is not None:
             form_routes.ensure_rates(db, ev)
-        return [_rate(r) for r in ev.rates_open() if (r.label or "").strip()]
+        return [_rate(ev, r) for r in ev.rates_open() if (r.label or "").strip()]
 
     def _tier(ev, key):
         """The rate somebody picked, closed or not.
@@ -810,53 +820,22 @@ def register(app, deps):
         what they owe has to be able to name it.
         """
         r = ev.rate(key)
-        return _rate(r) if r else None
+        return _rate(ev, r) if r else None
 
     def _pickable(ev, key):
-        """The rate somebody may pick right now, or nothing."""
-        t = _tier(ev, key)
-        return None if (t is None or t["closed"]) else t
-
-    def _cat(ev, c):
-        """One category, with how much of it is left.
-
-        `left` is only a number when there is a limit. A category with no
-        limit of its own says nothing about slots rather than claiming an
-        infinity, because "unlimited" beside three other numbers reads like a
-        mistake.
-        """
-        cap = c.capacity or 0
-        taken = cat_taken(ev, c.id)
-        return {"key": c.key, "label": c.label, "price": c.amount,
-                "money": money(c.amount), "priced": c.priced,
-                "cap": cap, "taken": taken,
-                "left": max(cap - taken, 0) if cap else None,
-                "full": cap > 0 and taken >= cap,
-                "closed": bool(c.closed)}
-
-    def _cats(ev):
-        """The categories somebody new may pick. Empty if none are set."""
-        return [_cat(ev, c) for c in ev.cats_open()]
-
-    def _pick_cat(ev, key):
         """The category somebody may enter right now, or nothing.
 
         Full is not pickable. That is the whole point of the limit, and it is
         checked here as well as on the page because two people filling the
         form at once would otherwise both take the last place in it.
         """
-        c = ev.cat(key)
-        if c is None or c.closed:
+        t = _tier(ev, key)
+        if t is None or t["closed"] or t["full"]:
             return None
-        d = _cat(ev, c)
-        return None if d["full"] else d
+        return t
 
     def _signup_ctx(request, ev, p=None, db=None, **kw):
         ctx = {"request": request, "ev": ev, "p": p, "tiers": _tiers(ev, db),
-               # The categories, and with them the rule about who carries the
-               # price. Priced categories mean the rate field is not drawn —
-               # see Event.cats_priced.
-               "cats": _cats(ev), "cats_priced": ev.cats_priced,
                # Formatted here, with the same function the email uses. The
                # page and the email are quoting one deadline; spelling it two
                # ways is how somebody ends up believing there are two.
@@ -996,26 +975,21 @@ def register(app, deps):
         country = country_code(form.get("country"))
         tier = (form.get("tier") or "").strip()
         form_routes.ensure_rates(db, ev)
+        # No categories at all is not a person's mistake, and telling them to
+        # fill in every box when there is no box to fill is the dead end this
+        # page had once and must not have again.
+        if not _tiers(ev):
+            return RedirectResponse("/r/%s?err=notready" % slug, status_code=303)
         picked = _pickable(ev, tier)
-        # Which category they are entering, if this event has any. Checked
-        # here and not only on the page: the page was drawn some seconds ago,
-        # and the last place in a category can go in those seconds.
-        cat = (form.get("cat") or "").strip()
-        chosen = _pick_cat(ev, cat) if ev.has_cats else None
-        if ev.has_cats and chosen is None:
+        if picked is None:
             # Two different sentences. "That one just filled up" is a fact
             # about the category and leaves them somewhere to go; "you missed
             # a field" is about the form. Telling somebody the wrong one is
             # how they refresh the page four times.
-            asked = ev.cat(cat)
-            why = "catfull" if (asked is not None and not asked.closed) else "missing"
-            return RedirectResponse("/r/%s?err=%s" % (slug, why), status_code=303)
-        # Priced categories carry the price, so the rate is not asked and not
-        # required — see Event.cats_priced. Unpriced ones leave the rates
-        # exactly as they were.
-        if chosen is not None and ev.cats_priced:
-            picked = {"key": None, "price": chosen["price"],
-                      "label": chosen["label"]}
+            asked = ev.rate(tier)
+            if asked is not None and not asked.closed:
+                return RedirectResponse("/r/%s?err=catfull" % slug,
+                                        status_code=303)
         # What is required is whatever the form builder says is required, not
         # what this function used to assume. Name, email and a rate are the
         # three that cannot be switched off; the rest is the gym's business.
@@ -1064,7 +1038,6 @@ def register(app, deps):
                 seen.mobile, seen.sex = mobile, sex
                 seen.country = country
                 seen.tier = picked["key"]
-                seen.cat_id = int(chosen["key"]) if chosen else None
                 seen.amount = picked["price"]
                 seen.pay_status = PAY_DRAFT
                 seen.submitted_at = None
@@ -1080,7 +1053,6 @@ def register(app, deps):
             event_id=ev.id, token=new_token(), name="%s %s" % (first, last),
             first_name=first, last_name=last, email=email, mobile=mobile,
             sex=sex, country=country, tier=picked["key"],
-            cat_id=int(chosen["key"]) if chosen else None,
             amount=picked["price"], pay_status=PAY_DRAFT)
         db.add(p)
         db.flush()
@@ -1103,15 +1075,15 @@ def register(app, deps):
     def _full(ev) -> bool:
         """Is the room full? No capacity set means no limit, as before.
 
-        An event with categories has a second way to fill: every category at
-        its own limit, with places still unused on the event as a whole. There
-        is nowhere left to put somebody, so the page says full rather than
-        taking a registration it cannot seat.
+        An event with more than one category has a second way to fill: every
+        category at its own limit, with places still unused on the event as a
+        whole. There is nowhere left to put somebody, so the page says full
+        rather than taking a registration it cannot seat.
         """
         cap = ev.capacity or 0
         if cap > 0 and _taken(ev) >= cap:
             return True
-        return cats_all_full(ev)
+        return rates_all_full(ev)
 
     def _free(p) -> bool:
         """Does this registration cost anything?
@@ -1195,16 +1167,8 @@ def register(app, deps):
             return templates.TemplateResponse("event_signup.html", _signup_ctx(
                 request, ev, p, db=db, step=0, salt=salt, challenge=challenge,
                 qa=qa, qb=qb, err=request.query_params.get("err", "")))
-        # `tier` is what the page names beside the amount. On an event whose
-        # categories carry the price there is no rate to name, so it names the
-        # category instead — the same shape, so the template needs no branch.
-        named = _tier(ev, p.tier)
-        if named is None and p.cat is not None:
-            named = {"key": p.cat.key, "label": p.cat.label,
-                     "price": p.amount, "money": money(p.amount),
-                     "closed": bool(p.cat.closed)}
         return templates.TemplateResponse("event_signup.html", _signup_ctx(
-            request, ev, p, db=db, step=step, tier=named,
+            request, ev, p, db=db, step=step, tier=_tier(ev, p.tier),
             err=request.query_params.get("err", "")))
 
     @app.post("/r/{slug}/{token}/external")
@@ -1710,7 +1674,7 @@ def register(app, deps):
                       gone_col_list=columns_for(ev, "gone"),
                       gone_cols=visible_cols(ev, "gone"),
                       upload=request.session.pop("event_upload", None),
-                      c=counts(ev), cat_fill=cat_fill(ev),
+                      c=counts(ev), rate_fill=rate_fill(ev),
                       lists={k: len(v) for k, v in mail_lists(ev).items()},
                       reel_left=left_until(ev.reel_deadline),
                       closes_left=left_until(ev.signup_closes),
@@ -3989,7 +3953,7 @@ def register(app, deps):
                           name: str = Form(""), email: str = Form(""),
                           instagram: str = Form(""), country: str = Form(""),
                           sex: str = Form(""), category: str = Form(""),
-                          age: str = Form(""), cat: str = Form(""),
+                          age: str = Form(""),
                           db: Session = Depends(get_db)):
         """Fix somebody's details.
 
@@ -4028,15 +3992,6 @@ def register(app, deps):
         # lands on Open, which is where somebody who has not been looked at
         # yet belongs anyway.
         p.category = category_key(category)
-        # Which category they are entered in — a different question from the
-        # one above, and the one that holds a slot. Moving somebody into a
-        # category that is already full is refused rather than quietly
-        # overfilling it: the limit is the whole reason the row exists.
-        if cat.strip() or p.cat_id:
-            want_cat = ev_cat_move(p, cat)
-            if want_cat is False:
-                return RedirectResponse(back + "?edit=catfull", status_code=303)
-            p.cat_id = want_cat
         # Blank clears it. Until now the only way an age got on file was a
         # member of staff typing it at the awarding table, so most rows have
         # none - which matters more than it used to, because it is half of
@@ -5123,48 +5078,27 @@ def slots_taken(ev) -> int:
     return len([p for p in ev.participants if holds_slot(p)])
 
 
-def cat_taken(ev, cid) -> int:
-    """How many of a category's slots are actually held.
+def rate_taken(ev, rid) -> int:
+    """How many of one category's places are actually held.
 
     Counted with the same `holds_slot` rule the room uses, deliberately. A
     category that counted registrations while the room counted confirmations
     would be two different definitions of "full" on one page.
     """
-    if not cid:
+    if not rid:
         return 0
+    want = str(rid)
     return len([p for p in ev.participants
-                if p.cat_id == cid and holds_slot(p)])
+                if str(p.tier or "") == want and holds_slot(p)])
 
 
-def cat_full(ev, c) -> bool:
+def rate_full(ev, r) -> bool:
     """Is this category full? No limit on it means it never is."""
-    cap = getattr(c, "capacity", 0) or 0
-    return cap > 0 and cat_taken(ev, c.id) >= cap
+    cap = getattr(r, "capacity", 0) or 0
+    return cap > 0 and rate_taken(ev, r.id) >= cap
 
 
-def ev_cat_move(p, key):
-    """Where a person's category is being moved to, or False if it cannot be.
-
-    Returns the new id (or None to clear it). False means the target is full
-    and somebody would be the twenty-first person in a pool of twenty — which
-    is the one outcome the limit exists to prevent, and the one a screen
-    should refuse out loud rather than allow quietly.
-    """
-    want = str(key or "").strip()
-    if not want:
-        return None
-    ev = p.event
-    c = ev.cat(want) if ev is not None else None
-    if c is None:
-        return None
-    if c.id == p.cat_id:
-        return c.id                      # no move, no check
-    if cat_full(ev, c) and holds_slot(p):
-        return False
-    return c.id
-
-
-def cat_fill(ev) -> list:
+def rate_fill(ev) -> list:
     """One row per category: what it holds, and how much of it is gone.
 
     The same `holds_slot` rule as the room's own count, so "18 of 30" at the
@@ -5172,27 +5106,32 @@ def cat_fill(ev) -> list:
     number rather than two numbers.
     """
     out = []
-    for c in ev.cat_rows():
-        cap = c.capacity or 0
-        taken = cat_taken(ev, c.id)
-        out.append({"id": c.id, "label": c.label, "cap": cap, "taken": taken,
+    for r in ev.rate_rows():
+        cap = r.capacity or 0
+        taken = rate_taken(ev, r.id)
+        out.append({"id": r.id, "label": r.label, "cap": cap, "taken": taken,
                     "left": max(cap - taken, 0) if cap else None,
                     "full": cap > 0 and taken >= cap,
-                    "closed": bool(c.closed), "amount": c.amount,
+                    "closed": bool(r.closed), "amount": r.amount,
                     "pct": min(100, round(taken * 100 / cap)) if cap else 0})
     return out
 
 
-def cats_all_full(ev) -> bool:
-    """Every category full, on an event that has them.
+def rates_all_full(ev) -> bool:
+    """Every category full, on an event whose categories have limits.
 
     This is the other way a room fills. An event with 60 places and three
     categories of 20 is full at 60 — but it is also full at 45 if all three
-    categories have hit their own limit, and the page has to say so rather
-    than take a registration it has nowhere to put.
+    have hit their own limit, and the page has to say so rather than take a
+    registration it has nowhere to put.
+
+    An event where nothing carries a limit is never full this way, whatever
+    else is true of it.
     """
-    live = ev.cats_open()
-    return bool(live) and all(cat_full(ev, c) for c in live)
+    live = [r for r in ev.rates_open() if (r.label or "").strip()]
+    if not live or not any((r.capacity or 0) > 0 for r in live):
+        return False
+    return all(rate_full(ev, r) for r in live)
 
 
 def _mail_values(ev, p, url, key) -> dict:

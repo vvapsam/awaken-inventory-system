@@ -35,8 +35,7 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .models import (BUILTIN_FIELDS, BUILTIN_KEYS, BUILTIN_LOCKED,
-                     Event, EventCategory, EventParticipant, EventQuestion,
-                     EventRate,
+                     Event, EventParticipant, EventQuestion, EventRate,
                      ParticipantAnswer, QUESTION_KINDS, QUESTION_KIND_KEYS,
                      QUESTION_KINDS_WITH_OPTIONS, RATE_LOOKS, RATE_LOOK_KEYS,
                      MAPPABLE, MAP_LABELS, map_fits, to_local)
@@ -330,22 +329,6 @@ def rate_use(db, ev) -> dict:
     return {r.id: out.get(r.key, 0) for r in ev.rate_rows()}
 
 
-def cat_use(db, ev) -> dict:
-    """{category id: how many people are in it}.
-
-    Two jobs at once: it is what decides whether a category may be deleted at
-    all, and it is the number the builder shows beside the slot limit so
-    "20 slots" can be read against "14 in" without leaving the page.
-    """
-    out = {}
-    rows = (db.query(EventParticipant.cat_id)
-            .filter(EventParticipant.event_id == ev.id).all())
-    for (cid,) in rows:
-        if cid:
-            out[cid] = out.get(cid, 0) + 1
-    return {c.id: out.get(c.id, 0) for c in ev.cat_rows()}
-
-
 def ensure_rates(db, ev) -> list:
     """Copy an event's two old rates into rows, once, if nobody has yet.
 
@@ -491,7 +474,6 @@ def doc(db, ev) -> dict:
         pages = pages[1:]
 
     use = rate_use(db, ev)
-    cuse = cat_use(db, ev)
     return {
         "pages": pages,
         "kinds": [[k, l] for k, l in QUESTION_KINDS if k != "section"],
@@ -500,12 +482,9 @@ def doc(db, ev) -> dict:
         "maps": [[k, l, list(kinds), why] for k, l, kinds, why in MAPPABLE],
         "look": ev.rate_look or "tiles",
         "rates": [{"id": r.id, "label": r.label, "amt": money_out(r.amount),
-                   "closed": bool(r.closed), "used": use.get(r.id, 0)}
+                   "cap": r.capacity or 0, "closed": bool(r.closed),
+                   "used": use.get(r.id, 0)}
                   for r in ev.rate_rows()],
-        "cats": [{"id": c.id, "label": c.label, "amt": money_out(c.amount),
-                  "cap": c.capacity or 0, "closed": bool(c.closed),
-                  "used": cuse.get(c.id, 0)}
-                 for c in ev.cat_rows()],
     }
 
 
@@ -519,11 +498,9 @@ BUILTIN_COLS = {
     "mobile": (["event_participants.mobile"], ""),
     "country": (["event_participants.country"], "Two letters, ISO-3166."),
     "sex": (["event_participants.sex"], "'m' or 'f'."),
-    "category": (["event_participants.cat_id"],
-                 "The category's id — and the amount too, when the categories "
-                 "carry the price."),
     "tier": (["event_participants.tier", "event_participants.amount"],
-             "The rate's id, and what it cost at the moment they picked it."),
+             "The category's id, and what it cost at the moment they picked "
+             "it."),
 }
 
 
@@ -652,11 +629,19 @@ def save_doc(db, ev, body) -> None:
             db.delete(q)
 
     save_rates(db, ev, body)
-    save_cats(db, ev, body)
     db.flush()
     db.expire(ev, ["questions"])
     ensure_builtins(db, ev)
     db.commit()
+
+
+def cap_in(raw) -> int:
+    """A slot limit as a whole number. Anything unreadable means no limit."""
+    try:
+        n = int(str(raw or "0").strip() or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(n, 100000))
 
 
 def save_rates(db, ev, body) -> None:
@@ -684,6 +669,7 @@ def save_rates(db, ev, body) -> None:
             have[r.id] = r
         r.label = label
         r.amount = money_in(item.get("amt"))
+        r.capacity = cap_in(item.get("cap"))
         r.closed = bool(item.get("closed"))
         r.position = i
         keep.add(r.id)
@@ -700,55 +686,6 @@ def save_rates(db, ev, body) -> None:
     look = (body.get("look") or "").strip()
     if look in RATE_LOOK_KEYS:
         ev.rate_look = look
-
-
-def cap_in(raw) -> int:
-    """A slot limit as a whole number. Anything unreadable means no limit."""
-    try:
-        n = int(str(raw or "0").strip() or 0)
-    except (TypeError, ValueError):
-        return 0
-    return max(0, min(n, 100000))
-
-
-def save_cats(db, ev, body) -> None:
-    """The categories, in the order they are drawn.
-
-    The same rule as the rates, for the same reason: a category somebody is
-    already entered in is closed rather than deleted. Deleting it would leave
-    a registration holding a slot in a pool that no longer exists, which is
-    worse than an extra line on a page.
-    """
-    if "cats" not in body:
-        return
-    have = {c.id: c for c in ev.cat_rows()}
-    use = cat_use(db, ev)
-    keep = set()
-    for i, item in enumerate(body.get("cats") or []):
-        label = (item.get("label") or "").strip()[:80]
-        c = have.get(item.get("id"))
-        if c is None:
-            if not label:
-                continue          # a blank new row is somebody who changed their mind
-            c = EventCategory(event_id=ev.id, label=label, position=i)
-            db.add(c)
-            db.flush()
-            have[c.id] = c
-        c.label = label
-        c.amount = money_in(item.get("amt"))
-        c.capacity = cap_in(item.get("cap"))
-        c.closed = bool(item.get("closed"))
-        c.position = i
-        keep.add(c.id)
-
-    for cid in (body.get("catsGone") or []):
-        c = have.get(cid)
-        if c is None or cid in keep:
-            continue
-        if use.get(cid, 0):
-            c.closed = True       # somebody is in it. It stops being offered, not history.
-        else:
-            db.delete(c)
 
 
 def register(app, deps):

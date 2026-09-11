@@ -224,8 +224,10 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
   {% if err %}
   <div class="note bad">
     {% if err == 'missing' %}We need every box filled in — have another look.
-    {% elif err == 'catfull' %}That category filled up while you were typing —
-      we're sorry. Nothing of yours was saved. Pick another one below.
+    {% elif err == 'catfull' %}That one filled up while you were typing —
+      we're sorry. Nothing of yours was saved. Pick another below.
+    {% elif err == 'notready' %}This registration isn't quite ready — there's
+      nothing to sign up for yet. Give us a moment and try again.
     {% elif err == 'stale' %}This page had been open a while. Your details are
       still below — send it again.
     {% elif err == 'fast' %}That came through faster than the page loads. Give
