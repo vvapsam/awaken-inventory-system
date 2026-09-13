@@ -2390,15 +2390,17 @@ def has_race(p) -> bool:
 
 
 RACE_STATUSES = [
-    # Before registered, because they are not. Somebody who has been asked and
-    # has not answered was reading "Registered" on the tracker, which is the
-    # tracker asserting the one thing you are waiting to find out.
+    # The two ways of not being in yet, both of them before Registered because
+    # that is where they sit. Each says what is outstanding rather than what is
+    # missing: somebody who filled the form in and sent a screenshot has
+    # registered, and telling them - or telling yourself, down a column - that
+    # they have "not registered" is the tracker arguing with the thing that
+    # just happened.
     #
-    # "Not registered" rather than "For confirmation": the tracker is a list of
-    # facts about people, and the fact here is that this person has not
-    # answered. "For confirmation" reads like a task on your list instead, and
-    # it sits directly opposite "Registered", which is what a yes makes them.
-    ("for_confirmation", "Not registered"),
+    # Which one you get is decided by what is actually outstanding. Money, if
+    # there is money owed. Their answer, if there is not.
+    ("pending_payment", "Pending payment"),
+    ("for_confirmation", "Pending confirmation"),
     ("registered",  "Registered"),
     ("checked_in",  "Checked in"),
     ("ready",       "Ready"),
@@ -2454,14 +2456,26 @@ def race_status(p, now=None, derived_only=False) -> str:
     # Not coming is a status too, and the system already knows.
     if p.released_at or p.declined:
         return "cancelled"
-    # Asked, and still deciding. Derived rather than stored, which is what
-    # makes it survive a reset: clear somebody's answer and they land back
-    # here on their own, with nothing to set and nothing to remember to set.
+    # Two ways of being not in yet, and both are the last thing checked - so
+    # everything further along the morning still wins. A person who never paid
+    # and then walked in and was scanned reads "Checked in", because they are.
     #
-    # Last but one, so everything further along the morning still wins - a
-    # person who never answered and then walked in and was scanned reads
-    # "Checked in", because they are.
-    if p.rsvp == RSVP_NONE:
+    # Money first, because on a paid entry it is the thing outstanding. Draft
+    # is a form somebody started, submitted is a receipt waiting on us, and
+    # returned is one we sent back: none of them is money in, and all three are
+    # the same sentence to whoever is reading the column.
+    #
+    # A free entry has no money to wait for. It is stamped approved as
+    # bookkeeping the moment somebody is let in - see EventParticipant.free -
+    # so reading pay_status on it would say "paid" about a class that costs
+    # nothing.
+    if not p.free and p.pay_status in (PAY_DRAFT, PAY_SUBMITTED, PAY_RETURNED):
+        return "pending_payment"
+    # Invited, and still deciding. An invited person never pays, so there is no
+    # pay_status on the row at all and the only thing outstanding is the
+    # answer. Derived rather than stored, which is what makes it survive a
+    # reset: clear somebody's answer and they land back here on their own.
+    if p.pay_status is None and p.rsvp == RSVP_NONE:
         return "for_confirmation"
     return "registered"
 

@@ -1104,7 +1104,10 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
 .statuspick{
   /* The table squeezes this column hard, and a status clipped to "Ch" is
      worse than no column at all. */
-  width:100%; min-width:112px;
+  /* Wide enough for the longest of them - "Pending confirmation" - because a
+     status clipped to "Pending ..." is the two it could be, which is exactly
+     what the column exists to tell them apart. */
+  width:100%; min-width:168px;
   font:600 12px/1 inherit; padding:6px 22px 6px 9px; border-radius:999px;
   text-overflow:ellipsis;
   border:1px solid var(--line,#dfe5ec); background-color:#f3f4f6;
@@ -1115,6 +1118,8 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
   background-size:4px 4px, 4px 4px; background-repeat:no-repeat;
 }
 .statuspick:focus{outline:2px solid #0b7a72;outline-offset:1px}
+.statuspick.s-pending_payment{background-color:#fdf2e3;color:#8a5a14}
+.statuspick.s-for_confirmation{background-color:#fdf2e3;color:#8a5a14}
 .statuspick.s-registered {background-color:#f3f4f6;color:#4b5563}
 .statuspick.s-checked_in {background-color:#e0f2fe;color:#075985}
 .statuspick.s-ready      {background-color:#ede9fe;color:#5b21b6}
@@ -1138,6 +1143,8 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
   display:inline-block;font:600 11.5px/1 inherit;padding:4px 9px;
   border-radius:999px;background:#f3f4f6;color:#4b5563;vertical-align:1px;
 }
+.statuspill.s-pending_payment{background:#fdf2e3;color:#8a5a14}
+.statuspill.s-for_confirmation{background:#fdf2e3;color:#8a5a14}
 .statuspill.s-registered {background:#f3f4f6;color:#4b5563}
 .statuspill.s-checked_in {background:#e0f2fe;color:#075985}
 .statuspill.s-ready      {background:#ede9fe;color:#5b21b6}
