@@ -107,6 +107,11 @@ templates.env.globals["can_any"] = can_any
 templates.env.globals["race_status"] = race_status
 templates.env.globals["RACE_STATUS_LABELS"] = RACE_STATUS_LABELS
 templates.env.globals["RACE_STATUS_MANUAL"] = RACE_STATUS_MANUAL
+# Every status, in order, because the picker offers all of them now - the
+# derivation is right almost always and wrong exactly when the day has gone
+# sideways, which is when somebody needs to be able to say so.
+from .models import RACE_STATUSES as _RACE_STATUSES
+templates.env.globals["RACE_STATUSES"] = _RACE_STATUSES
 # Heat times are stored 24-hour because that is what sorts. Nothing on a
 # race floor is read that way, and the admin now shows them too.
 templates.env.globals["h12"] = h12

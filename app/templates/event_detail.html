@@ -399,6 +399,13 @@
 {% elif request.query_params.get('edit') == 'noentry' %}
 <div class="alert bad"><b>That category isn't on this event.</b>
   <span class="muted">Nothing was changed.</span></div>
+{% elif request.query_params.get('edit') == 'badamount' %}
+<div class="alert bad"><b>That amount isn't a number.</b>
+  <span class="muted">Nothing was changed. Digits and a decimal point &mdash;
+    commas are fine.</span></div>
+{% elif request.query_params.get('edit') in ('badpay', 'badrsvp') %}
+<div class="alert bad"><b>That isn't one of the options.</b>
+  <span class="muted">Nothing was changed.</span></div>
 {% endif %}
 
 {{ searchbar('ppl', 'Search name, email, handle…') }}
@@ -448,7 +455,7 @@
     {% if 'payment' in cols %}<th>Payment</th>{% endif %}
     {% if 'slot' in cols %}<th style="width:110px">Slot</th>{% endif %}
     {% if 'heat' in cols %}<th style="width:118px">Heat</th>{% endif %}
-    {% if 'status' in cols %}<th style="width:186px">Status</th>{% endif %}
+    {% if 'status' in cols %}<th style="width:200px">Status</th>{% endif %}
     {% if 'emails' in cols %}<th>Emails</th>{% endif %}
     {% if 'instagram' in cols %}<th>Instagram</th>{% endif %}
     {% if 'confirmed' in cols %}<th>Confirmed</th>{% endif %}
@@ -548,9 +555,12 @@
       {% else %}<span class="muted small">—</span>{% endif %}</td>
     {% endif %}
     {% if 'status' in cols %}
-    {# Derived unless somebody has pinned it. The select only offers the
-       judgements - the rest arrive on their own, and a row pinned to
-       "Finished" that has not finished is a lie the timer can see through.
+    {# Derived unless somebody has pinned it, and every status is pinnable.
+       The derivation is right almost always and wrong exactly when the day
+       has gone sideways - a scanner that did not fire, a payment settled in
+       cash at the door - and those are the moments the column has to be able
+       to say the true thing now. The first option always hands the row back
+       and says what that would reveal.
 
        No form here on purpose. This table already sits inside the bulk-email
        form, and a nested form is not nested at all: the browser binds the
@@ -562,12 +572,16 @@
       <select class="statuspick s-{{ rs }}" data-pid="{{ p.id }}"
               data-auto="{{ RACE_STATUS_LABELS[rs] }}"
               title="{{ 'Set by hand' if p.race_status_set else 'Worked out from what has happened' }}">
-        <option value=""{% if not p.race_status_set %} selected{% endif %}>{{
-          RACE_STATUS_LABELS[race_status(p, derived_only=True)]
-          }}{% if p.race_status_set %} (automatic){% endif %}</option>
-        {% for key in RACE_STATUS_MANUAL %}
+        {# Marked, because every status appears in the list below it now and
+           the bare label on its own would read as the same option twice. The
+           arrow is "hand it back to the system"; the label after it is what
+           the system would then say. A word instead of the glyph would push
+           the column another eighty pixels wide for no more meaning. #}
+        <option value=""{% if not p.race_status_set %} selected{% endif %}>&#8634;
+          {{ RACE_STATUS_LABELS[race_status(p, derived_only=True)] }}</option>
+        {% for key, label in RACE_STATUSES %}
         <option value="{{ key }}"{% if p.race_status_set == key %} selected{% endif %}>{{
-          RACE_STATUS_LABELS[key] }}</option>
+          label }}</option>
         {% endfor %}
       </select>
     </td>
@@ -775,16 +789,41 @@
               if r.closed %} (closed){% endif %}</option>
             {% endfor %}
           </select></div>
-        <div class="fld"><label>Owed</label>
-          <div class="ro">{% if p.amount %}{{ money(p.amount) }}{% else %}&mdash;{% endif %}</div></div>
+        <div class="fld"><label>Amount</label>
+          <input form="ed-{{ p.id }}" name="amount" inputmode="decimal"
+                 value="{{ '%.2f'|format(p.amount) if p.amount is not none else '' }}"
+                 placeholder="0.00" style="text-align:right"></div>
         <div class="fld"><label>Payment</label>
-          <div class="ro">{% if p.pay_status %}{{ pay_labels.get(p.pay_status, p.pay_status) }}
-            {% else %}&mdash;{% endif %}</div></div>
+          {# `keep` leaves it, `none` clears it. Both are named rather than
+             leaning on a blank: blank is a real answer here - no payment on
+             file at all - and it is also what a form sends when it sends
+             nothing, so it cannot be trusted to mean either. #}
+          <select form="ed-{{ p.id }}" name="pay">
+            <option value="keep" selected>{% if p.pay_status %}{{
+              pay_labels.get(p.pay_status, p.pay_status) }}{% else %}Nothing on file{% endif %}
+              &mdash; leave as it is</option>
+            <option value="none">Nothing on file</option>
+            {% for key, label in pay_labels.items() %}
+            <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select></div>
+        <div class="fld"><label>Confirmed</label>
+          <select form="ed-{{ p.id }}" name="rsvp">
+            <option value="keep" selected>{{ 'Yes' if p.rsvp == 'yes' else
+              ('No' if p.rsvp == 'no' else 'Not answered') }} &mdash; leave as it is</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+            <option value="none">Not answered</option>
+          </select></div>
       </div>
       <p class="muted small" style="margin:7px 0 0">Moving somebody re-prices
         them, unless their payment is already approved &mdash; then the amount
         on their row is what they actually paid and it stays. A category with
-        no places left is refused.</p>
+        no places left is refused.<br>
+        <b>The three below it are overrides.</b> Set the payment to Approved
+        and they hold a slot exactly as if you had approved the receipt &mdash;
+        the door, the counts and the Reel list all read it. <b>Nothing is
+        emailed</b>, so send their pass from their row if they need one.</p>
       {% endif %}
 
       {% if p.answers %}
@@ -1612,7 +1651,7 @@ document.addEventListener('click', function(e){
           /* The first option is "hand it back to the system", so it has to
              say what the system would then say - not what the pin says. */
           var auto = sel.options[0];
-          auto.textContent = j.derived_label + (j.pinned ? ' (automatic)' : '');
+          auto.textContent = '\u21ba ' + j.derived_label;
         })
         .catch(function(){
           sel.disabled = false; sel.className = was;

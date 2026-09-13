@@ -1107,7 +1107,7 @@ table.st{width:100%;border-collapse:collapse;background:#fff;font-size:.87rem}
   /* Wide enough for the longest of them - "Pending confirmation" - because a
      status clipped to "Pending ..." is the two it could be, which is exactly
      what the column exists to tell them apart. */
-  width:100%; min-width:168px;
+  width:100%; min-width:182px;
   font:600 12px/1 inherit; padding:6px 22px 6px 9px; border-radius:999px;
   text-overflow:ellipsis;
   border:1px solid var(--line,#dfe5ec); background-color:#f3f4f6;

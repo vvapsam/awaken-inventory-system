@@ -65,7 +65,7 @@ from .models import (
     ORGANISER_LINK_DAYS, ORGANISER_DEFAULT_PASS,
     from_local, to_local,
     can_door,
-    RACE_STATUSES, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
+    RACE_STATUSES, RACE_STATUS_KEYS, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     station_splits, has_race, race_status, is_test_athlete,
     board_rows, RACE_STATUS_OUT, h12, Staff, wants_reels,
@@ -1542,10 +1542,16 @@ def register(app, deps):
                      db: Session = Depends(get_db)):
         """Pin a race status by hand, or hand the row back to the derivation.
 
-        Only the judgements are offered - a disqualification, a start that
-        never happened, a race abandoned halfway. The five the system works out
-        for itself are not settable, because pinning one would only let
-        somebody freeze a row onto a fact the timer can already see through.
+        Every status is settable, not only the judgements. The derivation is
+        right almost always and wrong exactly when the day has gone sideways -
+        a scanner that did not fire, a payment settled in cash at the door, a
+        heat run out of order - and those are the moments somebody needs the
+        column to say the true thing now rather than after the fix.
+
+        Nothing is lost by allowing it: a pin is stored separately from the
+        facts underneath, it is visible as a pin, and the first option in the
+        picker always hands the row back to the derivation and says what that
+        would reveal.
         """
         staff, redir = guard(request, db)
         if redir:
@@ -1554,7 +1560,7 @@ def register(app, deps):
         if not p or p.event_id != eid:
             return RedirectResponse("/events/%d" % eid, status_code=303)
         want = (value or "").strip()
-        p.race_status_set = want if want in RACE_STATUS_MANUAL else None
+        p.race_status_set = want if want in RACE_STATUS_KEYS else None
         db.commit()
         return RedirectResponse("/events/%d" % eid, status_code=303)
 
@@ -3954,7 +3960,8 @@ def register(app, deps):
                           instagram: str = Form(""), country: str = Form(""),
                           sex: str = Form(""), category: str = Form(""),
                           age: str = Form(""), mobile: str = Form(""),
-                          entry: str = Form(""),
+                          entry: str = Form(""), amount: str = Form(""),
+                          pay: str = Form("keep"), rsvp: str = Form("keep"),
                           db: Session = Depends(get_db)):
         """Fix somebody's details.
 
@@ -4032,6 +4039,52 @@ def register(app, deps):
             p.tier = r.key
             if p.pay_status != PAY_APPROVED:
                 p.amount = r.amount
+        # --- the overrides -------------------------------------------------
+        # Everything below here is a member of staff saying "no, it is this".
+        # The day goes sideways in ways the system cannot see: a payment
+        # settled in cash at the door, a screenshot that arrived on WhatsApp,
+        # somebody who confirmed to a coach in person. Refusing to record those
+        # does not make them untrue, it only makes the screen wrong.
+        #
+        # Nothing here emails anybody. An override is a correction to our own
+        # records, and an email is a thing you send on purpose.
+        #
+        # Both of these name their do-nothing and their clear-it explicitly —
+        # `keep` and `none` — rather than leaning on a blank. Blank is a real
+        # answer for both ("no payment on file", "has not answered"), and it is
+        # also what a form sends when it sends nothing at all, so a blank
+        # cannot be trusted to mean either one.
+        if amount.strip():
+            try:
+                p.amount = Decimal(amount.replace(",", "").strip())
+            except (InvalidOperation, ValueError):
+                return RedirectResponse(back + "?edit=badamount", status_code=303)
+        if pay and pay != "keep":
+            want_pay = None if pay == "none" else pay.strip()
+            if want_pay is not None and want_pay not in PAY_LABELS:
+                return RedirectResponse(back + "?edit=badpay", status_code=303)
+            if want_pay != p.pay_status:
+                p.pay_status = want_pay
+                p.reviewed_at = datetime.now(timezone.utc)
+                p.reviewed_by_id = staff.id
+                if want_pay == PAY_APPROVED:
+                    # Approving is what takes the slot, however it is done. The
+                    # door, the counts and the Reel email all read these, so an
+                    # approval typed here has to leave the row in the same
+                    # shape as one pressed in the review queue — minus the
+                    # email, which is not this screen's job.
+                    p.review_note = None
+                    now_ = datetime.now(timezone.utc)
+                    p.rsvp, p.rsvp_at = RSVP_YES, p.rsvp_at or now_
+                    p.acknowledged_at = p.acknowledged_at or now_
+        if rsvp and rsvp != "keep":
+            want_rsvp = RSVP_NONE if rsvp == "none" else rsvp.strip()
+            if want_rsvp not in (RSVP_YES, RSVP_NO, RSVP_NONE):
+                return RedirectResponse(back + "?edit=badrsvp", status_code=303)
+            if want_rsvp != p.rsvp:
+                p.rsvp = want_rsvp
+                p.rsvp_at = (datetime.now(timezone.utc)
+                             if want_rsvp in (RSVP_YES, RSVP_NO) else None)
         # Stamped here rather than by an onupdate, so "last update" means
         # somebody changed something and not "a participant opened their link".
         p.edited_at = datetime.now(timezone.utc)
