@@ -3953,7 +3953,8 @@ def register(app, deps):
                           name: str = Form(""), email: str = Form(""),
                           instagram: str = Form(""), country: str = Form(""),
                           sex: str = Form(""), category: str = Form(""),
-                          age: str = Form(""),
+                          age: str = Form(""), mobile: str = Form(""),
+                          entry: str = Form(""),
                           db: Session = Depends(get_db)):
         """Fix somebody's details.
 
@@ -3968,6 +3969,7 @@ def register(app, deps):
         p = db.get(EventParticipant, pid)
         if not p or p.event_id != eid:
             return RedirectResponse(f"/events/{eid}", status_code=303)
+        ev = p.event
         back = f"/events/{eid}"
         clean_name = name.strip()[:120]
         if not clean_name:
@@ -3978,6 +3980,10 @@ def register(app, deps):
             return RedirectResponse(back + "?edit=bademail", status_code=303)
         p.name = clean_name
         p.email = addr
+        # Collected at self-registration and, until this, editable nowhere —
+        # so a number taken down wrong on the phone could only be fixed by
+        # deleting the person and starting again.
+        p.mobile = re.sub(r"[^0-9+ ]", "", (mobile or "").strip())[:24]
         # Same cleaning as the participant's own page, so a handle typed here
         # and a handle typed there end up stored identically.
         p.instagram = clean_handle(instagram)
@@ -4008,6 +4014,24 @@ def register(app, deps):
             # a typo, and a typo here locks somebody out of their own card.
             if n is not None and 5 <= n <= 110:
                 p.age = n
+        # Which category they are in. Moving somebody into a full one is
+        # refused rather than quietly overfilling it — the limit is the whole
+        # reason the row has a slot count.
+        #
+        # What they owe follows the move only while nothing has been approved.
+        # Once a payment is in, the amount on the row is what they actually
+        # paid, and restating that because somebody was moved is how a receipt
+        # stops matching the bank. See EventParticipant.amount.
+        want_entry = (entry or "").strip()
+        if want_entry and want_entry != (p.tier or ""):
+            r = ev.rate(want_entry)
+            if r is None:
+                return RedirectResponse(back + "?edit=noentry", status_code=303)
+            if rate_full(ev, r) and holds_slot(p):
+                return RedirectResponse(back + "?edit=entryfull", status_code=303)
+            p.tier = r.key
+            if p.pay_status != PAY_APPROVED:
+                p.amount = r.amount
         # Stamped here rather than by an onupdate, so "last update" means
         # somebody changed something and not "a participant opened their link".
         p.edited_at = datetime.now(timezone.utc)

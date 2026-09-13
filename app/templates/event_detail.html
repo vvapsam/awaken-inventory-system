@@ -179,12 +179,6 @@
       waiting on you{% elif c.unfinished %}{{ c.unfinished }} started, not paid{%
       else %}nothing to review{% endif %}{% elif c.waiting %}{{ c.waiting }}
       still to hear from{% else %}everyone has answered{% endif %}</div></div>
-  <div class="s"><div class="l">Handles in</div><div class="v">{{ c.handles }}</div>
-    <div class="sub">of {{ c.confirmed }} confirmed</div></div>
-  <div class="s"><div class="l">Reels posted</div><div class="v">{{ c.posted }}</div>
-    <div class="sub">{% if c.to_post %}{{ c.to_post }} still to post{% else %}all in{% endif %}</div></div>
-  <div class="s"><div class="l">Qualified</div><div class="v">{{ c.qualified }}</div>
-    <div class="sub">{{ c.redeemed }} redeemed</div></div>
   {% if ev.reel_deadline %}
   <div class="s"><div class="l">Reel window</div>
     <div class="v">{{ reel_left or 'closed' }}</div>
@@ -398,6 +392,13 @@
 {% elif request.query_params.get('edit') == 'noname' %}
 <div class="alert bad"><b>A name is needed.</b>
   <span class="muted">It's how you'll find them on the day.</span></div>
+{% elif request.query_params.get('edit') == 'entryfull' %}
+<div class="alert bad"><b>That category is full.</b>
+  <span class="muted">Nothing was changed. Raise its slot count on the
+    registration form first, or move somebody else out of it.</span></div>
+{% elif request.query_params.get('edit') == 'noentry' %}
+<div class="alert bad"><b>That category isn't on this event.</b>
+  <span class="muted">Nothing was changed.</span></div>
 {% endif %}
 
 {{ searchbar('ppl', 'Search name, email, handle…') }}
@@ -658,8 +659,8 @@
         data-copy="{{ base }}/e/{{ p.token }}/pass">Copy</button></td>
     {% endif %}
     <td style="white-space:nowrap">
-      <button type="button" class="btn" style="padding:5px 9px" data-edit="{{ p.id }}"
-              title="Edit their details">✎</button>
+      <button type="button" class="btn" style="padding:5px 9px"
+              data-modal="pp-{{ p.id }}" title="Edit their details">&#9998;</button>
       {# View goes to their race, not to their public page - that is what the
          table is actually for once the morning has started. Always live: a
          summary of a race that has not happened reads zeros and the stations
@@ -670,90 +671,136 @@
          title="Their time, station by station">View</a>
     </td>
   </tr>
-  {# The edit row. Its own <tr> rather than a popover, so the fields get the
-     full width of the table and a long email address is readable. Kept out of
-     the picking form above — a form cannot nest. #}
-  <tr class="editrow" id="edit-{{ p.id }}" hidden>
-    <td colspan="{{ span }}">
-      <div class="editgrid">
-        <div>
-          <label class="small" style="font-weight:600;margin:0 0 4px">Name</label>
+  {% endfor %}
+  </tbody>
+</table>
+</form>
+
+{# One form per row, outside the picking form because forms cannot nest. The
+   inputs in the panels below point at these by id. #}
+{% for p in people %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/edit" id="ed-{{ p.id }}" hidden></form>
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/status" id="st-{{ p.id }}" hidden></form>
+{% if not p.posted %}
+<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/remove" id="rm-{{ p.id }}" hidden
+      onsubmit="return confirm('Remove {{ p.name }} from this event? Their link stops working.')"></form>
+{% endif %}
+{% endfor %}
+
+{# ---- One panel per person -------------------------------------------------
+   A popup rather than a row that unfolds inside the table. The row version had
+   to fit the table's width and the table's grid, which is why it only ever
+   carried six of this person's fields - the rest had nowhere to go, and a
+   mobile number taken down wrong could only be fixed by deleting somebody.
+
+   Everything is here now, in the order you would ask for it: who they are
+   first, then what the day needs, then what they entered and what they owe.
+   The read-only parts are read-only on purpose. An answer they gave is
+   theirs, and a screen that lets somebody quietly rewrite what a person said
+   is a screen that makes the record worthless. #}
+{% for p in people %}
+<div class="scrim" id="pp-{{ p.id }}">
+  <div class="modal ppl">
+    <div class="mhead">
+      <h3>{{ p.name }}</h3>
+      {% if p.waitlist %}<span class="tag amber">Waitlist</span>{% endif %}
+      {% if p.confirmed %}<span class="tag">Confirmed</span>{% endif %}
+      <button type="button" class="x" data-close title="Close">&#10005;</button>
+    </div>
+    <div class="mbody">
+
+      <h4>Who they are</h4>
+      <div class="mgrid">
+        <div class="fld wide"><label>Full name</label>
           <input form="ed-{{ p.id }}" name="name" value="{{ p.name }}" required></div>
-        <div>
-          <label class="small" style="font-weight:600;margin:0 0 4px">Email</label>
-          <input form="ed-{{ p.id }}" name="email" type="email" value="{{ p.email or '' }}"
-                 placeholder="them@example.com"></div>
-        <div>
-          <label class="small" style="font-weight:600;margin:0 0 4px">Instagram</label>
+        <div class="fld wide"><label>Email</label>
+          <input form="ed-{{ p.id }}" name="email" type="email"
+                 value="{{ p.email or '' }}" placeholder="them@example.com"></div>
+        <div class="fld"><label>Mobile</label>
+          <input form="ed-{{ p.id }}" name="mobile" type="tel"
+                 value="{{ p.mobile or '' }}" placeholder="0917 000 0000"></div>
+        <div class="fld"><label>Instagram</label>
           <input form="ed-{{ p.id }}" name="instagram" value="{{ p.instagram or '' }}"
                  placeholder="handle" autocapitalize="none" spellcheck="false"></div>
-        <div>
-          {# Collected at self-registration and, until now, nowhere else - so
-             anybody added by hand had no gender, which is how somebody ends
-             up in the leaderboard's Unlisted column instead of Women. #}
-          <label class="small" style="font-weight:600;margin:0 0 4px">Gender
-            <span class="muted">&mdash; Men or Women</span></label>
+      </div>
+      <p class="muted small" style="margin:7px 0 0">A pasted profile URL or a
+        leading @ is fine &mdash; we tidy the handle up.</p>
+
+      <h4>On the day</h4>
+      <div class="mgrid">
+        <div class="fld"><label>Gender</label>
+          {# Collected at self-registration and, before this, nowhere else - so
+             anybody added by hand had no gender, which is how somebody ends up
+             in the leaderboard's Unlisted column instead of Women. #}
           <select form="ed-{{ p.id }}" name="sex">
             <option value="" {{ 'selected' if p.sex not in ('m', 'f') }}>Not set</option>
             {% for key, label in SEXES %}
             <option value="{{ key }}" {{ 'selected' if p.sex == key }}>{{ label }}</option>
             {% endfor %}
           </select></div>
-        <div>
+        <div class="fld"><label>Division</label>
           {# Crosses gender rather than replacing it: the board runs Advanced
              Men, Advanced Women, Open Men, Open Women. There is no "not set" -
              everybody is Open until somebody moves them up. #}
-          <label class="small" style="font-weight:600;margin:0 0 4px">Category
-            <span class="muted">&mdash; {{ CATEGORIES|map(attribute=1)|join(' or ') }}</span></label>
           <select form="ed-{{ p.id }}" name="category">
             {% for key, label in CATEGORIES %}
             <option value="{{ key }}"
               {{ 'selected' if (p.category or 'open') == key }}>{{ label }}</option>
             {% endfor %}
           </select></div>
-        {% if p.answers %}
-        {# What they said to the gym's own questions. Read-only here: an answer
-           is theirs, and a screen that lets somebody quietly rewrite what a
-           person said is a screen that makes the record worthless. #}
-        <div style="grid-column:1/-1;border-top:1px solid var(--line);
-             margin-top:4px;padding-top:10px">
-          <div class="small" style="font-weight:600;margin-bottom:5px">Their answers</div>
-          {% for a in p.answers|sort(attribute='question.position') %}
-          <div class="small" style="margin-bottom:4px">
-            <span class="muted">{{ a.question.title }}</span><br>{{ a.shown or '—' }}</div>
-          {% endfor %}
-        </div>
-        {% endif %}
-        <div>
-          {# Until now this was only ever filled in at the awarding table, so
-             most rows have none. It is half of what somebody answers to reach
-             their own finisher card, which is why it is editable here. #}
-          <label class="small" style="font-weight:600;margin:0 0 4px">Age
-            <span class="muted">&mdash; opens their card</span></label>
+        <div class="fld"><label>Age</label>
           <input form="ed-{{ p.id }}" name="age" type="number" min="5" max="110"
-                 value="{{ p.age or '' }}" style="width:100%"></div>
-        <div>
-          <label class="small" style="font-weight:600;margin:0 0 4px">Country
-            <span class="muted">&mdash; the flag on the board</span></label>
+                 value="{{ p.age or '' }}"></div>
+        <div class="fld"><label>Country</label>
           <select form="ed-{{ p.id }}" name="country">
             {% for code, cname in COUNTRIES %}
             <option value="{{ code }}" {{ 'selected' if country_code(p.country) == code }}>{{ flag(code) }} {{ cname }}</option>
             {% endfor %}
           </select></div>
-        <div class="acts">
-          <button class="btn primary" form="ed-{{ p.id }}" style="margin:0">Save</button>
-          <button type="button" class="btn" style="margin:0" data-edit="{{ p.id }}">Cancel</button>
-          {% if not p.posted %}
-          <button class="btn" form="rm-{{ p.id }}" style="margin:0;color:#b0392b"
-                  title="Remove from this event">✕ Remove</button>
-          {% endif %}
-        </div>
       </div>
+      <p class="muted small" style="margin:7px 0 0">Division is which field they
+        are ranked in. Age opens their finisher card; the country is the flag
+        beside their name on the board.</p>
+
+      {% if ev.rate_rows() %}
+      <h4>Their entry</h4>
+      <div class="mgrid">
+        <div class="fld wide"><label>Category</label>
+          <select form="ed-{{ p.id }}" name="entry">
+            <option value="">&mdash; none picked &mdash;</option>
+            {% for r in ev.rate_rows() %}
+            <option value="{{ r.key }}" {{ 'selected' if p.tier == r.key }}>{{ r.label }}
+              &mdash; {{ money(r.amount) }}{% if r.capacity %} &middot;
+              {{ rate_taken(ev, r.id) }}/{{ r.capacity }}{% endif %}{%
+              if r.closed %} (closed){% endif %}</option>
+            {% endfor %}
+          </select></div>
+        <div class="fld"><label>Owed</label>
+          <div class="ro">{% if p.amount %}{{ money(p.amount) }}{% else %}&mdash;{% endif %}</div></div>
+        <div class="fld"><label>Payment</label>
+          <div class="ro">{% if p.pay_status %}{{ pay_labels.get(p.pay_status, p.pay_status) }}
+            {% else %}&mdash;{% endif %}</div></div>
+      </div>
+      <p class="muted small" style="margin:7px 0 0">Moving somebody re-prices
+        them, unless their payment is already approved &mdash; then the amount
+        on their row is what they actually paid and it stays. A category with
+        no places left is refused.</p>
+      {% endif %}
+
+      {% if p.answers %}
+      <h4>Their answers</h4>
+      {% for a in p.answers|sort(attribute='question.position') %}
+      <div class="qa"><span class="muted">{{ a.question.title }}</span>
+        <span>{{ a.shown or '—' }}</span></div>
+      {% endfor %}
+      {% endif %}
+
+      <h4>Where they sit</h4>
       {# Moving somebody is not removing them. Removing burns their link and
          loses the history; "can't make it" keeps both and shows up under the
          right heading, which is what you actually wanted nine times in ten.
-         The option they are already in is left out — a menu offering you
-         where you already are is a menu you have to read twice. #}
+         The option they are already in is left out - a menu offering you where
+         you already are is a menu you have to read twice. #}
       {% set cur = 'waitlist' if p.waitlist else ('declined' if p.declined
                    else ('released' if p.released_at else 'back')) %}
       <div class="movebox">
@@ -766,24 +813,17 @@
         <button class="btn" form="st-{{ p.id }}" style="margin:0">Move</button>
         <span class="muted small" style="margin:0">Reversible, and nothing is emailed.</span>
       </div>
-      <div class="muted small" style="margin:7px 0 0">A pasted profile URL or a leading @ is
-        fine — we tidy the handle up. Their link, confirmation and Reel are untouched.</div>
-    </td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-</form>
-
-{# One form per row, outside the picking form because forms cannot nest. The
-   inputs above point at these by id. #}
-{% for p in people %}
-<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/edit" id="ed-{{ p.id }}" hidden></form>
-<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/status" id="st-{{ p.id }}" hidden></form>
-{% if not p.posted %}
-<form method="post" action="/events/{{ ev.id }}/people/{{ p.id }}/remove" id="rm-{{ p.id }}" hidden
-      onsubmit="return confirm('Remove {{ p.name }} from this event? Their link stops working.')"></form>
-{% endif %}
+    </div>
+    <div class="mfoot">
+      {% if not p.posted %}
+      <button class="btn danger" form="rm-{{ p.id }}" style="margin:0">&#10005; Remove</button>
+      {% endif %}
+      <div class="sp"></div>
+      <button type="button" class="btn" style="margin:0" data-close>Cancel</button>
+      <button class="btn primary" form="ed-{{ p.id }}" style="margin:0">Save changes</button>
+    </div>
+  </div>
+</div>
 {% endfor %}
 {% endif %}
 
@@ -1376,14 +1416,6 @@ document.addEventListener('click', function(e){
       c.textContent = 'Copied'; setTimeout(function(){ c.textContent = was; }, 1300);
     });
     return;
-  }
-  var ed = e.target.closest('[data-edit]');
-  if(ed){
-    var row = document.getElementById('edit-' + ed.getAttribute('data-edit'));
-    if(row){
-      row.hidden = !row.hidden;
-      if(!row.hidden){ var f = row.querySelector('input'); if(f) f.focus(); }
-    }
   }
 });
 

@@ -414,11 +414,24 @@
     });
     document.body.style.overflow = '';
   }
+  function open(id){
+    var panel = document.getElementById(id);
+    if(!panel) return;
+    close();
+    panel.classList.add('on');
+    document.body.style.overflow = 'hidden';
+    var f = panel.querySelector('input:not([type=hidden]),select,textarea');
+    if(f) f.focus();
+  }
   document.addEventListener('click', function(e){
-    var row = e.target.closest && e.target.closest('tr[data-modal]');
+    if(!e.target.closest) return;
+    /* A button that opens a panel. Separate from the whole-row version
+       below: a row full of its own buttons cannot also be one big button. */
+    var btn = e.target.closest('button[data-modal],a[data-modal]');
+    if(btn){ e.preventDefault(); open(btn.getAttribute('data-modal')); return; }
+    var row = e.target.closest('tr[data-modal]');
     if(row && !e.target.closest('a,button,input,select,textarea,label,form')){
-      var panel = document.getElementById(row.getAttribute('data-modal'));
-      if(panel){ close(); panel.classList.add('on'); document.body.style.overflow='hidden'; }
+      open(row.getAttribute('data-modal'));
       return;
     }
     if(e.target.closest && e.target.closest('[data-close]')){ close(); return; }

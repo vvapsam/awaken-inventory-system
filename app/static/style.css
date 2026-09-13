@@ -1249,3 +1249,32 @@ tr.adjoff td.amt{text-decoration:line-through}
 .catbar .cf.full .cfbar i{background:#b0392b}
 .catbar .cf.full .cfsub{color:#8a5a14;font-weight:600}
 .catbar .cf.shut{opacity:.6}
+
+/* ── The person panel ──────────────────────────────────────────────────────
+   Everything about one participant, in the order you would ask for it. It was
+   a row that unfolded inside the table, which meant it had to fit the table's
+   width and the table's grid - so it only ever carried six of the fields and
+   the rest had nowhere to go. */
+.modal.ppl{width:min(680px,100%)}
+.modal.ppl .mbody{max-height:min(70vh,720px);overflow:auto}
+.modal.ppl h4:first-child{margin-top:2px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.mgrid .fld{min-width:0}
+.mgrid .fld.wide{grid-column:1/-1}
+.mgrid input,.mgrid select{width:100%;margin:0}
+/* A figure you can read but not retype. Same height as the inputs beside it,
+   so the row does not look broken where it happens to be read-only. */
+.mgrid .ro{min-height:38px;display:flex;align-items:center;padding:0 11px;
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);
+  color:var(--muted);font-size:.9rem}
+@media(max-width:560px){.mgrid{grid-template-columns:1fr}}
+/* An answer they gave. Read-only on purpose: a screen that lets somebody
+   quietly rewrite what a person said makes the record worthless. */
+.modal.ppl .qa{display:flex;gap:14px;padding:6px 0;
+  border-bottom:1px solid var(--line);font-size:.88rem}
+.modal.ppl .qa:last-child{border-bottom:0}
+.modal.ppl .qa .muted{flex:0 0 42%}
+.modal.ppl .qa span:last-child{flex:1;min-width:0}
+.modal .mfoot .sp{flex:1}
+.btn.danger{color:#b0392b;border-color:#e8cdc8}
+.btn.danger:hover{background:#fdecea;border-color:#d9a79f}
