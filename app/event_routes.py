@@ -77,7 +77,6 @@ from .countries import country_code, country_name, flag as country_flag
 # The sponsor strip is cut and sized once, for the finisher card. The
 # board shows the same marks at the same relative weights rather than
 # keeping a second copy that can drift from it.
-from .card_routes import SPONSORS
 from . import form_routes
 # One definition of a clock, borrowed rather than copied. patch_routes owns it
 # because that is where a time is first read out loud to somebody.
@@ -3016,8 +3015,7 @@ def register(app, deps):
                 "board_public.html", {"request": request, "ev": None},
                 status_code=404)
         return templates.TemplateResponse("board_public.html", {
-            "request": request, "ev": ev, "cols": _board_ctx(ev),
-            "sponsors": SPONSORS})
+            "request": request, "ev": ev, "cols": _board_ctx(ev)})
 
     def _results_ctx(ev, now=None):
         """Everybody's race, once the racing is over.

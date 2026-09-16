@@ -193,39 +193,6 @@ h2.gname .gn{
   background:var(--card);border:1px solid var(--line);border-radius:11px;
   padding:18px 12px;text-align:center;color:var(--dim);font-size:.84rem;
 }
-/* The sponsors, along the bottom.
- *
- * Sized by a single scale on each mark's native width, the way the finisher
- * card does it, rather than by forcing them all to one height: these were cut
- * to sit together at their own proportions, and normalising the heights makes
- * the short wide ones enormous.
- *
- * Sitting directly on the background - no band, no box - and slightly dimmed,
- * so they read without competing with a race.
- */
-.sponsors{
-  /* Pinned to the bottom of the screen rather than to the bottom of the page.
-     A field of thirty pushes a footer a long way down, and a sponsor mark that
-     is only visible if somebody scrolls to it is a sponsor mark nobody sees.
-     The board scrolls underneath; this does not move. */
-  --sp:0.9;
-  position:fixed;left:0;right:0;bottom:0;z-index:5;
-  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
-  gap:12px 26px;padding:14px 16px;
-  background:var(--bg);border-top:1px solid var(--line);
-}
-/* Dimmed on the marks themselves, never on the bar: opacity on the bar makes
-   its own background see-through, and the board scrolls up behind it. */
-.sponsors img{display:block;height:auto;opacity:.82}
-/* The ten marks are 973px across at native size. The scale and the gap are
- * tuned per band so they sit on ONE line wherever the screen can hold one -
- * two lines of sponsors eat a fifth of a wall screen for no extra sponsor.
- * Below 900px they wrap, which is the right answer on a phone. */
-@media (min-width:900px){  .sponsors{--sp:0.76;gap:12px 12px} }
-@media (min-width:1200px){ .sponsors{--sp:0.98;gap:14px 18px;padding:16px 20px} }
-@media (min-width:1500px){ .sponsors{--sp:1.15;gap:14px 28px} }
-@media (max-width:559px){  .sponsors{--sp:0.6;gap:9px 16px;padding:10px 10px} }
-
 /* ---- the room ---- */
 @media (min-width:1200px){
   body{padding:26px 26px 56px}
@@ -314,13 +281,6 @@ h2.gname .gn{
     <a href="/l/{{ ev.board_token }}/results">Full results &rarr;</a>
     <a href="/l/{{ ev.board_token }}/podium">Podium &rarr;</a>
   </p>
-
-  <div class="sponsors">
-    {% for file, w in sponsors %}
-    <img src="/static/card/sp/{{ file }}" alt=""
-         style="width:calc(var(--sp) * {{ w }}px)">
-    {% endfor %}
-  </div>
 </div>
 
 <script>
@@ -493,18 +453,9 @@ h2.gname .gn{
       .catch(function(){ /* a dropped phone signal is not an error state */ });
   }
 
-  /* Keep the page clear of the pinned sponsor bar. Measured, not guessed:
-     the bar wraps onto two or three lines on a narrow screen, and a guessed
-     number hides the last row of the board on somebody's phone. */
-  var bar = document.querySelector('.sponsors');
-  function clear(){
-    document.body.style.paddingBottom = (bar.offsetHeight + 18) + 'px';
-  }
-
+  /* Nothing is pinned to the bottom of the screen any more, so the page needs
+     no room measured out for it: body's own padding is the whole of it. */
   render();
-  clear();
-  window.addEventListener('resize', clear);
-  window.addEventListener('load', clear);
   setInterval(tick, 1000);
   setInterval(poll, 5000);
 })();
