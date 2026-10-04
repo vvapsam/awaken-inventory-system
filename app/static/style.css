@@ -1331,3 +1331,14 @@ tr.adjoff td.amt{text-decoration:line-through}
 .tahl li.on,.tahl li:hover{background:var(--panel)}
 .tahl li b{color:var(--teal-dark)}
 .tahl li.none{color:var(--muted);cursor:default}
+
+/* ---- narrowing a long list, and walking it a page at a time ---------- */
+.filt{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:0}
+.filt .btn{margin:0}
+.filt label{margin:0}
+.filt input,.filt select{margin:0}
+.quick{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:11px;
+  padding-top:10px;border-top:1px solid var(--line);font-size:.82rem}
+.pager{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+.pager .sp{flex:1}
+.pager .btn{margin:0}

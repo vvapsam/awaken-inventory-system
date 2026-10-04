@@ -29,7 +29,7 @@ left; open any of the three from here and it still says what it always said.
 from __future__ import annotations
 
 import secrets
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import Depends, Form, Request
@@ -57,8 +57,14 @@ from .models import (
     EXPENSE_SUBMITTED, ExpenseLine, ExpenseReport,
     PaymentVoucher, Staff,
     VOUCHER_LINK_DAYS, VOUCHER_PAID, VOUCHER_UNPAID, VOUCHER_VOID, VoucherLink,
-    now_utc,
+    VOUCHER_STATUSES, from_local, now_utc,
 )
+
+#: How many vouchers a page of the list holds, and what else may be asked for.
+#: Fifty is a screen somebody can scroll through looking for one; a thousand is
+#: a page that takes a second to draw and is no easier to search.
+PAGE_SIZES = [25, 50, 100, 200]
+PAGE_DEFAULT = 50
 
 #: What a receipt may weigh. Generous, because a modern phone photo is 4-6 MB
 #: and the person holding it cannot choose; refused above it, because a 40 MB
@@ -584,16 +590,67 @@ def register(app, deps):
         return payouts, reports, adjustments
 
     @app.get("/admin/vouchers", response_class=HTMLResponse)
-    def vouchers_page(request: Request, db: Session = Depends(get_db)):
+    def vouchers_page(request: Request, status: str = "", who: str = "",
+                      since: str = "", until: str = "", page: int = 1,
+                      per: int = PAGE_DEFAULT,
+                      db: Session = Depends(get_db)):
+        """Every voucher, narrowed and paged.
+
+        The filters are in the URL rather than in a session, so a view worth
+        coming back to is a link worth keeping — "September, still unpaid" can
+        be bookmarked or pasted to somebody.
+
+        The money on the summary bar follows the filter. A figure that ignored
+        what the screen is showing would be read as the total of what is on
+        the screen, which is how somebody pays the wrong amount.
+        """
         staff, redir = money_guard(request, db)
         if redir:
             return redir
-        rows = (db.query(PaymentVoucher)
-                .order_by(PaymentVoucher.id.desc()).all())
+        names = [n for n, _i in _people(db)]
+
+        q = db.query(PaymentVoucher)
+        if status in dict(VOUCHER_STATUSES):
+            q = q.filter(PaymentVoucher.status == status)
+        # A name resolves to one person where it can, and otherwise matches
+        # loosely: "reyes" with two of them should show both rather than
+        # nothing, because a list is a place to look rather than to decide.
+        typed = (who or "").strip()
+        exact = _resolve(typed, names)
+        if exact:
+            q = q.filter(PaymentVoucher.person == exact)
+        elif typed:
+            q = q.filter(PaymentVoucher.person.ilike("%%%s%%" % typed))
+        # Dates are the gym's own, so the bounds are converted rather than
+        # compared raw: a voucher issued at 2am Manila is the previous day in
+        # UTC, and nobody looking for the 4th means the 3rd.
+        a, b = _day(since), _day(until)
+        if a:
+            q = q.filter(PaymentVoucher.issued_at
+                         >= from_local(datetime.combine(a, time.min)))
+        if b:
+            q = q.filter(PaymentVoucher.issued_at
+                         <= from_local(datetime.combine(b, time.max)))
+
+        found = q.count()
+        size = per if per in PAGE_SIZES else PAGE_DEFAULT
+        pages = max(1, -(-found // size))
+        at = min(max(1, page), pages)
+        rows = (q.order_by(PaymentVoucher.id.desc())
+                .offset((at - 1) * size).limit(size).all())
+        # Totals across everything the filter matched, not just this page.
+        owed = (q.filter(PaymentVoucher.status == VOUCHER_UNPAID)
+                .with_entities(func.coalesce(
+                    func.sum(PaymentVoucher.total), 0)).scalar())
         return render(request, "vouchers.html", db, staff, active="vouchers",
-                      rows=rows, people=[n for n, _i in _people(db)],
-                      unpaid=sum((v.money for v in rows
-                                  if v.status == VOUCHER_UNPAID), Decimal(0)),
+                      rows=rows, people=names,
+                      unpaid=Decimal(str(owed or 0)),
+                      found=found, page=at, pages=pages, per=size,
+                      sizes=PAGE_SIZES, statuses=VOUCHER_STATUSES,
+                      f={"status": status, "who": typed,
+                         "since": since, "until": until},
+                      narrowed=bool(status or typed or since or until),
+                      today=date.today(), one_day=timedelta(days=1),
                       # Who has theirs, and who has looked at it — the column
                       # that makes "send the ones that haven't gone" a glance
                       # rather than an audit.
@@ -1365,6 +1422,10 @@ def register(app, deps):
         link.sent_at = now
         return "sent", email
 
+    def _more(dest: str, bit: str) -> str:
+        """One more query parameter on a URL that may already have some."""
+        return dest + ("&" if "?" in dest else "?") + bit
+
     def _tally(dest: str, out: dict):
         """Carry the result of a send in the URL rather than in a session.
 
@@ -1446,9 +1507,11 @@ def register(app, deps):
         form = await request.form()
         want = [int(v) for v in form.getlist("voucher") if str(v).isdigit()]
         action = (form.get("action") or "send").strip()
-        dest = "/admin/vouchers"
+        # Back to the view it was pressed from, filters and page intact.
+        back = (form.get("back") or "").strip()
+        dest = back if back.startswith("/admin/vouchers?") else "/admin/vouchers"
         if not want:
-            return RedirectResponse(dest + "?none=1", status_code=303)
+            return RedirectResponse(_more(dest, "none=1"), status_code=303)
         rows = (db.query(PaymentVoucher).filter(PaymentVoucher.id.in_(want))
                 .order_by(PaymentVoucher.id.asc()).all())
         now = now_utc()
@@ -1464,12 +1527,14 @@ def register(app, deps):
                     _issue_vlink(db, v.id, staff, now)
                     made += 1
             db.commit()
-            return RedirectResponse(dest + "?linked=%d" % made, status_code=303)
+            return RedirectResponse(_more(dest, "linked=%d" % made),
+                                    status_code=303)
 
         mailer = Mailer()
         if not mailer.cfg.configured:
-            return RedirectResponse(dest + "?setup=" + "+".join(mailer.cfg.missing),
-                                    status_code=303)
+            return RedirectResponse(
+                _more(dest, "setup=" + "+".join(mailer.cfg.missing)),
+                status_code=303)
         base = base_url(request)
         for v in rows:
             status, detail = _send_voucher(db, v, staff, now, base, mailer,

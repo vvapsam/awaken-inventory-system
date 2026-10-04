@@ -848,8 +848,51 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("the list offers the tick boxes", 'name="voucher"' in page
        and 'action="/admin/vouchers/send"' in page)
     ck("and says who has theirs", "Opened" in page or "Sent" in page)
-    ck("the list has no picker on it, just the button",
-       'New payment' in page and 'name="who"' not in page)
+    ck("the list has no build-a-voucher picker, just the button",
+       'New payment' in page and '<select name="who"' not in page
+       and 'action="/admin/vouchers/new"' not in page)
+
+    # ── filtering and paging the list ──────────────────────────────────
+    ck("the list offers the filters",
+       'name="status"' in page and 'name="since"' in page
+       and 'name="until"' in page and 'name="per"' in page)
+
+    only_void = c.get("/admin/vouchers", params={"status": "void"}).text
+    ck("a status narrows it", "Unpaid</span>" not in only_void)
+    ck("and the empty case is not mistaken for an empty list",
+       "Nothing matches that" in
+       c.get("/admin/vouchers", params={"who": "nobody at all"}).text)
+
+    # Against the rows, not the page: the filter's own name list is on it too.
+    def whose(text):
+        import re
+        cells = re.findall(r"<td><b>([^<]+)</b></td>", text)
+        return sorted({x for x in cells if not x.startswith("PV-")})
+
+    mine = c.get("/admin/vouchers", params={"who": "Chrizel Urbino"}).text
+    ck("a name narrows it to that person", whose(mine) == ["Chrizel Urbino"])
+    ck("a surname on its own works too",
+       whose(c.get("/admin/vouchers", params={"who": "reyes"}).text)
+       == ["Julio Reyes"])
+
+    ck("a date range with nothing in it comes back empty",
+       "Nothing matches that" in
+       c.get("/admin/vouchers",
+             params={"since": "2020-01-01", "until": "2020-01-31"}).text)
+    ck("and today's range has them all",
+       "PV-0001" in c.get("/admin/vouchers",
+                          params={"since": date.today().isoformat()}).text)
+
+    # Paging: one row at a time is not offered, but 25 is, so ask for 25 and
+    # check the page walks rather than repeats.
+    small = c.get("/admin/vouchers", params={"per": 25}).text
+    ck("the page size is honoured", 'value="25" selected' in small)
+    with Session(engine) as db:
+        total = db.query(M.PaymentVoucher).count()
+    ck("the count is the whole filtered set, not the page",
+       ">%d<" % total in c.get("/admin/vouchers").text)
+    ck("a page past the end lands on the last one rather than empty",
+       "PV-0001" in c.get("/admin/vouchers", params={"page": 999}).text)
 
     # ── a name that is typed, not scrolled ─────────────────────────────
     build = c.get("/admin/vouchers/new", params={"who": "Julio Reyes"}).text

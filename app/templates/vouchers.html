@@ -14,14 +14,16 @@
   </div>
 </div>
 
-{% if unpaid %}
 <div class="sumbar" style="margin-bottom:14px">
   <div class="s hero"><div class="l">Issued, not yet paid</div>
     <div class="v">{{ peso(unpaid) }}</div>
-    <div class="sub">across every open voucher</div></div>
+    <div class="sub">{{ 'across what this filter matches' if narrowed
+      else 'across every open voucher' }}</div></div>
+  <div class="s"><div class="l">Vouchers</div>
+    <div class="v">{{ found }}</div>
+    <div class="sub">{{ 'matching' if narrowed else 'in all' }}</div></div>
   <div class="s spacer"></div>
 </div>
-{% endif %}
 
 {# ---------------- what the last press did ---------------- #}
 {% set q = request.query_params %}
@@ -44,8 +46,53 @@
     {{ q.get('why', '')|replace('+', ' ') }}.{% endif %}</div>
 {% endif %}
 
+{# ---------------- narrowing it down ----------------
+   The filters live in the URL rather than in a session, so a view worth
+   coming back to is a link worth keeping: "September, still unpaid" can be
+   bookmarked, or pasted to somebody. #}
+{% set qs = request.url.query %}
+<div class="card" style="margin-bottom:14px">
+  <form method="get" action="/admin/vouchers" class="filt">
+    <div style="flex:1 1 210px">
+      {% set tah_name = 'who' %}
+      {% set tah_value = f.who %}
+      {% set tah_label = 'Who' %}
+      {% set tah_people = people %}
+      {% include "_typeahead.html" %}
+    </div>
+    <div style="flex:0 1 150px"><label>Status
+      <select name="status">
+        <option value="">Any</option>
+        {% for k, klabel in statuses %}
+        <option value="{{ k }}" {{ 'selected' if f.status == k }}>{{ klabel }}</option>
+        {% endfor %}
+      </select></label></div>
+    <div style="flex:0 1 160px"><label>Issued from
+      <input type="date" name="since" value="{{ f.since }}"></label></div>
+    <div style="flex:0 1 160px"><label>to
+      <input type="date" name="until" value="{{ f.until }}"></label></div>
+    <div style="flex:0 1 110px"><label>Per page
+      <select name="per">
+        {% for n in sizes %}<option value="{{ n }}" {{ 'selected' if per == n }}>{{ n }}</option>{% endfor %}
+      </select></label></div>
+    <button class="btn primary" style="margin:0">Filter</button>
+    {% if narrowed %}<a class="btn" href="/admin/vouchers">Clear</a>{% endif %}
+  </form>
+  {# Whole months, because that is the unit payroll is actually asked about. #}
+  <div class="quick">
+    <span class="muted small">Quick:</span>
+    <a href="/admin/vouchers?since={{ today.replace(day=1) }}">This month</a>
+    <a href="/admin/vouchers?since={{ (today.replace(day=1) - one_day).replace(day=1) }}&until={{ today.replace(day=1) - one_day }}">Last month</a>
+    <a href="/admin/vouchers?since={{ today.replace(month=1, day=1) }}">This year</a>
+    <a href="/admin/vouchers?status=unpaid">Unpaid only</a>
+    <a href="/admin/vouchers?status=void">Voided</a>
+  </div>
+</div>
+
 {% if rows %}
-<form method="post" action="/admin/vouchers/send" id="bulk"></form>
+<form method="post" action="/admin/vouchers/send" id="bulk">
+  <input type="hidden" name="back" value="/admin/vouchers{{ '?' ~ qs if qs }}">
+</form>
 {# One press for a whole column of ticks. The three motions are the same ones
    a single voucher offers — send to whoever hasn't had theirs, send again
    regardless, or make links without emailing anybody — so there is nothing
@@ -117,6 +164,24 @@
   {% endfor %}
 </table>
 
+{% if pages > 1 %}
+{# Page links carry the filter with them: a page number on its own would
+   quietly drop whatever somebody had narrowed to. #}
+{% set base = [] %}
+{% for k, v in [('who', f.who), ('status', f.status), ('since', f.since),
+                ('until', f.until), ('per', per)] %}{% if v %}{% set _ =
+  base.append(k ~ '=' ~ (v|string|urlencode)) %}{% endif %}{% endfor %}
+{% set stem = '/admin/vouchers?' ~ (base|join('&')) ~ ('&' if base else '') %}
+<div class="pager">
+  <span class="muted small">Showing {{ (page - 1) * per + 1 }}&ndash;{{
+    [page * per, found]|min }} of {{ found }}</span>
+  <span class="sp"></span>
+  {% if page > 1 %}<a class="btn" href="{{ stem }}page={{ page - 1 }}">&larr; Previous</a>{% endif %}
+  <span class="muted small">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn" href="{{ stem }}page={{ page + 1 }}">Next &rarr;</a>{% endif %}
+</div>
+{% endif %}
+
 <script>
 {# Tick-all, and the header box reflecting what is actually ticked. #}
 (function () {
@@ -136,7 +201,8 @@
 })();
 </script>
 {% else %}
-<div class="card"><p class="muted" style="margin:0">No vouchers yet.</p></div>
+<div class="card"><p class="muted" style="margin:0">{% if narrowed %}Nothing matches that.
+  <a href="/admin/vouchers">Clear the filter</a> to see them all.{% else %}No vouchers yet.{% endif %}</p></div>
 {% endif %}
 
 <p class="muted small" style="margin-top:18px">A voucher gathers what is already owed; it never
