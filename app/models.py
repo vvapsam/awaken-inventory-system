@@ -1474,9 +1474,6 @@ PAY_LABELS = {
 SEXES = [("m", "Male"), ("f", "Female"), ("x", "Mixed")]
 SEX_LABELS = dict(SEXES)
 SEX_KEYS = [k for k, _l in SEXES]
-#: How a column on the board names each one. Not the same words as the form:
-#: a person is Male, a column is Men.
-SEX_COLUMNS = {"m": "Men", "f": "Women", "x": "Mixed"}
 #: Two characters, for the chip on a card where that is all the room there is.
 SEX_SHORT = {"m": "M", "f": "W", "x": "MX"}
 
@@ -2106,27 +2103,63 @@ def h12(t):
 #: is scaffolding, and a name in a constant is easy to find and delete when the
 #: testing is done. Every screen that shows one says so, because a clock that
 #: behaves differently and does not admit it is how a real result gets doubted.
-#: How the columns on the leaderboard are labelled, and the order they run in.
-#: Category first because that is the bigger division - an Advanced woman is
-#: racing the Advanced women, not the Open women - and the two Advanced columns
-#: reading together on the left is what a spectator scanning for a winner
-#: expects.
-#:
-#: Somebody whose gender is not recorded is not dropped. A results board that
-#: silently omits people is worse than one with a short extra column, and they
-#: go in one Unlisted column rather than one per category: it is a gap to be
-#: closed, not a group to be ranked, and it disappears the moment it is filled
-#: in. Every column here only appears if there is anybody in it.
-BOARD_COLUMNS = ([("%s:%s" % (ck, sk), "%s %s" % (cl, SEX_COLUMNS[sk]))
-                  for ck, cl in CATEGORIES for sk, _sl in SEXES]
-                 + [("", "Unlisted")])
+#: The label on one leaderboard column: the gender, then what they entered.
+#: "Male – Doubles". An en dash rather than a hyphen because the two halves
+#: are a pair of equals, not a compound word.
+BOARD_LABEL = "%s – %s"
 
 
-def board_key(p) -> str:
-    """Which column somebody belongs in."""
+def board_columns(event) -> list:
+    """How this event's leaderboard columns are labelled, in the order they run.
+
+    Gender crossed with what somebody entered — Male – Doubles, Female –
+    Doubles, Mixed – Doubles — because those are the fields people are
+    actually racing in. A doubles pair is not competing with the solos, and a
+    board that ranks them together is a board with the wrong winner on it.
+
+    The categories come off the event rather than out of this file, so a gym
+    that runs Solo and Doubles this month and adds a relay next month gets the
+    columns for it without a deploy. The entry category is the outer division
+    and the gender the inner one, which is what puts the three Doubles columns
+    together where a spectator looking for the doubles winner is already
+    looking.
+
+    Two kinds of fallback column, and neither is a group to be ranked:
+
+    * gender with no category, for an invitational where nobody picked one -
+      the whole board would otherwise be one nameless heap; and
+    * one Unlisted column for anybody whose gender is not recorded at all.
+
+    A results board that silently omits people is worse than one with a short
+    extra column. Every column here only appears if somebody is in it.
+    """
+    out = []
+    for r in (event.rate_rows() if event is not None else []):
+        for sk, _sl in SEXES:
+            out.append(("%s:%s" % (r.key, sk),
+                        BOARD_LABEL % (SEX_LABELS[sk], r.label or "—")))
+    # No category picked. Last, so it reads as the remainder rather than as
+    # the first field on the board.
+    for sk, _sl in SEXES:
+        out.append((":%s" % sk, SEX_LABELS[sk]))
+    out.append(("", "Unlisted"))
+    return out
+
+
+def board_key(p, event=None) -> str:
+    """Which column somebody belongs in.
+
+    A category the event no longer has is treated as no category at all. It
+    would otherwise name a column that ``board_columns`` never built, and the
+    one thing this must not do is drop somebody off the board.
+    """
     if p.sex not in SEX_KEYS:
         return ""
-    return "%s:%s" % (category_key(getattr(p, "category", None)), p.sex)
+    ev = event if event is not None else getattr(p, "event", None)
+    rid = (p.tier or "").strip()
+    if rid and (ev is None or ev.rate(rid) is None):
+        rid = ""
+    return "%s:%s" % (rid, p.sex)
 
 
 def wants_reels(event) -> bool:
@@ -2174,11 +2207,12 @@ def station_shorts(stations) -> dict:
 
 
 def board_rows(event, now=None):
-    """The whole field, ranked, split into the four groups.
+    """The whole field, ranked, split into its columns.
 
-    Returns [{"key", "label", "rows": [...]}] with an entry per group that has
-    anybody in it - Advanced Men, Advanced Women, Open Men, Open Women, and an
-    Unlisted column for anybody whose gender is not recorded yet.
+    Returns [{"key", "label", "rows": [...]}] with an entry per column that
+    has anybody in it - Male - Doubles, Female - Doubles, Mixed - Doubles and
+    so on for every category the event offers, plus an Unlisted column for
+    anybody whose gender is not recorded yet.
 
     The order within a column is the order a spectator reads it: whoever is
     furthest through the race first.
@@ -2198,7 +2232,8 @@ def board_rows(event, now=None):
     stations = sorted(event.stations, key=lambda s: (s.position, s.id))
     nst = len(stations)
     shorts = station_shorts(stations)
-    buckets = {k: [] for k, _l in BOARD_COLUMNS}
+    columns = board_columns(event)
+    buckets = {k: [] for k, _l in columns}
     for p in event.participants:
         # Not in the room: waitlisted, released, or said they cannot come.
         if p.waitlist or p.released_at or p.declined:
@@ -2225,7 +2260,7 @@ def board_rows(event, now=None):
             tier = 1
         else:
             tier = 2
-        buckets.setdefault(board_key(p), []).append({
+        buckets.setdefault(board_key(p, event), []).append({
             "p": p, "status": st, "tier": tier,
             "secs": secs, "elapsed": elapsed or 0,
             "done": done, "on": on, "of": nst,
@@ -2240,7 +2275,7 @@ def board_rows(event, now=None):
             "st_unit": st_row.unit if st_row is not None else "",
         })
     out = []
-    for key, label in BOARD_COLUMNS:
+    for key, label in columns:
         rows = buckets.get(key) or []
         rows.sort(key=lambda r: (
             r["tier"],

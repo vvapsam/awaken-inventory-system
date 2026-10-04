@@ -58,6 +58,7 @@ from .models import (
     HANDLE_MAX, PAY_APPROVED, PAY_DRAFT, PAY_GRACE_HOURS, PAY_LABELS,
     PAY_RETURNED,
     PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES, SEX_KEYS, SEX_SHORT,
+    SEX_LABELS, board_columns,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
     Event, EventParticipant, EventOrganiserLink, EventRate, EventStation,
     PaymentSetting, StationRun,
@@ -3053,9 +3054,16 @@ def register(app, deps):
                     # Taken off the label rather than written here, so renaming
                     # a category renames its letter with it. This used to be a
                     # hardcoded "E".
+                    # Two characters, because that is all the room a card on
+                    # the floor strip has: "D\u00b7W" is a woman in Doubles.
+                    # Taken off the category's own label rather than written
+                    # here, so renaming Doubles renames its letter with it.
                     "sx": "%s\u00b7%s" % (
-                        CATEGORY_LABELS[category_key(p.category)][:1].upper(),
+                        (ev.rate_label(p.tier) or "\u2014")[:1].upper(),
                         SEX_SHORT.get(p.sex, "-")),
+                    # Still the division, which is on the person rather than
+                    # on what they entered. It no longer decides a column, so
+                    # it is the one place on a public screen that says it.
                     "elite": category_key(p.category) == "elite",
                     # Whether they belong in the strip rather than a column.
                     # Decided here, so the page and the feed cannot disagree
@@ -3085,23 +3093,26 @@ def register(app, deps):
                     # rather than asking again every second.
                     "elapsed": r["elapsed"] if r["status"] == "in_progress" else None,
                 })
-            # The page draws the two categories as boxes of two columns
-            # inside each, so it needs the split as data rather than by
+            # The page draws each category as a box with its genders as
+            # columns inside, so it needs the split as data rather than by
             # picking the key apart in JavaScript. Sent from here for the
             # usual reason: the first paint and every refresh afterwards read
             # the same builder and cannot disagree about it.
             key = col["key"]
-            cat = key.split(":")[0] if ":" in key else ""
+            rid, _, sk = key.partition(":")
+            rate = ev.rate(rid) if rid else None
             cols.append({
                 "key": key,
                 "label": col["label"],
-                "cat": cat,
-                "catLabel": CATEGORY_LABELS.get(cat, ""),
-                # Inside a category's box the column is just "Men" - repeating
-                # the category above it and again on it is the box saying its
-                # own name twice.
-                "short": (col["label"].split(" ", 1)[1]
-                          if cat else col["label"]),
+                # The box this column sits in. The entry category, which is
+                # per-event, so a gym that adds a relay next month gets a box
+                # for it. Columns with no category share one unnamed box.
+                "cat": rid,
+                "catLabel": rate.label if rate is not None else "",
+                # Inside the box the column is just "Male" - the category is
+                # written above it, and writing it again on it is the box
+                # saying its own name twice.
+                "short": SEX_LABELS.get(sk) or col["label"],
                 "rows": out,
             })
         return cols
@@ -3176,9 +3187,13 @@ def register(app, deps):
                 row = {
                     "id": p.id,
                     "name": board_name(p),
-                    "cat": (col["key"].split(":")[0]
-                            if ":" in col["key"] else ""),
+                    "cat": col["key"].partition(":")[0],
+                    "catLabel": ev.rate_label(p.tier),
                     "sex": p.sex if p.sex in SEX_KEYS else "",
+                    # The division, which is on the person and no longer
+                    # decides a column. Sent as a flag rather than left to be
+                    # read off `cat`, which is now a category id.
+                    "elite": category_key(p.category) == "elite",
                     "group": col["label"],
                     "flag": country_flag(p.country),
                     "cc": country_code(p.country),
@@ -3208,7 +3223,14 @@ def register(app, deps):
             if picked:
                 groups.append({
                     "key": col["key"], "label": col["label"],
-                    "cat": picked[0]["cat"], "sex": picked[0]["sex"],
+                    "cat": picked[0]["cat"],
+                    "catLabel": picked[0]["catLabel"],
+                    "sex": picked[0]["sex"],
+                    # A real group, as against the Unlisted column. What makes
+                    # it real is a gender, not a category: an invitational
+                    # where nobody picked one still races a men's field.
+                    "ranked": bool(picked[0]["sex"]),
+                    "elite": all(r["elite"] for r in picked),
                     # Three is a podium. Fewer than three is however many
                     # there are, because a podium with an empty step on it
                     # looks like a page that failed to load.
@@ -3232,8 +3254,15 @@ def register(app, deps):
             if r["done"]:
                 n += 1
                 r["place"] = n
+        # The chips the page filters by: the categories somebody on this page
+        # actually entered, in the order the event draws them, and never one
+        # that would filter down to an empty page. Built here rather than from
+        # the rate list so a category nobody raced does not offer itself.
+        seen = {g["cat"] for g in groups if g["cat"]}
+        cats = [{"key": r.key, "label": r.label}
+                for r in ev.rate_rows() if r.key in seen]
         return {"rows": rows, "groups": groups, "finishers": n,
-                "field": len(rows),
+                "cats": cats, "field": len(rows),
                 # The board is the morning. Once nobody is on the floor it is
                 # a page about a race that has stopped, so it stops being
                 # offered - and comes back on its own for the next event.
@@ -3395,8 +3424,8 @@ def register(app, deps):
                 "flag": country_flag(p.country),
                 "country": country_name(p.country),
                 "group": mine["label"] if mine else "",
-                "cat": (mine["key"].split(":")[0]
-                        if mine and ":" in mine["key"] else ""),
+                "cat": mine["key"].partition(":")[0] if mine else "",
+                "elite": category_key(p.category) == "elite",
                 "status": st, "label": RACE_STATUS_LABELS[st],
                 "done": st == "finished",
                 "finish": mmss(p.race_seconds) if p.finished_at else "",

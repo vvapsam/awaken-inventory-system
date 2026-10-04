@@ -19,12 +19,16 @@
  *                  thing here because it is the part that changes while
  *                  somebody is watching, and a room watching a race wants to
  *                  know who is out there before it wants a results table.
- *   THE FOUR       Advanced Men, Advanced Women, Open Men, Open Women - ranked
- *                  finishers, side by side underneath.
+ *   THE FIELDS     one box per category the event runs - Doubles, Solo - with
+ *                  Male, Female and Mixed as ranked columns inside it, side by
+ *                  side underneath. The categories come off the event, so a
+ *                  gym that adds a relay gets a box for it with nothing
+ *                  changed here.
  *
- * The strip is the one place all four are mixed. Splitting it would quarter
- * the cards and put the leader of one group above somebody further through
- * the race in another, so each card carries an E/O and an M/W instead.
+ * The strip is the one place every field is mixed together. Splitting it would
+ * shrink the cards to nothing and put the leader of one field above somebody
+ * further through the race in another, so each card carries the category's
+ * initial and an M/W/MX instead.
  *
  * Nothing here leans on style.css: this page is opened by people who have
  * never seen the admin, and it has to stand up alone.
@@ -93,7 +97,6 @@ body.hasbg{background:transparent}
 body.hasbg .floor{background:rgba(20,14,15,.66);backdrop-filter:blur(3px)}
 body.hasbg .cell{background:rgba(14,14,17,.72)}
 body.hasbg .grp{background:rgba(12,13,16,.64);backdrop-filter:blur(3px)}
-body.hasbg .grp.elite{background:rgba(22,13,15,.70)}
 body.hasbg .row{background:rgba(14,15,18,.68)}
 body.hasbg .row.lead{background:rgba(30,16,18,.76)}
 body.hasbg .empty{background:rgba(14,15,18,.56)}
@@ -195,28 +198,31 @@ h2.band.hot{color:var(--hot)}
    which is where two columns inside a half-width box start to pinch. */
 .groups{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
 .grp{
-  flex:1 1 470px;min-width:0;
+  /* Three columns inside, not two, since the fields are Male, Female and
+     Mixed - so the box asks for more room before it will share a row. */
+  flex:1 1 640px;min-width:0;
   border:1px solid var(--line);border-radius:15px;
   padding:14px 14px 8px;background:#101216;
 }
-/* The one difference between the two boxes, and it is deliberately small: a
-   red edge and a red name. Advanced is not more important than Open, it is
-   just the one people scan for first. */
-.grp.elite{border-color:#4A181C;background:#160D0F}
+/* Every box reads the same. Doubles is not more important than Solo, and a
+   red frame round one of them would say it was. The one red thing on a row is
+   the chip on an Advanced athlete, which is a fact about the person rather
+   than about the field they are in. */
 h2.gname{
   margin:0 0 12px;font-size:.95rem;font-weight:800;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink);
   display:flex;align-items:baseline;gap:10px;
 }
-.grp.elite h2.gname{color:var(--hot)}
 h2.gname .gn{
   font-size:.68rem;color:var(--dim);font-weight:700;letter-spacing:.06em;
 }
-.cols{display:flex;gap:11px;align-items:flex-start}
-.col{flex:1 1 0;min-width:0}
+/* Wraps rather than squeezing. Three narrow columns of names is worse than
+   two and one underneath, and how many there are is the event's business. */
+.cols{display:flex;gap:11px;align-items:flex-start;flex-wrap:wrap}
+.col{flex:1 1 150px;min-width:0}
 /* The Unlisted column arrives as a bare .cols with no box round it, so it
    needs the basis the boxes get or it collapses to its content. */
-.groups > .cols{flex:1 1 470px;min-width:0;padding-top:2px}
+.groups > .cols{flex:1 1 640px;min-width:0;padding-top:2px}
 
 .after{
   display:flex;flex-wrap:wrap;gap:9px 20px;margin:22px 2px 0;
@@ -286,10 +292,13 @@ h2.gname .gn{
 @media (max-width:900px){
   .cards{grid-template-columns:repeat(2,1fr)}
 }
-/* Two columns inside a box need real width. Below this the box keeps its
-   frame - which is the whole point of it - and stacks Men over Women. */
+/* Columns inside a box need real width. Below this the box keeps its frame -
+   which is the whole point of it - and stacks Male over Female over Mixed. */
 @media (max-width:660px){
-  .cols{flex-direction:column;gap:0}
+  /* Stretch, not flex-start: stacked columns are full width. Top-aligning is
+     what you want when they sit side by side and is what leaves a stacked
+     one as narrow as its longest name. */
+  .cols{flex-direction:column;gap:0;align-items:stretch}
   .col + .col{margin-top:14px}
 }
 @media (max-width:559px){
@@ -478,9 +487,9 @@ h2.gname .gn{
     }
 
     /* Each category gets a box, in the order the server sent them.
-       Built by walking the columns rather than from a fixed list of two, so
-       a category with nobody in it never draws an empty frame - and a third
-       one, if there is ever a third one, needs nothing here. */
+       Built by walking the columns rather than from a fixed list, so a
+       category nobody entered never draws an empty frame and however many
+       the event runs needs nothing here. */
     var groups = [], byCat = {};
     cols.forEach(function(c){
       var g = byCat[c.cat];
@@ -498,12 +507,13 @@ h2.gname .gn{
           if (r.status === 'finished') { fin++; }
         });
       });
-      /* The Unlisted column has no category, so it gets no box and no name -
-         a frame round it would make a gap in the data look like a division
+      /* Columns with no category get no box and no name - the Unlisted
+         one, and every column on an event where nobody picked a category.
+         A frame round either would make a gap in the data look like a field
          somebody could be entered in. */
       var inner = '<div class="cols">' + g.cols.map(colHTML).join('') + '</div>';
       if (!g.cat) { return inner; }
-      return '<section class="grp' + (g.cat === 'elite' ? ' elite' : '') + '">'
+      return '<section class="grp">'
            + '<h2 class="gname">' + esc(g.label)
            + '<span class="gn">' + fin + ' finished</span></h2>'
            + inner + '</section>';

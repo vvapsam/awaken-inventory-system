@@ -32,16 +32,13 @@ Base.metadata.create_all(engine)
 
 # ---------------------------------------------------------------- the shape --
 ck("Mixed is a gender", ("x", "Mixed") in M.SEXES)
-ck("mixed columns exist", ("open:x", "Open Mixed") in M.BOARD_COLUMNS
-   and ("elite:x", "Advanced Mixed") in M.BOARD_COLUMNS)
-ck("unlisted column kept", ("", "Unlisted") in M.BOARD_COLUMNS)
 
 class Fake:
-    def __init__(self, sex, cat="open"):
-        self.sex, self.category = sex, cat
-ck("mixed gets its own column", M.board_key(Fake("x")) == "open:x")
-ck("no gender is still unlisted", M.board_key(Fake(None)) == ""
+    def __init__(self, sex, tier=None):
+        self.sex, self.tier, self.event = sex, tier, None
+ck("no gender is unlisted", M.board_key(Fake(None)) == ""
    and M.board_key(Fake("z")) == "")
+ck("no category is gender alone", M.board_key(Fake("x")) == ":x")
 
 ck("short_text one word", short_text("Madonna") == "Madonna")
 ck("short_text two", short_text("Vanessa Sampang") == "Vanessa S.")
@@ -89,7 +86,18 @@ with TestClient(app) as c:
         ck("gender stored as mixed", p.sex == "x")
         ck("partner stored", p.partner_name == "Vanessa Sampang")
         ck("board reads both names", board_name(p) == "Trina P./Vanessa S.")
-        ck("mixed pair lands in the mixed column", M.board_key(p) == "open:x")
+        ck("mixed pair lands in the mixed doubles column",
+           M.board_key(p) == "%s:x" % DBL)
+        cols = dict(M.board_columns(p.event))
+        ck("column is gender then category",
+           cols.get("%s:x" % DBL) == "Mixed \u2013 Doubles"
+           and cols.get("%s:m" % DBL) == "Male \u2013 Doubles"
+           and cols.get("%s:f" % DBL) == "Female \u2013 Doubles")
+        ck("every category gets its three",
+           cols.get("%s:m" % SOLO) == "Male \u2013 Solo")
+        ck("unlisted column kept", cols.get("") == "Unlisted")
+        ck("a category the event dropped falls back to gender alone",
+           M.board_key(Fake("f", tier="999"), p.event) == ":f")
         TOK = p.token
 
     # --- a solo who typed a partner anyway: it must not travel
@@ -206,7 +214,30 @@ with TestClient(app) as c:
     ck("board link works", bt and "AWAKEN" in board)
     ck("board carries the pair as one name",
        "Trina P./Vanessa S." in board)
-    ck("board labels the mixed column", "Mixed" in board)
+    ck("board labels the mixed doubles column",
+       "Mixed" in board and "Doubles" in board)
+    res_html = c.get("/l/%s/results" % bt).text
+    ck("results chips are the event's categories",
+       'data-v="%s"' % DBL in res_html and ">Doubles<" in res_html)
+
+# ------------------------------------------- an event with no categories --
+# An invitational where nobody picked one. The board must not collapse into a
+# single nameless heap, and nobody may be dropped off it.
+with Session(engine) as db:
+    iv = M.Event(name="PFT", slug="pft", mode=M.EVENT_INVITE)
+    db.add(iv); db.flush()
+    for i, sx in enumerate(["m", "f", "x", None]):
+        db.add(M.EventParticipant(event_id=iv.id, token="iv%d" % i,
+                                  name="P%d Q" % i, first_name="P%d" % i,
+                                  last_name="Q", email="iv%d@x.com" % i,
+                                  sex=sx, rsvp="yes"))
+    db.commit()
+    iv = db.query(M.Event).filter_by(slug="pft").one()
+    cols = M.board_rows(iv)
+    ck("no categories falls back to gender alone",
+       [g["label"] for g in cols] == ["Male", "Female", "Mixed", "Unlisted"])
+    ck("nobody is dropped off a board with no categories",
+       sum(len(g["rows"]) for g in cols) == 4)
 
 bad = [n for n, ok in res if not ok]
 print("\n%d/%d passed" % (len(res) - len(bad), len(res)))

@@ -79,9 +79,11 @@
   {% for g in groups %}
   {# A category nobody is entered in never draws an empty frame, and the
      Unlisted column never draws one at all - a podium for "we have not
-     recorded a gender yet" is not a race anybody entered. #}
-  {% if g.cat %}
-  <section class="pod{{ ' elite' if g.cat == 'elite' }}">
+     recorded a gender yet" is not a race anybody entered. `ranked` is the
+     gender rather than the category, because an invitational where nobody
+     picked a category still races a men's field. #}
+  {% if g.ranked %}
+  <section class="pod{{ ' elite' if g.elite }}">
     <h3>{{ g.label }} <em>{{ g.raced }} raced</em></h3>
     {% if g.top %}
       {% for r in g.top %}

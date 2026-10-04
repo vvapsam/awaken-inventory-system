@@ -124,8 +124,6 @@ from .models import SEXES as _SEXES
 templates.env.globals["SEXES"] = _SEXES
 from .models import sex_label as _sex_label
 templates.env.globals["sex_label"] = _sex_label
-from .models import SEX_COLUMNS as _SEX_COLUMNS
-templates.env.globals["SEX_COLUMNS"] = _SEX_COLUMNS
 from .models import CATEGORIES as _CATEGORIES
 templates.env.globals["CATEGORIES"] = _CATEGORIES
 from .models import CATEGORY_LABELS as _CATEGORY_LABELS

@@ -155,17 +155,21 @@ a.nm:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
   everybody who just finished.
 #}
 <div class="filters">
-  {# Built from CATEGORIES rather than typed out, so renaming a category
-     renames its chip. These used to say Elite and Open in the markup, and a
-     rename left them behind. #}
+  {# The event's own categories - Solo, Doubles, whatever this one runs -
+     and only the ones somebody on this page entered. Built from the event
+     rather than typed out, so renaming a category renames its chip. These
+     used to say Elite and Open in the markup, and a rename left them
+     behind. #}
+  {% if cats %}
   <div class="seg">
     <button type="button" class="chip" data-f="cat" data-v=""
             aria-pressed="true">All</button>
-    {% for key, label in CATEGORIES %}
-    <button type="button" class="chip" data-f="cat" data-v="{{ key }}"
-            aria-pressed="false">{{ label }}</button>
+    {% for c in cats %}
+    <button type="button" class="chip" data-f="cat" data-v="{{ c.key }}"
+            aria-pressed="false">{{ c.label }}</button>
     {% endfor %}
   </div>
+  {% endif %}
   {# Same reason as the categories above: built from the list rather than
      typed out, so adding Mixed added a chip instead of needing one. A chip
      only appears if somebody on the page is in it — an event of nothing but
@@ -177,7 +181,7 @@ a.nm:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
             aria-pressed="true">Everyone</button>
     {% for key, _label in SEXES %}{% if key in on_page %}
     <button type="button" class="chip" data-f="sex" data-v="{{ key }}"
-            aria-pressed="false">{{ SEX_COLUMNS[key] }}</button>
+            aria-pressed="false">{{ _label }}</button>
     {% endif %}{% endfor %}
   </div>
   <input class="find" id="find" type="search" placeholder="Find a name…"
@@ -204,11 +208,11 @@ a.nm:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
       <span class="fl" title="{{ r.country }}">{{ r.flag }}</span>
       <span style="min-width:0">
         <a class="nm" href="/l/{{ token }}/p/{{ r.id }}">{{ r.name }}</a>
-        <span class="onsm{{ ' el' if r.cat == 'elite' }}">{{ r.group }}{{
+        <span class="onsm{{ ' el' if r.elite }}">{{ r.group }}{{
           " · " ~ r.heat ~ " heat" if r.heat }}</span>
       </span>
     </span>
-    <span class="cat{{ ' el' if r.cat == 'elite' }}">{{ r.group }}</span>
+    <span class="cat{{ ' el' if r.elite }}">{{ r.group }}</span>
     <span class="sub {{ 'st' if r.raced else 'na' }}">{{ r.raced or '—' }}</span>
     <span class="sub {{ 'tr' if r.moving else 'na' }}">{{ r.moving or '—' }}</span>
     <span class="tm">{{ r.time if r.done else r.label }}</span>
