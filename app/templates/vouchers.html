@@ -9,25 +9,10 @@
   </div>
   <div class="hdact">
     <a class="btn" href="/admin/expenses">Expense reports</a>
-    <a class="btn primary" href="/admin/vouchers/run">Pay everybody</a>
+    <a class="btn" href="/admin/vouchers/run">Pay everybody</a>
+    {% if can_pay %}<a class="btn primary" href="/admin/vouchers/new">New payment</a>{% endif %}
   </div>
 </div>
-
-{% if can_pay %}
-<div class="card" style="margin:14px 0">
-  <h3 style="margin:0 0 4px;font-size:.95rem">New voucher</h3>
-  <p class="muted small" style="margin:0 0 10px">Pick who you are paying. The next screen shows
-    everything they are owed; tick what goes on it.</p>
-  <form method="get" action="/admin/vouchers/new" class="row-between" style="gap:10px;align-items:flex-end">
-    <div style="flex:1;max-width:320px"><label>Paying
-      <select name="who" required>
-        <option value="">&mdash; choose a person &mdash;</option>
-        {% for n in people %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
-      </select></label></div>
-    <button class="btn">Build it</button>
-  </form>
-</div>
-{% endif %}
 
 {% if unpaid %}
 <div class="sumbar" style="margin-bottom:14px">
@@ -60,7 +45,35 @@
 {% endif %}
 
 {% if rows %}
-<form method="post" action="/admin/vouchers/send" id="bulk">
+<form method="post" action="/admin/vouchers/send" id="bulk"></form>
+{# One press for a whole column of ticks. The three motions are the same ones
+   a single voucher offers — send to whoever hasn't had theirs, send again
+   regardless, or make links without emailing anybody — so there is nothing
+   here to learn that the one-at-a-time screen didn't already teach. #}
+<div class="card" style="margin-top:14px">
+  <div class="row-between" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div>
+      <h3 style="margin:0 0 3px;font-size:.95rem">Do it to the ticked ones</h3>
+      <p class="muted small" style="margin:0">Each one is its own email with its own private
+        link &mdash; nobody sees anybody else's. A voucher that has already been sent is skipped
+        unless you say otherwise.</p>
+    </div>
+    <div style="display:flex;gap:9px;align-items:flex-end">
+      <div style="min-width:210px"><label>Action
+        <select name="action" form="bulk">
+          <option value="send">Email the voucher</option>
+          <option value="resend">Email it again</option>
+          <option value="link">Just make the links</option>
+        </select></label></div>
+      <button class="btn primary" form="bulk" style="margin:0">Go</button>
+    </div>
+  </div>
+  {% if not mail_ready %}
+  <p class="muted small" style="margin:10px 0 0">Mail isn't set up on the server yet, so only
+    <b>Just make the links</b> will do anything.</p>
+  {% endif %}
+</div>
+
 <table>
   <tr><th style="width:38px"><input type="checkbox" id="all" aria-label="Tick every voucher"></th>
       <th style="width:96px">Voucher</th><th>Who</th><th style="width:150px">Issued</th>
@@ -72,7 +85,7 @@
   <tr{% if v.status == 'void' %} class="low"{% endif %}>
     <td>{% if v.status != 'void' %}
       <input type="checkbox" name="voucher" value="{{ v.id }}" class="pick"
-             aria-label="Tick {{ v.number }}">{% endif %}</td>
+             form="bulk" aria-label="Tick {{ v.number }}">{% endif %}</td>
     <td><b>{{ v.number }}</b></td>
     <td><b>{{ v.person }}</b></td>
     <td class="mono">{{ v.issued_at.strftime('%d %b %Y') if v.issued_at else '—' }}
@@ -103,35 +116,6 @@
   </tr>
   {% endfor %}
 </table>
-
-{# One press for a whole column of ticks. The three motions are the same ones
-   a single voucher offers — send to whoever hasn't had theirs, send again
-   regardless, or make links without emailing anybody — so there is nothing
-   here to learn that the one-at-a-time screen didn't already teach. #}
-<div class="card" style="margin-top:14px">
-  <div class="row-between" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
-    <div>
-      <h3 style="margin:0 0 3px;font-size:.95rem">Do it to the ticked ones</h3>
-      <p class="muted small" style="margin:0">Each one is its own email with its own private
-        link &mdash; nobody sees anybody else's. A voucher that has already been sent is skipped
-        unless you say otherwise.</p>
-    </div>
-    <div style="display:flex;gap:9px;align-items:flex-end">
-      <div style="min-width:210px"><label>Action
-        <select name="action" form="bulk">
-          <option value="send">Email the voucher</option>
-          <option value="resend">Email it again</option>
-          <option value="link">Just make the links</option>
-        </select></label></div>
-      <button class="btn primary" form="bulk" style="margin:0">Go</button>
-    </div>
-  </div>
-  {% if not mail_ready %}
-  <p class="muted small" style="margin:10px 0 0">Mail isn't set up on the server yet, so only
-    <b>Just make the links</b> will do anything.</p>
-  {% endif %}
-</div>
-</form>
 
 <script>
 {# Tick-all, and the header box reflecting what is actually ticked. #}

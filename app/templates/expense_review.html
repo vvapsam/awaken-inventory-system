@@ -9,13 +9,23 @@
       {{ r.lines|length }} line{{ 's' if r.lines|length != 1 }}, every one with a receipt &middot;
       <a href="/admin/expenses">all expense reports</a></p>
   </div>
+  {# Approve and Return live up here. Their forms are below, with the note
+     field that belongs to one of them — `form=` keeps the two together
+     without making somebody scroll to the bottom to act. #}
   <div class="hdact">
     {% if r.status == 'submitted' %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Pending approval</span>
     {% elif r.status == 'returned' %}<span class="tag" style="background:#c0633f">Sent back</span>
     {% elif r.voucher_id %}<span class="tag">Paid</span>
     {% else %}<span class="tag">Approved</span>{% endif %}
+    {% if can_pay and r.status in ('submitted', 'returned') %}
+    <button class="btn" form="erback" style="margin:0">Return to {{ r.person.split(' ')[0] }}</button>
+    <button class="btn primary" form="erok" style="margin:0">Approve {{ peso(r.total) }}</button>
+    {% endif %}
   </div>
 </div>
+{% if can_pay and r.status in ('submitted', 'returned') %}
+<form method="post" action="/admin/expenses/{{ r.id }}/approve" id="erok"></form>
+{% endif %}
 
 {% if err == 'empty' %}
 <div class="alert bad"><b>Nothing on it.</b> A report with no lines cannot be approved.</div>
@@ -83,23 +93,19 @@
 {% if can_pay and r.status in ('submitted', 'returned') %}
 <div class="row-between" style="margin-top:18px;gap:18px;align-items:flex-start">
   <div class="card" style="flex:1">
-    <h3 style="margin:0 0 4px;font-size:.95rem">Send it back instead</h3>
-    <form method="post" action="/admin/expenses/{{ r.id }}/return">
+    <h3 style="margin:0 0 4px;font-size:.95rem">If you are sending it back</h3>
+    <p class="muted small" style="margin:0 0 8px">Say what needs fixing, then <b>Return</b> at the
+      top. They get the note, fix it and send the same report again &mdash; nothing is deleted.</p>
+    <form method="post" action="/admin/expenses/{{ r.id }}/return" id="erback">
       <textarea name="note" rows="3" maxlength="800"
         placeholder="The Grab receipt is for the 1st, not the 2nd — can you re-attach?"></textarea>
-      <button class="btn" style="margin-top:8px">Return to {{ r.person.split(' ')[0] }}</button>
     </form>
-    <p class="muted small" style="margin:8px 0 0">They get the note, fix it and send it again.
-      Nothing is deleted.</p>
   </div>
   <div class="card" style="flex:1">
-    <h3 style="margin:0 0 4px;font-size:.95rem">Approve it</h3>
-    <p class="muted small" style="margin:0 0 10px">Approving locks the report and makes
+    <h3 style="margin:0 0 4px;font-size:.95rem">If you are approving it</h3>
+    <p class="muted small" style="margin:0">Approving locks the report and makes
       {{ peso(r.total) }} owed. It is paid by a payment voucher, with whatever else
       {{ r.person.split(' ')[0] }} is owed.</p>
-    <form method="post" action="/admin/expenses/{{ r.id }}/approve">
-      <button class="btn primary">Approve {{ peso(r.total) }}</button>
-    </form>
   </div>
 </div>
 {% elif r.status == 'approved' %}

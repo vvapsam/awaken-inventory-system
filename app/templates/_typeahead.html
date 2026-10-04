@@ -1,0 +1,16 @@
+{# ---------------------------------------------------------------- typeahead
+   One field: type a name, pick it off the list. The input itself is what the
+   form posts, so with no script running it is still a plain text box that
+   works — the list is a convenience, never the mechanism.
+
+   Expects: tah_name, tah_value, tah_label, tah_people, tah_submit (optional). #}
+<div class="tah" data-tah data-submit="{{ 'y' if tah_submit else '' }}">
+  <label for="tah-{{ tah_name }}">{{ tah_label }}</label>
+  <input id="tah-{{ tah_name }}" name="{{ tah_name }}" value="{{ tah_value or '' }}"
+         type="text" autocomplete="off" spellcheck="false" role="combobox"
+         aria-expanded="false" aria-autocomplete="list"
+         placeholder="Type a name&hellip;" required>
+  <ul class="tahl" hidden role="listbox"></ul>
+  <script type="application/json" class="tahd">{{ tah_people|tojson }}</script>
+</div>
+<script src="/static/typeahead.js?v={{ ASSET_V }}" defer></script>

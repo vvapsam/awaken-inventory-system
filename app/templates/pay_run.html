@@ -13,7 +13,12 @@
     <p class="muted small" style="margin:2px 0 0">Everybody who is owed something, on one page. Set
       the rule once, tick the people, and issue a voucher each in one go.</p>
   </div>
-  <div class="hdact"><a class="btn" href="/admin/vouchers/new">Pay one person instead</a></div>
+  <div class="hdact">
+    <a class="btn" href="/admin/vouchers/new">Pay one person instead</a>
+    {% if rows and can_pay %}
+    <button class="btn primary" form="prun" style="margin:0">Issue the vouchers</button>
+    {% endif %}
+  </div>
 </div>
 
 {% if err == 'empty' %}
@@ -53,7 +58,7 @@
     <div class="sub">if you tick everybody</div></div>
 </div>
 
-<form method="post" action="/admin/vouchers/run">
+<form method="post" action="/admin/vouchers/run" id="prun">
 <input type="hidden" name="period" value="{{ picked }}">
 {% if reimb %}<input type="hidden" name="reimb" value="on">{% endif %}
 {% if adj %}<input type="hidden" name="adj" value="on">{% endif %}
@@ -116,12 +121,9 @@
 </table>
 
 {% if can_pay %}
-<div class="row-between" style="margin-top:16px;gap:18px;align-items:center;flex-wrap:wrap">
-  <p class="muted small" style="margin:0;max-width:560px">A voucher each, numbered in one series.
-    Each one locks what is on it &mdash; the runs, the reports and the adjustments &mdash; so nothing
-    here can turn up on another voucher.</p>
-  <button class="btn primary">Issue the vouchers</button>
-</div>
+<p class="muted small" style="margin-top:16px;max-width:620px">A voucher each, numbered in one
+  series. Each one locks what is on it &mdash; the runs, the reports and the adjustments &mdash; so
+  nothing here can turn up on another voucher. <b>Issue the vouchers</b> is at the top.</p>
 {% endif %}
 </form>
 

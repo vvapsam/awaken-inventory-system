@@ -8,12 +8,31 @@
         if v.issued_by %} by {{ v.issued_by.name }}{% endif %} &middot;
       <a href="/admin/vouchers">all vouchers</a></p>
   </div>
+  {# Everything that does something lives up here. The forms those buttons
+     belong to are further down, next to the fields they describe — `form=`
+     is what lets the two sit apart. #}
   <div class="hdact">
     {% if v.status == 'paid' %}<span class="tag">Paid{% if v.paid_on %} {{ v.paid_on.strftime('%d %b') }}{% endif %}</span>
     {% elif v.status == 'void' %}<span class="tag" style="background:#8a94a1">Void</span>
     {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
+    {% if v.status != 'void' and their_email and mail_ready %}
+    <button class="btn" form="vsend" style="margin:0">{{ 'Email it' if not (link and link.sent_at)
+      else 'Email it again' }}</button>
+    {% endif %}
+    {% if v.status == 'unpaid' and can_pay %}
+    <button class="btn primary" form="vpay" style="margin:0">Mark paid {{ peso(v.total) }}</button>
+    {% endif %}
+    {% if v.status != 'void' and can_pay %}
+    <button class="btn danger" form="vvoid" style="margin:0">Void</button>
+    {% endif %}
   </div>
 </div>
+{% if v.status != 'void' and their_email and mail_ready %}
+<form method="post" action="/admin/vouchers/{{ v.id }}/send" id="vsend"></form>
+{% endif %}
+{% if v.status != 'void' and can_pay %}
+<form method="post" action="/admin/vouchers/{{ v.id }}/void" id="vvoid"></form>
+{% endif %}
 
 {% if v.status == 'void' %}
 <div class="alert" style="background:var(--low);border-color:var(--low-line)">
@@ -151,11 +170,6 @@
   {% endif %}
 
   <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px">
-    {% if their_email and mail_ready %}
-    <form method="post" action="/admin/vouchers/{{ v.id }}/send" style="margin:0">
-      <button class="btn primary">{{ 'Email it' if not (link and link.sent_at) else 'Email it again' }}</button>
-    </form>
-    {% endif %}
     {% if not link or not link.is_live %}
     <form method="post" action="/admin/vouchers/{{ v.id }}/link" style="margin:0">
       <button class="btn">Just make a link</button>
@@ -183,26 +197,23 @@
   <div class="card" style="flex:1.4">
     <h3 style="margin:0 0 10px;font-size:.95rem">Record the payment</h3>
     <form method="post" action="/admin/vouchers/{{ v.id }}/pay" enctype="multipart/form-data"
-          class="adjgrid">
+          class="adjgrid" id="vpay">
       <div><label>Paid on</label><input type="date" name="on" value="{{ today }}" required></div>
       <div><label>How</label>
         <select name="method">{% for m in methods %}<option>{{ m }}</option>{% endfor %}</select></div>
       <div class="wide"><label>Reference</label>
         <input name="reference" maxlength="120" placeholder="BPI 5512 · 20261015"></div>
       <div class="wide"><label>Proof &mdash; optional</label><input type="file" name="proof"></div>
-      <button class="btn primary">Mark paid {{ peso(v.total) }}</button>
     </form>
-    <p class="muted small" style="margin:10px 0 0">This marks the commission payouts on it paid too
-      &mdash; one record of when the money left, so the two screens cannot disagree.</p>
+    <p class="muted small" style="margin:10px 0 0">Fill these in, then <b>Mark paid</b> at the top.
+      It marks the commission payouts on it paid too &mdash; one record of when the money left, so
+      the two screens cannot disagree.</p>
   </div>
   <div class="card" style="flex:1">
     <h3 style="margin:0 0 4px;font-size:.95rem">Undoing it</h3>
-    <p class="muted small" style="margin:0 0 10px">Voiding releases every piece back to where it was
+    <p class="muted small" style="margin:0">Voiding releases every piece back to where it was
       &mdash; the runs, the reports and the adjustments &mdash; so they can go on a corrected
-      voucher. Nothing is deleted.</p>
-    <form method="post" action="/admin/vouchers/{{ v.id }}/void">
-      <button class="btn danger">Void this voucher</button>
-    </form>
+      voucher. Nothing is deleted. The button is at the top of the page.</p>
   </div>
 </div>
 {% elif v.status == 'paid' %}
@@ -219,9 +230,7 @@
      rel="noopener">See the proof of payment</a></p>
   {% endif %}
   {% if can_pay %}
-  <form method="post" action="/admin/vouchers/{{ v.id }}/void" style="margin-top:12px">
-    <button class="btn">Void it &mdash; releases everything on it</button>
-  </form>
+  <p class="muted small" style="margin:10px 0 0"><b>Void</b> at the top releases everything on it.</p>
   {% endif %}
 </div>
 {% endif %}

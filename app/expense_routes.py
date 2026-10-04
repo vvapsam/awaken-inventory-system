@@ -595,6 +595,23 @@ def register(app, deps):
                       mail_ready=Mailer().cfg.configured,
                       can_pay=(getattr(staff, "role", "") == "admin"))
 
+    def _resolve(typed: str, names: list) -> str:
+        """A typed name, matched to a real person — or nothing.
+
+        The field is typed rather than picked from a list, so it has to cope
+        with what typing produces: the wrong case, a surname on its own, a
+        trailing space. It will not guess between two people, because a
+        voucher made out to the wrong Reyes is worse than one more keystroke.
+        """
+        want = (typed or "").strip()
+        if not want:
+            return ""
+        for n in names:
+            if n.lower() == want.lower():
+                return n
+        near = [n for n in names if want.lower() in n.lower()]
+        return near[0] if len(near) == 1 else ""
+
     @app.get("/admin/vouchers/new", response_class=HTMLResponse)
     def voucher_new(request: Request, who: str = "",
                     db: Session = Depends(get_db)):
@@ -603,15 +620,16 @@ def register(app, deps):
         if redir:
             return redir
         people = _people(db)
-        picked = (who or "").strip()
+        typed = (who or "").strip()
+        picked = _resolve(typed, [n for n, _i in people])
         staff_id = dict(people).get(picked)
         payouts, reports, adjustments = ([], [], [])
         if picked:
             payouts, reports, adjustments = _claimable(db, picked, staff_id)
         return render(request, "voucher_build.html", db, staff,
                       active="vouchers", people=[n for n, _i in people],
-                      picked=picked, payouts=payouts, reports=reports,
-                      adjustments=adjustments,
+                      picked=picked, typed=typed, payouts=payouts,
+                      reports=reports, adjustments=adjustments,
                       accounts=open_accounts(db),
                       ACCOUNT_KINDS=ACCOUNT_KINDS,
                       today=date.today().isoformat(),

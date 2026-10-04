@@ -15,8 +15,17 @@
   <div class="hdact">
     {% if unpaid %}<span class="tag" style="background:#d9b45a;color:#4a3a12">{{ unpaid|length }} unpaid</span>
     {% else %}<span class="tag">All paid</span>{% endif %}
+    {% if mail_ready %}
+    <button class="btn" form="prsend" style="margin:0">Email all {{ rows|length }}</button>
+    {% endif %}
+    {% if unpaid and can_pay %}
+    <button class="btn primary" form="prpay" style="margin:0">Mark the ticked ones paid</button>
+    {% endif %}
   </div>
 </div>
+{% if mail_ready %}
+<form method="post" action="/admin/vouchers/run/{{ batch }}/send" id="prsend"></form>
+{% endif %}
 
 {% set q = request.query_params %}
 {% if q.get('setup') %}
@@ -30,7 +39,7 @@
     {{ q.get('why', '')|replace('+', ' ') }}.{% endif %}</div>
 {% endif %}
 
-<form method="post" action="/admin/vouchers/run/{{ batch }}/pay">
+<form method="post" action="/admin/vouchers/run/{{ batch }}/pay" id="prpay">
 <table style="margin-top:14px">
   <tr><th style="width:42px"></th><th style="width:110px">Voucher</th><th>Who</th>
       <th>What is on it</th>
@@ -92,26 +101,18 @@
       <select name="method">{% for m in methods %}<option>{{ m }}</option>{% endfor %}</select></div>
     <div class="wide"><label>Reference</label>
       <input name="reference" maxlength="120" placeholder="BPI batch {{ today|replace('-','') }}"></div>
-    <button class="btn primary">Mark the ticked ones paid</button>
   </div>
+  <p class="muted small" style="margin:10px 0 0">Fill these in, then
+    <b>Mark the ticked ones paid</b> at the top.</p>
 </div>
 {% endif %}
 </form>
 
 {% if mail_ready %}
-<div class="card" style="margin-top:16px">
-  <div class="row-between" style="align-items:flex-start;gap:14px">
-    <div>
-      <h3 style="margin:0 0 3px;font-size:.95rem">Send everybody their own voucher</h3>
-      <p class="muted small" style="margin:0">One email each, with a private link to their own
-        payment &mdash; commission, adjustments and expense reports in three tabs. Nobody sees
-        anybody else's. Anyone who already has theirs is skipped.</p>
-    </div>
-    <form method="post" action="/admin/vouchers/run/{{ batch }}/send" style="margin:0">
-      <button class="btn primary">Email all {{ rows|length }}</button>
-    </form>
-  </div>
-</div>
+<p class="muted small" style="margin-top:16px;max-width:620px"><b>Email all</b> at the top sends one
+  message each, with a private link to their own payment &mdash; commission, adjustments and
+  expense reports in three tabs. Nobody sees anybody else's, and anyone who already has theirs is
+  skipped.</p>
 {% endif %}
 
 <p class="muted small" style="margin-top:18px">A run is several separate documents issued together,

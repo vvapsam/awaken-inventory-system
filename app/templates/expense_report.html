@@ -21,8 +21,18 @@
     {% elif r.status == 'returned' %}<span class="tag" style="background:#c0633f">Sent back</span>
     {% elif r.voucher_id %}<span class="tag">Paid</span>
     {% else %}<span class="tag">Approved</span>{% endif %}
+    {% if not mine and office and r.status != 'draft' %}
+    <a class="btn" href="/admin/expenses/{{ r.id }}">Review and approve it</a>
+    {% endif %}
+    {% if r.status in ('draft', 'returned') %}
+    <button class="btn primary" form="ersend" style="margin:0">{{ 'Send it in for approval'
+      if mine else 'Submit it for ' ~ r.person.split(' ')[0] }}</button>
+    {% endif %}
   </div>
 </div>
+{% if r.status in ('draft', 'returned') %}
+<form method="post" action="/expenses/{{ r.id }}/submit" id="ersend"></form>
+{% endif %}
 
 {% if err == 'receipt' %}
 <div class="alert bad"><b>That line needs a receipt.</b> A photo, a PDF, a screenshot &mdash;
@@ -142,17 +152,10 @@
     </form>
     {% endif %}
   </div>
-  <div style="display:flex;gap:9px;align-items:center">
-    {% if not mine and office and r.status != 'draft' %}
-    <a class="btn" href="/admin/expenses/{{ r.id }}">Review and approve it</a>
-    {% endif %}
-    {% if r.status in ('draft', 'returned') %}
-    <form method="post" action="/expenses/{{ r.id }}/submit" style="margin:0">
-      <button class="btn primary">{{ 'Send it in for approval' if mine
-        else 'Submit it for ' ~ r.person.split(' ')[0] }}</button>
-    </form>
-    {% endif %}
-  </div>
+  {% if r.status in ('draft', 'returned') %}
+  <p class="muted small" style="margin:0"><b>{{ 'Send it in for approval' if mine
+    else 'Submit it' }}</b> is at the top of the page.</p>
+  {% endif %}
 </div>
 
 <p class="muted small" style="margin-top:14px">

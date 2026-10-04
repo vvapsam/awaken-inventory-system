@@ -706,6 +706,37 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("the list offers the tick boxes", 'name="voucher"' in page
        and 'action="/admin/vouchers/send"' in page)
     ck("and says who has theirs", "Opened" in page or "Sent" in page)
+    ck("the list has no picker on it, just the button",
+       'New payment' in page and 'name="who"' not in page)
+
+    # ── a name that is typed, not scrolled ─────────────────────────────
+    build = c.get("/admin/vouchers/new", params={"who": "Julio Reyes"}).text
+    ck("the picker is a typed field", 'data-tah' in build
+       and 'name="who"' in build and '<select name="who"' not in build)
+    ck("and it carries the names to match against", '"Julio Reyes"' in build)
+
+    def resolved(q):
+        page = c.get("/admin/vouchers/new", params={"who": q}).text
+        return ('<input type="hidden" name="who" value="Julio Reyes">' in page,
+                "No single person matches" in page)
+
+    ck("the wrong case still finds them", resolved("julio reyes")[0])
+    ck("so does a surname on its own", resolved("reyes")[0])
+    ck("a name nobody has says so rather than showing an empty voucher",
+       c.get("/admin/vouchers/new", params={"who": "zzz"})
+        .text.count("No single person matches") == 1)
+
+    # Two people whose names start the same way: it will not pick one.
+    with Session(engine) as db:
+        db.add(M.Staff(name="Julio Santos", person_type="staff", role="staff",
+                       is_active=True))
+        db.commit()
+    ck("and it refuses to guess between two people", resolved("ju")[1])
+    ck("while the full name is still unambiguous", resolved("Julio Reyes")[0])
+
+    # The button that issues it is at the top of the page, not the bottom.
+    head = build.split('</h1>')[1][:1400]
+    ck("the issue button is up in the header", 'form="vbuild"' in head)
 
     _mail.Mailer.send = _real_send
 

@@ -1316,3 +1316,18 @@ tr.adjoff td.amt{text-decoration:line-through}
 .modal .mfoot .sp{flex:1}
 .btn.danger{color:#b0392b;border-color:#e8cdc8}
 .btn.danger:hover{background:#fdecea;border-color:#d9a79f}
+
+/* ---- type-a-name, rather than scroll-a-list ----------------------------
+   A dropdown is fine for five things and hopeless for fifty: the name you
+   want is the one you already know, so let it be typed. The input is the
+   real field — the list only fills it in — so this still works with no
+   script running. */
+.tah{position:relative}
+.tah>input{width:100%}
+.tahl{position:absolute;z-index:40;left:0;right:0;top:100%;margin:3px 0 0;padding:4px;
+  list-style:none;background:var(--bg);border:1px solid var(--line);border-radius:9px;
+  box-shadow:0 12px 26px rgba(16,24,40,.13);max-height:264px;overflow:auto}
+.tahl li{padding:8px 10px;border-radius:6px;cursor:pointer;font-size:.9rem}
+.tahl li.on,.tahl li:hover{background:var(--panel)}
+.tahl li b{color:var(--teal-dark)}
+.tahl li.none{color:var(--muted);cursor:default}
