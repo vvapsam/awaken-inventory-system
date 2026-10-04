@@ -1222,12 +1222,15 @@ class CommissionPayoutLine(Base):
     booking = relationship("CommissionBooking")
 
 
-#: The kinds of account a chart of accounts has. Only expenses are seeded,
-#: because that is the whole of what this gym tags today - but the kind is a
-#: column rather than an assumption, so income and the balance-sheet accounts
-#: can arrive without a migration when something other than an adjustment
-#: needs tagging.
-ACCOUNT_KINDS = [("expense", "Expense"), ("income", "Income"),
+#: The kinds of account a chart of accounts has. Expenses and income are
+#: seeded; the balance-sheet kinds are not, because nothing in this system
+#: posts to one yet. The kind is a column rather than an assumption, so they
+#: can arrive the same way the revenue side did - a list here and one boot.
+#: The label is what the books print; the key is what the rows store. Income
+#: reads "Revenue" because that is the word this gym's chart uses, and
+#: renaming the key would mean rewriting every row that already points at it
+#: to change a string nobody outside this file ever sees.
+ACCOUNT_KINDS = [("expense", "Expense"), ("income", "Revenue"),
                  ("asset", "Asset"), ("liability", "Liability"),
                  ("equity", "Equity")]
 ACCOUNT_KIND_LABELS = dict(ACCOUNT_KINDS)
@@ -1235,8 +1238,13 @@ ACCOUNT_KIND_KEYS = [k for k, _l in ACCOUNT_KINDS]
 ACCOUNT_DEFAULT_KIND = "expense"
 
 #: The chart this gym starts with, in the order its bookkeeper reads it.
-#: Seeded once, on the first startup that finds the table empty, and never
-#: again - so a rename sticks, and so does a deletion.
+#:
+#: Seeded one *kind* at a time, each on the first startup that finds no
+#: account of that kind - so a rename sticks and so does a deletion, and a
+#: whole new side of the chart can still arrive later. Per kind rather than
+#: per table because the expense accounts landed before there were any income
+#: ones: "the table is empty" would never have been true again, and the
+#: revenue side could never have been seeded at all.
 ACCOUNT_SEED = [
     ("expense", "Staff Salary"),
     ("expense", "Staff benefits"),
@@ -1261,6 +1269,21 @@ ACCOUNT_SEED = [
     ("expense", "Inventory Purchase"),
     ("expense", "Equipment Purchase"),
     ("expense", "Welfare & Engagement"),
+
+    ("income", "Membership"),
+    ("income", "Walk In"),
+    ("income", "Personal Training (PT)"),
+    ("income", "Basketball"),
+    ("income", "Group Class"),
+    ("income", "Karate"),
+    ("income", "Event / Simulation"),
+    ("income", "Retail Sale"),
+    ("income", "Coach Corkage"),
+    ("income", "Delegation"),
+    ("income", "Coach Passthrough"),
+    ("income", "Facility Income (Recovery)"),
+    ("income", "Facility Income (Studio)"),
+    ("income", "Unknown"),
 ]
 
 

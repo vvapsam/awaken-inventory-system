@@ -27,15 +27,23 @@ with engine.begin() as c:
 
 with TestClient(app) as c:                      # startup seeds the chart
     with Session(engine) as db:
-        rows = db.query(M.Account).order_by(M.Account.position).all()
+        rows = (db.query(M.Account)
+                .order_by(M.Account.kind, M.Account.position).all())
         ck("the chart is seeded", len(rows) == len(M.ACCOUNT_SEED))
-        ck("in the order it was given",
-           [a.name for a in rows] == [n for _k, n in M.ACCOUNT_SEED])
-        ck("all of them expenses", {a.kind for a in rows} == {"expense"})
-        ck("the label reads as the books write it",
-           rows[0].label == "Expense : Staff Salary")
-        ck("Unknown is there for when nobody knows yet",
-           any(a.name == "Unknown" for a in rows))
+        for kind in ("expense", "income"):
+            mine = [a.name for a in rows if a.kind == kind]
+            ck("%s accounts come in the order given" % kind,
+               mine == [n for k, n in M.ACCOUNT_SEED if k == kind])
+        ck("both sides are seeded",
+           {a.kind for a in rows} == {"expense", "income"})
+        ck("an expense label reads as the books write it",
+           next(a for a in rows if a.name == "Staff Salary").label
+           == "Expense : Staff Salary")
+        ck("so does a revenue one",
+           next(a for a in rows if a.name == "Coach Corkage").label
+           == "Revenue : Coach Corkage")
+        ck("each side has its own Unknown",
+           len([a for a in rows if a.name == "Unknown"]) == 2)
         SALARY = next(a.id for a in rows if a.name == "Staff Salary")
         BENEFIT = next(a.id for a in rows if a.name == "Staff benefits")
 
@@ -125,12 +133,23 @@ with TestClient(app) as c:                      # startup seeds the chart
            db.query(M.Account).filter(M.Account.name.ilike("rent")).count() == 1)
 
     c.post("/admin/accounts/new",
-           data={"kind": "income", "name": "Event entries", "code": "4100"},
+           data={"kind": "income", "name": "Sponsorship", "code": "4100"},
            follow_redirects=False)
     with Session(engine) as db:
-        inc = db.query(M.Account).filter_by(kind="income").one()
-        ck("another kind can be added", inc.label == "Income : Event entries")
+        inc = db.query(M.Account).filter_by(name="Sponsorship").one()
+        ck("another one can be added to a kind",
+           inc.label == "Revenue : Sponsorship" and inc.code == "4100")
+        ck("and it lands after the seeded ones",
+           inc.position >= len([1 for k, _n in M.ACCOUNT_SEED
+                                if k == "income"]))
         INC = inc.id
+
+    # Two kinds can hold the same name without being the same account.
+    c.post("/admin/accounts/new",
+           data={"kind": "income", "name": "Rent"}, follow_redirects=False)
+    with Session(engine) as db:
+        ck("the same name on two sides is two accounts",
+           db.query(M.Account).filter_by(name="Rent").count() == 2)
 
     # Unused: deleted outright. In use: closed, never deleted.
     c.post("/admin/accounts/%d/delete" % INC, follow_redirects=False)
@@ -176,11 +195,27 @@ with TestClient(app) as c:                      # startup seeds the chart
 with Session(engine) as db:
     db.query(M.CommissionAdjustment).delete()
     db.query(M.Account).filter(M.Account.name == "Rent").delete()
+    before = db.query(M.Account).filter_by(kind="income").count()
     db.commit()
 with TestClient(app) as c:
     with Session(engine) as db:
         ck("a deleted account stays deleted",
            db.query(M.Account).filter_by(name="Rent").count() == 0)
+        ck("and a kind that already has accounts is not re-seeded",
+           db.query(M.Account).filter_by(kind="income").count() == before)
+
+# A kind arriving later is seeded on its own, without disturbing the rest.
+with Session(engine) as db:
+    db.query(M.Account).filter_by(kind="income").delete()
+    kept = db.query(M.Account).filter_by(kind="expense").count()
+    db.commit()
+with TestClient(app) as c:
+    with Session(engine) as db:
+        ck("an empty kind is seeded on the next boot",
+           db.query(M.Account).filter_by(kind="income").count()
+           == len([1 for k, _n in M.ACCOUNT_SEED if k == "income"]))
+        ck("and the other side is left exactly alone",
+           db.query(M.Account).filter_by(kind="expense").count() == kept)
 
 bad = [n for n, ok in res if not ok]
 print("\n%d/%d passed" % (len(res) - len(bad), len(res)))

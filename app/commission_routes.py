@@ -108,12 +108,20 @@ def seed(db: Session) -> None:
     for key, (value, _label, _help) in COMMISSION_SETTING_DEFAULTS.items():
         if key not in existing:
             db.add(CommissionSetting(key=key, value=value))
-    # The chart of accounts, once, on the first boot that finds it empty.
-    # Only when it is empty: this is a starting point, not a list this file
-    # owns. Rename one and the rename sticks; delete one and it stays deleted,
-    # which is the whole difference between a seed and a default.
-    if not db.query(Account).first():
-        for i, (kind, name) in enumerate(ACCOUNT_SEED):
+    # The chart of accounts, one kind at a time, each on the first boot that
+    # finds none of that kind. Only when there are none: this is a starting
+    # point, not a list this file owns. Rename one and the rename sticks;
+    # delete one and it stays deleted, which is the whole difference between a
+    # seed and a default.
+    #
+    # Per kind rather than per table, because the expense side was seeded
+    # before there was a revenue side: "the table is empty" would never have
+    # been true again, and the revenue accounts could never have arrived.
+    have = {a.kind for a in db.query(Account)}
+    for kind, _label in ACCOUNT_KINDS:
+        if kind in have:
+            continue
+        for i, name in enumerate(n for k, n in ACCOUNT_SEED if k == kind):
             db.add(Account(kind=kind, name=name, position=i))
     db.commit()
 
