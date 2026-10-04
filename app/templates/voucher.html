@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ v.number }} &middot; {{ v.person }}</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      Issued {{ v.issued_at.strftime('%d %B %Y') if v.issued_at else '' }}{%
+        if v.issued_by %} by {{ v.issued_by.name }}{% endif %} &middot;
+      <a href="/admin/vouchers">all vouchers</a></p>
+  </div>
+  <div class="hdact">
+    {% if v.status == 'paid' %}<span class="tag">Paid{% if v.paid_on %} {{ v.paid_on.strftime('%d %b') }}{% endif %}</span>
+    {% elif v.status == 'void' %}<span class="tag" style="background:#8a94a1">Void</span>
+    {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
+  </div>
+</div>
+
+{% if v.status == 'void' %}
+<div class="alert" style="background:var(--low);border-color:var(--low-line)">
+  <b>Voided{% if v.voided_at %} on {{ v.voided_at.strftime('%d %B') }}{% endif %}.</b>
+  Everything that was on it went back to where it came from and can be put on a corrected voucher.
+  The number stays spent, so the series has no gap in it.</div>
+{% endif %}
+
+<table style="margin-top:14px">
+  <tr><th>What is on it</th><th style="width:160px">Reference</th>
+      <th style="text-align:right;width:140px">Amount</th></tr>
+
+  {% if payouts %}
+  <tr><td colspan="3" class="muted small" style="background:var(--panel);font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;font-size:.68rem">Commission</td></tr>
+  {% for p in payouts %}
+  <tr>
+    <td><b>{{ p.period_label or '—' }}</b>
+      <div class="muted small">{{ p.sessions }} session{{ 's' if p.sessions != 1 }}{%
+        if p.adjustment_total %} &middot; net of {{ peso(p.adjustment_total) }} in adjustments{% endif %}</div></td>
+    <td><a href="/commissions/payouts/{{ p.id }}">{{ p.number }}</a></td>
+    <td style="text-align:right;font-weight:650">{{ peso(p.total) }}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+
+  {% if reports %}
+  <tr><td colspan="3" class="muted small" style="background:var(--panel);font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;font-size:.68rem">Reimbursements</td></tr>
+  {% for r in reports %}
+  <tr>
+    <td><b>Expense report, {{ r.occurred_on.strftime('%d %b') if r.occurred_on else '' }}</b>
+      <div class="muted small">{{ r.lines|length }} line{{ 's' if r.lines|length != 1 }},
+        {{ r.lines|length }} receipt{{ 's' if r.lines|length != 1 }}</div></td>
+    <td><a href="/admin/expenses/{{ r.id }}">{{ r.number }}</a></td>
+    <td style="text-align:right;font-weight:650">{{ peso(r.total) }}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+
+  {% if adjustments %}
+  <tr><td colspan="3" class="muted small" style="background:var(--panel);font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;font-size:.68rem">Adjustments</td></tr>
+  {% for a in adjustments %}
+  <tr>
+    <td><b>{{ a.title }}</b>
+      {% if a.description %}<div class="muted small">{{ a.description }}</div>{% endif %}</td>
+    <td class="muted small">{{ a.occurred_on.strftime('%d %b %Y') if a.occurred_on else '' }}<br>
+      {{ a.account.label if a.account else '' }}</td>
+    <td style="text-align:right;font-weight:650{% if a.deducts %};color:#a8392b{% endif %}">
+      {{ '−' if a.deducts }}{{ peso(a.money|abs) }}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+
+  <tr><td colspan="2" style="text-align:right;font-weight:700">Net payable</td>
+      <td style="text-align:right;font-weight:700;font-size:1.15rem">{{ peso(v.total) }}</td></tr>
+</table>
+
+{% if groups %}
+<div class="card" style="margin-top:14px">
+  <h3 style="margin:0 0 3px;font-size:.95rem">How the reimbursements land in the books</h3>
+  <p class="muted small" style="margin:0 0 9px">The commission is its own account by definition; each
+    adjustment carries the one it was filed to.</p>
+  {% for g in groups %}
+  <div class="row-between" style="padding:4px 0;font-size:.88rem">
+    <span class="muted">{{ g.account.label if g.account else 'No account' }}</span>
+    <b>{{ peso(g.total) }}</b>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if v.status == 'unpaid' and can_pay %}
+<div class="row-between" style="margin-top:18px;gap:18px;align-items:flex-start">
+  <div class="card" style="flex:1.4">
+    <h3 style="margin:0 0 10px;font-size:.95rem">Record the payment</h3>
+    <form method="post" action="/admin/vouchers/{{ v.id }}/pay" enctype="multipart/form-data"
+          class="adjgrid">
+      <div><label>Paid on</label><input type="date" name="on" value="{{ today }}" required></div>
+      <div><label>How</label>
+        <select name="method">{% for m in methods %}<option>{{ m }}</option>{% endfor %}</select></div>
+      <div class="wide"><label>Reference</label>
+        <input name="reference" maxlength="120" placeholder="BPI 5512 · 20261015"></div>
+      <div class="wide"><label>Proof &mdash; optional</label><input type="file" name="proof"></div>
+      <button class="btn primary">Mark paid {{ peso(v.total) }}</button>
+    </form>
+    <p class="muted small" style="margin:10px 0 0">This marks the commission payouts on it paid too
+      &mdash; one record of when the money left, so the two screens cannot disagree.</p>
+  </div>
+  <div class="card" style="flex:1">
+    <h3 style="margin:0 0 4px;font-size:.95rem">Undoing it</h3>
+    <p class="muted small" style="margin:0 0 10px">Voiding releases every piece back to where it was
+      &mdash; the runs, the reports and the adjustments &mdash; so they can go on a corrected
+      voucher. Nothing is deleted.</p>
+    <form method="post" action="/admin/vouchers/{{ v.id }}/void">
+      <button class="btn danger">Void this voucher</button>
+    </form>
+  </div>
+</div>
+{% elif v.status == 'paid' %}
+<div class="card" style="margin-top:18px">
+  <h3 style="margin:0 0 9px;font-size:.95rem">Paid</h3>
+  <div class="row-between" style="padding:3px 0;font-size:.9rem">
+    <span class="muted">When</span><b>{{ v.paid_on.strftime('%d %B %Y') if v.paid_on else '—' }}</b></div>
+  <div class="row-between" style="padding:3px 0;font-size:.9rem">
+    <span class="muted">How</span><b>{{ v.method or '—' }}</b></div>
+  <div class="row-between" style="padding:3px 0;font-size:.9rem">
+    <span class="muted">Reference</span><b class="mono">{{ v.reference or '—' }}</b></div>
+  {% if v.proof %}
+  <p style="margin:10px 0 0"><a href="/admin/vouchers/{{ v.id }}/proof" target="_blank"
+     rel="noopener">See the proof of payment</a></p>
+  {% endif %}
+  {% if can_pay %}
+  <form method="post" action="/admin/vouchers/{{ v.id }}/void" style="margin-top:12px">
+    <button class="btn">Void it &mdash; releases everything on it</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

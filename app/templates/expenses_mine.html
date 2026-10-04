@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block body %}
+{# Somebody's own expense reports. No permission gates this page: every member
+   of staff can be out of pocket, and a reimbursement form you have to be
+   granted is a form that does not get used. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">My expenses</h1>
+    <p class="muted small" style="margin:2px 0 0">What you paid for out of your own pocket.
+      Add a line for each receipt, then send the lot in. Only you and the office see any of it.</p>
+  </div>
+</div>
+
+{% if owed %}
+<div class="sumbar" style="margin:14px 0">
+  <div class="s hero"><div class="l">Approved, waiting to be paid</div>
+    <div class="v">{{ peso(owed) }}</div>
+    <div class="sub">on your next payout</div></div>
+  <div class="s spacer"></div>
+</div>
+{% endif %}
+
+<form method="post" action="/expenses/new" style="margin:14px 0 18px">
+  <button class="btn primary">+ &nbsp;New expense report</button>
+</form>
+
+{% if rows %}
+<table>
+  <tr><th style="width:96px">Report</th><th style="width:110px">Date</th>
+      <th>What is on it</th>
+      <th style="text-align:right;width:120px">Total</th>
+      <th style="width:170px">State</th></tr>
+  {% for r in rows %}
+  <tr onclick="location='/expenses/{{ r.id }}'" style="cursor:pointer">
+    <td><b>{{ r.number }}</b></td>
+    <td class="mono">{{ r.occurred_on.strftime('%d %b %Y') if r.occurred_on else '—' }}</td>
+    <td>{% if r.lines %}{{ r.lines|length }} line{{ 's' if r.lines|length != 1 }}
+        <span class="muted small">&middot; {{ r.lines|map(attribute='account')|select|map(attribute='name')|unique|join(', ') }}</span>
+        {% else %}<span class="muted">Nothing on it yet</span>{% endif %}</td>
+    <td style="text-align:right;font-weight:650">{{ peso(r.total) }}</td>
+    <td>
+      {% if r.status == 'draft' %}<span class="tag" style="background:#8a94a1">Draft</span>
+      {% elif r.status == 'submitted' %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Pending approval</span>
+      {% elif r.status == 'returned' %}<span class="tag" style="background:#c0633f">Sent back</span>
+      {% elif r.voucher_id %}<span class="tag">Paid</span>
+      {% else %}<span class="tag">Approved</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="card"><p class="muted" style="margin:0">Nothing yet. Start a report and add
+  your first receipt to it.</p></div>
+{% endif %}
+
+<p class="muted small" style="margin-top:18px">Every line needs a receipt &mdash; a photo, a PDF,
+  a screenshot, anything. You can keep changing a report after you send it, right up until it is
+  approved; once it is, it locks and the amount is owed to you.</p>
+{% endblock %}

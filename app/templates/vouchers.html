@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Payment vouchers</h1>
+    <p class="muted small" style="margin:2px 0 0">Everything one person is owed &mdash; their
+      commission, what they laid out of pocket, and whatever is being deducted &mdash; on one
+      document and paid once.</p>
+  </div>
+  <div class="hdact"><a class="btn" href="/admin/expenses">Expense reports</a></div>
+</div>
+
+{% if can_pay %}
+<div class="card" style="margin:14px 0">
+  <h3 style="margin:0 0 4px;font-size:.95rem">New voucher</h3>
+  <p class="muted small" style="margin:0 0 10px">Pick who you are paying. The next screen shows
+    everything they are owed; tick what goes on it.</p>
+  <form method="get" action="/admin/vouchers/new" class="row-between" style="gap:10px;align-items:flex-end">
+    <div style="flex:1;max-width:320px"><label>Paying
+      <select name="who" required>
+        <option value="">&mdash; choose a person &mdash;</option>
+        {% for n in people %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+      </select></label></div>
+    <button class="btn primary">Build it</button>
+  </form>
+</div>
+{% endif %}
+
+{% if unpaid %}
+<div class="sumbar" style="margin-bottom:14px">
+  <div class="s hero"><div class="l">Issued, not yet paid</div>
+    <div class="v">{{ peso(unpaid) }}</div>
+    <div class="sub">across every open voucher</div></div>
+  <div class="s spacer"></div>
+</div>
+{% endif %}
+
+{% if rows %}
+<table>
+  <tr><th style="width:96px">Voucher</th><th>Who</th><th style="width:120px">Issued</th>
+      <th>What is on it</th>
+      <th style="text-align:right;width:124px">Net</th>
+      <th style="width:120px">State</th><th style="width:70px"></th></tr>
+  {% for v in rows %}
+  <tr{% if v.status == 'void' %} class="low"{% endif %}>
+    <td><b>{{ v.number }}</b></td>
+    <td><b>{{ v.person }}</b></td>
+    <td class="mono">{{ v.issued_at.strftime('%d %b %Y') if v.issued_at else '—' }}</td>
+    <td class="muted small">
+      {%- if v.commission_total %}commission {{ peso(v.commission_total) }}{% endif %}
+      {%- if v.expense_total %}{{ ' · ' if v.commission_total }}reimbursed {{ peso(v.expense_total) }}{% endif %}
+      {%- if v.adjustment_total %} &middot; adjusted {{ peso(v.adjustment_total) }}{% endif %}</td>
+    <td style="text-align:right;font-weight:650">{{ peso(v.total) }}</td>
+    <td>
+      {% if v.status == 'paid' %}<span class="tag">Paid</span>
+        {% if v.paid_on %}<div class="muted small">{{ v.paid_on.strftime('%d %b') }}</div>{% endif %}
+      {% elif v.status == 'void' %}<span class="tag" style="background:#8a94a1">Void</span>
+      {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
+    </td>
+    <td><a href="/admin/vouchers/{{ v.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="card"><p class="muted" style="margin:0">No vouchers yet.</p></div>
+{% endif %}
+
+<p class="muted small" style="margin-top:18px">A voucher gathers what is already owed; it never
+  recalculates any of it. Once a payout, a report or an adjustment is on one, it can never appear on
+  another &mdash; which is what makes paying everything at once safe. Voiding a voucher releases all
+  of it back to where it was.</p>
+{% endblock %}

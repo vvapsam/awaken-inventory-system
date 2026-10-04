@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block body %}
+{# Everything staff have claimed, once they have actually sent it in. A draft
+   never appears here: somebody still writing a claim is not asking for
+   anything yet, and showing it would invite a half-written one to be
+   approved. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Expense reports</h1>
+    <p class="muted small" style="margin:2px 0 0">What staff paid for out of pocket. Approving one
+      is what makes the money owed; a payment voucher is what pays it.</p>
+  </div>
+  <div class="hdact"><a class="btn" href="/admin/vouchers">Payment vouchers</a></div>
+</div>
+
+<div class="tfilter" style="margin:14px 0">
+  <a href="/admin/expenses?show=pending" class="{{ 'on' if show == 'pending' }}">Needs approval &middot; {{ counts.pending }}</a>
+  <a href="/admin/expenses?show=approved" class="{{ 'on' if show == 'approved' }}">Approved, unpaid &middot; {{ counts.approved }}</a>
+  <a href="/admin/expenses?show=paid" class="{{ 'on' if show == 'paid' }}">Paid &middot; {{ counts.paid }}</a>
+  <a href="/admin/expenses?show=all" class="{{ 'on' if show == 'all' }}">Everything</a>
+</div>
+
+<div class="sumbar" style="margin-bottom:14px">
+  <div class="s"><div class="l">Waiting on you</div>
+    <div class="v">{{ peso(waiting) }}</div>
+    <div class="sub">{{ counts.pending }} report{{ 's' if counts.pending != 1 }}</div></div>
+  <div class="s"><div class="l">Approved, not yet paid</div>
+    <div class="v">{{ peso(owed) }}</div>
+    <div class="sub">waiting for a voucher</div></div>
+  <div class="s spacer"></div>
+</div>
+
+{% if rows %}
+<table>
+  <tr><th style="width:96px">Report</th><th>Who</th><th style="width:150px">Sent</th>
+      <th style="width:150px">Lines</th>
+      <th style="text-align:right;width:120px">Total</th>
+      <th style="width:150px">State</th><th style="width:84px"></th></tr>
+  {% for r in rows %}
+  <tr{% if r.status == 'submitted' %} class="low"{% endif %}>
+    <td><b>{{ r.number }}</b></td>
+    <td><b>{{ r.person }}</b></td>
+    <td class="mono">{{ r.submitted_at.strftime('%d %b, %I:%M %p')|replace(' 0', ' ') if r.submitted_at else '—' }}</td>
+    <td class="muted">{{ r.lines|length }} &middot; {{ r.lines|length }} receipt{{ 's' if r.lines|length != 1 }}</td>
+    <td style="text-align:right;font-weight:650">{{ peso(r.total) }}</td>
+    <td>
+      {% if r.status == 'submitted' %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Pending</span>
+      {% elif r.status == 'returned' %}<span class="tag" style="background:#c0633f">Sent back</span>
+      {% elif r.voucher_id %}<span class="tag">Paid</span>
+      {% else %}<span class="tag">Approved</span>{% endif %}
+    </td>
+    <td><a href="/admin/expenses/{{ r.id }}">{{ 'Review' if r.status == 'submitted' else 'Open' }}</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="card"><p class="muted" style="margin:0">Nothing here.</p></div>
+{% endif %}
+
+<p class="muted small" style="margin-top:18px">Every line arrives with a receipt on it, because a
+  line without one cannot be added in the first place. Somebody can keep editing their report right
+  up until you approve it &mdash; approving is what locks it.</p>
+{% endblock %}

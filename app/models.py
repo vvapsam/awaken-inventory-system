@@ -1195,6 +1195,11 @@ class CommissionPayout(Base):
     #: changes what we pay, never what the month earned.
     adjustment_total = Column(Numeric(10, 2), default=0)
     total = Column(Numeric(10, 2), default=0)
+    #: The payment voucher that paid this out, once one has. A payout on a
+    #: voucher can never be put on a second one — which is the whole safety of
+    #: paying from one document instead of several.
+    voucher_id = Column(Integer, ForeignKey("payment_vouchers.id",
+                                            ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), default=now_utc)
     paid_at = Column(DateTime(timezone=True))
 
@@ -1338,6 +1343,12 @@ class CommissionAdjustment(Base):
     #: Provenance for the remainder of a deduction a payout could not absorb.
     carried_from_id = Column(Integer, ForeignKey("commission_payouts.id",
                                                  ondelete="SET NULL"))
+    #: Or a payment voucher carried it instead. An adjustment is claimed by one
+    #: or the other and never both: a run that finalized with it attached owns
+    #: it through ``payout_id``, and anything still waiting can be swept onto a
+    #: voucher. Two claims would pay the same money twice.
+    voucher_id = Column(Integer, ForeignKey("payment_vouchers.id",
+                                            ondelete="SET NULL"))
     #: Which line of the chart of accounts this belongs to. Nullable, because
     #: every adjustment written before there was a chart has none and inventing
     #: one for them would be a guess in the books.
@@ -1359,7 +1370,7 @@ class CommissionAdjustment(Base):
 
     @property
     def is_paid(self) -> bool:
-        return self.payout_id is not None
+        return self.payout_id is not None or self.voucher_id is not None
 
     @property
     def deducts(self) -> bool:
@@ -1371,7 +1382,202 @@ class CommissionAdjustment(Base):
 
     def rides(self, run_id) -> bool:
         """Would this adjustment be included if that run were finalized now?"""
-        return self.payout_id is None and self.skipped_run_id != run_id
+        return (self.payout_id is None and self.voucher_id is None
+                and self.skipped_run_id != run_id)
+
+
+#: Where an expense report has got to.
+#:
+#: There is no "paid" here on purpose: a report is paid by a payment voucher,
+#: and asking the report whether it has one is a better answer than a word on
+#: it that somebody has to remember to change.
+EXPENSE_DRAFT = "draft"
+EXPENSE_SUBMITTED = "submitted"
+EXPENSE_RETURNED = "returned"
+EXPENSE_APPROVED = "approved"
+EXPENSE_STATUSES = [
+    (EXPENSE_DRAFT, "Draft"),
+    (EXPENSE_SUBMITTED, "Pending approval"),
+    (EXPENSE_RETURNED, "Sent back"),
+    (EXPENSE_APPROVED, "Approved"),
+]
+EXPENSE_LABELS = dict(EXPENSE_STATUSES)
+
+
+class ExpenseReport(Base):
+    """One batch of things somebody paid for out of their own pocket.
+
+    A batch rather than one claim per receipt, because that is how spending
+    actually arrives: a taxi on Tuesday, water on Wednesday, two ropes on
+    Thursday, all handed in together on Friday. One approval covers the lot and
+    one payment settles it.
+
+    It belongs to the person, not to a month or a run. The month it is paid in
+    is whichever voucher picks it up, which is why there is no period on it.
+    """
+
+    __tablename__ = "expense_reports"
+
+    id = Column(Integer, primary_key=True)
+    number = Column(String, unique=True)                    # ER-0001
+    #: Whose it is. Both the id and the name they go by, for the same reason a
+    #: payout holds both: the id is the join, the name is what a page can print
+    #: without one, and a person who leaves still has their old claims readable.
+    staff_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    person = Column(String, nullable=False, default="")
+    #: What they are calling the batch. Each line carries the date printed on
+    #: its own receipt, which is the date the books care about.
+    occurred_on = Column(Date)
+    status = Column(String, nullable=False, default=EXPENSE_DRAFT)
+    submitted_at = Column(DateTime(timezone=True))
+    reviewed_at = Column(DateTime(timezone=True))
+    reviewed_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    #: Why it was sent back. The person reads this, so it is written to them.
+    review_note = Column(Text, default="")
+    voucher_id = Column(Integer, ForeignKey("payment_vouchers.id",
+                                            ondelete="SET NULL"))
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    lines = relationship("ExpenseLine", cascade="all, delete-orphan",
+                         order_by="ExpenseLine.occurred_on, ExpenseLine.id",
+                         back_populates="report")
+    staff = relationship("Staff", foreign_keys=[staff_id])
+    reviewed_by = relationship("Staff", foreign_keys=[reviewed_by_id])
+
+    @property
+    def total(self) -> Decimal:
+        return sum((Decimal(str(l.amount or 0)) for l in (self.lines or [])),
+                   Decimal(0))
+
+    @property
+    def label(self) -> str:
+        return EXPENSE_LABELS.get(self.status, self.status or "")
+
+    @property
+    def editable(self) -> bool:
+        """Can the person who wrote it still change it?
+
+        Right up until it is approved, which is what she asked for and is also
+        the honest rule: until somebody has looked at it, an edit costs nobody
+        anything, and a claim somebody cannot correct is a claim they will
+        instead write an email about.
+        """
+        return self.status != EXPENSE_APPROVED
+
+    @property
+    def payable(self) -> bool:
+        """Approved and not yet on a voucher."""
+        return self.status == EXPENSE_APPROVED and self.voucher_id is None
+
+
+class ExpenseLine(Base):
+    """One receipt on one report.
+
+    The receipt is stored here as bytes rather than as a path, for the same
+    reason proof of payment is: there is no file server in this system, and a
+    claim whose evidence lives somewhere else is a claim that quietly loses its
+    evidence. Any type at all — a photo, a PDF, a screenshot of a GCash
+    receipt — because the person holding the phone does not get to choose what
+    the shop handed them.
+    """
+
+    __tablename__ = "expense_lines"
+
+    id = Column(Integer, primary_key=True)
+    report_id = Column(Integer, ForeignKey("expense_reports.id",
+                                           ondelete="CASCADE"),
+                       nullable=False, index=True)
+    #: The date printed on the receipt, not the date it was typed in.
+    occurred_on = Column(Date)
+    #: Which line of the books. Nullable only because an account can be
+    #: retired out from under a line; the form will not take a blank.
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"))
+    amount = Column(Numeric(10, 2), nullable=False, default=0)
+    note = Column(String, default="")
+    receipt = Column(LargeBinary)
+    receipt_mime = Column(String)
+    receipt_name = Column(String)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    report = relationship("ExpenseReport", back_populates="lines")
+    account = relationship("Account")
+
+    @property
+    def money(self) -> Decimal:
+        return Decimal(str(self.amount or 0))
+
+
+#: A voucher's life. `void` rather than deleted: the number was issued, and a
+#: gap in a numbered series is a question nobody can answer a year later.
+VOUCHER_UNPAID = "unpaid"
+VOUCHER_PAID = "paid"
+VOUCHER_VOID = "void"
+VOUCHER_STATUSES = [(VOUCHER_UNPAID, "Unpaid"), (VOUCHER_PAID, "Paid"),
+                    (VOUCHER_VOID, "Void")]
+VOUCHER_LABELS = dict(VOUCHER_STATUSES)
+
+
+class PaymentVoucher(Base):
+    """Everything one person is owed right now, paid once.
+
+    A coach is owed their commission, whatever they laid out of pocket, and
+    whatever is being deducted from them — three different things, settled by
+    one transfer. Without this they are three transfers and three conversations
+    about which one was short.
+
+    **It gathers; it never recalculates.** The commission figure is whatever
+    the run decided, the reimbursement is whatever was approved, and the
+    adjustment is whatever was written. This adds them up and records that the
+    money left. Every one of those three can be opened from here and still says
+    what it always said.
+
+    **Nothing can be on two vouchers.** A payout, a report and an adjustment
+    each carry one `voucher_id`, and issuing sets it. That single column is
+    what makes paying from one document safe.
+
+    The three totals are frozen onto the row at the moment of issue, the same
+    way a payout freezes its own: the voucher is a document, and a document
+    that silently restates itself when something upstream is edited is not one.
+    """
+
+    __tablename__ = "payment_vouchers"
+
+    id = Column(Integer, primary_key=True)
+    number = Column(String, unique=True)                    # PV-0001
+    staff_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    person = Column(String, nullable=False, default="")
+    status = Column(String, nullable=False, default=VOUCHER_UNPAID)
+    issued_at = Column(DateTime(timezone=True), default=now_utc)
+    issued_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    #: Frozen at issue.
+    commission_total = Column(Numeric(10, 2), default=0)
+    expense_total = Column(Numeric(10, 2), default=0)
+    adjustment_total = Column(Numeric(10, 2), default=0)
+    total = Column(Numeric(10, 2), default=0)
+    #: How the money actually left.
+    paid_on = Column(Date)
+    method = Column(String, default="")
+    reference = Column(String, default="")
+    proof = Column(LargeBinary)
+    proof_mime = Column(String)
+    note = Column(Text, default="")
+    voided_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    staff = relationship("Staff", foreign_keys=[staff_id])
+    issued_by = relationship("Staff", foreign_keys=[issued_by_id])
+
+    @property
+    def label(self) -> str:
+        return VOUCHER_LABELS.get(self.status, self.status or "")
+
+    @property
+    def is_open(self) -> bool:
+        return self.status == VOUCHER_UNPAID
+
+    @property
+    def money(self) -> Decimal:
+        return Decimal(str(self.total or 0))
 
 
 class CommissionCharge(Base):

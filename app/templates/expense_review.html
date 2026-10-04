@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block body %}
+{% set err = request.query_params.get('err') %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ r.number }} &middot; {{ r.person }}</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      {% if r.submitted_at %}Sent {{ r.submitted_at.strftime('%d %B, %I:%M %p')|replace(' 0', ' ') }} &middot; {% endif %}
+      {{ r.lines|length }} line{{ 's' if r.lines|length != 1 }}, every one with a receipt &middot;
+      <a href="/admin/expenses">all expense reports</a></p>
+  </div>
+  <div class="hdact">
+    {% if r.status == 'submitted' %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Pending approval</span>
+    {% elif r.status == 'returned' %}<span class="tag" style="background:#c0633f">Sent back</span>
+    {% elif r.voucher_id %}<span class="tag">Paid</span>
+    {% else %}<span class="tag">Approved</span>{% endif %}
+  </div>
+</div>
+
+{% if err == 'empty' %}
+<div class="alert bad"><b>Nothing on it.</b> A report with no lines cannot be approved.</div>
+{% elif err == 'paid' %}
+<div class="alert bad"><b>A voucher has already paid this.</b> Correct it with an adjustment
+  instead &mdash; sending it back now would unpick money that has left.</div>
+{% endif %}
+
+{% if r.status == 'returned' and r.review_note %}
+<div class="alert" style="background:var(--low);border-color:var(--low-line)">
+  <b>You sent this back:</b> {{ r.review_note }}</div>
+{% endif %}
+
+<table style="margin-top:14px">
+  <tr><th style="width:104px">Date</th><th>What, and which account</th>
+      <th style="width:150px">Receipt</th>
+      <th style="text-align:right;width:120px">Amount</th></tr>
+  {% for l in r.lines %}
+  <tr>
+    <td class="mono">{{ l.occurred_on.strftime('%d %b') if l.occurred_on else '—' }}</td>
+    <td>
+      <div class="primary">{{ l.note or '—' }}</div>
+      {# The person picked what they thought it was; the books are yours.
+         Changeable after approval too, for the same reason an adjustment is:
+         the money is settled, but filing gets corrected. #}
+      <form method="post" action="/admin/expenses/{{ r.id }}/line/{{ l.id }}/account" style="margin:4px 0 0">
+        <select name="account" onchange="this.form.submit()" class="statuspick" style="font-size:.78rem">
+          <option value="">&mdash; none &mdash;</option>
+          {% for k, klabel in ACCOUNT_KINDS %}
+            {% set mine = accounts|selectattr('kind', 'equalto', k)|list %}
+            {% if mine %}
+            <optgroup label="{{ klabel }}">
+              {% for a in mine %}
+              <option value="{{ a.id }}" {{ 'selected' if l.account_id == a.id }}>{{ a.name }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+          {% endfor %}
+          {% if l.account and l.account.closed %}
+          <option value="{{ l.account.id }}" selected>{{ l.account.name }} (closed)</option>
+          {% endif %}
+        </select>
+      </form>
+    </td>
+    <td><a href="/expenses/{{ r.id }}/receipt/{{ l.id }}" target="_blank"
+           rel="noopener">{{ l.receipt_name or 'receipt' }}</a></td>
+    <td style="text-align:right;font-weight:650">{{ peso(l.money) }}</td>
+  </tr>
+  {% endfor %}
+  <tr><td colspan="3" style="text-align:right;font-weight:650">Total claimed</td>
+      <td style="text-align:right;font-weight:700;font-size:1.05rem">{{ peso(r.total) }}</td></tr>
+</table>
+
+<div class="card" style="margin-top:14px">
+  <h3 style="margin:0 0 4px;font-size:.95rem">How it lands in the books</h3>
+  <p class="muted small" style="margin:0 0 9px">Move a line above and this moves with it.</p>
+  {% for g in groups %}
+  <div class="row-between" style="padding:4px 0;font-size:.88rem">
+    <span class="muted">{{ g.account.label if g.account else 'No account' }}</span>
+    <b>{{ peso(g.total) }}</b>
+  </div>
+  {% endfor %}
+</div>
+
+{% if can_pay and r.status in ('submitted', 'returned') %}
+<div class="row-between" style="margin-top:18px;gap:18px;align-items:flex-start">
+  <div class="card" style="flex:1">
+    <h3 style="margin:0 0 4px;font-size:.95rem">Send it back instead</h3>
+    <form method="post" action="/admin/expenses/{{ r.id }}/return">
+      <textarea name="note" rows="3" maxlength="800"
+        placeholder="The Grab receipt is for the 1st, not the 2nd — can you re-attach?"></textarea>
+      <button class="btn" style="margin-top:8px">Return to {{ r.person.split(' ')[0] }}</button>
+    </form>
+    <p class="muted small" style="margin:8px 0 0">They get the note, fix it and send it again.
+      Nothing is deleted.</p>
+  </div>
+  <div class="card" style="flex:1">
+    <h3 style="margin:0 0 4px;font-size:.95rem">Approve it</h3>
+    <p class="muted small" style="margin:0 0 10px">Approving locks the report and makes
+      {{ peso(r.total) }} owed. It is paid by a payment voucher, with whatever else
+      {{ r.person.split(' ')[0] }} is owed.</p>
+    <form method="post" action="/admin/expenses/{{ r.id }}/approve">
+      <button class="btn primary">Approve {{ peso(r.total) }}</button>
+    </form>
+  </div>
+</div>
+{% elif r.status == 'approved' %}
+<div class="card" style="margin-top:18px">
+  {% if r.voucher_id %}
+  <p style="margin:0">Paid on <a href="/admin/vouchers/{{ r.voucher_id }}">voucher {{ r.voucher_id }}</a>.</p>
+  {% else %}
+  <p style="margin:0 0 10px">Approved{% if r.reviewed_by %} by {{ r.reviewed_by.name }}{% endif %}
+    {%- if r.reviewed_at %} on {{ r.reviewed_at.strftime('%d %B') }}{% endif %}.
+    Not yet paid &mdash; it will appear on {{ r.person.split(' ')[0] }}&rsquo;s next payment voucher.</p>
+  <a class="btn primary" href="/admin/vouchers/new?who={{ r.person|urlencode }}">Pay it now</a>
+  {% if can_pay %}
+  <form method="post" action="/admin/expenses/{{ r.id }}/return" style="display:inline-block;margin-left:8px">
+    <input type="hidden" name="note" value="Sent back for a correction.">
+    <button class="btn">Send it back</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

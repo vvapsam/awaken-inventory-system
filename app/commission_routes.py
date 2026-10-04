@@ -792,12 +792,18 @@ def billed_rows(rows) -> list:
 # whichever payout comes next.
 
 def waiting_adjustments(db: Session, coach: str) -> list:
-    """Every adjustment for this coach that no payout has carried yet."""
+    """Every adjustment for this coach that nothing has carried yet.
+
+    Nothing, not no payout: an adjustment can be claimed by a run's payout or
+    swept onto a payment voucher, and once either has it it must stop being
+    offered on the next run. Two claims would pay the same money twice.
+    """
     if not coach:
         return []
     return (db.query(CommissionAdjustment)
             .filter(CommissionAdjustment.coach == coach,
-                    CommissionAdjustment.payout_id.is_(None))
+                    CommissionAdjustment.payout_id.is_(None),
+                    CommissionAdjustment.voucher_id.is_(None))
             .order_by(CommissionAdjustment.occurred_on.asc().nullsfirst(),
                       CommissionAdjustment.id.asc())
             .all())
@@ -3916,6 +3922,19 @@ def register(app, deps):
                 "Reopen refused — %s already marked paid. Un-mark it on the "
                 "payout first." % ", ".join(
                     p.coach for p in payouts if p.status == "paid"))
+            db.commit()
+            return RedirectResponse(f"/commissions/{rid}?tab=documents",
+                                    status_code=303)
+        # Same refusal for a payout a voucher has claimed, even an unpaid one.
+        # Reopening deletes the payout, and a voucher whose commission line has
+        # silently vanished is a document that no longer adds up to its own
+        # total. Void the voucher first; that releases everything on it.
+        onvouch = [p for p in payouts if p.voucher_id]
+        if onvouch:
+            run.last_import_note = (
+                "Reopen refused — %s is on a payment voucher. Void the "
+                "voucher first; that releases everything on it."
+                % ", ".join(p.coach for p in onvouch))
             db.commit()
             return RedirectResponse(f"/commissions/{rid}?tab=documents",
                                     status_code=303)

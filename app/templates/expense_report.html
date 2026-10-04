@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block body %}
+{# One report, as the person who is claiming it sees it.
+
+   The add-a-line form is its own POST with its own file upload, because the
+   thing most likely to fail here is the upload — and a failed upload must cost
+   somebody one line rather than the five they had already typed. #}
+{% set err = request.query_params.get('err') %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ r.number }}</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      {{ r.occurred_on.strftime('%d %B %Y') if r.occurred_on else '' }} &middot;
+      {{ r.lines|length }} line{{ 's' if r.lines|length != 1 }} &middot;
+      <a href="/expenses">all my reports</a></p>
+  </div>
+  <div class="hdact">
+    {% if r.status == 'draft' %}<span class="tag" style="background:#8a94a1">Draft</span>
+    {% elif r.status == 'submitted' %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Pending approval</span>
+    {% elif r.status == 'returned' %}<span class="tag" style="background:#c0633f">Sent back</span>
+    {% elif r.voucher_id %}<span class="tag">Paid</span>
+    {% else %}<span class="tag">Approved</span>{% endif %}
+  </div>
+</div>
+
+{% if err == 'receipt' %}
+<div class="alert bad"><b>That line needs a receipt.</b> A photo, a PDF, a screenshot &mdash;
+  any file at all. Nothing is added without one.</div>
+{% elif err == 'missing' %}
+<div class="alert bad"><b>That didn&rsquo;t save.</b> A line needs an account and an amount above zero.</div>
+{% elif err == 'big' %}
+<div class="alert bad"><b>That file is too large.</b> Up to 12&nbsp;MB &mdash; a photo of the receipt
+  rather than a video of it.</div>
+{% elif err == 'empty' %}
+<div class="alert bad"><b>Nothing to send.</b> Add at least one line first.</div>
+{% elif err == 'locked' %}
+<div class="alert bad"><b>This one is approved.</b> It can&rsquo;t be changed now &mdash; ask the office
+  to send it back if something is wrong.</div>
+{% endif %}
+
+{% if r.status == 'returned' and r.review_note %}
+<div class="alert" style="background:var(--low);border-color:var(--low-line)">
+  <b>Sent back to you.</b> {{ r.review_note }}<br>
+  <span class="muted small">Fix it and send it again &mdash; nothing was lost.</span>
+</div>
+{% endif %}
+
+<div class="sumbar" style="margin:14px 0">
+  <div class="s hero"><div class="l">{{ 'Claiming' if r.editable else 'Approved' }}</div>
+    <div class="v">{{ peso(r.total) }}</div>
+    <div class="sub">{{ r.lines|length }} receipt{{ 's' if r.lines|length != 1 }}</div></div>
+  <div class="s spacer"></div>
+</div>
+
+{% if r.lines %}
+<table>
+  <tr><th style="width:104px">Date</th><th>Account</th><th>What it was</th>
+      <th style="width:150px">Receipt</th>
+      <th style="text-align:right;width:120px">Amount</th>
+      {% if r.editable %}<th style="width:74px"></th>{% endif %}</tr>
+  {% for l in r.lines %}
+  <tr>
+    <td class="mono">{{ l.occurred_on.strftime('%d %b') if l.occurred_on else '—' }}</td>
+    <td><b>{{ l.account.name if l.account else '—' }}</b></td>
+    <td>{{ l.note or '' }}</td>
+    <td><a href="/expenses/{{ r.id }}/receipt/{{ l.id }}" target="_blank"
+           rel="noopener">{{ l.receipt_name or 'receipt' }}</a></td>
+    <td style="text-align:right;font-weight:650">{{ peso(l.money) }}</td>
+    {% if r.editable %}
+    <td>
+      <form method="post" action="/expenses/{{ r.id }}/line/{{ l.id }}/delete" style="margin:0">
+        <button class="btn" style="padding:2px 8px;font-size:.72rem">Remove</button>
+      </form>
+    </td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="card"><p class="muted" style="margin:0">Nothing on it yet. Add your first receipt below.</p></div>
+{% endif %}
+
+{% if r.editable %}
+<div class="card" style="margin-top:18px">
+  <h3 style="margin:0 0 4px;font-size:.95rem">Add an expense</h3>
+  <p class="muted small" style="margin:0 0 10px">The date on the receipt, what it was for, what it
+    cost, and the receipt itself. Saved on its own &mdash; add another straight after.</p>
+  <form method="post" action="/expenses/{{ r.id }}/line" enctype="multipart/form-data"
+        class="adjgrid">
+    <div><label>Date on the receipt</label>
+      <input type="date" name="on" value="{{ today }}" required></div>
+    <div><label>Amount</label>
+      <input name="amount" inputmode="decimal" required placeholder="0.00" style="text-align:right"></div>
+    <div class="wide" style="max-width:360px"><label>What was it for?</label>
+      <select name="account" required>
+        <option value="">&mdash; choose an account &mdash;</option>
+        {% for k, klabel in ACCOUNT_KINDS %}
+          {% set mine = accounts|selectattr('kind', 'equalto', k)|list %}
+          {% if mine %}
+          <optgroup label="{{ klabel }}">
+            {% for a in mine %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
+        {% endfor %}
+      </select></div>
+    <div class="wide"><label>What it was &mdash; optional</label>
+      <input name="note" maxlength="200" placeholder="Grab to the Bench venue"></div>
+    <div class="wide"><label>Receipt &mdash; required, any file type</label>
+      <input type="file" name="receipt" required></div>
+    <button class="btn primary">Add to report</button>
+  </form>
+</div>
+{% endif %}
+
+{% if groups %}
+<div class="card" style="margin-top:14px">
+  <h3 style="margin:0 0 9px;font-size:.95rem">By account</h3>
+  {% for g in groups %}
+  <div class="row-between" style="padding:4px 0;font-size:.86rem">
+    <span class="muted">{{ g.account.label if g.account else 'No account' }}</span>
+    <b>{{ peso(g.total) }}</b>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="row-between" style="margin-top:18px;align-items:center">
+  <div>
+    {% if r.status == 'draft' %}
+    <form method="post" action="/expenses/{{ r.id }}/delete" style="margin:0">
+      <button class="btn danger">&#10005; Throw this draft away</button>
+    </form>
+    {% endif %}
+  </div>
+  <div>
+    {% if r.status in ('draft', 'returned') %}
+    <form method="post" action="/expenses/{{ r.id }}/submit" style="margin:0">
+      <button class="btn primary">Send it in for approval</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<p class="muted small" style="margin-top:14px">
+  {% if r.status == 'submitted' %}
+    Waiting on the office. Nobody has looked at it yet, so <b>you can still change anything</b> &mdash;
+    add a line, fix an amount, swap a receipt. It locks the moment it is approved.
+  {% elif r.status == 'approved' %}
+    Approved and locked.{% if r.voucher_id %} Paid.{% else %} The amount is owed to you and will come
+    on your next payout.{% endif %} If something is wrong, ask the office to send it back.
+  {% else %}
+    Nothing here reaches the office until you send it in.
+  {% endif %}
+</p>
+{% endblock %}

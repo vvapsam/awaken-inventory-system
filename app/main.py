@@ -126,6 +126,8 @@ from .models import sex_label as _sex_label
 templates.env.globals["sex_label"] = _sex_label
 from .models import ACCOUNT_KINDS as _ACCOUNT_KINDS
 templates.env.globals["ACCOUNT_KINDS"] = _ACCOUNT_KINDS
+from .models import EXPENSE_LABELS as _EXPENSE_LABELS
+templates.env.globals["EXPENSE_LABELS"] = _EXPENSE_LABELS
 from .models import CATEGORIES as _CATEGORIES
 templates.env.globals["CATEGORIES"] = _CATEGORIES
 from .models import CATEGORY_LABELS as _CATEGORY_LABELS
@@ -757,6 +759,33 @@ def startup():
                 "  FOREIGN KEY (account_id) REFERENCES accounts(id) "
                 "  ON DELETE SET NULL; "
                 "END IF; END $$;"))
+            # One person, one payment: the commission, what they laid out of
+            # pocket and what is being deducted, settled together. The three
+            # new tables come from create_all; the claim columns that stop
+            # anything being paid twice do not.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_payouts') "
+                "IS NOT NULL THEN ALTER TABLE commission_payouts "
+                "  ADD COLUMN IF NOT EXISTS voucher_id INTEGER; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_adjustments') "
+                "IS NOT NULL THEN ALTER TABLE commission_adjustments "
+                "  ADD COLUMN IF NOT EXISTS voucher_id INTEGER; "
+                "END IF; END $$;"))
+            for table, name in (("commission_payouts", "payouts_voucher_fkey"),
+                                ("commission_adjustments",
+                                 "adjustments_voucher_fkey"),
+                                ("expense_reports", "reports_voucher_fkey")):
+                conn.execute(text(
+                    "DO $$ BEGIN IF to_regclass('public.payment_vouchers') "
+                    "IS NOT NULL AND to_regclass('public.%s') IS NOT NULL "
+                    "AND NOT EXISTS (SELECT 1 FROM pg_constraint "
+                    "                WHERE conname = '%s') "
+                    "THEN ALTER TABLE %s ADD CONSTRAINT %s "
+                    "  FOREIGN KEY (voucher_id) REFERENCES payment_vouchers(id) "
+                    "  ON DELETE SET NULL; "
+                    "END IF; END $$;" % (table, name, table, name)))
             # The sponsor's logo, on the event rather than in the static
             # folder — a sponsor belongs to one event, and the next one should
             # be an upload rather than a deploy.
@@ -3952,6 +3981,21 @@ commission_routes.register(app, {
     # The coach statement page is public — it renders without a logged-in
     # staff, so it needs the raw template environment rather than render().
     "templates": templates,
+    "tz": _tz,
+})
+
+
+# ================= Reimbursements and payment vouchers =================
+# What staff laid out of their own pocket, and the one document that pays a
+# person their commission, their reimbursements and their adjustments at once.
+# Registered after the commission module because it reads the same payouts and
+# adjustments, and claims them.
+from . import expense_routes  # noqa: E402
+
+expense_routes.register(app, {
+    "render": render,
+    "require": require,
+    "require_admin": require_admin,
     "tz": _tz,
 })
 
