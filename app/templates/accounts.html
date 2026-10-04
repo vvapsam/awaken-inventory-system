@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block body %}
+{# The chart of accounts: what money is for, in the words the books use.
+
+   A list the gym owns rather than one this app ships. Renaming an account
+   carries everything already booked to it along with it — last quarter keeps
+   its account, under its new name — which is the whole reason these are rows
+   and not a constant in a file. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Chart of accounts</h1>
+    <p class="muted small" style="margin:2px 0 0">What something is for, written
+      the way your books write it. Tag an adjustment to one of these and the
+      figure can be handed to a bookkeeper without anybody translating it
+      first. Nothing here is ever shown to a coach.</p>
+  </div>
+</div>
+{% include "_commission_tabs.html" %}
+
+{% if request.query_params.get('bad') == 'dupe' %}
+<div class="alert bad"><b>That account already exists.</b> Two accounts with
+  the same name are one account with its total split in half.</div>
+{% elif request.query_params.get('bad') == 'blank' %}
+<div class="alert bad"><b>An account needs a name.</b></div>
+{% endif %}
+
+{% for key, klabel, mine in groups %}
+{% if mine %}
+<h3 style="margin:18px 0 6px;font-size:.95rem">{{ klabel }}</h3>
+<table>
+  <tr><th style="width:84px">Code</th><th>Account</th>
+      <th style="width:120px;text-align:right">On it</th>
+      <th style="width:110px">Status</th>
+      {% if can_edit %}<th style="width:72px"></th>{% endif %}</tr>
+  {% for a in mine %}
+  <tr{% if a.closed %} class="low"{% endif %}
+     {% if can_edit %} data-modal="acct-{{ a.id }}"{% endif %}>
+    <td class="mono">{{ a.code or '—' }}</td>
+    <td><b>{{ a.name }}</b>
+      <div class="muted small">{{ a.label }}</div></td>
+    <td style="text-align:right">
+      {% if used.get(a.id) %}{{ used[a.id] }} adjustment{{ 's' if used[a.id] != 1 }}
+      {% else %}<span class="muted">—</span>{% endif %}</td>
+    <td>{% if a.closed %}<span class="tag" style="background:#8a94a1">Closed</span>
+        {% else %}<span class="tag">Open</span>{% endif %}</td>
+    {% if can_edit %}
+    <td><span class="muted small">Edit</span></td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endfor %}
+
+{% if not rows %}
+<div class="card"><p class="muted" style="margin:0">No accounts yet.</p></div>
+{% endif %}
+
+{% if can_edit %}
+<div class="card" style="margin-top:18px">
+  <h3 style="margin:0 0 4px;font-size:.95rem">Add an account</h3>
+  <p class="muted small" style="margin:0 0 10px">The code is your bookkeeper's
+    own number for it, if they use one — leave it blank if they don't.</p>
+  <form method="post" action="/admin/accounts/new" class="row-between"
+        style="gap:10px;align-items:flex-end">
+    <div style="flex:0 0 150px"><label>Kind
+      <select name="kind">
+        {% for k, klabel in kinds %}<option value="{{ k }}">{{ klabel }}</option>{% endfor %}
+      </select></label></div>
+    <div style="flex:1.6"><label>Name
+      <input name="name" required maxlength="120" placeholder="Staff benefits"></label></div>
+    <div style="flex:0 0 120px"><label>Code
+      <input name="code" maxlength="24" class="mono" placeholder="5100"></label></div>
+    <button class="btn primary">Add</button>
+  </form>
+  <p class="muted small" style="margin:10px 0 0">Adding one that was retired
+    brings it back rather than making a second copy of it.</p>
+</div>
+
+{# ---------------- one panel per account ---------------- #}
+{% for a in rows %}
+<div class="scrim" id="acct-{{ a.id }}">
+  <div class="modal">
+    <form method="post" action="/admin/accounts/{{ a.id }}">
+    <div class="mhead">
+      <h3>{{ a.name }}</h3><span class="mono">{{ a.code or '' }}</span>
+      {% if a.closed %}<span class="tag" style="background:#8a94a1">Closed</span>{% endif %}
+      <button type="button" class="x" data-close>&#10005;</button>
+    </div>
+    <div class="mbody">
+      <div class="mgrid">
+        <div class="fld wide"><label>Name</label>
+          <input name="name" value="{{ a.name }}" required maxlength="120"></div>
+        <div class="fld"><label>Code</label>
+          <input name="code" value="{{ a.code or '' }}" maxlength="24" class="mono"></div>
+      </div>
+      <p class="muted small" style="margin:9px 0 0">Renaming it takes everything
+        already booked to it along with it &mdash; the {{ used.get(a.id, 0) }}
+        adjustment{{ 's' if used.get(a.id, 0) != 1 }} on it keep this account,
+        under the new name.</p>
+
+      <h4>Closing it</h4>
+      <label class="tick"><input type="checkbox" name="closed" value="on"
+        {{ 'checked' if a.closed }}>
+        <span>Retired &mdash; off the form, still on everything already
+          booked to it</span></label>
+      <p class="muted small" style="margin:7px 0 0">An account in use is closed
+        rather than deleted. Deleting it would leave every adjustment that
+        carried it pointing at nothing &mdash; the money still on the row, and
+        what it was for with no name.</p>
+    </div>
+    <div class="mfoot">
+      {% if not used.get(a.id) %}
+      <button class="btn danger" form="acctrm-{{ a.id }}" style="margin:0">&#10005; Delete</button>
+      {% endif %}
+      <div class="sp"></div>
+      <button type="button" class="btn" style="margin:0" data-close>Cancel</button>
+      <button class="btn primary" style="margin:0">Save</button>
+    </div>
+    </form>
+  </div>
+</div>
+{% if not used.get(a.id) %}
+<form method="post" action="/admin/accounts/{{ a.id }}/delete"
+      id="acctrm-{{ a.id }}" style="display:none"></form>
+{% endif %}
+{% endfor %}
+{% endif %}
+
+<p class="muted small" style="margin-top:18px">This list is yours. Rename one and
+  the rename sticks; retire one and it stays retired. Nothing re-seeds it.</p>
+{% endblock %}

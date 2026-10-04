@@ -40,6 +40,8 @@ from .models import (
     CommissionBooking, CommissionCharge, CommissionChargeLine, CommissionComment,
     COMMENT_MAX,
     CommissionAdjustment,
+    Account, ACCOUNT_KINDS, ACCOUNT_KIND_LABELS, ACCOUNT_KIND_KEYS,
+    ACCOUNT_DEFAULT_KIND, ACCOUNT_SEED,
     CommissionCoachOverride, CommissionCoachRate, CommissionDelegator, CommissionPayout,
     CommissionPayoutLine, CommissionRun, CommissionSetting, CommissionSignoff,
     CommissionDelegatorLink, DELEGATOR_LINK_DAYS, to_local,
@@ -106,6 +108,13 @@ def seed(db: Session) -> None:
     for key, (value, _label, _help) in COMMISSION_SETTING_DEFAULTS.items():
         if key not in existing:
             db.add(CommissionSetting(key=key, value=value))
+    # The chart of accounts, once, on the first boot that finds it empty.
+    # Only when it is empty: this is a starting point, not a list this file
+    # owns. Rename one and the rename sticks; delete one and it stays deleted,
+    # which is the whole difference between a seed and a default.
+    if not db.query(Account).first():
+        for i, (kind, name) in enumerate(ACCOUNT_SEED):
+            db.add(Account(kind=kind, name=name, position=i))
     db.commit()
 
     # Link rates/delegators to real entity rows by name where we can, so the
@@ -3018,17 +3027,54 @@ def register(app, deps):
             picked = ""
         shown = [a for a in rows if not picked or a.coach == picked]
         people_by_name = {r.coach: r.coach_id for r in rates}
+        # What each account has on it, so "what have we spent on benefits"
+        # is answered on the page the spending is recorded on rather than in
+        # an export. Only the rows being shown, so it follows the coach filter.
+        tally = {}
+        for a in shown:
+            k = a.account_id
+            tally[k] = tally.get(k, Decimal(0)) + a.money
+        by_account = [
+            {"account": (db.get(Account, k) if k else None),
+             "total": v, "n": sum(1 for a in shown if a.account_id == k)}
+            for k, v in tally.items()]
+        by_account.sort(key=lambda r: (r["account"] is None,
+                                       (r["account"].kind if r["account"] else ""),
+                                       (r["account"].position if r["account"] else 0)))
         return render(
             request, "commission_adjustments.html", db, staff,
             active="adjustments", names=names, picked=picked, rows=shown,
-            coach_ids=people_by_name,
+            coach_ids=people_by_name, accounts=account_rows(db),
+            by_account=by_account,
+            untagged=sum(1 for a in shown if a.account_id is None),
             waiting=[a for a in shown if not a.is_paid],
             waiting_total=adj_total([a for a in shown if not a.is_paid]),
             today=datetime.now(tz()).date(),
             can_pay=(getattr(staff, "role", "") == "admin"))
 
+    def account_rows(db: Session, with_id=None) -> list:
+        """The chart, as the form offers it: open accounts, in their order.
+
+        `with_id` keeps one closed account on the list - the one this row
+        already carries. Dropping it would silently retag an adjustment the
+        moment anybody opened its form, which is the kind of edit nobody
+        asked for and nobody would notice.
+        """
+        rows = (db.query(Account)
+                .order_by(Account.kind, Account.position, Account.id).all())
+        return [a for a in rows if not a.closed or a.id == with_id]
+
+    def _account(db: Session, raw) -> Account | None:
+        """The account a form picked, or nothing. Never a closed one."""
+        want = (raw or "").strip()
+        if not want.isdigit():
+            return None
+        a = db.get(Account, int(want))
+        return a if a is not None and not a.closed else None
+
     def _add_adjustment(db: Session, staff, *, coach: str, on: str, title: str,
                         note: str, amount: str, sign: str,
+                        account: str = "",
                         coach_id=None) -> CommissionAdjustment | None:
         """Build one adjustment from form fields. Returns None if unusable.
 
@@ -3046,11 +3092,13 @@ def register(app, deps):
             return None
         if sign != "add":
             value = -value
+        acct = _account(db, account)
         adj = CommissionAdjustment(
             coach=coach, coach_id=coach_id,
             occurred_on=_day(on) or datetime.now(tz()).date(),
             title=title[:160], description=(note or "").strip(),
-            amount=value, created_by_id=getattr(staff, "id", None))
+            amount=value, account_id=acct.id if acct is not None else None,
+            created_by_id=getattr(staff, "id", None))
         db.add(adj)
         return adj
 
@@ -3058,7 +3106,8 @@ def register(app, deps):
     def adjustment_new(request: Request, coach: str = Form(""),
                        on: str = Form(""), title: str = Form(""),
                        note: str = Form(""), amount: str = Form("0"),
-                       sign: str = Form("deduct"), back: str = Form(""),
+                       sign: str = Form("deduct"), account: str = Form(""),
+                       back: str = Form(""),
                        db: Session = Depends(get_db)):
         staff, redir = require_admin(request, db)
         if redir:
@@ -3067,6 +3116,7 @@ def register(app, deps):
                 .filter(CommissionCoachRate.coach == coach.strip()).first())
         adj = _add_adjustment(db, staff, coach=coach, on=on, title=title,
                               note=note, amount=amount, sign=sign,
+                              account=account,
                               coach_id=rate.coach_id if rate else None)
         db.commit()
         where = back or ("/commissions/adjustments?coach=%s" % _q(coach.strip()))
@@ -3089,6 +3139,29 @@ def register(app, deps):
             db.commit()
         return RedirectResponse(where, status_code=303)
 
+    @app.post("/commissions/adjustments/{aid}/account")
+    def adjustment_retag(request: Request, aid: int, account: str = Form(""),
+                         back: str = Form(""),
+                         db: Session = Depends(get_db)):
+        """Move one adjustment to a different account.
+
+        Allowed after it has been paid, which nothing else about an adjustment
+        is. The money is settled and must not move, but which account it was
+        booked to is a filing decision, and filing gets corrected - that is
+        what a reclassification is. The amount, the coach and the payout are
+        untouched by this.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        adj = db.get(CommissionAdjustment, aid)
+        if adj is not None:
+            acct = _account(db, account)
+            adj.account_id = acct.id if acct is not None else None
+            db.commit()
+        return RedirectResponse(back or "/commissions/adjustments",
+                                status_code=303)
+
     @app.post("/commissions/adjustments/{aid}/skip")
     def adjustment_skip(request: Request, aid: int, run_id: str = Form(""),
                         include: str = Form(""), back: str = Form(""),
@@ -3108,6 +3181,108 @@ def register(app, deps):
             adj.skipped_run_id = None if include == "on" else rid
             db.commit()
         return RedirectResponse(back or "/commissions", status_code=303)
+
+    # ── the chart of accounts ──────────────────────────────────────────
+    # What money is *for*, in the words the books use. One list, owned by the
+    # gym rather than by this file, so an account can be renamed or retired on
+    # the bookkeeper's say-so without a deploy.
+
+    @app.get("/admin/accounts", response_class=HTMLResponse)
+    def accounts_page(request: Request, db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        rows = (db.query(Account)
+                .order_by(Account.kind, Account.position, Account.id).all())
+        # How many adjustments each one carries. An account in use is closed
+        # rather than deleted, and the page has to be able to say which is
+        # which before anybody presses anything.
+        used = {}
+        for a in db.query(CommissionAdjustment).all():
+            if a.account_id:
+                used[a.account_id] = used.get(a.account_id, 0) + 1
+        return render(request, "accounts.html", db, staff, active="accounts",
+                      rows=rows, used=used, kinds=ACCOUNT_KINDS,
+                      groups=[(k, l, [a for a in rows if a.kind == k])
+                              for k, l in ACCOUNT_KINDS],
+                      can_edit=(getattr(staff, "role", "") == "admin"))
+
+    @app.post("/admin/accounts/new")
+    def account_new(request: Request, name: str = Form(""),
+                    kind: str = Form(ACCOUNT_DEFAULT_KIND),
+                    code: str = Form(""), db: Session = Depends(get_db)):
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        clean = (name or "").strip()[:120]
+        kind = (kind or "").strip() if (kind or "").strip() in ACCOUNT_KIND_KEYS \
+            else ACCOUNT_DEFAULT_KIND
+        if not clean:
+            return RedirectResponse("/admin/accounts?bad=blank", status_code=303)
+        # Case-insensitively, because two accounts that differ only in
+        # capitals are one account with its total split in half.
+        dupe = next((a for a in db.query(Account).filter(Account.kind == kind)
+                     if (a.name or "").strip().lower() == clean.lower()), None)
+        if dupe is not None:
+            if dupe.closed:
+                dupe.closed = False      # re-adding a retired one reopens it
+                db.commit()
+                return RedirectResponse("/admin/accounts?back=%d" % dupe.id,
+                                        status_code=303)
+            return RedirectResponse("/admin/accounts?bad=dupe", status_code=303)
+        last = max((a.position for a in db.query(Account)
+                    .filter(Account.kind == kind)), default=-1)
+        db.add(Account(kind=kind, name=clean, code=(code or "").strip()[:24],
+                       position=last + 1))
+        db.commit()
+        return RedirectResponse("/admin/accounts?added=1", status_code=303)
+
+    @app.post("/admin/accounts/{acid}")
+    def account_edit(request: Request, acid: int, name: str = Form(""),
+                     code: str = Form(""), closed: str = Form(""),
+                     db: Session = Depends(get_db)):
+        """Rename it, number it, retire it or bring it back.
+
+        A rename carries everything already booked to it with it, which is the
+        point of the account being a row: last quarter's figures keep their
+        account, under its new name.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        a = db.get(Account, acid)
+        if a is None:
+            return RedirectResponse("/admin/accounts", status_code=303)
+        clean = (name or "").strip()[:120]
+        if clean:
+            a.name = clean
+        a.code = (code or "").strip()[:24]
+        a.closed = closed == "on"
+        db.commit()
+        return RedirectResponse("/admin/accounts", status_code=303)
+
+    @app.post("/admin/accounts/{acid}/delete")
+    def account_delete(request: Request, acid: int,
+                       db: Session = Depends(get_db)):
+        """Delete one nothing has been booked to. Anything else is closed.
+
+        Deleting an account in use would leave every adjustment that carried
+        it pointing at nothing - the money still on the row, and what it was
+        for with no name.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        a = db.get(Account, acid)
+        if a is not None:
+            n = (db.query(CommissionAdjustment)
+                 .filter(CommissionAdjustment.account_id == acid).count())
+            if n:
+                a.closed = True
+            else:
+                db.delete(a)
+            db.commit()
+        return RedirectResponse("/admin/accounts", status_code=303)
 
     @app.get("/commissions/{rid}", response_class=HTMLResponse)
     def commission_run_view(request: Request, rid: int, tab: str = "coaches",
@@ -3215,7 +3390,7 @@ def register(app, deps):
             db.commit()
         return render(
             request, "commission_coach.html", db, staff, run=run, coach=coach,
-            msgs=msgs,
+            msgs=msgs, accounts=account_rows(db),
             groups=groups,
             # `completed` is only still passed so the previous template keeps
             # rendering during a rolling deploy; harmless once both have landed.
@@ -3286,6 +3461,7 @@ def register(app, deps):
                                     on: str = Form(""), title: str = Form(""),
                                     note: str = Form(""), amount: str = Form("0"),
                                     sign: str = Form("deduct"),
+                                    account: str = Form(""),
                                     db: Session = Depends(get_db)):
         """Add an adjustment while reviewing, without leaving the page.
 
@@ -3299,6 +3475,7 @@ def register(app, deps):
                 .filter(CommissionCoachRate.coach == coach).first())
         adj = _add_adjustment(db, staff, coach=coach, on=on, title=title,
                               note=note, amount=amount, sign=sign,
+                              account=account,
                               coach_id=rate.coach_id if rate else None)
         db.commit()
         back = "/commissions/%d/coach/%s" % (rid, _q(coach))

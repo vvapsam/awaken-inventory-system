@@ -29,4 +29,30 @@
   <div class="wide"><label>Description</label>
     <input name="note" maxlength="400"
            placeholder="Two sessions counted twice on the 14th."></div>
+
+  {# Which line of the books this belongs to. Required, because tagging it
+     later means going back through a month of them to work out which was
+     which - and because the chart carries an "Unknown" account for exactly
+     the moment somebody does not know yet.
+
+     Ours, not the coach's: it is on this form and on our list, and nowhere
+     on their statement. #}
+  {% if accounts %}
+  <div class="wide" style="max-width:360px"><label>Account</label>
+    <select name="account" required>
+      <option value="">&mdash; choose an account &mdash;</option>
+      {% for k, klabel in ACCOUNT_KINDS %}
+        {% set mine = accounts|selectattr('kind', 'equalto', k)|list %}
+        {% if mine %}
+        <optgroup label="{{ klabel }}">
+          {% for a in mine %}
+          <option value="{{ a.id }}">{{ a.name }}{% if a.closed %} (closed){% endif %}</option>
+          {% endfor %}
+        </optgroup>
+        {% endif %}
+      {% endfor %}
+    </select>
+    <div class="muted small" style="margin-top:4px">For the books. The coach
+      never sees it.</div></div>
+  {% endif %}
 </form>

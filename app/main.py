@@ -124,6 +124,8 @@ from .models import SEXES as _SEXES
 templates.env.globals["SEXES"] = _SEXES
 from .models import sex_label as _sex_label
 templates.env.globals["sex_label"] = _sex_label
+from .models import ACCOUNT_KINDS as _ACCOUNT_KINDS
+templates.env.globals["ACCOUNT_KINDS"] = _ACCOUNT_KINDS
 from .models import CATEGORIES as _CATEGORIES
 templates.env.globals["CATEGORIES"] = _CATEGORIES
 from .models import CATEGORY_LABELS as _CATEGORY_LABELS
@@ -734,6 +736,26 @@ def startup():
                 "  adjustment_total NUMERIC(10,2) DEFAULT 0; "
                 "UPDATE commission_payouts SET adjustment_total = 0 "
                 "  WHERE adjustment_total IS NULL; "
+                "END IF; END $$;"))
+            # What an adjustment is for, in the words the books use. The
+            # accounts table is new, so create_all makes it; the column on the
+            # adjustment and its foreign key are not. The key is added by name
+            # rather than with IF NOT EXISTS, which constraints do not have.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.commission_adjustments') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE commission_adjustments ADD COLUMN IF NOT EXISTS "
+                "  account_id INTEGER; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.accounts') IS NOT NULL "
+                "AND to_regclass('public.commission_adjustments') IS NOT NULL "
+                "AND NOT EXISTS (SELECT 1 FROM pg_constraint "
+                "                WHERE conname = 'adjustments_account_fkey') "
+                "THEN ALTER TABLE commission_adjustments "
+                "  ADD CONSTRAINT adjustments_account_fkey "
+                "  FOREIGN KEY (account_id) REFERENCES accounts(id) "
+                "  ON DELETE SET NULL; "
                 "END IF; END $$;"))
             # The sponsor's logo, on the event rather than in the static
             # folder — a sponsor belongs to one event, and the next one should

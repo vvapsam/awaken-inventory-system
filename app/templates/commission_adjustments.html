@@ -30,9 +30,35 @@
 </div>
 {% endif %}
 
+{% if by_account %}
+{# What each account carries, on the page the spending is recorded on rather
+   than in an export. Follows the coach filter above it, so "what has this one
+   cost us in benefits" is one click. #}
+<details class="card" style="margin-bottom:14px" {{ 'open' if untagged }}>
+  <summary style="cursor:pointer;font-weight:600;font-size:.9rem">By account{%
+    if untagged %} &mdash; <span style="color:#a8392b">{{ untagged }} with no account yet</span>{% endif %}</summary>
+  <table style="margin-top:10px">
+    <tr><th>Account</th><th style="width:110px;text-align:right">Count</th>
+        <th style="width:140px;text-align:right">Total</th></tr>
+    {% for b in by_account %}
+    <tr>
+      <td>{% if b.account %}<b>{{ b.account.name }}</b>
+            <span class="muted small">{{ b.account.label }}</span>
+          {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">No account</span>
+          {% endif %}</td>
+      <td style="text-align:right">{{ b.n }}</td>
+      <td style="text-align:right;font-weight:650{% if b.total < 0 %};color:#a8392b{% endif %}">
+        {{ '−' if b.total < 0 }}{{ peso(b.total|abs) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</details>
+{% endif %}
+
 {% if rows %}
 <table>
   <tr><th style="width:88px">Date</th><th>Coach</th><th>Adjustment</th>
+      <th style="width:190px">Account</th>
       <th style="text-align:right;width:120px">Amount</th><th style="width:150px">State</th>
       {% if can_pay %}<th style="width:70px"></th>{% endif %}</tr>
   {% for a in rows %}
@@ -40,6 +66,34 @@
     <td class="mono">{{ a.occurred_on.strftime('%d %b %Y') if a.occurred_on else '—' }}</td>
     <td><b>{{ a.coach }}</b></td>
     <td><b>{{ a.title }}</b>{% if a.description %}<br><span class="muted small">{{ a.description }}</span>{% endif %}</td>
+    {# Changeable even once it is paid. The money is settled and must not move,
+       but which account it was booked to is a filing decision, and filing gets
+       corrected — that is what a reclassification is. #}
+    <td>
+      {% if can_pay and accounts %}
+      <form method="post" action="/commissions/adjustments/{{ a.id }}/account" style="margin:0">
+        <input type="hidden" name="back" value="/commissions/adjustments{{ '?coach=' ~ picked|urlencode if picked }}">
+        <select name="account" onchange="this.form.submit()"
+                style="font-size:.78rem;padding:3px 5px;width:100%">
+          <option value="">&mdash; none &mdash;</option>
+          {% for k, klabel in ACCOUNT_KINDS %}
+            {% set mine = accounts|selectattr('kind', 'equalto', k)|list %}
+            {% if mine %}
+            <optgroup label="{{ klabel }}">
+              {% for ac in mine %}
+              <option value="{{ ac.id }}" {{ 'selected' if a.account_id == ac.id }}>{{ ac.name }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+          {% endfor %}
+          {% if a.account and a.account.closed %}
+          <option value="{{ a.account.id }}" selected>{{ a.account.name }} (closed)</option>
+          {% endif %}
+        </select>
+      </form>
+      {% elif a.account %}{{ a.account.name }}
+      {% else %}<span class="muted">—</span>{% endif %}
+    </td>
     <td style="text-align:right;font-weight:650{% if a.deducts %};color:#a8392b{% endif %}">
       {{ '−' if a.deducts }}{{ peso(a.money|abs) }}</td>
     <td>
@@ -72,7 +126,9 @@
 <div class="card" style="margin-top:18px">
   <h3 style="margin:0 0 4px;font-size:.95rem">Add an adjustment</h3>
   <p class="muted small" style="margin:0 0 10px">The description is what the coach reads on their statement,
-    so write it as the answer to "what is this?".</p>
+    so write it as the answer to "what is this?". The account is for your books
+    and never reaches them &mdash; pick <b>Unknown</b> if you'd rather sort it
+    out later.</p>
   {% set adj_action = "/commissions/adjustments/new" %}
   {% set adj_coach = "" %}
   {% set adj_back = "/commissions/adjustments" ~ ("?coach=" ~ picked|urlencode if picked else "") %}

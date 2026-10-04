@@ -1217,6 +1217,90 @@ class CommissionPayoutLine(Base):
     booking = relationship("CommissionBooking")
 
 
+#: The kinds of account a chart of accounts has. Only expenses are seeded,
+#: because that is the whole of what this gym tags today - but the kind is a
+#: column rather than an assumption, so income and the balance-sheet accounts
+#: can arrive without a migration when something other than an adjustment
+#: needs tagging.
+ACCOUNT_KINDS = [("expense", "Expense"), ("income", "Income"),
+                 ("asset", "Asset"), ("liability", "Liability"),
+                 ("equity", "Equity")]
+ACCOUNT_KIND_LABELS = dict(ACCOUNT_KINDS)
+ACCOUNT_KIND_KEYS = [k for k, _l in ACCOUNT_KINDS]
+ACCOUNT_DEFAULT_KIND = "expense"
+
+#: The chart this gym starts with, in the order its bookkeeper reads it.
+#: Seeded once, on the first startup that finds the table empty, and never
+#: again - so a rename sticks, and so does a deletion.
+ACCOUNT_SEED = [
+    ("expense", "Staff Salary"),
+    ("expense", "Staff benefits"),
+    ("expense", "Commissions"),
+    ("expense", "Rent"),
+    ("expense", "Utilities"),
+    ("expense", "Repairs & Maintenance"),
+    ("expense", "Facilities & Housekeeping"),
+    ("expense", "Admin / Miscellaneous"),
+    ("expense", "Consumables"),
+    ("expense", "Marketing / Branding"),
+    ("expense", "Transportation / Delivery"),
+    ("expense", "Professional Services"),
+    ("expense", "Partnership Commission"),
+    ("expense", "Staff bonus"),
+    ("expense", "Subscription"),
+    ("expense", "Unknown"),
+    ("expense", "Training Supplies"),
+    ("expense", "Percentage tax"),
+    ("expense", "Withholding"),
+    ("expense", "Retail"),
+    ("expense", "Inventory Purchase"),
+    ("expense", "Equipment Purchase"),
+    ("expense", "Welfare & Engagement"),
+]
+
+
+class Account(Base):
+    """One line of the chart of accounts.
+
+    What something is *for*, in the words the books use, so a figure in here
+    can be handed to a bookkeeper without anybody translating it first.
+
+    A row rather than a list in this file, because the chart belongs to the
+    gym: an account gets renamed, split or retired on the bookkeeper's say-so,
+    and none of that should be a deploy.
+
+    An account in use is **closed, never deleted**. Deleting it would leave
+    every adjustment that carried it pointing at nothing - the money would
+    still be on the row, but what it was for would have no name. Closed means
+    off the form and still on the record, which is the honest version.
+    """
+
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True)
+    #: 'expense' / 'income' / 'asset' / 'liability' / 'equity'.
+    kind = Column(String, nullable=False, default=ACCOUNT_DEFAULT_KIND,
+                  server_default=ACCOUNT_DEFAULT_KIND)
+    name = Column(String, nullable=False)
+    #: The bookkeeper's own number for it, if they use one. Free text rather
+    #: than an integer: charts number themselves 5100, 5-100 and 5100-01, and
+    #: none of those is arithmetic.
+    code = Column(String)
+    position = Column(Integer, nullable=False, default=0)
+    closed = Column(Boolean, nullable=False, default=False,
+                    server_default="false")
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+
+    @property
+    def label(self) -> str:
+        """"Expense : Staff Salary" - how it is written everywhere it is read."""
+        return "%s : %s" % (ACCOUNT_KIND_LABELS.get(self.kind, self.kind or ""),
+                            self.name or "")
+
+    def __repr__(self):
+        return "<Account %s>" % (self.label,)
+
+
 class CommissionAdjustment(Base):
     """Money owed to or from a coach that is not a session.
 
@@ -1254,10 +1338,19 @@ class CommissionAdjustment(Base):
     #: Provenance for the remainder of a deduction a payout could not absorb.
     carried_from_id = Column(Integer, ForeignKey("commission_payouts.id",
                                                  ondelete="SET NULL"))
+    #: Which line of the chart of accounts this belongs to. Nullable, because
+    #: every adjustment written before there was a chart has none and inventing
+    #: one for them would be a guess in the books.
+    #:
+    #: It is ours, not the coach's: the statement says what the adjustment is
+    #: and what it costs them, and "Expense : Staff benefits" is a sentence
+    #: about our bookkeeping that they have no use for.
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), default=now_utc)
     created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
 
     payout = relationship("CommissionPayout", foreign_keys=[payout_id])
+    account = relationship("Account", foreign_keys=[account_id])
     created_by = relationship("Staff", foreign_keys=[created_by_id])
 
     @property
