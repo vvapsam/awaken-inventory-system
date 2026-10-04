@@ -297,23 +297,29 @@ def register(app, deps):
         blob = b""
         if isinstance(upload, UploadFile) and (upload.filename or ""):
             blob = await upload.read()
-        # Three separate refusals, because "that didn't save" with no reason is
-        # how somebody presses the same button four times.
-        if not blob:
-            return RedirectResponse(back + "?err=receipt", status_code=303)
-        if len(blob) > RECEIPT_MAX:
+        # Separate refusals, because "that didn't save" with no reason is how
+        # somebody presses the same button four times.
+        if blob and len(blob) > RECEIPT_MAX:
             return RedirectResponse(back + "?err=big", status_code=303)
         if amount is None or account is None:
             return RedirectResponse(back + "?err=missing", status_code=303)
+        # A receipt is the evidence, so somebody claiming their own money must
+        # produce one. The office may not have it: a petty-cash slip that never
+        # came back, a transfer they can see on the bank statement in front of
+        # them. They are the ones who would have to approve it anyway, so the
+        # rule they are enforcing is theirs to waive — and the line records
+        # that it went in without one.
+        if not blob and not _is_office(staff):
+            return RedirectResponse(back + "?err=receipt", status_code=303)
         db.add(ExpenseLine(
             report_id=report.id,
             occurred_on=_day(form.get("on")) or date.today(),
             account_id=account.id, amount=amount,
             note=(form.get("note") or "").strip()[:200],
-            receipt=blob,
-            receipt_mime=(getattr(upload, "content_type", "")
-                          or "application/octet-stream"),
-            receipt_name=(upload.filename or "receipt")[:120]))
+            receipt=blob or None,
+            receipt_mime=((getattr(upload, "content_type", "")
+                           or "application/octet-stream") if blob else None),
+            receipt_name=((upload.filename or "receipt")[:120] if blob else None)))
         # A line arriving on a report that was sent back puts it in front of
         # the office again on its own: somebody fixing what was asked of them
         # should not have to remember to resubmit.

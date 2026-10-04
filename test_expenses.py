@@ -490,6 +490,60 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("with nothing in the commission stack",
        "Either they are not a coach" in page.text)
 
+    # ── the add row, and a receipt the office may do without ───────────
+    c.post("/admin/expenses/new",
+           data={"who": "Julio Reyes", "on": "2026-10-07"},
+           follow_redirects=False)
+    with Session(engine) as db:
+        DESK = (db.query(M.ExpenseReport)
+                .order_by(M.ExpenseReport.id.desc()).first()).id
+    own = c.get("/expenses/%d" % DESK).text
+    ck("adding is the last row of the table, not a card below it",
+       'class="addrow"' in own and 'form="addline"' in own)
+    ck("and the file input is not demanded of the office",
+       'required aria-label="The receipt"' not in own)
+
+    # The office files a transfer it can see on the bank statement, no slip.
+    c.post("/expenses/%d/line" % DESK,
+           data={"on": "2026-10-07", "account": str(CONSUM), "amount": "75",
+                 "note": "Petty cash, no slip came back"},
+           follow_redirects=False)
+    with Session(engine) as db:
+        bare = (db.query(M.ExpenseLine)
+                .filter(M.ExpenseLine.report_id == DESK,
+                        M.ExpenseLine.receipt.is_(None)).all())
+        ck("the office can file a line with no receipt", len(bare) == 1
+           and bare[0].money == Decimal("75.00"))
+        ck("and it is marked as having none", bare[0].receipt_name is None)
+        BARE_LID = bare[0].id
+    ck("there is nothing to open for it",
+       c.get("/expenses/%d/receipt/%d" % (DESK, BARE_LID),
+             follow_redirects=False).status_code == 303)
+    c.post("/expenses/%d/submit" % DESK, follow_redirects=False)
+    ck("and the review page says so rather than offering a dead link",
+       "No receipt" in c.get("/admin/expenses/%d" % DESK).text)
+    ck("the header counts the ones without one",
+       "1 with no receipt" in c.get("/admin/expenses/%d" % DESK).text)
+
+    # The person claiming their own money still has to produce one.
+    c.post("/logout")
+    c.post("/login", data={"username": "julio", "pin": "4321"})
+    c.post("/expenses/new", data={"on": "2026-10-08"}, follow_redirects=False)
+    with Session(engine) as db:
+        OWN = (db.query(M.ExpenseReport).filter_by(staff_id=JULIO)
+               .order_by(M.ExpenseReport.id.desc()).first()).id
+    out = c.post("/expenses/%d/line" % OWN,
+                 data={"on": "2026-10-08", "account": str(CONSUM), "amount": "90"},
+                 follow_redirects=False)
+    ck("their own claim still needs the receipt",
+       "err=receipt" in out.headers["location"])
+    with Session(engine) as db:
+        ck("and nothing was written",
+           db.query(M.ExpenseLine).filter_by(report_id=OWN).count() == 0)
+    c.post("/expenses/%d/delete" % OWN, follow_redirects=False)
+    c.post("/logout")
+    c.post("/login", data={"username": "admin", "pin": "123456"})
+
     # ── sending it: a private link, and the page they open ─────────────
     #
     # The voucher under test is a fresh one for Julio, so the page has all

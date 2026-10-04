@@ -36,7 +36,7 @@
 
 {% if err == 'receipt' %}
 <div class="alert bad"><b>That line needs a receipt.</b> A photo, a PDF, a screenshot &mdash;
-  any file at all. Nothing is added without one.</div>
+  any file at all. Nothing of your own is added without one.</div>
 {% elif err == 'missing' %}
 <div class="alert bad"><b>That didn&rsquo;t save.</b> A line needs an account and an amount above zero.</div>
 {% elif err == 'big' %}
@@ -68,23 +68,39 @@
 <div class="sumbar" style="margin:14px 0">
   <div class="s hero"><div class="l">{{ 'Claiming' if r.editable else 'Approved' }}</div>
     <div class="v">{{ peso(r.total) }}</div>
-    <div class="sub">{{ r.lines|length }} receipt{{ 's' if r.lines|length != 1 }}</div></div>
+    <div class="sub">{{ r.lines|length }} line{{ 's' if r.lines|length != 1 }}</div></div>
   <div class="s spacer"></div>
 </div>
 
-{% if r.lines %}
-<table>
-  <tr><th style="width:104px">Date</th><th>Account</th><th>What it was</th>
-      <th style="width:150px">Receipt</th>
-      <th style="text-align:right;width:120px">Amount</th>
-      {% if r.editable %}<th style="width:74px"></th>{% endif %}</tr>
+{# The lines, and the next one, in the same table.
+
+   The add row is the last row of the list rather than a card underneath it,
+   because that is what somebody filing six receipts is actually doing:
+   reading them off a pile and typing the next one in. It is still its own
+   POST — the thing most likely to fail here is the upload, and a failed
+   upload must cost one line rather than the five already typed. #}
+{% if r.editable %}
+<form method="post" action="/expenses/{{ r.id }}/line" enctype="multipart/form-data"
+      id="addline"></form>
+{% endif %}
+
+{% if r.lines or r.editable %}
+<div class="scrollx">
+<table class="lines">
+  <tr><th style="width:132px">Date</th><th style="width:210px">Account</th><th>What it was</th>
+      <th style="width:196px">Receipt{% if r.editable and office %}
+        <span class="muted" style="font-weight:400"> &mdash; optional</span>{% endif %}</th>
+      <th style="text-align:right;width:124px">Amount</th>
+      {% if r.editable %}<th style="width:84px"></th>{% endif %}</tr>
   {% for l in r.lines %}
   <tr>
     <td class="mono">{{ l.occurred_on.strftime('%d %b') if l.occurred_on else '—' }}</td>
     <td><b>{{ l.account.name if l.account else '—' }}</b></td>
     <td>{{ l.note or '' }}</td>
-    <td><a href="/expenses/{{ r.id }}/receipt/{{ l.id }}" target="_blank"
-           rel="noopener">{{ l.receipt_name or 'receipt' }}</a></td>
+    <td>{% if l.receipt %}<a href="/expenses/{{ r.id }}/receipt/{{ l.id }}" target="_blank"
+           rel="noopener">{{ l.receipt_name or 'receipt' }}</a>
+        {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">None</span>
+        {% endif %}</td>
     <td style="text-align:right;font-weight:650">{{ peso(l.money) }}</td>
     {% if r.editable %}
     <td>
@@ -95,41 +111,42 @@
     {% endif %}
   </tr>
   {% endfor %}
-</table>
-{% else %}
-<div class="card"><p class="muted" style="margin:0">Nothing on it yet. Add your first receipt below.</p></div>
-{% endif %}
-
-{% if r.editable %}
-<div class="card" style="margin-top:18px">
-  <h3 style="margin:0 0 4px;font-size:.95rem">Add an expense</h3>
-  <p class="muted small" style="margin:0 0 10px">The date on the receipt, what it was for, what it
-    cost, and the receipt itself. Saved on its own &mdash; add another straight after.</p>
-  <form method="post" action="/expenses/{{ r.id }}/line" enctype="multipart/form-data"
-        class="adjgrid" id="addline">
-    <div><label>Date on the receipt</label>
-      <input type="date" name="on" value="{{ today }}" required></div>
-    <div><label>Amount</label>
-      <input name="amount" inputmode="decimal" required placeholder="0.00" style="text-align:right"></div>
-    <div class="wide" style="max-width:360px"><label>What was it for?</label>
-      <select name="account" required>
-        <option value="">&mdash; choose an account &mdash;</option>
+  {% if r.editable %}
+  <tr class="addrow">
+    <td><input type="date" name="on" value="{{ today }}" form="addline" required
+               aria-label="Date on the receipt"></td>
+    <td>
+      <select name="account" form="addline" required aria-label="Which account">
+        <option value="">&mdash; account &mdash;</option>
         {% for k, klabel in ACCOUNT_KINDS %}
-          {% set mine = accounts|selectattr('kind', 'equalto', k)|list %}
-          {% if mine %}
+          {% set kacc = accounts|selectattr('kind', 'equalto', k)|list %}
+          {% if kacc %}
           <optgroup label="{{ klabel }}">
-            {% for a in mine %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+            {% for a in kacc %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
           </optgroup>
           {% endif %}
         {% endfor %}
-      </select></div>
-    <div class="wide"><label>What it was &mdash; optional</label>
-      <input name="note" maxlength="200" placeholder="Grab to the Bench venue"></div>
-    <div class="wide"><label>Receipt &mdash; required, any file type</label>
-      <input type="file" name="receipt" required></div>
-    <button class="btn primary">Add to report</button>
-  </form>
+      </select></td>
+    <td><input name="note" maxlength="200" form="addline"
+               placeholder="Grab to the Bench venue" aria-label="What it was for"></td>
+    <td><input type="file" name="receipt" form="addline"
+               {{ '' if office else 'required' }} aria-label="The receipt"></td>
+    <td><input name="amount" inputmode="decimal" form="addline" required placeholder="0.00"
+               style="text-align:right" aria-label="Amount"></td>
+    <td><button class="btn primary" form="addline"
+                style="margin:0;padding:7px 12px;font-size:.78rem">Add</button></td>
+  </tr>
+  {% endif %}
+</table>
 </div>
+{% if r.editable %}
+<p class="muted small" style="margin:8px 0 0">Fill the last row and press <b>Add</b>. Each line is
+  saved on its own, so a receipt that fails to upload costs you that one line and nothing else.{%
+  if office %} A line of yours can go in without a receipt &mdash; it is marked, and whoever
+  approves it can see that it has none.{% endif %}</p>
+{% endif %}
+{% else %}
+<div class="card"><p class="muted" style="margin:0">Nothing on it.</p></div>
 {% endif %}
 
 {% if groups %}

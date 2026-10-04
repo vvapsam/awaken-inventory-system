@@ -6,7 +6,9 @@
     <h1 style="margin:0">{{ r.number }} &middot; {{ r.person }}</h1>
     <p class="muted small" style="margin:2px 0 0">
       {% if r.submitted_at %}Sent {{ r.submitted_at.strftime('%d %B, %I:%M %p')|replace(' 0', ' ') }} &middot; {% endif %}
-      {{ r.lines|length }} line{{ 's' if r.lines|length != 1 }}, every one with a receipt &middot;
+      {{ r.lines|length }} line{{ 's' if r.lines|length != 1 }}{%
+        set bare = r.lines|rejectattr('receipt')|list %}{%
+        if bare %}, {{ bare|length }} with no receipt{% else %}, every one with a receipt{% endif %} &middot;
       <a href="/admin/expenses">all expense reports</a></p>
   </div>
   {# Approve and Return live up here. Their forms are below, with the note
@@ -70,8 +72,10 @@
         </select>
       </form>
     </td>
-    <td><a href="/expenses/{{ r.id }}/receipt/{{ l.id }}" target="_blank"
-           rel="noopener">{{ l.receipt_name or 'receipt' }}</a></td>
+    <td>{% if l.receipt %}<a href="/expenses/{{ r.id }}/receipt/{{ l.id }}" target="_blank"
+           rel="noopener">{{ l.receipt_name or 'receipt' }}</a>
+        {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">No receipt</span>
+        {% endif %}</td>
     <td style="text-align:right;font-weight:650">{{ peso(l.money) }}</td>
   </tr>
   {% endfor %}
@@ -97,7 +101,7 @@
     <p class="muted small" style="margin:0 0 8px">Say what needs fixing, then <b>Return</b> at the
       top. They get the note, fix it and send the same report again &mdash; nothing is deleted.</p>
     <form method="post" action="/admin/expenses/{{ r.id }}/return" id="erback">
-      <textarea name="note" rows="3" maxlength="800"
+      <textarea name="note" rows="3" maxlength="800" style="width:100%"
         placeholder="The Grab receipt is for the 1st, not the 2nd — can you re-attach?"></textarea>
     </form>
   </div>
