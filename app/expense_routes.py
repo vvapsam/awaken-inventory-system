@@ -637,13 +637,8 @@ def register(app, deps):
         at = min(max(1, page), pages)
         rows = (q.order_by(PaymentVoucher.id.desc())
                 .offset((at - 1) * size).limit(size).all())
-        # Totals across everything the filter matched, not just this page.
-        owed = (q.filter(PaymentVoucher.status == VOUCHER_UNPAID)
-                .with_entities(func.coalesce(
-                    func.sum(PaymentVoucher.total), 0)).scalar())
         return render(request, "vouchers.html", db, staff, active="vouchers",
                       rows=rows, people=names,
-                      unpaid=Decimal(str(owed or 0)),
                       found=found, page=at, pages=pages, per=size,
                       sizes=PAGE_SIZES, statuses=VOUCHER_STATUSES,
                       f={"status": status, "who": typed,

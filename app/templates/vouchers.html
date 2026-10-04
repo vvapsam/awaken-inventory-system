@@ -14,17 +14,6 @@
   </div>
 </div>
 
-<div class="sumbar" style="margin-bottom:14px">
-  <div class="s hero"><div class="l">Issued, not yet paid</div>
-    <div class="v">{{ peso(unpaid) }}</div>
-    <div class="sub">{{ 'across what this filter matches' if narrowed
-      else 'across every open voucher' }}</div></div>
-  <div class="s"><div class="l">Vouchers</div>
-    <div class="v">{{ found }}</div>
-    <div class="sub">{{ 'matching' if narrowed else 'in all' }}</div></div>
-  <div class="s spacer"></div>
-</div>
-
 {# ---------------- what the last press did ---------------- #}
 {% set q = request.query_params %}
 {% if q.get('setup') %}
@@ -180,9 +169,9 @@
   {% endfor %}
 </table>
 
-{% if pages > 1 %}
-{# Page links carry the filter with them: a page number on its own would
-   quietly drop whatever somebody had narrowed to. #}
+{# The count lives here, on the line that was already saying it. A summary
+   bar across the top of the page to hold one number is a bar somebody scrolls
+   past every time they come to read the list. #}
 {% set base = [] %}
 {% for k, v in [('who', f.who), ('status', f.status), ('since', f.since),
                 ('until', f.until), ('per', per)] %}{% if v %}{% set _ =
@@ -190,13 +179,16 @@
 {% set stem = '/admin/vouchers?' ~ (base|join('&')) ~ ('&' if base else '') %}
 <div class="pager">
   <span class="muted small">Showing {{ (page - 1) * per + 1 }}&ndash;{{
-    [page * per, found]|min }} of {{ found }}</span>
+    [page * per, found]|min }} of {{ found }}{{ ' matching' if narrowed }}</span>
+  {% if pages > 1 %}
   <span class="sp"></span>
+  {# Page links carry the filter with them: a page number on its own would
+     quietly drop whatever somebody had narrowed to. #}
   {% if page > 1 %}<a class="btn" href="{{ stem }}page={{ page - 1 }}">&larr; Previous</a>{% endif %}
   <span class="muted small">Page {{ page }} of {{ pages }}</span>
   {% if page < pages %}<a class="btn" href="{{ stem }}page={{ page + 1 }}">Next &rarr;</a>{% endif %}
+  {% endif %}
 </div>
-{% endif %}
 
 <script>
 {# Tick-all, and the header box reflecting what is actually ticked. #}

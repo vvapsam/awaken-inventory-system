@@ -906,7 +906,9 @@ with TestClient(app) as c:                      # startup seeds the chart
     with Session(engine) as db:
         total = db.query(M.PaymentVoucher).count()
     ck("the count is the whole filtered set, not the page",
-       ">%d<" % total in c.get("/admin/vouchers").text)
+       "of %d" % total in c.get("/admin/vouchers").text)
+    ck("and there is no summary bar over the list",
+       "Issued, not yet paid" not in c.get("/admin/vouchers").text)
     ck("a page past the end lands on the last one rather than empty",
        "PV-0001" in c.get("/admin/vouchers", params={"page": 999}).text)
 
