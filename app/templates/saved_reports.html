@@ -7,9 +7,23 @@
   <div class="hdact"><a class="btn primary" href="/saved-reports/new">+ New report</a></div>
 </div>
 
+{# A built-in, listed first. It is not a saved query and cannot be edited into
+   one: the work of pulling a bill apart into its accounts is code, not SQL. #}
+<table style="margin-top:12px">
+  <thead><tr><th>Built in</th><th style="width:170px"></th></tr></thead>
+  <tbody>
+  <tr>
+    <td><b>Transaction report</b>
+      <div class="muted small" style="margin:2px 0 0">Every vendor bill, line by line, with the
+        account each belongs to &mdash; for keying into the books.</div></td>
+    <td><a class="btn" href="/saved-reports/transactions">Open</a></td>
+  </tr>
+  </tbody>
+</table>
+
 {% if not reports %}
 <div class="card" style="margin-top:12px">
-  <p class="muted" style="margin:0">Nothing saved yet.</p></div>
+  <p class="muted" style="margin:0">No saved queries yet.</p></div>
 {% else %}
 <table style="margin-top:12px">
   <thead><tr><th>Report</th><th style="width:150px">Last edited</th>

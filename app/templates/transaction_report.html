@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block body %}
+{# Every vendor bill pulled apart into the lines somebody has to key into the
+   accounting system. Deliberately plain: this is a sheet to read off, not a
+   dashboard, so there is nothing on it but the filters, the rows and the one
+   button that takes it away. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Transaction report</h1>
+    <p class="muted small" style="margin:2px 0 0">Every vendor bill, line by line, with the account
+      each one belongs to &mdash; <a href="/saved-reports">all reports</a></p>
+  </div>
+  <div class="hdact">
+    <a class="btn primary" href="/saved-reports/transactions.csv{{ '?' ~ qs if qs }}">Download CSV</a>
+  </div>
+</div>
+
+<form method="get" action="/saved-reports/transactions" class="filt" style="margin:14px 0">
+  <div style="flex:0 1 150px"><label>From
+    <input type="date" name="since" value="{{ f.since or '' }}"></label></div>
+  <div style="flex:0 1 150px"><label>To
+    <input type="date" name="until" value="{{ f.until or '' }}"></label></div>
+  <div style="flex:0 1 130px"><label>Dated by
+    <select name="basis">
+      <option value="issued" {{ 'selected' if f.basis == 'issued' }}>Issued</option>
+      <option value="paid" {{ 'selected' if f.basis == 'paid' }}>Paid</option>
+    </select></label></div>
+  <div style="flex:0 1 150px"><label>Type
+    <select name="kind">
+      <option value="">Everything</option>
+      {% for k, klabel in kinds %}
+      <option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ klabel }}</option>
+      {% endfor %}
+    </select></label></div>
+  <div style="flex:0 1 150px"><label>Status
+    <select name="status">
+      <option value="all" {{ 'selected' if f.status == 'all' }}>Paid and unpaid</option>
+      <option value="paid" {{ 'selected' if f.status == 'paid' }}>Paid only</option>
+      <option value="unpaid" {{ 'selected' if f.status == 'unpaid' }}>Unpaid only</option>
+    </select></label></div>
+  <button class="btn" style="margin:0">Show</button>
+</form>
+
+{% if missing_account %}
+<div class="alert bad"><b>There is no account called &ldquo;Commissions&rdquo;.</b>
+  Commission lines have nowhere to go, so their Account column is blank. Add one on the
+  <a href="/admin/accounts">chart of accounts</a> and it fills itself in.</div>
+{% endif %}
+
+{% if rows %}
+<div class="scrollx">
+<table>
+  <tr><th style="width:104px">Date</th><th style="width:150px">Name</th>
+      <th style="text-align:right;width:120px">Total</th>
+      <th style="width:120px">Type</th>
+      <th style="width:210px">Account</th>
+      <th>Description</th>
+      <th style="text-align:right;width:120px">Amount</th>
+      <th style="width:96px">Status</th></tr>
+  {% for r in rows %}
+  <tr{% if r.void %} class="low"{% endif %}>
+    <td class="mono">{{ r.date.strftime('%Y-%m-%d') if r.date else '—' }}</td>
+    <td><b>{{ r.name }}</b></td>
+    <td style="text-align:right">{{ peso(r.total) }}</td>
+    <td class="muted small">{{ r.kind }}</td>
+    <td>{{ r.account or '—' }}</td>
+    <td class="muted small">{{ r.desc }}</td>
+    <td style="text-align:right;font-weight:650{% if r.amount < 0 %};color:#a8392b{% endif %}">
+      {{ '−' if r.amount < 0 }}{{ peso(r.amount|abs) }}</td>
+    <td><a href="/admin/vouchers/{{ r.id }}">{{ r.status }}</a></td>
+  </tr>
+  {% endfor %}
+  <tr><td colspan="6" style="text-align:right;font-weight:700">{{ rows|length }} line{{ 's' if rows|length != 1 }}</td>
+      <td style="text-align:right;font-weight:700;font-size:1.05rem{% if total < 0 %};color:#a8392b{% endif %}">
+        {{ '−' if total < 0 }}{{ peso(total|abs) }}</td>
+      <td></td></tr>
+</table>
+</div>
+
+{# The other half of every entry, said once rather than on every row. #}
+<p class="muted small" style="margin-top:14px">Each line is the expense side. The matching credit
+  is one entry per bill for its <b>Total</b>, to whatever your books call money owed to people
+  &mdash; payables, or the bank if it has already gone. A payout&rsquo;s adjustments are broken out
+  to their own accounts rather than netted into the commission figure, so nothing deducts against
+  the wrong line. Voided bills are absent: voiding releases everything on them, so they have no
+  lines to book.</p>
+{% else %}
+<div class="card"><p class="muted" style="margin:0">Nothing matches that. A voided bill never
+  appears here &mdash; voiding releases every line it was holding, so there is nothing left on it
+  to book.</p></div>
+{% endif %}
+{% endblock %}

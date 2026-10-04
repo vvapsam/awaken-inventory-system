@@ -958,6 +958,53 @@ with TestClient(app) as c:                      # startup seeds the chart
        "Nothing has been paid to this person yet" in
        c.get("/admin/staff/%d/edit" % NOBODY).text)
 
+    # ── the transaction report ─────────────────────────────────────────
+    rep = c.get("/saved-reports/transactions")
+    ck("the report opens", rep.status_code == 200)
+    ck("it is listed as a built-in",
+       "/saved-reports/transactions" in c.get("/saved-reports").text)
+    ck("commission is booked to its own account",
+       "Expense : Commissions" in rep.text and "COM-0001" in rep.text)
+    ck("a reimbursement line carries the account the line was filed to",
+       "Transportation / Delivery" in rep.text
+       and "Grab to the venue" in rep.text)
+    ck("an adjustment comes through with its title",
+       "Overpaid July" in rep.text)
+    # A voided bill has no lines at all: voiding released every one of them.
+    ck("a voided bill books nothing", "VB-0003" not in rep.text
+       and "VB-0005" not in rep.text)
+
+    only = c.get("/saved-reports/transactions",
+                 params={"kind": "reimbursement"}).text
+    ck("the type filter narrows it",
+       "Grab to the venue" in only and "COM-0001" not in only)
+    ck("a date range that covers nothing comes back empty",
+       "Nothing matches that" in
+       c.get("/saved-reports/transactions",
+             params={"since": "2020-01-01", "until": "2020-01-31"}).text)
+    ck("dating by payment only counts what has been paid",
+       "COM-0001" not in c.get("/saved-reports/transactions",
+                               params={"basis": "paid"}).text)
+
+    csv_out = c.get("/saved-reports/transactions.csv")
+    ck("the CSV downloads", csv_out.status_code == 200
+       and "text/csv" in csv_out.headers.get("content-type", ""))
+    ck("it is named for downloading",
+       "attachment" in csv_out.headers.get("content-disposition", ""))
+    head = csv_out.text.splitlines()[0]
+    ck("with the columns asked for",
+       head == "Date,Name,Document,Total,Type,Account,Description,Amount,Status")
+    ck("and a row per account line, not per bill",
+       len(csv_out.text.splitlines()) > 4)
+    ck("the CSV obeys the same filters",
+       "COM-0001" not in c.get("/saved-reports/transactions.csv",
+                               params={"kind": "reimbursement"}).text)
+
+    # The gross commission, not the figure net of what rode on the payout:
+    # a single netted row would book a deduction to the commission account.
+    ck("commission is gross, with its adjustments broken out",
+       "22,800.00" in rep.text)
+
     for path in ["/expenses", "/admin/expenses", "/admin/vouchers",
                  "/admin/vouchers/new", "/admin/vouchers/run",
                  "/admin/vouchers/run/%s" % BATCH,

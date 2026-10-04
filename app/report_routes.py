@@ -26,7 +26,8 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, time as dtime, timezone
+from decimal import Decimal
 
 from fastapi import Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -34,7 +35,25 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import SavedReport
+from .models import (
+    Account, CommissionAdjustment, CommissionPayout, ExpenseReport,
+    PaymentVoucher, SavedReport, VOUCHER_PAID, VOUCHER_STATUSES, VOUCHER_UNPAID,
+    VOUCHER_VOID, from_local,
+)
+
+#: What a vendor bill becomes in the books. The account is the expense it
+#: belongs to; the counter-entry is one payable for the net, which this report
+#: deliberately does not print — a bookkeeper enters the credit once per
+#: document and does not want it repeated on every line.
+TXN_KINDS = [("commission", "Commission"),
+             ("reimbursement", "Reimbursement"),
+             ("adjustment", "Adjustment")]
+
+#: The account commission is booked to. Looked up by name rather than stored
+#: as a setting: the chart is the gym's own list, "Commissions" is already on
+#: it, and a setting pointing at a row somebody can rename is a setting that
+#: silently stops pointing at anything.
+COMMISSION_ACCOUNT = "Commissions"
 
 #: How long a report may run before Postgres gives up on it.
 TIMEOUT_MS = 8000
@@ -389,6 +408,174 @@ def register(app, deps):
         raw = (request.query_params.get("event") or "").strip()
         return ({"event_id": int(raw)} if raw.isdigit() else {},
                 int(raw) if raw.isdigit() else None)
+
+    # ── the transaction report ─────────────────────────────────────────
+    #
+    # Every vendor bill pulled apart into the lines somebody has to key into
+    # the accounting system: which account, how much, and what it was for.
+    # Not a saved SQL report, because the pulling apart is real work — a
+    # payout's riding adjustments carry their own accounts, and a query that
+    # flattened all of it would be one nobody could maintain.
+    #
+    # Registered before the {rid} routes: FastAPI matches the first pattern
+    # that fits, and "transactions" fails {rid}'s int with a 422 rather than
+    # falling through.
+
+    def _gl_rows(db, *, since=None, until=None, kind="", status="live",
+                 basis="issued"):
+        """One row per account line, newest document first.
+
+        The row carries its document's own total as well as its own amount,
+        because the question being answered is "what do I enter for this
+        bill" and the net is the figure that has to come out the other side.
+        """
+        # A voided bill never appears, and there is no option to ask for one:
+        # voiding releases every line it was holding, so there is nothing left
+        # on it to book. The filter is stated anyway, so the intent is in the
+        # query rather than only in the data happening to be empty.
+        q = db.query(PaymentVoucher).filter(
+            PaymentVoucher.status != VOUCHER_VOID)
+        if status == "paid":
+            q = q.filter(PaymentVoucher.status == VOUCHER_PAID)
+        elif status == "unpaid":
+            q = q.filter(PaymentVoucher.status == VOUCHER_UNPAID)
+
+        # Issued is the bill's own date; paid is when the money left. Both are
+        # real questions and they are not the same month.
+        when = (PaymentVoucher.paid_on if basis == "paid"
+                else PaymentVoucher.issued_at)
+        if since:
+            q = q.filter(when >= (since if basis == "paid"
+                                  else from_local(datetime.combine(
+                                      since, dtime.min))))
+        if until:
+            q = q.filter(when <= (until if basis == "paid"
+                                  else from_local(datetime.combine(
+                                      until, dtime.max))))
+        if basis == "paid":
+            q = q.filter(PaymentVoucher.paid_on.isnot(None))
+
+        bills = q.order_by(PaymentVoucher.id.desc()).all()
+        if not bills:
+            return []
+        ids = [b.id for b in bills]
+        comm = (db.query(Account)
+                .filter(Account.name == COMMISSION_ACCOUNT).first())
+
+        payouts, reports, adjustments = {}, {}, {}
+        for p in (db.query(CommissionPayout)
+                  .filter(CommissionPayout.voucher_id.in_(ids))):
+            payouts.setdefault(p.voucher_id, []).append(p)
+        for r in (db.query(ExpenseReport)
+                  .filter(ExpenseReport.voucher_id.in_(ids))):
+            reports.setdefault(r.voucher_id, []).append(r)
+        for a in (db.query(CommissionAdjustment)
+                  .filter(CommissionAdjustment.voucher_id.in_(ids))):
+            adjustments.setdefault(a.voucher_id, []).append(a)
+        riding = {}
+        pids = [p.id for ps in payouts.values() for p in ps]
+        if pids:
+            for a in (db.query(CommissionAdjustment)
+                      .filter(CommissionAdjustment.payout_id.in_(pids))):
+                riding.setdefault(a.payout_id, []).append(a)
+
+        out = []
+        for b in bills:
+            day = b.paid_on if basis == "paid" else (
+                b.issued_at.date() if b.issued_at else None)
+
+            def add(k, account, desc, amount):
+                if kind and k != kind:
+                    return
+                out.append({
+                    "date": day, "name": b.person, "number": b.number,
+                    "total": Decimal(str(b.total or 0)),
+                    "kind": dict(TXN_KINDS)[k],
+                    "account": account.label if account else "",
+                    "desc": desc, "amount": Decimal(str(amount or 0)),
+                    "status": dict(VOUCHER_STATUSES).get(b.status, b.status),
+                    "void": b.status == VOUCHER_VOID, "id": b.id})
+
+            for p in payouts.get(b.id, []):
+                # Gross, with the adjustments that rode on the payout broken
+                # out to their own accounts. The payout's own total nets them
+                # off, and a single row at that figure would book a deduction
+                # to the commission account.
+                gross = (Decimal(str(p.commission_total or 0))
+                         + Decimal(str(p.delegation_total or 0)))
+                if gross:
+                    add("commission", comm,
+                        "%s · %s" % (p.number, p.period_label or "commission"),
+                        gross)
+                for a in riding.get(p.id, []):
+                    add("adjustment", a.account,
+                        "%s · %s" % (p.number, a.title), a.money)
+            for r in reports.get(b.id, []):
+                for l in r.lines:
+                    add("reimbursement", l.account,
+                        "%s · %s" % (r.number,
+                                     l.note or (l.account.name if l.account
+                                                else "expense")),
+                        l.amount)
+            for a in adjustments.get(b.id, []):
+                add("adjustment", a.account, a.title, a.money)
+        return out
+
+    def _gl_filters(request):
+        q = request.query_params
+
+        def day(key):
+            try:
+                return date.fromisoformat((q.get(key) or "").strip()[:10])
+            except (ValueError, TypeError):
+                return None
+
+        kind = q.get("kind") or ""
+        if kind not in dict(TXN_KINDS):
+            kind = ""
+        status = q.get("status") or "all"
+        if status not in ("all", "paid", "unpaid"):
+            status = "all"
+        basis = "paid" if (q.get("basis") or "") == "paid" else "issued"
+        return {"since": day("since"), "until": day("until"),
+                "kind": kind, "status": status, "basis": basis}
+
+    @app.get("/saved-reports/transactions.csv")
+    def txn_report_csv(request: Request, db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        f = _gl_filters(request)
+        rows = _gl_rows(db, **f)
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["Date", "Name", "Document", "Total", "Type", "Account",
+                    "Description", "Amount", "Status"])
+        for r in rows:
+            w.writerow([r["date"].isoformat() if r["date"] else "",
+                        r["name"], r["number"], "%.2f" % r["total"],
+                        r["kind"], r["account"], r["desc"],
+                        "%.2f" % r["amount"], r["status"]])
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+        return Response(
+            buf.getvalue(), media_type="text/csv",
+            headers={"Content-Disposition":
+                     'attachment; filename="transactions-%s.csv"' % stamp})
+
+    @app.get("/saved-reports/transactions", response_class=HTMLResponse)
+    def txn_report(request: Request, db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        f = _gl_filters(request)
+        rows = _gl_rows(db, **f)
+        return render(request, "transaction_report.html", db, staff,
+                      active="savedreports", rows=rows, f=f,
+                      kinds=TXN_KINDS,
+                      total=sum((r["amount"] for r in rows), Decimal(0)),
+                      qs=request.url.query,
+                      missing_account=not db.query(Account)
+                      .filter(Account.name == COMMISSION_ACCOUNT).first())
 
     # Before the {rid} route on purpose. FastAPI matches the first
     # pattern that fits, and "1.csv" fails {rid}'s int with a 422
