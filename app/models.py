@@ -1607,6 +1607,14 @@ class PaymentVoucher(Base):
     proof = Column(LargeBinary)
     proof_mime = Column(String)
     note = Column(Text, default="")
+    #: The pay run this was issued in, if it was issued with others: "PR-0003".
+    #:
+    #: A string on each voucher rather than a table of its own, because a run
+    #: has no life beyond the moment it happened. It is several separate
+    #: documents issued together, never one document with several people on
+    #: it - which is what lets one of them be voided while the rest stand, and
+    #: what stops a person opening theirs and reading everybody else's.
+    batch = Column(String, index=True)
     voided_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=now_utc)
 

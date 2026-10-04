@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block body %}
+{# Everybody who is owed something, on one page.
+
+   The rule is set once at the top and the ticking is per person, not per
+   piece: forty individual tick boxes across eight coaches would be worse than
+   the one-at-a-time screen, not better. A row still opens so one piece can be
+   held back without leaving the page. #}
+{% set err = request.query_params.get('err') %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Pay run</h1>
+    <p class="muted small" style="margin:2px 0 0">Everybody who is owed something, on one page. Set
+      the rule once, tick the people, and issue a voucher each in one go.</p>
+  </div>
+  <div class="hdact"><a class="btn" href="/admin/vouchers/new">Pay one person instead</a></div>
+</div>
+
+{% if err == 'empty' %}
+<div class="alert bad"><b>Nothing ticked.</b> Tick at least one person, and leave at least one thing
+  on their row.</div>
+{% endif %}
+
+<form method="get" action="/admin/vouchers/run" class="card" style="margin:14px 0">
+  <h3 style="margin:0 0 10px;font-size:.95rem">What goes on every voucher</h3>
+  <div class="row-between" style="gap:18px;align-items:flex-end;flex-wrap:wrap">
+    <div style="flex:0 0 240px"><label>Commission for
+      <select name="period" onchange="this.form.submit()">
+        {% for r in periods %}
+        <option value="{{ r.id }}" {{ 'selected' if picked == r.id|string }}>{{ r.period or ('Run ' ~ r.id) }}</option>
+        {% endfor %}
+        <option value="all" {{ 'selected' if picked == 'all' }}>Every period not yet paid</option>
+        <option value="none" {{ 'selected' if picked == 'none' }}>No commission &mdash; reimbursements only</option>
+      </select></label></div>
+    <label class="check" style="margin:0 0 10px"><input type="checkbox" name="reimb" value="on"
+      {{ 'checked' if reimb }} onchange="this.form.submit()"> <span>Approved reimbursements</span></label>
+    <label class="check" style="margin:0 0 10px"><input type="checkbox" name="adj" value="on"
+      {{ 'checked' if adj }} onchange="this.form.submit()"> <span>Waiting adjustments</span></label>
+    <button class="btn">Refresh the list</button>
+  </div>
+  <p class="muted small" style="margin:10px 0 0">One rule for everybody, then exceptions per row.
+    Nobody appears twice, and nothing already on a voucher appears at all.</p>
+</form>
+
+{% if rows %}
+<div class="sumbar" style="margin-bottom:14px">
+  <div class="s"><div class="l">People</div><div class="v">{{ rows|length }}</div>
+    <div class="sub">owed something</div></div>
+  <div class="s"><div class="l">Commission</div><div class="v">{{ peso(totals.commission) }}</div></div>
+  <div class="s"><div class="l">Reimbursing</div><div class="v">{{ peso(totals.expenses) }}</div></div>
+  <div class="s hero"><div class="l">Leaving the bank</div>
+    <div class="v">{{ peso(totals.net) }}</div>
+    <div class="sub">if you tick everybody</div></div>
+</div>
+
+<form method="post" action="/admin/vouchers/run">
+<input type="hidden" name="period" value="{{ picked }}">
+{% if reimb %}<input type="hidden" name="reimb" value="on">{% endif %}
+{% if adj %}<input type="hidden" name="adj" value="on">{% endif %}
+
+<table>
+  <tr><th style="width:42px"></th><th>Who</th>
+      <th style="text-align:right;width:150px">Commission</th>
+      <th style="text-align:right;width:140px">Reimbursed</th>
+      <th style="text-align:right;width:140px">Adjustments</th>
+      <th style="text-align:right;width:140px">Net</th>
+      <th style="width:96px"></th></tr>
+  {% for r in rows %}
+  <tr{% if r.carry %} class="low"{% endif %}>
+    <td><input type="checkbox" name="pay" value="{{ r.who }}" checked
+               aria-label="Pay {{ r.who }}"></td>
+    <td><b>{{ r.who }}</b></td>
+    <td style="text-align:right">
+      {% if r.commission %}{{ peso(r.commission) }}
+        <div class="muted small">{{ r.payouts|length }} period{{ 's' if r.payouts|length != 1 }}</div>
+      {% else %}<span class="muted">—</span>{% endif %}</td>
+    <td style="text-align:right">
+      {% if r.expenses %}{{ peso(r.expenses) }}
+        <div class="muted small">{{ r.reports|length }} report{{ 's' if r.reports|length != 1 }}</div>
+      {% else %}<span class="muted">—</span>{% endif %}</td>
+    <td style="text-align:right">
+      {% if r.adjusted %}<span style="color:#a8392b">{{ '−' if r.adjusted < 0 }}{{ peso(r.adjusted|abs) }}</span>
+        <div class="muted small">{{ r.adjustments|length }} item{{ 's' if r.adjustments|length != 1 }}</div>
+      {% else %}<span class="muted">—</span>{% endif %}</td>
+    <td style="text-align:right;font-weight:700">{{ peso(r.net) }}
+      {% if r.carry %}<div class="small" style="color:#8a6414;font-weight:650">{{ peso(r.carry) }} carries on</div>{% endif %}</td>
+    <td><a href="#" onclick="var d=document.getElementById('pc-{{ loop.index }}');
+      d.hidden=!d.hidden;this.textContent=d.hidden?'What&rsquo;s in it':'Hide';return false">What&rsquo;s in it</a></td>
+  </tr>
+  <tr id="pc-{{ loop.index }}" hidden>
+    <td></td>
+    <td colspan="6" style="padding-top:0">
+      <div class="card" style="margin:0 0 6px">
+        <div class="muted small" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px">
+          Untick anything that should wait for next month</div>
+        {% for p in r.payouts %}
+        <label class="check"><input type="checkbox" name="piece" value="payout:{{ p.id }}:{{ r.who }}" checked>
+          <span>{{ p.period_label or 'Commission' }} &mdash; <b>{{ peso(p.total) }}</b>
+          <span class="muted small">{{ p.number }} &middot; {{ p.sessions }} session{{ 's' if p.sessions != 1 }}</span></span></label>
+        {% endfor %}
+        {% for x in r.reports %}
+        <label class="check"><input type="checkbox" name="piece" value="report:{{ x.id }}:{{ r.who }}" checked>
+          <span>{{ x.number }} &mdash; <b>{{ peso(x.total) }}</b>
+          <span class="muted small">{{ x.lines|length }} line{{ 's' if x.lines|length != 1 }}
+            &middot; <a href="/admin/expenses/{{ x.id }}">open</a></span></span></label>
+        {% endfor %}
+        {% for a in r.adjustments %}
+        <label class="check"><input type="checkbox" name="piece" value="adjustment:{{ a.id }}:{{ r.who }}" checked>
+          <span>{{ a.title }} &mdash; <b style="{{ 'color:#a8392b' if a.deducts }}">{{ '−' if a.deducts }}{{ peso(a.money|abs) }}</b>
+          <span class="muted small">{{ a.account.label if a.account else 'no account' }}</span></span></label>
+        {% endfor %}
+      </div>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+{% if can_pay %}
+<div class="row-between" style="margin-top:16px;gap:18px;align-items:center;flex-wrap:wrap">
+  <p class="muted small" style="margin:0;max-width:560px">A voucher each, numbered in one series.
+    Each one locks what is on it &mdash; the runs, the reports and the adjustments &mdash; so nothing
+    here can turn up on another voucher.</p>
+  <button class="btn primary">Issue the vouchers</button>
+</div>
+{% endif %}
+</form>
+
+{% else %}
+<div class="card"><p class="muted" style="margin:0">Nobody is owed anything under this rule. A run
+  still being drafted, a reimbursement still waiting on your approval and anybody already paid are
+  all absent &mdash; so an empty page here means there is genuinely nothing to pay.</p></div>
+{% endif %}
+
+<p class="muted small" style="margin-top:18px">A row whose deductions come to more than everything
+  else pays zero, and the remainder carries to the next voucher as a fresh adjustment. The row says
+  so before you press anything.</p>
+{% endblock %}

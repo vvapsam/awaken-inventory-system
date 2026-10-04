@@ -80,17 +80,22 @@ def _day(raw):
         return None
 
 
-def next_number(db: Session, model, prefix: str) -> str:
-    """ER-0007, PV-0003. Counted off the highest one already issued.
+def next_number(db: Session, model, prefix: str, field: str = "number") -> str:
+    """ER-0007, PV-0003, PR-0002. Counted off the highest already issued.
 
     Off the numbers rather than off a count of rows: a voided voucher keeps its
     number, and reusing it would put two different documents in the books under
     one reference.
+
+    `field` is which column holds the series. A pay run has no row of its own —
+    it is a string stamped on every voucher issued together — so its series is
+    counted off that column instead.
     """
+    col = getattr(model, field)
     best = 0
-    for (num,) in db.query(model.number).filter(model.number.isnot(None)):
-        tail = (num or "").rsplit("-", 1)[-1]
-        if tail.isdigit():
+    for (num,) in db.query(col).filter(col.isnot(None)).distinct():
+        head, _, tail = (num or "").rpartition("-")
+        if head == prefix and tail.isdigit():
             best = max(best, int(tail))
     return "%s-%04d" % (prefix, best + 1)
 
@@ -597,15 +602,80 @@ def register(app, deps):
                       today=date.today().isoformat(),
                       can_pay=(getattr(staff, "role", "") == "admin"))
 
-    @app.post("/admin/vouchers/new")
-    async def voucher_issue(request: Request, db: Session = Depends(get_db)):
-        """Issue it: claim every ticked piece, and freeze the figures.
+    def issue_voucher(db, staff, *, who, staff_id, payouts, reports,
+                      adjustments, note="", batch=None):
+        """One voucher: claim every piece, and freeze the figures.
 
         The claim and the freeze happen together on purpose. A voucher that
         recorded its total without claiming its parts could pay the same
         payout twice; one that claimed them without freezing would restate
         itself every time somebody edited an adjustment upstream.
+
+        One function, so paying a person on their own and paying forty people
+        in a run cannot drift apart on the rule that matters.
         """
+        commission = sum((Decimal(str(p.total or 0)) for p in payouts),
+                         Decimal(0))
+        expenses = sum((r.total for r in reports), Decimal(0))
+        adjust = sum((a.money for a in adjustments), Decimal(0))
+        net = commission + expenses + adjust
+        # A voucher never pays a negative number. If the deductions came to
+        # more than everything else, it pays zero and the remainder is written
+        # back as a fresh waiting adjustment — the same rule a payout follows,
+        # so the money is neither forgiven nor taken twice.
+        carry = Decimal(0)
+        if net < 0:
+            carry = net
+            net = Decimal(0)
+
+        voucher = PaymentVoucher(
+            number=next_number(db, PaymentVoucher, "PV"),
+            staff_id=staff_id, person=who, status=VOUCHER_UNPAID,
+            issued_at=now_utc(), issued_by_id=getattr(staff, "id", None),
+            commission_total=commission, expense_total=expenses,
+            adjustment_total=adjust, total=net,
+            batch=batch, note=(note or "").strip()[:800])
+        db.add(voucher)
+        db.flush()
+        for p in payouts:
+            p.voucher_id = voucher.id
+        for r in reports:
+            r.voucher_id = voucher.id
+        for a in adjustments:
+            a.voucher_id = voucher.id
+            a.paid_at = now_utc()
+        if carry:
+            db.add(CommissionAdjustment(
+                coach=who, coach_id=staff_id, occurred_on=date.today(),
+                title="Carried from %s" % voucher.number,
+                description="More was being deducted than this voucher could "
+                            "cover. The remainder waits for the next one.",
+                amount=carry, created_by_id=getattr(staff, "id", None)))
+        return voucher
+
+    def pay_voucher(db, voucher, *, on, method, reference, proof=None,
+                    proof_mime=None):
+        """Record that the money left. Shared by one voucher and by a run."""
+        if voucher is None or voucher.status != VOUCHER_UNPAID:
+            return False
+        if proof:
+            voucher.proof = proof
+            voucher.proof_mime = proof_mime or "application/octet-stream"
+        voucher.paid_on = on or date.today()
+        voucher.method = method if method in PAY_METHODS else "Other"
+        voucher.reference = (reference or "").strip()[:120]
+        voucher.status = VOUCHER_PAID
+        # The payouts on it are paid by the same act. One record of when the
+        # money left, read by both screens, so they cannot disagree.
+        for p in (db.query(CommissionPayout)
+                  .filter(CommissionPayout.voucher_id == voucher.id)):
+            p.status = "paid"
+            p.paid_at = now_utc()
+        return True
+
+    @app.post("/admin/vouchers/new")
+    async def voucher_issue(request: Request, db: Session = Depends(get_db)):
+        """One person, with exactly the pieces that were ticked."""
         staff, redir = require_admin(request, db)
         if redir:
             return redir
@@ -626,45 +696,191 @@ def register(app, deps):
         if not (take_p or take_r or take_a):
             return RedirectResponse(back + "&err=empty", status_code=303)
 
-        commission = sum((Decimal(str(p.total or 0)) for p in take_p),
-                         Decimal(0))
-        expenses = sum((r.total for r in take_r), Decimal(0))
-        adjust = sum((a.money for a in take_a), Decimal(0))
-        net = commission + expenses + adjust
-        # A voucher never pays a negative number. If the deductions came to
-        # more than everything else, it pays zero and the remainder is written
-        # back as a fresh waiting adjustment — the same rule a payout follows,
-        # so the money is neither forgiven nor taken twice.
-        carry = Decimal(0)
-        if net < 0:
-            carry = net
-            net = Decimal(0)
-
-        voucher = PaymentVoucher(
-            number=next_number(db, PaymentVoucher, "PV"),
-            staff_id=staff_id, person=who, status=VOUCHER_UNPAID,
-            issued_at=now_utc(), issued_by_id=staff.id,
-            commission_total=commission, expense_total=expenses,
-            adjustment_total=adjust, total=net,
-            note=(form.get("note") or "").strip()[:800])
-        db.add(voucher)
-        db.flush()
-        for p in take_p:
-            p.voucher_id = voucher.id
-        for r in take_r:
-            r.voucher_id = voucher.id
-        for a in take_a:
-            a.voucher_id = voucher.id
-            a.paid_at = now_utc()
-        if carry:
-            db.add(CommissionAdjustment(
-                coach=who, coach_id=staff_id, occurred_on=date.today(),
-                title="Carried from %s" % voucher.number,
-                description="More was being deducted than this voucher could "
-                            "cover. The remainder waits for the next one.",
-                amount=carry, created_by_id=staff.id))
+        voucher = issue_voucher(db, staff, who=who, staff_id=staff_id,
+                                payouts=take_p, reports=take_r,
+                                adjustments=take_a,
+                                note=form.get("note") or "")
         db.commit()
         return RedirectResponse("/admin/vouchers/%d" % voucher.id,
+                                status_code=303)
+
+    # ── a pay run ──────────────────────────────────────────────────────
+    # Everybody who is owed something, on one page. Registered before
+    # /admin/vouchers/{vid}: that path takes an int, so "run" would not fall
+    # through to here, it would simply be refused.
+
+    def _periods(db) -> list:
+        """The finalized runs a pay run can choose between, newest first."""
+        return (db.query(CommissionRun)
+                .filter(CommissionRun.status != RUN_DRAFT)
+                .order_by(CommissionRun.id.desc()).all())
+
+    def _run_rows(db, *, period="", reimb=True, adj=True) -> list:
+        """One row per person who is owed anything under this rule.
+
+        Built by asking the same `_claimable` the one-person screen asks, then
+        narrowing it, so a run can never offer something that screen would
+        refuse. Somebody owed nothing has no row at all — which is what makes
+        an empty page mean "there is nothing to pay" rather than "something is
+        filtered out".
+        """
+        rows = []
+        for who, staff_id in _people(db):
+            payouts, reports, adjustments = _claimable(db, who, staff_id)
+            if period == "none":
+                payouts = []
+            elif period.isdigit():
+                payouts = [p for p in payouts if p.run_id == int(period)]
+            if not reimb:
+                reports = []
+            if not adj:
+                adjustments = []
+            if not (payouts or reports or adjustments):
+                continue
+            commission = sum((Decimal(str(p.total or 0)) for p in payouts),
+                             Decimal(0))
+            expenses = sum((r.total for r in reports), Decimal(0))
+            adjusted = sum((a.money for a in adjustments), Decimal(0))
+            net = commission + expenses + adjusted
+            rows.append({
+                "who": who, "staff_id": staff_id,
+                "payouts": payouts, "reports": reports,
+                "adjustments": adjustments,
+                "commission": commission, "expenses": expenses,
+                "adjusted": adjusted,
+                # What the voucher will actually pay, and what it will have to
+                # carry — said on the row rather than discovered afterwards.
+                "net": net if net > 0 else Decimal(0),
+                "carry": -net if net < 0 else Decimal(0),
+            })
+        return rows
+
+    @app.get("/admin/vouchers/run", response_class=HTMLResponse)
+    def pay_run(request: Request, period: str = "", reimb: str = "on",
+                adj: str = "on", db: Session = Depends(get_db)):
+        staff, redir = money_guard(request, db)
+        if redir:
+            return redir
+        periods = _periods(db)
+        # Default to the newest finalized run, because that is the one being
+        # paid nine times out of ten and nobody should have to pick it.
+        picked = (period or "").strip()
+        if not picked:
+            picked = str(periods[0].id) if periods else "none"
+        rows = _run_rows(db, period=picked, reimb=(reimb == "on"),
+                         adj=(adj == "on"))
+        return render(request, "pay_run.html", db, staff, active="vouchers",
+                      rows=rows, periods=periods, picked=picked,
+                      reimb=(reimb == "on"), adj=(adj == "on"),
+                      today=date.today().isoformat(),
+                      totals={
+                          "commission": sum((r["commission"] for r in rows),
+                                            Decimal(0)),
+                          "expenses": sum((r["expenses"] for r in rows),
+                                          Decimal(0)),
+                          "adjusted": sum((r["adjusted"] for r in rows),
+                                          Decimal(0)),
+                          "net": sum((r["net"] for r in rows), Decimal(0)),
+                      },
+                      can_pay=(getattr(staff, "role", "") == "admin"))
+
+    @app.post("/admin/vouchers/run")
+    async def pay_run_issue(request: Request, db: Session = Depends(get_db)):
+        """A voucher each, for everybody ticked.
+
+        Several separate documents issued together, never one document with
+        several people on it. Voiding one has to leave the others alone, and a
+        person has to be able to open theirs without reading anybody else's.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        form = await request.form()
+        picked = (form.get("period") or "none").strip()
+        back = "/admin/vouchers/run?period=%s" % picked
+        rows = _run_rows(db, period=picked,
+                         reimb=(form.get("reimb") == "on"),
+                         adj=(form.get("adj") == "on"))
+        paying = set(form.getlist("pay"))
+        # Every piece that is still ticked, as "kind:id:person". Unticking one
+        # inside a row is an exception to the rule set at the top, so it is
+        # carried as what remains rather than as what was removed.
+        keep = set()
+        for token in form.getlist("piece"):
+            kind, _, rest = str(token).partition(":")
+            ident, _, person = rest.partition(":")
+            if ident.isdigit():
+                keep.add((kind, int(ident), person))
+
+        batch = next_number(db, PaymentVoucher, "PR", field="batch")
+        made = 0
+        for row in rows:
+            if row["who"] not in paying:
+                continue
+            take_p = [p for p in row["payouts"]
+                      if ("payout", p.id, row["who"]) in keep]
+            take_r = [r for r in row["reports"]
+                      if ("report", r.id, row["who"]) in keep]
+            take_a = [a for a in row["adjustments"]
+                      if ("adjustment", a.id, row["who"]) in keep]
+            if not (take_p or take_r or take_a):
+                continue
+            issue_voucher(db, staff, who=row["who"], staff_id=row["staff_id"],
+                          payouts=take_p, reports=take_r, adjustments=take_a,
+                          batch=batch)
+            made += 1
+        if not made:
+            return RedirectResponse(back + "&err=empty", status_code=303)
+        db.commit()
+        return RedirectResponse("/admin/vouchers/run/%s" % batch,
+                                status_code=303)
+
+    @app.get("/admin/vouchers/run/{batch}", response_class=HTMLResponse)
+    def pay_run_done(request: Request, batch: str,
+                     db: Session = Depends(get_db)):
+        """One pay run, afterwards — and for ever after.
+
+        Addressed by its own number rather than by a list of ids in the query
+        string, so "show me the 15 October run" is a link somebody can keep.
+        """
+        staff, redir = money_guard(request, db)
+        if redir:
+            return redir
+        rows = (db.query(PaymentVoucher)
+                .filter(PaymentVoucher.batch == batch)
+                .order_by(PaymentVoucher.id.asc()).all())
+        if not rows:
+            return RedirectResponse("/admin/vouchers", status_code=303)
+        return render(request, "pay_run_done.html", db, staff,
+                      active="vouchers", batch=batch, rows=rows,
+                      methods=PAY_METHODS, today=date.today().isoformat(),
+                      unpaid=[v for v in rows if v.status == VOUCHER_UNPAID],
+                      due=sum((v.money for v in rows
+                               if v.status == VOUCHER_UNPAID), Decimal(0)),
+                      can_pay=(getattr(staff, "role", "") == "admin"))
+
+    @app.post("/admin/vouchers/run/{batch}/pay")
+    async def pay_run_pay(request: Request, batch: str,
+                          db: Session = Depends(get_db)):
+        """One bank run pays several people, so one reference covers them.
+
+        Each voucher still records its own figure; what they share is when the
+        money left and how it went.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        form = await request.form()
+        want = {int(v) for v in form.getlist("voucher") if str(v).isdigit()}
+        on = _day(form.get("on")) or date.today()
+        method = (form.get("method") or "").strip()
+        reference = form.get("reference") or ""
+        for v in (db.query(PaymentVoucher)
+                  .filter(PaymentVoucher.batch == batch)):
+            if v.id in want:
+                pay_voucher(db, v, on=on, method=method, reference=reference)
+        db.commit()
+        return RedirectResponse("/admin/vouchers/run/%s" % batch,
                                 status_code=303)
 
     @app.get("/admin/vouchers/{vid}", response_class=HTMLResponse)
@@ -703,24 +919,16 @@ def register(app, deps):
         if voucher is None or voucher.status != VOUCHER_UNPAID:
             return RedirectResponse("/admin/vouchers", status_code=303)
         form = await request.form()
+        blob = mime = None
         upload = form.get("proof")
         if isinstance(upload, UploadFile) and (upload.filename or ""):
-            blob = await upload.read()
-            if len(blob) <= RECEIPT_MAX:
-                voucher.proof = blob
-                voucher.proof_mime = (upload.content_type
-                                      or "application/octet-stream")
-        voucher.paid_on = _day(form.get("on")) or date.today()
-        method = (form.get("method") or "").strip()
-        voucher.method = method if method in PAY_METHODS else "Other"
-        voucher.reference = (form.get("reference") or "").strip()[:120]
-        voucher.status = VOUCHER_PAID
-        # The payouts on it are paid by the same act. One record of when the
-        # money left, read by both screens, so they cannot disagree.
-        for p in (db.query(CommissionPayout)
-                  .filter(CommissionPayout.voucher_id == vid)):
-            p.status = "paid"
-            p.paid_at = now_utc()
+            data = await upload.read()
+            if len(data) <= RECEIPT_MAX:
+                blob, mime = data, upload.content_type
+        pay_voucher(db, voucher, on=_day(form.get("on")),
+                    method=(form.get("method") or "").strip(),
+                    reference=form.get("reference") or "",
+                    proof=blob, proof_mime=mime)
         db.commit()
         return RedirectResponse("/admin/vouchers/%d" % vid, status_code=303)
 

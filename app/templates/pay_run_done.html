@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block body %}
+{# One pay run, afterwards. Addressed by its own number rather than by a list
+   of ids in a query string, so "show me the 15 October run" is a link
+   somebody can keep. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Pay run {{ batch }}</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      {{ rows|length }} voucher{{ 's' if rows|length != 1 }} issued
+      {%- if rows and rows[0].issued_at %} on {{ rows[0].issued_at.strftime('%d %B %Y') }}{% endif %}
+      {%- if rows and rows[0].issued_by %} by {{ rows[0].issued_by.name }}{% endif %} &middot;
+      <a href="/admin/vouchers">all vouchers</a></p>
+  </div>
+  <div class="hdact">
+    {% if unpaid %}<span class="tag" style="background:#d9b45a;color:#4a3a12">{{ unpaid|length }} unpaid</span>
+    {% else %}<span class="tag">All paid</span>{% endif %}
+  </div>
+</div>
+
+<form method="post" action="/admin/vouchers/run/{{ batch }}/pay">
+<table style="margin-top:14px">
+  <tr><th style="width:42px"></th><th style="width:110px">Voucher</th><th>Who</th>
+      <th>What is on it</th>
+      <th style="text-align:right;width:140px">Net</th>
+      <th style="width:120px">State</th><th style="width:70px"></th></tr>
+  {% for v in rows %}
+  <tr{% if v.status == 'void' %} class="low"{% endif %}>
+    <td>
+      {% if v.status == 'unpaid' and can_pay %}
+      <input type="checkbox" name="voucher" value="{{ v.id }}" {{ 'checked' if v.total }}
+             aria-label="Mark {{ v.number }} paid">
+      {% endif %}
+    </td>
+    <td><b>{{ v.number }}</b></td>
+    <td><b>{{ v.person }}</b></td>
+    <td class="muted small">
+      {%- if v.commission_total %}commission {{ peso(v.commission_total) }}{% endif %}
+      {%- if v.expense_total %}{{ ' · ' if v.commission_total }}reimbursed {{ peso(v.expense_total) }}{% endif %}
+      {%- if v.adjustment_total %} &middot; adjusted {{ '−' if v.adjustment_total < 0 }}{{ peso(v.adjustment_total|abs) }}{% endif %}</td>
+    <td style="text-align:right;font-weight:650">{{ peso(v.total) }}</td>
+    <td>
+      {% if v.status == 'paid' %}<span class="tag">Paid</span>
+        {% if v.paid_on %}<div class="muted small">{{ v.paid_on.strftime('%d %b') }}</div>{% endif %}
+      {% elif v.status == 'void' %}<span class="tag" style="background:#8a94a1">Void</span>
+      {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
+    </td>
+    <td><a href="/admin/vouchers/{{ v.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+  {% if due %}
+  <tr><td colspan="4" style="text-align:right;font-weight:700">Still to pay</td>
+      <td style="text-align:right;font-weight:700;font-size:1.1rem">{{ peso(due) }}</td>
+      <td colspan="2"></td></tr>
+  {% endif %}
+</table>
+
+{% if unpaid and can_pay %}
+<div class="card" style="margin-top:16px">
+  <h3 style="margin:0 0 4px;font-size:.95rem">Record one payment for the ticked ones</h3>
+  <p class="muted small" style="margin:0 0 10px">One bank run pays several people, so one reference
+    covers them. Each voucher still records its own figure; what they share is when the money left
+    and how it went. A voucher that pays nothing is unticked &mdash; tick it to file it away with
+    the rest.</p>
+  <div class="adjgrid">
+    <div><label>Paid on</label><input type="date" name="on" value="{{ today }}" required></div>
+    <div><label>How</label>
+      <select name="method">{% for m in methods %}<option>{{ m }}</option>{% endfor %}</select></div>
+    <div class="wide"><label>Reference</label>
+      <input name="reference" maxlength="120" placeholder="BPI batch {{ today|replace('-','') }}"></div>
+    <button class="btn primary">Mark the ticked ones paid</button>
+  </div>
+</div>
+{% endif %}
+</form>
+
+<p class="muted small" style="margin-top:18px">A run is several separate documents issued together,
+  never one document with several people on it. If one of them is wrong, void that one &mdash;
+  everything on it goes back where it came from and the others are untouched.</p>
+{% endblock %}

@@ -368,6 +368,118 @@ with TestClient(app) as c:                      # startup seeds the chart
            .filter(M.CommissionAdjustment.title.like("Carried from%"))
            .count() == 0)
 
+    # ── a pay run: everybody at once ───────────────────────────────────
+    # Two more people owed something, so the run has a table rather than a row.
+    with Session(engine) as db:
+        run2 = db.query(M.CommissionRun).first()
+        chriz = M.Staff(name="Chrizel Urbino", person_type="staff",
+                        role="staff", username="chriz", is_active=True)
+        ric = M.Staff(name="Ric Flores", person_type="staff", role="staff",
+                      username="ric", is_active=True)
+        db.add_all([chriz, ric]); db.flush()
+        db.add(M.CommissionPayout(run_id=run2.id, number="COM-0002",
+                                  coach="Ric Flores", coach_id=ric.id,
+                                  period_label="September 2026", sessions=31,
+                                  commission_total=Decimal("18400"),
+                                  total=Decimal("18400")))
+        # Chrizel is not a coach: reimbursement only.
+        rep = M.ExpenseReport(number="ER-9001", staff_id=chriz.id,
+                              person="Chrizel Urbino", occurred_on=date.today(),
+                              status=M.EXPENSE_APPROVED)
+        db.add(rep); db.flush()
+        db.add(M.ExpenseLine(report_id=rep.id, occurred_on=date.today(),
+                             account_id=CONSUM, amount=Decimal("3185"),
+                             receipt=JPEG, receipt_mime="image/jpeg",
+                             receipt_name="r.jpg"))
+        # Ric is deducted more than he earns, so his voucher pays zero.
+        db.add(M.CommissionAdjustment(coach="Ric Flores", coach_id=ric.id,
+                                      occurred_on=date(2026, 9, 1),
+                                      title="Laptop", amount=Decimal("-20000"),
+                                      account_id=acc["Retail"]))
+        db.commit()
+        PERIOD = run2.id
+
+    page = c.get("/admin/vouchers/run", params={"period": str(PERIOD)})
+    ck("the run page draws", page.status_code == 200)
+    ck("it lists everybody owed something",
+       "Chrizel Urbino" in page.text and "Ric Flores" in page.text)
+    ck("a zero row says what it will carry",
+       "carries on" in page.text)
+
+    with Session(engine) as db:
+        RICPAY = db.query(M.CommissionPayout).filter_by(number="COM-0002").one().id
+        RICADJ = db.query(M.CommissionAdjustment).filter_by(title="Laptop").one().id
+        CHREP = db.query(M.ExpenseReport).filter_by(number="ER-9001").one().id
+
+    # Ticking people but unticking every piece on their rows issues nothing.
+    out = c.post("/admin/vouchers/run", data={
+        "period": str(PERIOD), "reimb": "on", "adj": "on",
+        "pay": ["Chrizel Urbino", "Ric Flores"], "piece": [],
+    }, follow_redirects=False)
+    ck("a run with nothing left on its rows is refused",
+       "err=empty" in out.headers.get("location", ""))
+    with Session(engine) as db:
+        ck("and nothing was issued",
+           db.query(M.PaymentVoucher).filter(
+               M.PaymentVoucher.batch.isnot(None)).count() == 0)
+    out = c.post("/admin/vouchers/run", data={
+        "period": str(PERIOD), "reimb": "on", "adj": "on",
+        "pay": ["Chrizel Urbino", "Ric Flores"],
+        "piece": ["report:%d:Chrizel Urbino" % CHREP,
+                  "payout:%d:Ric Flores" % RICPAY,
+                  "adjustment:%d:Ric Flores" % RICADJ],
+    }, follow_redirects=False)
+    BATCH = out.headers["location"].rsplit("/", 1)[-1]
+    ck("the run gets its own number", BATCH.startswith("PR-"))
+    with Session(engine) as db:
+        made = (db.query(M.PaymentVoucher).filter_by(batch=BATCH)
+                .order_by(M.PaymentVoucher.id).all())
+        ck("one voucher each, not one between them", len(made) == 2)
+        ck("they are separate documents",
+           len({v.number for v in made}) == 2)
+        by = {v.person: v for v in made}
+        ck("the reimbursement-only person is paid their report",
+           by["Chrizel Urbino"].total == Decimal("3185.00")
+           and by["Chrizel Urbino"].commission_total == Decimal(0))
+        ck("the over-deducted one pays zero",
+           by["Ric Flores"].total == Decimal(0))
+        ck("and carries the remainder",
+           db.query(M.CommissionAdjustment)
+           .filter_by(title="Carried from %s" % by["Ric Flores"].number)
+           .one().amount == Decimal("-1600.00"))
+        RICV = by["Ric Flores"].id
+        CHV = by["Chrizel Urbino"].id
+
+    # Somebody left out of the run is still owed, and still offerable.
+    run2page = c.get("/admin/vouchers/run", params={"period": str(PERIOD)}).text
+    ck("what was just paid is off the next run",
+       "Chrizel Urbino" not in run2page)
+
+    done = c.get("/admin/vouchers/run/%s" % BATCH)
+    ck("the run has a page of its own afterwards", done.status_code == 200
+       and BATCH in done.text)
+
+    # One reference pays several people.
+    c.post("/admin/vouchers/run/%s/pay" % BATCH,
+           data={"voucher": [str(CHV)], "on": "2026-10-15",
+                 "method": "Bank transfer", "reference": "BPI batch 1015"},
+           follow_redirects=False)
+    with Session(engine) as db:
+        ck("the ticked one is paid",
+           db.get(M.PaymentVoucher, CHV).status == M.VOUCHER_PAID
+           and db.get(M.PaymentVoucher, CHV).reference == "BPI batch 1015")
+        ck("the unticked one is left alone",
+           db.get(M.PaymentVoucher, RICV).status == M.VOUCHER_UNPAID)
+
+    # Voiding one leaves the rest of the run standing.
+    c.post("/admin/vouchers/%d/void" % RICV, follow_redirects=False)
+    with Session(engine) as db:
+        ck("voiding one voucher of a run leaves the others",
+           db.get(M.PaymentVoucher, RICV).status == M.VOUCHER_VOID
+           and db.get(M.PaymentVoucher, CHV).status == M.VOUCHER_PAID)
+        ck("and it keeps its place in the run",
+           db.get(M.PaymentVoucher, RICV).batch == BATCH)
+
     # ── somebody who is not a coach ────────────────────────────────────
     with Session(engine) as db:
         who = (db.query(M.Staff).filter(M.Staff.id != JULIO,
@@ -379,7 +491,9 @@ with TestClient(app) as c:                      # startup seeds the chart
        "Either they are not a coach" in page.text)
 
     for path in ["/expenses", "/admin/expenses", "/admin/vouchers",
-                 "/admin/vouchers/new", "/admin/expenses/%d" % RID,
+                 "/admin/vouchers/new", "/admin/vouchers/run",
+                 "/admin/vouchers/run/%s" % BATCH,
+                 "/admin/expenses/%d" % RID,
                  "/admin/vouchers/%d" % VID]:
         r = c.get(path)
         ck("page draws: %s" % path, r.status_code == 200)

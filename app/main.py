@@ -773,6 +773,16 @@ def startup():
                 "IS NOT NULL THEN ALTER TABLE commission_adjustments "
                 "  ADD COLUMN IF NOT EXISTS voucher_id INTEGER; "
                 "END IF; END $$;"))
+            # Which pay run a voucher was issued in, if it was issued with
+            # others. A string on each voucher: a run has no life beyond the
+            # moment it happened.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.payment_vouchers') "
+                "IS NOT NULL THEN ALTER TABLE payment_vouchers "
+                "  ADD COLUMN IF NOT EXISTS batch VARCHAR; "
+                "CREATE INDEX IF NOT EXISTS ix_payment_vouchers_batch "
+                "  ON payment_vouchers (batch); "
+                "END IF; END $$;"))
             # Who typed an expense report, which is not always whose it is.
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.expense_reports') "

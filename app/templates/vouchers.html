@@ -7,7 +7,10 @@
       commission, what they laid out of pocket, and whatever is being deducted &mdash; on one
       document and paid once.</p>
   </div>
-  <div class="hdact"><a class="btn" href="/admin/expenses">Expense reports</a></div>
+  <div class="hdact">
+    <a class="btn" href="/admin/expenses">Expense reports</a>
+    <a class="btn primary" href="/admin/vouchers/run">Pay everybody</a>
+  </div>
 </div>
 
 {% if can_pay %}
@@ -21,7 +24,7 @@
         <option value="">&mdash; choose a person &mdash;</option>
         {% for n in people %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
       </select></label></div>
-    <button class="btn primary">Build it</button>
+    <button class="btn">Build it</button>
   </form>
 </div>
 {% endif %}
@@ -37,7 +40,7 @@
 
 {% if rows %}
 <table>
-  <tr><th style="width:96px">Voucher</th><th>Who</th><th style="width:120px">Issued</th>
+  <tr><th style="width:96px">Voucher</th><th>Who</th><th style="width:150px">Issued</th>
       <th>What is on it</th>
       <th style="text-align:right;width:124px">Net</th>
       <th style="width:120px">State</th><th style="width:70px"></th></tr>
@@ -45,11 +48,12 @@
   <tr{% if v.status == 'void' %} class="low"{% endif %}>
     <td><b>{{ v.number }}</b></td>
     <td><b>{{ v.person }}</b></td>
-    <td class="mono">{{ v.issued_at.strftime('%d %b %Y') if v.issued_at else '—' }}</td>
+    <td class="mono">{{ v.issued_at.strftime('%d %b %Y') if v.issued_at else '—' }}
+      {% if v.batch %}<div class="small"><a href="/admin/vouchers/run/{{ v.batch }}">{{ v.batch }}</a></div>{% endif %}</td>
     <td class="muted small">
       {%- if v.commission_total %}commission {{ peso(v.commission_total) }}{% endif %}
       {%- if v.expense_total %}{{ ' · ' if v.commission_total }}reimbursed {{ peso(v.expense_total) }}{% endif %}
-      {%- if v.adjustment_total %} &middot; adjusted {{ peso(v.adjustment_total) }}{% endif %}</td>
+      {%- if v.adjustment_total %} &middot; adjusted {{ '−' if v.adjustment_total < 0 }}{{ peso(v.adjustment_total|abs) }}{% endif %}</td>
     <td style="text-align:right;font-weight:650">{{ peso(v.total) }}</td>
     <td>
       {% if v.status == 'paid' %}<span class="tag">Paid</span>
