@@ -87,6 +87,97 @@
 </div>
 {% endif %}
 
+{# ---------------- sending it ---------------- #}
+{% set q = request.query_params %}
+{% if q.get('setup') %}
+<div class="alert bad" style="margin-top:14px"><b>Mail isn't set up yet.</b>
+  {{ q.get('setup')|replace('+', ', ') }} missing on the server, so nothing was sent.</div>
+{% elif q.get('failed') %}
+<div class="alert bad" style="margin-top:14px"><b>It didn't go.</b>
+  {{ q.get('why', '')|replace('+', ' ') }}</div>
+{% elif q.get('sent') == '1' %}
+<div class="alert" style="margin-top:14px"><b>Sent.</b> {{ v.person }} has the link.</div>
+{% elif q.get('skipped') %}
+<div class="alert" style="margin-top:14px">Already sent &mdash; nothing was emailed again.
+  Use <b>send it again</b> below if you meant to.</div>
+{% endif %}
+
+{% if v.status != 'void' %}
+<div class="card" style="margin-top:14px">
+  <div class="row-between" style="align-items:flex-start;gap:14px">
+    <div>
+      <h3 style="margin:0 0 3px;font-size:.95rem">Send it to {{ v.person }}</h3>
+      <p class="muted small" style="margin:0">A private link, no login: the commission, the
+        adjustments and the expense reports in three tabs, every line and every receipt. It
+        expires, it can be turned off, and it reaches this one payment and nothing else.</p>
+    </div>
+    <div class="hdact">
+      {% if not link %}<span class="tag" style="background:#8a94a1">No link yet</span>
+      {% elif link.state == 'answered' %}
+        <span class="tag" style="background:{{ '#2f7d6a' if link.ack_ok else '#a8392b' }}">{{
+          'They said it looks right' if link.ack_ok else 'They flagged a problem' }}</span>
+      {% elif link.state == 'opened' %}<span class="tag">Opened{{ ' ×%d'|format(link.opens) if link.opens > 1 }}</span>
+      {% elif link.state == 'sent' %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Sent, not opened</span>
+      {% elif link.state == 'revoked' %}<span class="tag" style="background:#8a94a1">Turned off</span>
+      {% elif link.state == 'expired' %}<span class="tag" style="background:#8a94a1">Expired</span>
+      {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Link ready, not sent</span>{% endif %}
+    </div>
+  </div>
+
+  {% if link %}
+  <div class="row-between" style="padding:7px 0 0;font-size:.85rem">
+    <span class="muted">Link</span>
+    <b class="mono" style="word-break:break-all">{{ base }}/v/{{ link.token }}</b></div>
+  {% if link.sent_at %}
+  <div class="row-between" style="padding:3px 0;font-size:.85rem">
+    <span class="muted">Emailed</span>
+    <b>{{ link.sent_to }} &middot; {{ link.sent_at.strftime('%d %b, %H:%M') }}</b></div>
+  {% endif %}
+  {% if link.first_opened_at %}
+  <div class="row-between" style="padding:3px 0;font-size:.85rem">
+    <span class="muted">First opened</span>
+    <b>{{ link.first_opened_at.strftime('%d %b, %H:%M') }}</b></div>
+  {% endif %}
+  {% if link.expires_at %}
+  <div class="row-between" style="padding:3px 0;font-size:.85rem">
+    <span class="muted">Works until</span>
+    <b>{{ link.expires_at.strftime('%d %B') }}</b></div>
+  {% endif %}
+  {% if link.acked_at %}
+  <p class="muted small" style="margin:9px 0 0">
+    {{ link.acked_at.strftime('%d %b, %H:%M') }} &mdash;
+    {{ 'they confirmed this is correct' if link.ack_ok else 'they said something is wrong' }}.</p>
+  {% endif %}
+  {% endif %}
+
+  <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px">
+    {% if their_email and mail_ready %}
+    <form method="post" action="/admin/vouchers/{{ v.id }}/send" style="margin:0">
+      <button class="btn primary">{{ 'Email it' if not (link and link.sent_at) else 'Email it again' }}</button>
+    </form>
+    {% endif %}
+    {% if not link or not link.is_live %}
+    <form method="post" action="/admin/vouchers/{{ v.id }}/link" style="margin:0">
+      <button class="btn">Just make a link</button>
+    </form>
+    {% else %}
+    <form method="post" action="/admin/vouchers/{{ v.id }}/link/revoke" style="margin:0">
+      <button class="btn">Turn the link off</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if not their_email %}
+  <p class="muted small" style="margin:10px 0 0">There's no email address on
+    {{ v.person }}'s record, so there's nobody to send it to. Add one on their person page, or
+    make a link and pass it on yourself.</p>
+  {% elif not mail_ready %}
+  <p class="muted small" style="margin:10px 0 0">Mail isn't set up on the server yet &mdash; make
+    a link and send it however you like.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if v.status == 'unpaid' and can_pay %}
 <div class="row-between" style="margin-top:18px;gap:18px;align-items:flex-start">
   <div class="card" style="flex:1.4">

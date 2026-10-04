@@ -4012,6 +4012,9 @@ expense_routes.register(app, {
     "render": render,
     "require": require,
     "require_admin": require_admin,
+    # The voucher a person opens from their email renders with nobody logged
+    # in, so it needs the raw template environment rather than render().
+    "templates": templates,
     "tz": _tz,
 })
 

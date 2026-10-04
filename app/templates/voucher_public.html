@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{{ v.number }} — AWAKEN</title>
+<link rel="icon" href="/static/logo.svg">
+{# Self-contained on purpose. This page is opened by somebody who has never
+   seen the app, from a link in their email, on a phone — it should not depend
+   on the admin stylesheet, and nothing on it should be reachable from here
+   except this one payment.
+
+   The tabs are radio buttons and CSS. No script: a page that showed nothing
+   until JavaScript ran would be a blank payment voucher on exactly the old
+   phone most likely to be holding it. #}
+<style>
+:root{--ink:#1a232e;--muted:#6b7683;--dim:#8a929b;--line:#e0e5ea;--hair:#f2f5f7;
+  --panel:#eef1f4;--teal:#008080;--deep:#006a6a;--red:#a8392b;--soft:#fbfcfd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--panel);color:var(--ink);font-size:14px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--teal)}
+.bar{background:#fff;border-bottom:1px solid var(--line)}
+.wrap{max-width:900px;margin:0 auto;padding:16px 20px}
+.mark{display:flex;align-items:center;gap:11px}
+.mark i{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
+  border:2px solid var(--ink);border-radius:8px;font-size:13px;font-weight:800;font-style:normal}
+.mark b{font-size:10px;font-weight:800;letter-spacing:.2em;color:var(--muted)}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:16px}
+.pad{padding:20px 22px}
+.top{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;justify-content:space-between}
+h1{margin:0;font-size:21px;font-weight:700;letter-spacing:-.01em}
+.who{margin:4px 0 0;font-size:13px;color:var(--muted)}
+.pill{border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:700;white-space:nowrap;
+  background:#e6f2f2;color:var(--deep)}
+.pill.wait{background:#fbf3df;color:#6b5110}
+.pill.void{background:#edf0f3;color:#6b7683}
+.net{margin-top:18px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;
+  justify-content:space-between}
+.lbl{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.big{font-size:34px;font-weight:700;letter-spacing:-.02em;margin-top:1px;
+  font-variant-numeric:tabular-nums}
+.how{font-size:13px;color:var(--muted);line-height:1.7;text-align:right}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+/* ---- tabs: radios, labels, panes ---- */
+.tabs{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  margin-bottom:16px}
+.tabs>input{position:absolute;opacity:0;pointer-events:none}
+.tabrow{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--line);background:var(--soft)}
+.tabrow label{flex:1 1 180px;min-width:0;padding:13px 20px;cursor:pointer;
+  border-bottom:3px solid transparent;font-size:12.5px;font-weight:650;color:var(--muted)}
+.tabrow label span{display:block;font-size:16px;font-weight:700;margin-top:3px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.tabrow label span.down{color:var(--red)}
+.pane{display:none}
+#tc:checked~.tabrow label[for=tc],#ta:checked~.tabrow label[for=ta],
+#te:checked~.tabrow label[for=te]{background:#fff;border-bottom-color:var(--teal);color:var(--ink)}
+#tc:checked~.p-c,#ta:checked~.p-a,#te:checked~.p-e{display:block}
+.tabs>input:focus-visible~.tabrow label{outline:2px solid var(--teal);outline-offset:-2px}
+/* ---- tables ---- */
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
+th{text-align:left;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);font-weight:700;padding:10px 20px}
+td{padding:11px 20px;border-top:1px solid var(--hair);vertical-align:top}
+td.d,th.d{width:88px;color:var(--muted);font-variant-numeric:tabular-nums}
+td.a,th.a{text-align:right;width:118px;font-weight:650;font-variant-numeric:tabular-nums}
+td.a.down{color:var(--red)}
+.sub{font-size:11.5px;color:var(--dim);margin-top:2px}
+.head{padding:15px 20px 7px;font-size:13px;font-weight:650;border-top:1px solid var(--hair)}
+.head:first-child{border-top:0}
+.note{padding:14px 20px 4px;font-size:13px;color:var(--muted)}
+tr.sum td{border-top:2px solid #e4e8ed;background:var(--soft);font-weight:700}
+tr.sum td.a{font-size:15px}
+/* ---- the question ---- */
+.ask{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.ask form{display:flex;gap:9px;margin:0}
+button{min-height:42px;border:1px solid transparent;border-radius:8px;padding:0 18px;
+  font-family:inherit;font-size:14px;font-weight:650;cursor:pointer}
+button.yes{background:var(--teal);color:#fff}
+button.no{background:#fff;border-color:#d7dde4;color:var(--ink)}
+.said{background:#e6f2f2;color:var(--deep);border-radius:9px;padding:13px 16px;font-size:13.5px}
+.said.bad{background:#fbf0ee;color:var(--red)}
+.foot{margin:0 4px 28px;font-size:12px;color:var(--dim);line-height:1.65;text-align:center}
+.wm{text-align:center;font-size:.64rem;letter-spacing:.3em;font-weight:600;color:var(--dim);
+  padding-bottom:26px}
+@media (max-width:560px){
+  .wrap{padding:14px 14px}
+  .pad{padding:16px}
+  .how{text-align:left}
+  .big{font-size:30px}
+  .tabrow label{flex:1 1 0;padding:11px 10px;text-align:center}
+  .tabrow label span{font-size:13px}
+  .ask,.ask form{flex-direction:column;align-items:stretch}
+  /* The amount is the column somebody opened this for, so on a phone the
+     table squeezes and wraps rather than scrolling it off the right edge. */
+  table{min-width:0;font-size:12.5px}
+  th,td{padding:9px 6px}
+  th:first-child,td:first-child{padding-left:14px}
+  th:last-child,td:last-child{padding-right:14px}
+  td.d,th.d{width:52px}
+  td.a,th.a{width:84px}
+}
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="wrap mark"><i>A</i><b>AWAKEN</b></div></div>
+
+<div class="wrap">
+
+  <div class="card">
+    <div class="pad">
+      <div class="top">
+        <div>
+          <h1>{{ v.number }}</h1>
+          <p class="who">{{ v.person }}{% if v.issued_at %} &middot; issued
+            {{ v.issued_at.strftime('%d %B %Y') }}{% endif %}</p>
+        </div>
+        {% if v.status == 'paid' %}
+        <span class="pill">Paid{% if v.paid_on %} {{ v.paid_on.strftime('%d %B') }}{% endif %}</span>
+        {% elif v.status == 'void' %}<span class="pill void">Cancelled</span>
+        {% else %}<span class="pill wait">Being processed</span>{% endif %}
+      </div>
+      <div class="net">
+        <div>
+          <div class="lbl">Net</div>
+          <div class="big">{{ peso(v.total) }}</div>
+        </div>
+        {% if v.status == 'paid' %}
+        <div class="how">{{ v.method or 'Paid' }}{% if v.reference %}<br>
+          <span class="mono">{{ v.reference }}</span>{% endif %}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% set show_c = blocks|length > 0 %}
+  {% set show_a = adjustments|length > 0 %}
+  {% set show_e = reports|length > 0 %}
+  {% if show_c or show_a or show_e %}
+  <div class="tabs">
+    <input type="radio" name="tab" id="tc" {{ 'checked' if show_c }}>
+    <input type="radio" name="tab" id="ta" {{ 'checked' if show_a and not show_c }}>
+    <input type="radio" name="tab" id="te" {{ 'checked' if show_e and not show_c and not show_a }}>
+    <div class="tabrow">
+      {% if show_c %}<label for="tc">Commission<span>{{ peso(commission) }}</span></label>{% endif %}
+      {% if show_a %}<label for="ta">Adjustments<span class="{{ 'down' if adjusted < 0 }}">{{ '−' if adjusted < 0 }}{{ peso(adjusted|abs) }}</span></label>{% endif %}
+      {% if show_e %}<label for="te">Expense reports<span>{{ peso(expenses) }}</span></label>{% endif %}
+    </div>
+
+    {% if show_c %}
+    <div class="pane p-c">
+      {% for b in blocks %}
+      <div class="note">{{ b.period or b.payout.number }} &middot;
+        {{ b.payout.sessions }} session{{ 's' if b.payout.sessions != 1 }}</div>
+      <div class="scroll">
+      {# Session, client, amount. Not the rate: the percentage and the price
+         the gym charged are the business's side of the arrangement, and this
+         page's job is "here is your money". #}
+      <table>
+        <thead><tr><th class="d">Date</th><th>Session</th><th>Client</th><th class="a">Amount</th></tr></thead>
+        <tbody>
+        {% for l in b.rows %}
+        <tr>
+          <td class="d">{{ l.on.strftime('%d %b') if l.on else '—' }}</td>
+          <td>{{ l.what }}</td>
+          <td style="color:var(--muted)">{{ l.client or '' }}</td>
+          <td class="a {{ 'down' if l.amount < 0 }}">{{ '−' if l.amount < 0 }}{{ peso(l.amount|abs) }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="sum"><td colspan="3" style="text-align:right">Total</td>
+          <td class="a">{{ peso(b.payout.total) }}</td></tr>
+        </tbody>
+      </table>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if show_a %}
+    <div class="pane p-a">
+      <div class="scroll">
+      <table>
+        <thead><tr><th class="d">Date</th><th>Adjustment</th><th class="a">Amount</th></tr></thead>
+        <tbody>
+        {% for a in adjustments %}
+        <tr>
+          <td class="d">{{ a.occurred_on.strftime('%d %b') if a.occurred_on else '—' }}</td>
+          <td><b style="font-weight:650">{{ a.title }}</b>
+            {% if a.description %}<div class="sub" style="color:var(--muted);line-height:1.5">{{ a.description }}</div>{% endif %}</td>
+          <td class="a {{ 'down' if a.deducts }}">{{ '−' if a.deducts }}{{ peso(a.money|abs) }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="sum"><td colspan="2" style="text-align:right">Total</td>
+          <td class="a {{ 'down' if adjusted < 0 }}">{{ '−' if adjusted < 0 }}{{ peso(adjusted|abs) }}</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if show_e %}
+    <div class="pane p-e">
+      {% for r in reports %}
+      <div class="head">{{ r.number }}{% if r.occurred_on %} &middot;
+        {{ r.occurred_on.strftime('%d %b') }}{% endif %} &middot; {{ peso(r.total) }}</div>
+      <div class="scroll">
+      <table>
+        <tbody>
+        {% for l in r.lines %}
+        <tr>
+          <td class="d">{{ l.occurred_on.strftime('%d %b') if l.occurred_on else '—' }}</td>
+          <td>{{ l.note or '—' }}
+            <div class="sub">{{ l.account.name if l.account else 'No account' }}</div></td>
+          <td style="width:150px">{% if l.receipt %}<a href="/v/{{ link.token }}/receipt/{{ l.id }}"
+            target="_blank" rel="noopener">{{ l.receipt_name or 'receipt' }}</a>{% endif %}</td>
+          <td class="a">{{ peso(l.amount) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endfor %}
+      <table><tbody><tr class="sum"><td colspan="3" style="text-align:right">Total</td>
+        <td class="a">{{ peso(expenses) }}</td></tr></tbody></table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# The question, and only the question. Saying "there is a problem" raises a
+     hand; it moves no money. A voucher that reversed itself because somebody
+     tapped the wrong button on a phone would be worse than one nobody could
+     question. #}
+  <div class="card"><div class="pad">
+    {% if said == 'yes' or (link.acked_at and link.ack_ok) %}
+    <div class="said">Thanks — we've noted that this looks right to you.</div>
+    {% elif said == 'no' or (link.acked_at and not link.ack_ok) %}
+    <div class="said bad">Thanks — we've noted that something isn't right, and someone will
+      come back to you. Reply to the email if you can say what it is.</div>
+    {% else %}
+    <div class="ask">
+      <div style="font-size:14px;font-weight:650">Is this correct?</div>
+      <form method="post" action="/v/{{ link.token }}/ack">
+        <button class="yes" name="ok" value="yes">Yes</button>
+        <button class="no" name="ok" value="no">No, there is a problem</button>
+      </form>
+    </div>
+    {% endif %}
+  </div></div>
+
+  <p class="foot">This link was made for you{% if link.expires_at %} and works until
+    {{ link.expires_at.strftime('%d %B') }}{% endif %}. It shows only your own payment.</p>
+
+</div>
+<div class="wm">A W A K E N</div>
+</body>
+</html>

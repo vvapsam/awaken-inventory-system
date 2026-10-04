@@ -490,11 +490,184 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("with nothing in the commission stack",
        "Either they are not a coach" in page.text)
 
+    # ── sending it: a private link, and the page they open ─────────────
+    #
+    # The voucher under test is a fresh one for Julio, so the page has all
+    # three tabs on it. Everything released by the void above is claimable
+    # again, which is what makes that possible.
+    # Release the payout from the voucher an earlier step left it on, so this
+    # one carries all three stacks.
+    with Session(engine) as db:
+        held = db.get(M.CommissionPayout, PAYOUT).voucher_id
+    if held:
+        c.post("/admin/vouchers/%d/void" % held, follow_redirects=False)
+    with Session(engine) as db:
+        # An address to send to, and the sessions behind the commission —
+        # the lines a real run writes when it is finalized.
+        db.get(M.Staff, JULIO).email = "julio@awakengym.com"
+        db.add(M.CommissionPayoutLine(
+            payout_id=PAYOUT, occurred_on=date(2026, 9, 2),
+            description="Private Coaching \u00b7 Marga Diaz \u00b7 10 Sessions",
+            basis="70% of \u20b11,700.00", amount=Decimal("1190")))
+        db.add(M.CommissionPayoutLine(
+            payout_id=PAYOUT, occurred_on=date(2026, 9, 4),
+            description="Awaken Force \u00b7 Dax Lim \u00b7 Drop-in",
+            basis="flat \u20b1600.00", amount=Decimal("600")))
+        AID2 = db.query(M.CommissionAdjustment).filter(
+            M.CommissionAdjustment.coach == "Julio Reyes",
+            M.CommissionAdjustment.voucher_id.is_(None),
+            M.CommissionAdjustment.payout_id.is_(None)).first().id
+        OFFICE_LID = db.get(M.ExpenseReport, OFFICE_RID).lines[0].id
+        db.commit()
+    c.post("/admin/vouchers/new",
+           data={"who": "Julio Reyes", "payout": [str(PAYOUT)],
+                 "report": [str(RID)], "adjustment": [str(AID2)]},
+           follow_redirects=False)
+    with Session(engine) as db:
+        v = (db.query(M.PaymentVoucher)
+             .filter(M.PaymentVoucher.status == M.VOUCHER_UNPAID,
+                     M.PaymentVoucher.person == "Julio Reyes")
+             .order_by(M.PaymentVoucher.id.desc()).first())
+        SEND, SEND_NO = v.id, v.number
+        NET = "{:,.2f}".format(float(v.total))
+
+    # No mail configured yet: the button says so rather than failing quietly.
+    out = c.post("/admin/vouchers/%d/send" % SEND, follow_redirects=False)
+    ck("with no mail set up, the send says what is missing",
+       "setup=" in out.headers.get("location", ""))
+    with Session(engine) as db:
+        ck("and nothing was minted for it",
+           db.query(M.VoucherLink).filter_by(voucher_id=SEND).count() == 0)
+
+    # A link on its own, for pasting into a chat.
+    c.post("/admin/vouchers/%d/link" % SEND, follow_redirects=False)
+    with Session(engine) as db:
+        link = db.query(M.VoucherLink).filter_by(voucher_id=SEND).one()
+        ck("a link can be made without emailing it", len(link.token) > 24)
+        ck("it expires", link.expires_at is not None)
+        ck("and it starts out unread", link.state == "ready")
+        TOKEN = link.token
+        LINK_ID = link.id
+
+    # Pressing it again does not pile up links.
+    c.post("/admin/vouchers/%d/link" % SEND, follow_redirects=False)
+    with Session(engine) as db:
+        ck("a working link is not replaced",
+           db.query(M.VoucherLink).filter_by(voucher_id=SEND).count() == 1)
+
+    page = c.get("/v/%s" % TOKEN)
+    ck("the link opens without a login", page.status_code == 200)
+    ck("it names the voucher and the person",
+       SEND_NO in page.text and "Julio Reyes" in page.text)
+    ck("it has the three tabs", "Commission" in page.text
+       and "Adjustments" in page.text and "Expense reports" in page.text)
+    ck("the commission tab lists the sessions",
+       "Private Coaching" in page.text)
+    ck("it shows the client", "Marga Diaz" in page.text)
+    ck("but not the rate behind it", "70% of" not in page.text)
+    ck("the adjustment carries its reason",
+       "Overpaid July" in page.text)
+    ck("the receipt is reachable from it",
+       "/v/%s/receipt/" % TOKEN in page.text)
+    ck("and nothing admin is linked from it",
+       "/admin/" not in page.text and "/commissions/" not in page.text)
+
+    with Session(engine) as db:
+        ck("opening it is recorded",
+           db.get(M.VoucherLink, LINK_ID).opens == 1
+           and db.get(M.VoucherLink, LINK_ID).first_opened_at is not None)
+
+    # The receipt, and only from a report on this voucher.
+    shot = c.get("/v/%s/receipt/%d" % (TOKEN, LID))
+    ck("the receipt comes back", shot.status_code == 200
+       and shot.content == JPEG)
+    ck("a line on somebody else's report does not",
+       c.get("/v/%s/receipt/%d" % (TOKEN, OFFICE_LID)).status_code == 404)
+
+    # "There is a problem" raises a hand; it moves nothing.
+    c.post("/v/%s/ack" % TOKEN, data={"ok": "no"}, follow_redirects=False)
+    with Session(engine) as db:
+        link = db.get(M.VoucherLink, LINK_ID)
+        ck("they can say something is wrong", link.acked_at is not None
+           and link.ack_ok is False)
+        ck("and it is only a flag", link.state == "answered"
+           and db.get(M.PaymentVoucher, SEND).status == M.VOUCHER_UNPAID)
+    ck("the page says so afterwards",
+       "isn't right" in c.get("/v/%s" % TOKEN).text)
+
+    # Mail configured: the email goes, and carries the link.
+    sent = []
+    import app.mailer as _mail
+    _real_send = _mail.Mailer.send
+    _mail.Mailer.send = lambda self, to, subject, text, html=None, **kw: (
+        sent.append((to, subject, text, html)) or (True, "ok"))
+    for k, v in [("SMTP_HOST", "smtp.test"), ("SMTP_USER", "u"),
+                 ("SMTP_PASSWORD", "p"), ("MAIL_FROM", "admin@awakengym.com")]:
+        os.environ[k] = v
+    c.post("/admin/vouchers/%d/send" % SEND, follow_redirects=False)
+    ck("the email goes out", len(sent) == 1)
+    if sent:
+        to, subject, text, html = sent[0]
+        ck("to the address on their record", to == "julio@awakengym.com")
+        ck("the subject names the voucher", SEND_NO in subject)
+        ck("the body carries the net", NET in text and NET in html)
+        ck("and the link to the page", "/v/" in text)
+        ck("but no receipt or session detail in the email itself",
+           "grab.jpg" not in text and "Marga Diaz" not in text)
+    with Session(engine) as db:
+        ck("the send is stamped on the link",
+           db.get(M.VoucherLink, LINK_ID).sent_to == "julio@awakengym.com"
+           and db.get(M.VoucherLink, LINK_ID).sent_at is not None)
+
+    # Twice is not twice.
+    out = c.post("/admin/vouchers/%d/send" % SEND, follow_redirects=False)
+    ck("pressing send again does not email them again", len(sent) == 1
+       and "skipped=1" in out.headers.get("location", ""))
+    c.post("/admin/vouchers/%d/send?force=1" % SEND, follow_redirects=False)
+    ck("but it can be forced", len(sent) == 2)
+
+    # A whole pay run: one email each, and one person's missing address does
+    # not stop the others.
+    out = c.post("/admin/vouchers/run/%s/send" % BATCH, follow_redirects=False)
+    where = out.headers.get("location", "")
+    ck("a pay run sends everybody their own", "skipped=1" in where
+       and "failed=1" in where)
+    ck("and says why the one that couldn't go didn't",
+       "email" in where)
+    with Session(engine) as db:
+        ck("the voided voucher of the run was left alone",
+           db.query(M.VoucherLink)
+           .filter_by(voucher_id=RICV).count() == 0)
+
+    # Turning it off answers rather than vanishing.
+    c.post("/admin/vouchers/%d/link/revoke" % SEND, follow_redirects=False)
+    gone = c.get("/v/%s" % TOKEN)
+    ck("a revoked link is turned off, not lost", gone.status_code == 410
+       and "turned off" in gone.text)
+    ck("a token nobody issued is a plain not-found",
+       c.get("/v/nonesuch").status_code == 404)
+    ck("and a revoked link's receipts close with it",
+       c.get("/v/%s/receipt/%d" % (TOKEN, LID)).status_code == 404)
+
+    # A fresh link for the same voucher retires nothing but itself.
+    c.post("/admin/vouchers/%d/link" % SEND, follow_redirects=False)
+    with Session(engine) as db:
+        rows = (db.query(M.VoucherLink).filter_by(voucher_id=SEND)
+                .order_by(M.VoucherLink.id.desc()).all())
+        ck("the old row is kept so its URL still answers", len(rows) == 2)
+        ck("the new one is the live one",
+           rows[0].is_live and not rows[1].is_live)
+        NEW = rows[0].token
+    ck("and it opens", c.get("/v/%s" % NEW).status_code == 200)
+    _mail.Mailer.send = _real_send
+
     for path in ["/expenses", "/admin/expenses", "/admin/vouchers",
                  "/admin/vouchers/new", "/admin/vouchers/run",
                  "/admin/vouchers/run/%s" % BATCH,
                  "/admin/expenses/%d" % RID,
-                 "/admin/vouchers/%d" % VID]:
+                 "/admin/vouchers/%d" % VID,
+                 "/admin/vouchers/%d" % SEND,
+                 "/v/%s" % NEW]:
         r = c.get(path)
         ck("page draws: %s" % path, r.status_code == 200)
 

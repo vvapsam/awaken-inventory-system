@@ -1634,6 +1634,81 @@ class PaymentVoucher(Base):
         return Decimal(str(self.total or 0))
 
 
+#: How long a voucher's link opens for. Longer than a statement's five days:
+#: a statement is read once in the week it arrives, and a payment voucher is
+#: the thing somebody goes back to when they are reconciling a month later.
+VOUCHER_LINK_DAYS = 14
+
+
+class VoucherLink(Base):
+    """A private, expiring URL that shows one person their own voucher.
+
+    A link rather than a login, for the same reason the coach statement is
+    one: this is read on a phone between clients, and an account somebody has
+    to remember a password for is an account they will not use. The cost is
+    that whoever holds the URL can read that voucher - so the token is long
+    and random, it expires, it can be revoked, and it reaches exactly one
+    person's one payment. There is no path from it into anything else.
+
+    The acknowledgement lives here rather than on the voucher because it is a
+    fact about *this link being opened by somebody*, not about the money. The
+    money does not move either way: "there is a problem" raises a hand, it
+    does not reverse a payment.
+    """
+
+    __tablename__ = "voucher_links"
+
+    id = Column(Integer, primary_key=True)
+    voucher_id = Column(Integer, ForeignKey("payment_vouchers.id",
+                                            ondelete="CASCADE"),
+                        nullable=False, index=True)
+    token = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=now_utc)
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    expires_at = Column(DateTime(timezone=True))
+    revoked_at = Column(DateTime(timezone=True))
+    #: Delivery and reading, so "did they get it, did they read it" has an
+    #: answer rather than a shrug.
+    sent_to = Column(String)
+    sent_at = Column(DateTime(timezone=True))
+    first_opened_at = Column(DateTime(timezone=True))
+    last_opened_at = Column(DateTime(timezone=True))
+    opens = Column(Integer, nullable=False, default=0)
+    #: What they said when asked whether it is right.
+    acked_at = Column(DateTime(timezone=True))
+    ack_ok = Column(Boolean)
+    ack_note = Column(Text, default="")
+
+    voucher = relationship("PaymentVoucher")
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+
+    # No unique constraint on voucher_id: replacing a link keeps the old row,
+    # revoked. Otherwise somebody clicking last week's emailed link gets a
+    # bare "not found" instead of "a newer one was sent".
+
+    @property
+    def is_expired(self) -> bool:
+        return bool(self.expires_at and self.expires_at < now_utc())
+
+    @property
+    def is_live(self) -> bool:
+        return not self.revoked_at and not self.is_expired
+
+    @property
+    def state(self) -> str:
+        if self.revoked_at:
+            return "revoked"
+        if self.is_expired:
+            return "expired"
+        if self.acked_at:
+            return "answered"
+        if self.opens:
+            return "opened"
+        if self.sent_at:
+            return "sent"
+        return "ready"
+
+
 class CommissionCharge(Base):
     """What a delegator owes AWAKEN for one run.
 
