@@ -147,17 +147,32 @@ def register(app, deps):
                 .filter(ExpenseReport.staff_id == getattr(staff, "id", 0))
                 .order_by(ExpenseReport.id.desc()).all())
 
-    def _owned(db, staff, rid):
-        """One report, only if it is this person's.
+    def _is_office(staff) -> bool:
+        """Whoever runs the money: an admin, or the commissions area."""
+        return (getattr(staff, "role", "") == "admin"
+                or "manage_commissions" in (getattr(staff, "permissions", "")
+                                            or ""))
 
-        Checked by owner rather than by permission: an expense report is about
-        somebody's own money, and the answer to "may I see this one" is whether
-        it is theirs, which no permission can say.
+    def _owned(db, staff, rid):
+        """One report, to the person whose it is — or to the office.
+
+        Ownership is the first answer, because an expense report is about
+        somebody's own money and "may I see this" is really "is it mine",
+        which no permission can say. The office is the second answer, because
+        somebody hands over a fistful of paper receipts and asks the office to
+        type them: the claim is still theirs, and the office still has to be
+        able to open it.
+
+        One person still cannot open another person's claim.
         """
         report = db.get(ExpenseReport, rid)
-        if report is None or report.staff_id != getattr(staff, "id", None):
+        if report is None:
             return None
-        return report
+        if report.staff_id == getattr(staff, "id", None):
+            return report
+        # The office, and only to what the office may see at all: a draft
+        # somebody is writing for themselves stays theirs even from here.
+        return report if (_is_office(staff) and report.office_visible) else None
 
     # ── the person's own reports ───────────────────────────────────────
 
@@ -179,19 +194,45 @@ def register(app, deps):
                                 if r.status == EXPENSE_APPROVED
                                 and r.voucher_id is None), Decimal(0)))
 
+    def _start_report(db, staff, *, owner, person, on="") -> ExpenseReport:
+        report = ExpenseReport(
+            number=next_number(db, ExpenseReport, "ER"),
+            staff_id=owner, person=person or "",
+            occurred_on=_day(on) or date.today(),
+            status=EXPENSE_DRAFT, created_by_id=getattr(staff, "id", None))
+        db.add(report)
+        db.commit()
+        return report
+
     @app.post("/expenses/new")
     def my_expense_new(request: Request, on: str = Form(""),
                        db: Session = Depends(get_db)):
         staff, redir = require(request, db)
         if redir:
             return redir
-        report = ExpenseReport(
-            number=next_number(db, ExpenseReport, "ER"),
-            staff_id=staff.id, person=staff.name or "",
-            occurred_on=_day(on) or date.today(),
-            status=EXPENSE_DRAFT)
-        db.add(report)
-        db.commit()
+        report = _start_report(db, staff, owner=staff.id,
+                               person=staff.name or "", on=on)
+        return RedirectResponse("/expenses/%d" % report.id, status_code=303)
+
+    @app.post("/admin/expenses/new")
+    def office_expense_new(request: Request, who: str = Form(""),
+                           on: str = Form(""),
+                           db: Session = Depends(get_db)):
+        """Start one for somebody else.
+
+        Paper receipts handed across the counter, a coach with no phone, a
+        claim somebody asked about in person. The report belongs to them - it
+        shows on their list, it is paid on their voucher - and `created_by_id`
+        records who actually typed it.
+        """
+        staff, redir = money_guard(request, db)
+        if redir:
+            return redir
+        person = (who or "").strip()
+        owner = dict(_people(db)).get(person)
+        if not person:
+            return RedirectResponse("/admin/expenses?err=who", status_code=303)
+        report = _start_report(db, staff, owner=owner, person=person, on=on)
         return RedirectResponse("/expenses/%d" % report.id, status_code=303)
 
     @app.get("/expenses/{rid}", response_class=HTMLResponse)
@@ -207,6 +248,10 @@ def register(app, deps):
                       accounts=open_accounts(db),
                       ACCOUNT_KINDS=ACCOUNT_KINDS,
                       today=date.today().isoformat(),
+                      # Whose eyes. The page is the same either way; what
+                      # changes is whether it says "you" or names them.
+                      mine=(report.staff_id == staff.id),
+                      office=_is_office(staff),
                       groups=by_account(report.lines))
 
     @app.post("/expenses/{rid}/line")
@@ -322,11 +367,7 @@ def register(app, deps):
         line = db.get(ExpenseLine, lid)
         if line is None or line.report_id != rid or not line.receipt:
             return RedirectResponse("/expenses", status_code=303)
-        report = db.get(ExpenseReport, rid)
-        mine = report is not None and report.staff_id == staff.id
-        office = staff.role == "admin" or "manage_commissions" in (
-            staff.permissions or "")
-        if not (mine or office):
+        if _owned(db, staff, rid) is None:
             return RedirectResponse("/expenses", status_code=303)
         return Response(
             content=line.receipt,
@@ -342,14 +383,16 @@ def register(app, deps):
         staff, redir = money_guard(request, db)
         if redir:
             return redir
-        rows = (db.query(ExpenseReport)
-                .filter(ExpenseReport.status != EXPENSE_DRAFT)
+        # A draft somebody is writing for themselves is never here: they are
+        # not asking anybody for anything yet, and showing it would invite a
+        # half-written claim to be approved. A draft the office typed *for*
+        # somebody is the office's own unfinished work and has to be findable.
+        rows = [r for r in db.query(ExpenseReport)
                 .order_by(ExpenseReport.submitted_at.desc().nullslast(),
-                          ExpenseReport.id.desc()).all())
-        # A draft is never here. Somebody still writing a claim is not asking
-        # anybody for anything yet, and showing it would invite a half-written
-        # one to be approved.
+                          ExpenseReport.id.desc()).all()
+                if r.office_visible]
         buckets = {
+            "writing": [r for r in rows if r.status == EXPENSE_DRAFT],
             "pending": [r for r in rows if r.status in (EXPENSE_SUBMITTED,
                                                         EXPENSE_RETURNED)],
             "approved": [r for r in rows if r.status == EXPENSE_APPROVED
@@ -360,6 +403,8 @@ def register(app, deps):
         shown = buckets.get(show, buckets["pending"])
         return render(request, "expenses_admin.html", db, staff,
                       active="expenses", rows=shown, show=show,
+                      people=[n for n, _i in _people(db)],
+                      today=date.today().isoformat(),
                       counts={k: len(v) for k, v in buckets.items()},
                       waiting=sum((r.total for r in buckets["pending"]),
                                   Decimal(0)),
@@ -373,8 +418,12 @@ def register(app, deps):
         if redir:
             return redir
         report = db.get(ExpenseReport, rid)
-        if report is None or report.status == EXPENSE_DRAFT:
+        if report is None or not report.office_visible:
             return RedirectResponse("/admin/expenses", status_code=303)
+        if report.status == EXPENSE_DRAFT:
+            # Still being written. There is nothing to review yet; the page
+            # that can add lines to it is the one they want.
+            return RedirectResponse("/expenses/%d" % rid, status_code=303)
         return render(request, "expense_review.html", db, staff,
                       active="expenses", r=report,
                       accounts=open_accounts(db),

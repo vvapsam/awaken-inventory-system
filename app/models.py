@@ -1459,6 +1459,11 @@ class ExpenseReport(Base):
     review_note = Column(Text, default="")
     voucher_id = Column(Integer, ForeignKey("payment_vouchers.id",
                                             ondelete="SET NULL"))
+    #: Who typed it. Usually the person it belongs to; not always. Somebody
+    #: hands the office a fistful of paper receipts and the office encodes
+    #: them, and the claim is still theirs - it is their money and it is paid
+    #: on their voucher - but the trail has to say who sat at the keyboard.
+    created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     lines = relationship("ExpenseLine", cascade="all, delete-orphan",
@@ -1466,6 +1471,24 @@ class ExpenseReport(Base):
                          back_populates="report")
     staff = relationship("Staff", foreign_keys=[staff_id])
     reviewed_by = relationship("Staff", foreign_keys=[reviewed_by_id])
+    created_by = relationship("Staff", foreign_keys=[created_by_id])
+
+    @property
+    def raised_for_them(self) -> bool:
+        """Did the office type this one on somebody else's behalf?"""
+        return bool(self.created_by_id
+                    and self.created_by_id != self.staff_id)
+
+    @property
+    def office_visible(self) -> bool:
+        """May the office see it at all?
+
+        A draft somebody is writing for themselves is theirs alone: they are
+        not asking anybody for anything yet, and showing it would invite a
+        half-written claim to be approved. A draft the office typed for them
+        is the office's own unfinished work and has to be findable again.
+        """
+        return self.status != EXPENSE_DRAFT or self.raised_for_them
 
     @property
     def total(self) -> Decimal:

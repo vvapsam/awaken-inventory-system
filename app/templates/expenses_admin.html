@@ -13,7 +13,35 @@
   <div class="hdact"><a class="btn" href="/admin/vouchers">Payment vouchers</a></div>
 </div>
 
+{% if request.query_params.get('err') == 'who' %}
+<div class="alert bad"><b>Pick whose it is.</b> A report has to belong to somebody &mdash; it shows on
+  their list and it is paid on their voucher.</div>
+{% endif %}
+
+{# Paper receipts handed across the counter, a coach with no phone. The report
+   belongs to them; the trail records who typed it. #}
+<div class="card" style="margin:14px 0">
+  <h3 style="margin:0 0 4px;font-size:.95rem">Start a report for somebody</h3>
+  <p class="muted small" style="margin:0 0 10px">For receipts handed to you rather than filed from a
+    phone. It becomes their claim &mdash; on their list, on their voucher &mdash; and the trail says
+    you typed it.</p>
+  <form method="post" action="/admin/expenses/new" class="row-between"
+        style="gap:10px;align-items:flex-end">
+    <div style="flex:1;max-width:320px"><label>Whose is it
+      <select name="who" required>
+        <option value="">&mdash; choose a person &mdash;</option>
+        {% for n in people %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+      </select></label></div>
+    <div style="flex:0 0 170px"><label>Date
+      <input type="date" name="on" value="{{ today }}"></label></div>
+    <button class="btn primary">Start it</button>
+  </form>
+</div>
+
 <div class="tfilter" style="margin:14px 0">
+  {% if counts.writing %}
+  <a href="/admin/expenses?show=writing" class="{{ 'on' if show == 'writing' }}">You are writing &middot; {{ counts.writing }}</a>
+  {% endif %}
   <a href="/admin/expenses?show=pending" class="{{ 'on' if show == 'pending' }}">Needs approval &middot; {{ counts.pending }}</a>
   <a href="/admin/expenses?show=approved" class="{{ 'on' if show == 'approved' }}">Approved, unpaid &middot; {{ counts.approved }}</a>
   <a href="/admin/expenses?show=paid" class="{{ 'on' if show == 'paid' }}">Paid &middot; {{ counts.paid }}</a>
@@ -39,17 +67,20 @@
   {% for r in rows %}
   <tr{% if r.status == 'submitted' %} class="low"{% endif %}>
     <td><b>{{ r.number }}</b></td>
-    <td><b>{{ r.person }}</b></td>
+    <td><b>{{ r.person }}</b>{% if r.raised_for_them %}
+      <div class="muted small">typed by {{ r.created_by.name if r.created_by else 'the office' }}</div>{% endif %}</td>
     <td class="mono">{{ r.submitted_at.strftime('%d %b, %I:%M %p')|replace(' 0', ' ') if r.submitted_at else '—' }}</td>
     <td class="muted">{{ r.lines|length }} &middot; {{ r.lines|length }} receipt{{ 's' if r.lines|length != 1 }}</td>
     <td style="text-align:right;font-weight:650">{{ peso(r.total) }}</td>
     <td>
-      {% if r.status == 'submitted' %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Pending</span>
+      {% if r.status == 'draft' %}<span class="tag" style="background:#8a94a1">Draft</span>
+      {% elif r.status == 'submitted' %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Pending</span>
       {% elif r.status == 'returned' %}<span class="tag" style="background:#c0633f">Sent back</span>
       {% elif r.voucher_id %}<span class="tag">Paid</span>
       {% else %}<span class="tag">Approved</span>{% endif %}
     </td>
-    <td><a href="/admin/expenses/{{ r.id }}">{{ 'Review' if r.status == 'submitted' else 'Open' }}</a></td>
+    <td>{% if r.status == 'draft' %}<a href="/expenses/{{ r.id }}">Carry on</a>
+        {% else %}<a href="/admin/expenses/{{ r.id }}">{{ 'Review' if r.status == 'submitted' else 'Open' }}</a>{% endif %}</td>
   </tr>
   {% endfor %}
 </table>
@@ -59,5 +90,6 @@
 
 <p class="muted small" style="margin-top:18px">Every line arrives with a receipt on it, because a
   line without one cannot be added in the first place. Somebody can keep editing their report right
-  up until you approve it &mdash; approving is what locks it.</p>
+  up until you approve it &mdash; approving is what locks it. A report somebody is writing for
+  themselves does not appear here until they send it in; one you started for them does.</p>
 {% endblock %}

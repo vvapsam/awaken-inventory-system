@@ -135,9 +135,61 @@ with TestClient(app) as c:                      # startup seeds the chart
                 .filter(M.ExpenseReport.staff_id != JULIO).one())
         ck("an admin's own report is their own", mine.person != "Julio Reyes")
         ADMIN_RID = mine.id
+    # The office may open somebody else's claim once it has been sent in —
+    # that is the point of the office. A draft they are still writing is
+    # theirs even from here.
     out = c.get("/expenses/%d" % RID, follow_redirects=False)
-    ck("one person cannot open another's report through /expenses",
+    ck("the office can open a submitted claim of somebody else's",
+       out.status_code == 200)
+
+    # ── the office starts one for somebody ─────────────────────────────
+    c.post("/admin/expenses/new",
+           data={"who": "Julio Reyes", "on": "2026-10-06"},
+           follow_redirects=False)
+    with Session(engine) as db:
+        made = (db.query(M.ExpenseReport)
+                .order_by(M.ExpenseReport.id.desc()).first())
+        ck("it belongs to the person, not to whoever typed it",
+           made.staff_id == JULIO and made.person == "Julio Reyes")
+        ck("and the trail says who typed it",
+           made.raised_for_them is True and made.created_by_id != JULIO)
+        ck("the office can see its own unfinished one",
+           made.office_visible is True)
+        OFFICE_RID = made.id
+    c.post("/expenses/%d/line" % OFFICE_RID,
+           data={"on": "2026-10-06", "account": str(TRANSPORT),
+                 "amount": "250", "note": "Paper receipt handed over"},
+           files=receipt(), follow_redirects=False)
+    with Session(engine) as db:
+        ck("the office can put a line on it",
+           len(db.get(M.ExpenseReport, OFFICE_RID).lines) == 1)
+    page = c.get("/admin/expenses?show=writing").text
+    ck("an office-raised draft is findable again", "ER-000" in page
+       and "You are writing" in page)
+    c.post("/expenses/%d/submit" % OFFICE_RID, follow_redirects=False)
+    c.post("/admin/expenses/%d/approve" % OFFICE_RID, follow_redirects=False)
+    with Session(engine) as db:
+        ck("and it approves like any other",
+           db.get(M.ExpenseReport, OFFICE_RID).status == M.EXPENSE_APPROVED)
+
+    # Somebody else's private draft is still private.
+    c.post("/logout")
+    c.post("/login", data={"username": "julio", "pin": "4321"})
+    c.post("/expenses/new", follow_redirects=False)
+    with Session(engine) as db:
+        secret = (db.query(M.ExpenseReport)
+                  .filter_by(staff_id=JULIO, status=M.EXPENSE_DRAFT)
+                  .order_by(M.ExpenseReport.id.desc()).first()).id
+        ck("a self-started draft is not office-visible",
+           db.get(M.ExpenseReport, secret).office_visible is False)
+    c.post("/logout")
+    c.post("/login", data={"username": "admin", "pin": "123456"})
+    out = c.get("/expenses/%d" % secret, follow_redirects=False)
+    ck("the office cannot open a draft somebody is writing for themselves",
        out.status_code == 303 and out.headers["location"] == "/expenses")
+    ck("and it is not in the office's list",
+       "ER-%04d" % 0 not in "" and
+       ('/expenses/%d"' % secret) not in c.get("/admin/expenses?show=all").text)
 
     # ── the office ─────────────────────────────────────────────────────
     page = c.get("/admin/expenses").text

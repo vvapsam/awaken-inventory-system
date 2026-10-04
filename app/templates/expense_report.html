@@ -8,11 +8,12 @@
 {% set err = request.query_params.get('err') %}
 <div class="row-between">
   <div>
-    <h1 style="margin:0">{{ r.number }}</h1>
+    <h1 style="margin:0">{{ r.number }}{% if not mine %} &middot; {{ r.person }}{% endif %}</h1>
     <p class="muted small" style="margin:2px 0 0">
       {{ r.occurred_on.strftime('%d %B %Y') if r.occurred_on else '' }} &middot;
       {{ r.lines|length }} line{{ 's' if r.lines|length != 1 }} &middot;
-      <a href="/expenses">all my reports</a></p>
+      {% if mine %}<a href="/expenses">all my reports</a>
+      {% else %}<a href="/admin/expenses">all expense reports</a>{% endif %}</p>
   </div>
   <div class="hdact">
     {% if r.status == 'draft' %}<span class="tag" style="background:#8a94a1">Draft</span>
@@ -36,6 +37,15 @@
 {% elif err == 'locked' %}
 <div class="alert bad"><b>This one is approved.</b> It can&rsquo;t be changed now &mdash; ask the office
   to send it back if something is wrong.</div>
+{% endif %}
+
+{% if not mine %}
+<div class="alert" style="background:var(--teal-tint);border-color:var(--teal)">
+  <b>This is {{ r.person }}&rsquo;s claim, not yours.</b>
+  {% if r.raised_for_them %}You started it for them{% if r.created_by and r.created_by.id != staff.id %}
+    &mdash; {{ r.created_by.name }} typed it{% endif %}.{% endif %}
+  It shows on their list and is paid on their voucher. Everything you add here is money owed to
+  them.</div>
 {% endif %}
 
 {% if r.status == 'returned' and r.review_note %}
@@ -86,7 +96,7 @@
   <p class="muted small" style="margin:0 0 10px">The date on the receipt, what it was for, what it
     cost, and the receipt itself. Saved on its own &mdash; add another straight after.</p>
   <form method="post" action="/expenses/{{ r.id }}/line" enctype="multipart/form-data"
-        class="adjgrid">
+        class="adjgrid" id="addline">
     <div><label>Date on the receipt</label>
       <input type="date" name="on" value="{{ today }}" required></div>
     <div><label>Amount</label>
@@ -132,17 +142,24 @@
     </form>
     {% endif %}
   </div>
-  <div>
+  <div style="display:flex;gap:9px;align-items:center">
+    {% if not mine and office and r.status != 'draft' %}
+    <a class="btn" href="/admin/expenses/{{ r.id }}">Review and approve it</a>
+    {% endif %}
     {% if r.status in ('draft', 'returned') %}
     <form method="post" action="/expenses/{{ r.id }}/submit" style="margin:0">
-      <button class="btn primary">Send it in for approval</button>
+      <button class="btn primary">{{ 'Send it in for approval' if mine
+        else 'Submit it for ' ~ r.person.split(' ')[0] }}</button>
     </form>
     {% endif %}
   </div>
 </div>
 
 <p class="muted small" style="margin-top:14px">
-  {% if r.status == 'submitted' %}
+  {% if not mine %}
+    Once it is submitted you can approve it from the review page. The trail shows both steps,
+    which is the honest version of typing somebody&rsquo;s claim and then approving it.
+  {% elif r.status == 'submitted' %}
     Waiting on the office. Nobody has looked at it yet, so <b>you can still change anything</b> &mdash;
     add a line, fix an amount, swap a receipt. It locks the moment it is approved.
   {% elif r.status == 'approved' %}

@@ -773,6 +773,12 @@ def startup():
                 "IS NOT NULL THEN ALTER TABLE commission_adjustments "
                 "  ADD COLUMN IF NOT EXISTS voucher_id INTEGER; "
                 "END IF; END $$;"))
+            # Who typed an expense report, which is not always whose it is.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.expense_reports') "
+                "IS NOT NULL THEN ALTER TABLE expense_reports "
+                "  ADD COLUMN IF NOT EXISTS created_by_id INTEGER; "
+                "END IF; END $$;"))
             for table, name in (("commission_payouts", "payouts_voucher_fkey"),
                                 ("commission_adjustments",
                                  "adjustments_voucher_fkey"),
