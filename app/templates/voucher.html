@@ -6,7 +6,7 @@
     <p class="muted small" style="margin:2px 0 0">
       Issued {{ v.issued_at.strftime('%d %B %Y') if v.issued_at else '' }}{%
         if v.issued_by %} by {{ v.issued_by.name }}{% endif %} &middot;
-      <a href="/admin/vouchers">all vouchers</a></p>
+      <a href="/admin/vouchers">all bills</a></p>
   </div>
   {# Everything that does something lives up here. The forms those buttons
      belong to are further down, next to the fields they describe — `form=`
@@ -44,12 +44,12 @@
 {% set q = request.query_params %}
 {% if q.get('err') == 'taken' %}
 <div class="alert bad"><b>It can&rsquo;t go back.</b> Something that was on it has since been put
-  on another voucher. Void that one first, or build a fresh voucher from what is left &mdash;
-  nothing is put back halfway, because a voucher whose total no longer matches what is on it is
+  on another bill. Void that one first, or build a fresh bill from what is left &mdash;
+  nothing is put back halfway, because a bill whose total no longer matches what is on it is
   worse than one that stays voided.</div>
 {% elif q.get('err') == 'gone' %}
 <div class="alert bad"><b>There is nothing left to put back.</b> What was on it has been paid or
-  deleted since. Build a fresh voucher instead.</div>
+  deleted since. Build a fresh bill instead.</div>
 {% elif q.get('restored') %}
 <div class="alert"><b>Put back, unpaid.</b> It holds exactly what it was holding, under the same
   number.</div>
@@ -61,10 +61,10 @@
 {% if v.status == 'void' %}
 <div class="alert" style="background:var(--low);border-color:var(--low-line)">
   <b>Voided{% if v.voided_at %} on {{ v.voided_at.strftime('%d %B') }}{% endif %}.</b>
-  Everything that was on it went back to where it came from and can be put on a corrected voucher.
+  Everything that was on it went back to where it came from and can be put on a corrected bill.
   The number stays spent, so the series has no gap in it.
   {% if v.released and can_pay %}<br><b>Put it back</b> at the top returns it to unpaid with
-    exactly what it was holding &mdash; as long as none of it has gone onto another voucher since.
+    exactly what it was holding &mdash; as long as none of it has gone onto another bill since.
   {% endif %}</div>
 {% endif %}
 
@@ -240,7 +240,7 @@
     <h3 style="margin:0 0 4px;font-size:.95rem">Undoing it</h3>
     <p class="muted small" style="margin:0">Voiding releases every piece back to where it was
       &mdash; the runs, the reports and the adjustments &mdash; so they can go on a corrected
-      voucher. Nothing is deleted, and it can be put back. If only part of it is wrong,
+      bill. Nothing is deleted, and it can be put back. If only part of it is wrong,
       <a href="/admin/vouchers/{{ v.id }}/edit">edit what is on it</a> instead. Both buttons are at
       the top of the page.</p>
   </div>

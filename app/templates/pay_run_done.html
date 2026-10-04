@@ -7,10 +7,10 @@
   <div>
     <h1 style="margin:0">Pay run {{ batch }}</h1>
     <p class="muted small" style="margin:2px 0 0">
-      {{ rows|length }} voucher{{ 's' if rows|length != 1 }} issued
+      {{ rows|length }} bill{{ 's' if rows|length != 1 }} issued
       {%- if rows and rows[0].issued_at %} on {{ rows[0].issued_at.strftime('%d %B %Y') }}{% endif %}
       {%- if rows and rows[0].issued_by %} by {{ rows[0].issued_by.name }}{% endif %} &middot;
-      <a href="/admin/vouchers">all vouchers</a></p>
+      <a href="/admin/vouchers">all bills</a></p>
   </div>
   <div class="hdact">
     {% if unpaid %}<span class="tag" style="background:#d9b45a;color:#4a3a12">{{ unpaid|length }} unpaid</span>
@@ -41,7 +41,7 @@
 
 <form method="post" action="/admin/vouchers/run/{{ batch }}/pay" id="prpay">
 <table style="margin-top:14px">
-  <tr><th style="width:42px"></th><th style="width:110px">Voucher</th><th>Who</th>
+  <tr><th style="width:42px"></th><th style="width:110px">Bill</th><th>Who</th>
       <th>What is on it</th>
       <th style="text-align:right;width:140px">Net</th>
       <th style="width:120px">State</th>
@@ -92,8 +92,8 @@
 <div class="card" style="margin-top:16px">
   <h3 style="margin:0 0 4px;font-size:.95rem">Record one payment for the ticked ones</h3>
   <p class="muted small" style="margin:0 0 10px">One bank run pays several people, so one reference
-    covers them. Each voucher still records its own figure; what they share is when the money left
-    and how it went. A voucher that pays nothing is unticked &mdash; tick it to file it away with
+    covers them. Each bill still records its own figure; what they share is when the money left
+    and how it went. A bill that pays nothing is unticked &mdash; tick it to file it away with
     the rest.</p>
   <div class="adjgrid">
     <div><label>Paid on</label><input type="date" name="on" value="{{ today }}" required></div>

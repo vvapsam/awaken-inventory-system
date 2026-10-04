@@ -1,4 +1,4 @@
-"""Reimbursements, and the one voucher that pays somebody everything at once.
+"""Reimbursements, and the one bill that pays somebody everything at once.
 
 Two halves of the same money problem.
 
@@ -10,19 +10,19 @@ lost because the fifth upload failed. Nothing reaches the office until they
 submit, and once submitted they can still change it right up until it is
 approved. Approving locks it.
 
-**A payment voucher** is what actually leaves the business. One person's
+**A vendor bill** is what actually leaves the business. One person's
 commission for a chosen period, plus their approved reimbursements, plus
 whatever adjustments are waiting on them, on one document with one net figure
 and one transfer.
 
-The rule that makes the voucher safe is one column. A payout, a report and an
+The rule that makes the bill safe is one column. A payout, a report and an
 adjustment each carry a `voucher_id`, and issuing sets it. Nothing that is on a
-voucher can be put on another, so "pay everything at once" cannot quietly pay
+bill can be put on another, so "pay everything at once" cannot quietly pay
 September twice.
 
 The rule that makes it honest is that it **gathers rather than recalculates**.
 The commission figure is whatever the run decided. The reimbursement is
-whatever was approved. The voucher adds them up and records that the money
+whatever was approved. The bill adds them up and records that the money
 left; open any of the three from here and it still says what it always said.
 """
 
@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 #: The wordmark that rides inside an email, borrowed rather than re-read: it
-#: is held in memory there, and a voucher going out should not depend on the
+#: is held in memory there, and a bill going out should not depend on the
 #: filesystem being readable at that moment.
 from .commission_routes import LOGO_CID, _logo_bytes
 from .event_routes import base_url
@@ -60,7 +60,7 @@ from .models import (
     VOUCHER_STATUSES, from_local, now_utc,
 )
 
-#: How many vouchers a page of the list holds, and what else may be asked for.
+#: How many bills a page of the list holds, and what else may be asked for.
 #: Fifty is a screen somebody can scroll through looking for one; a thousand is
 #: a page that takes a second to draw and is no easier to search.
 PAGE_SIZES = [25, 50, 100, 200]
@@ -94,14 +94,14 @@ def _day(raw):
 
 
 def next_number(db: Session, model, prefix: str, field: str = "number") -> str:
-    """ER-0007, PV-0003, PR-0002. Counted off the highest already issued.
+    """ER-0007, VB-0003, PR-0002. Counted off the highest already issued.
 
-    Off the numbers rather than off a count of rows: a voided voucher keeps its
+    Off the numbers rather than off a count of rows: a voided bill keeps its
     number, and reusing it would put two different documents in the books under
     one reference.
 
     `field` is which column holds the series. A pay run has no row of its own —
-    it is a string stamped on every voucher issued together — so its series is
+    it is a string stamped on every bill issued together — so its series is
     counted off that column instead.
     """
     col = getattr(model, field)
@@ -154,7 +154,7 @@ def register(app, deps):
     render = deps["render"]
     require = deps["require"]
     require_admin = deps["require_admin"]
-    #: The voucher page somebody opens from their email has nobody logged in,
+    #: The bill page somebody opens from their email has nobody logged in,
     #: so it renders through the raw environment rather than render().
     templates = deps["templates"]
     tz = deps.get("tz")
@@ -243,7 +243,7 @@ def register(app, deps):
 
         Paper receipts handed across the counter, a coach with no phone, a
         claim somebody asked about in person. The report belongs to them - it
-        shows on their list, it is paid on their voucher - and `created_by_id`
+        shows on their list, it is paid on their bill - and `created_by_id`
         records who actually typed it.
         """
         staff, redir = money_guard(request, db)
@@ -533,10 +533,10 @@ def register(app, deps):
             db.commit()
         return RedirectResponse("/admin/expenses/%d" % rid, status_code=303)
 
-    # ── payment vouchers ───────────────────────────────────────────────
+    # ── vendor bills ───────────────────────────────────────────────────
     # Registered before /admin/vouchers/{vid}: FastAPI matches in registration
     # order, so with the wildcard first a GET to /admin/vouchers/new would be
-    # read as voucher id "new".
+    # read as bill id "new".
 
     def _people(db) -> list:
         """Everybody who could be owed something, by display name.
@@ -558,14 +558,14 @@ def register(app, deps):
         return sorted(names.items())
 
     def _claimable(db, who: str, staff_id):
-        """The three stacks a voucher is built from, for one person.
+        """The three stacks a bill is built from, for one person.
 
         Each is "finished, and nothing has claimed it yet". A run still open, a
         report still waiting on approval and an adjustment already on a payout
         are all absent — not hidden, simply not yet owed or already settled.
         """
         # Only payouts from a run that is actually finalized. A payout on a
-        # draft run is a figure still being argued about, and a voucher is not
+        # draft run is a figure still being argued about, and a bill is not
         # the place to settle that argument.
         live = {r.id for r in db.query(CommissionRun)
                 .filter(CommissionRun.status != RUN_DRAFT)}
@@ -613,15 +613,15 @@ def register(app, deps):
         if status in dict(VOUCHER_STATUSES):
             q = q.filter(PaymentVoucher.status == status)
         # A name here matches loosely, always. Resolving it to one person is
-        # right when a voucher is being made out — the wrong Reyes costs
+        # right when a bill is being made out — the wrong Reyes costs
         # money — and wrong when somebody is looking: typing "julio" and
         # being shown nothing, because there is also a coach recorded as
-        # plain "Julio" with no vouchers, is the filter lying about the list.
+        # plain "Julio" with no bills, is the filter lying about the list.
         typed = (who or "").strip()
         if typed:
             q = q.filter(PaymentVoucher.person.ilike("%%%s%%" % typed))
         # Dates are the gym's own, so the bounds are converted rather than
-        # compared raw: a voucher issued at 2am Manila is the previous day in
+        # compared raw: a bill issued at 2am Manila is the previous day in
         # UTC, and nobody looking for the 4th means the 3rd.
         a, b = _day(since), _day(until)
         if a:
@@ -658,7 +658,7 @@ def register(app, deps):
         The field is typed rather than picked from a list, so it has to cope
         with what typing produces: the wrong case, a surname on its own, a
         trailing space. It will not guess between two people, because a
-        voucher made out to the wrong Reyes is worse than one more keystroke.
+        bill made out to the wrong Reyes is worse than one more keystroke.
         """
         want = (typed or "").strip()
         if not want:
@@ -693,7 +693,7 @@ def register(app, deps):
                       can_pay=(getattr(staff, "role", "") == "admin"))
 
     def on_voucher(db, vid: int) -> tuple:
-        """The three stacks a voucher is holding right now."""
+        """The three stacks a bill is holding right now."""
         return (
             db.query(CommissionPayout)
             .filter(CommissionPayout.voucher_id == vid)
@@ -707,15 +707,15 @@ def register(app, deps):
         )
 
     def claim(db, voucher, staff, *, payouts, reports, adjustments):
-        """Put these on the voucher and freeze what they come to.
+        """Put these on the bill and freeze what they come to.
 
-        The claim and the freeze happen together on purpose. A voucher that
+        The claim and the freeze happen together on purpose. A bill that
         recorded its total without claiming its parts could pay the same
         payout twice; one that claimed them without freezing would restate
         itself every time somebody edited an adjustment upstream.
 
         One function, so paying one person, paying forty in a run, changing
-        what is on a voucher and putting a voided one back cannot drift apart
+        what is on a bill and putting a voided one back cannot drift apart
         on the rule that matters.
         """
         commission = sum((Decimal(str(p.total or 0)) for p in payouts),
@@ -723,7 +723,7 @@ def register(app, deps):
         expenses = sum((r.total for r in reports), Decimal(0))
         adjust = sum((a.money for a in adjustments), Decimal(0))
         net = commission + expenses + adjust
-        # A voucher never pays a negative number. If the deductions came to
+        # A bill never pays a negative number. If the deductions came to
         # more than everything else, it pays zero and the remainder is written
         # back as a fresh waiting adjustment — the same rule a payout follows,
         # so the money is neither forgiven nor taken twice.
@@ -747,7 +747,7 @@ def register(app, deps):
                 coach=voucher.person, coach_id=voucher.staff_id,
                 occurred_on=date.today(),
                 title="Carried from %s" % voucher.number,
-                description="More was being deducted than this voucher could "
+                description="More was being deducted than this bill could "
                             "cover. The remainder waits for the next one.",
                 amount=carry, created_by_id=getattr(staff, "id", None)))
         return voucher
@@ -790,9 +790,9 @@ def register(app, deps):
         """What a void let go of, and whether it is all still free.
 
         Returns (payouts, reports, adjustments, taken). `taken` names the
-        pieces somebody has since put on another voucher — nothing is put
+        pieces somebody has since put on another bill — nothing is put
         back while that list has anything in it, because a payout on two
-        vouchers is the one mistake this whole design exists to prevent.
+        bills is the one mistake this whole design exists to prevent.
         """
         payouts, reports, adjustments, taken = [], [], [], []
         for token in (voucher.released or "").split(","):
@@ -812,9 +812,13 @@ def register(app, deps):
 
     def issue_voucher(db, staff, *, who, staff_id, payouts, reports,
                       adjustments, note="", batch=None):
-        """A new voucher, holding exactly these pieces."""
+        """A new bill, holding exactly these pieces."""
         voucher = PaymentVoucher(
-            number=next_number(db, PaymentVoucher, "PV"),
+            # VB, not PV: the document was renamed to a vendor bill, and a
+            # series is named after what it issues. Anything already numbered
+            # PV keeps that number — renumbering a document somebody has been
+            # sent is how a reference stops matching an email.
+            number=next_number(db, PaymentVoucher, "VB"),
             staff_id=staff_id, person=who, status=VOUCHER_UNPAID,
             issued_at=now_utc(), issued_by_id=getattr(staff, "id", None),
             batch=batch, note=(note or "").strip()[:800])
@@ -825,7 +829,7 @@ def register(app, deps):
 
     def pay_voucher(db, voucher, *, on, method, reference, proof=None,
                     proof_mime=None):
-        """Record that the money left. Shared by one voucher and by a run."""
+        """Record that the money left. Shared by one bill and by a run."""
         if voucher is None or voucher.status != VOUCHER_UNPAID:
             return False
         if proof:
@@ -918,7 +922,7 @@ def register(app, deps):
                 "adjustments": adjustments,
                 "commission": commission, "expenses": expenses,
                 "adjusted": adjusted,
-                # What the voucher will actually pay, and what it will have to
+                # What the bill will actually pay, and what it will have to
                 # carry — said on the row rather than discovered afterwards.
                 "net": net if net > 0 else Decimal(0),
                 "carry": -net if net < 0 else Decimal(0),
@@ -956,7 +960,7 @@ def register(app, deps):
 
     @app.post("/admin/vouchers/run")
     async def pay_run_issue(request: Request, db: Session = Depends(get_db)):
-        """A voucher each, for everybody ticked.
+        """A bill each, for everybody ticked.
 
         Several separate documents issued together, never one document with
         several people on it. Voiding one has to leave the others alone, and a
@@ -1269,7 +1273,7 @@ def register(app, deps):
                 .order_by(VoucherLink.id.desc()).all())
 
     def _current_vlink(db, vid: int):
-        """The newest link for a voucher — older ones are kept, revoked."""
+        """The newest link for a bill — older ones are kept, revoked."""
         rows = _vlinks_for(db, vid)
         return rows[0] if rows else None
 
@@ -1312,7 +1316,7 @@ def register(app, deps):
         when = voucher.paid_on.strftime("%d %B") if voucher.paid_on else ""
         paid = voucher.status == VOUCHER_PAID
         money = lambda v: "₱{:,.2f}".format(float(v or 0))
-        subject = "Your payment from AWAKEN — %s" % voucher.number
+        subject = "Your payment from Awaken Fitness Center — %s" % voucher.number
         head = ("Your payment has gone out." if paid
                 else "Your payment is being processed.")
         bits = []
@@ -1365,7 +1369,7 @@ def register(app, deps):
   </table>
   <p style="margin:20px 0 0;text-align:center">
     <a href="%(url)s" style="display:inline-block;background:#008080;color:#fff;text-decoration:none;
-       font-weight:650;font-size:15px;padding:14px 30px;border-radius:8px">Open the voucher</a>
+       font-weight:650;font-size:15px;padding:14px 30px;border-radius:8px">Open the bill</a>
   </p>
   <p style="margin:11px 0 0;text-align:center;color:#7c8794;font-size:12.5px">Commission, adjustments
     and expense reports, line by line. No login.%(until)s</p>

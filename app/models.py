@@ -1195,8 +1195,8 @@ class CommissionPayout(Base):
     #: changes what we pay, never what the month earned.
     adjustment_total = Column(Numeric(10, 2), default=0)
     total = Column(Numeric(10, 2), default=0)
-    #: The payment voucher that paid this out, once one has. A payout on a
-    #: voucher can never be put on a second one — which is the whole safety of
+    #: The vendor bill that paid this out, once one has. A payout on a
+    #: bill can never be put on a second one — which is the whole safety of
     #: paying from one document instead of several.
     voucher_id = Column(Integer, ForeignKey("payment_vouchers.id",
                                             ondelete="SET NULL"))
@@ -1366,10 +1366,10 @@ class CommissionAdjustment(Base):
     #: Provenance for the remainder of a deduction a payout could not absorb.
     carried_from_id = Column(Integer, ForeignKey("commission_payouts.id",
                                                  ondelete="SET NULL"))
-    #: Or a payment voucher carried it instead. An adjustment is claimed by one
+    #: Or a vendor bill carried it instead. An adjustment is claimed by one
     #: or the other and never both: a run that finalized with it attached owns
     #: it through ``payout_id``, and anything still waiting can be swept onto a
-    #: voucher. Two claims would pay the same money twice.
+    #: bill. Two claims would pay the same money twice.
     voucher_id = Column(Integer, ForeignKey("payment_vouchers.id",
                                             ondelete="SET NULL"))
     #: Which line of the chart of accounts this belongs to. Nullable, because
@@ -1411,7 +1411,7 @@ class CommissionAdjustment(Base):
 
 #: Where an expense report has got to.
 #:
-#: There is no "paid" here on purpose: a report is paid by a payment voucher,
+#: There is no "paid" here on purpose: a report is paid by a vendor bill,
 #: and asking the report whether it has one is a better answer than a word on
 #: it that somebody has to remember to change.
 EXPENSE_DRAFT = "draft"
@@ -1436,7 +1436,7 @@ class ExpenseReport(Base):
     one payment settles it.
 
     It belongs to the person, not to a month or a run. The month it is paid in
-    is whichever voucher picks it up, which is why there is no period on it.
+    is whichever bill picks it up, which is why there is no period on it.
     """
 
     __tablename__ = "expense_reports"
@@ -1462,7 +1462,7 @@ class ExpenseReport(Base):
     #: Who typed it. Usually the person it belongs to; not always. Somebody
     #: hands the office a fistful of paper receipts and the office encodes
     #: them, and the claim is still theirs - it is their money and it is paid
-    #: on their voucher - but the trail has to say who sat at the keyboard.
+    #: on their bill - but the trail has to say who sat at the keyboard.
     created_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
@@ -1512,7 +1512,7 @@ class ExpenseReport(Base):
 
     @property
     def payable(self) -> bool:
-        """Approved and not yet on a voucher."""
+        """Approved and not yet on a bill."""
         return self.status == EXPENSE_APPROVED and self.voucher_id is None
 
 
@@ -1553,7 +1553,7 @@ class ExpenseLine(Base):
         return Decimal(str(self.amount or 0))
 
 
-#: A voucher's life. `void` rather than deleted: the number was issued, and a
+#: A bill's life. `void` rather than deleted: the number was issued, and a
 #: gap in a numbered series is a question nobody can answer a year later.
 VOUCHER_UNPAID = "unpaid"
 VOUCHER_PAID = "paid"
@@ -1577,12 +1577,12 @@ class PaymentVoucher(Base):
     money left. Every one of those three can be opened from here and still says
     what it always said.
 
-    **Nothing can be on two vouchers.** A payout, a report and an adjustment
+    **Nothing can be on two bills.** A payout, a report and an adjustment
     each carry one `voucher_id`, and issuing sets it. That single column is
     what makes paying from one document safe.
 
     The three totals are frozen onto the row at the moment of issue, the same
-    way a payout freezes its own: the voucher is a document, and a document
+    way a payout freezes its own: the bill is a document, and a document
     that silently restates itself when something upstream is edited is not one.
     """
 
@@ -1609,7 +1609,7 @@ class PaymentVoucher(Base):
     note = Column(Text, default="")
     #: The pay run this was issued in, if it was issued with others: "PR-0003".
     #:
-    #: A string on each voucher rather than a table of its own, because a run
+    #: A string on each bill rather than a table of its own, because a run
     #: has no life beyond the moment it happened. It is several separate
     #: documents issued together, never one document with several people on
     #: it - which is what lets one of them be voided while the rest stand, and
@@ -1639,23 +1639,23 @@ class PaymentVoucher(Base):
         return Decimal(str(self.total or 0))
 
 
-#: How long a voucher's link opens for. Longer than a statement's five days:
-#: a statement is read once in the week it arrives, and a payment voucher is
+#: How long a bill's link opens for. Longer than a statement's five days:
+#: a statement is read once in the week it arrives, and a vendor bill is
 #: the thing somebody goes back to when they are reconciling a month later.
 VOUCHER_LINK_DAYS = 14
 
 
 class VoucherLink(Base):
-    """A private, expiring URL that shows one person their own voucher.
+    """A private, expiring URL that shows one person their own bill.
 
     A link rather than a login, for the same reason the coach statement is
     one: this is read on a phone between clients, and an account somebody has
     to remember a password for is an account they will not use. The cost is
-    that whoever holds the URL can read that voucher - so the token is long
+    that whoever holds the URL can read that bill - so the token is long
     and random, it expires, it can be revoked, and it reaches exactly one
     person's one payment. There is no path from it into anything else.
 
-    The acknowledgement lives here rather than on the voucher because it is a
+    The acknowledgement lives here rather than on the bill because it is a
     fact about *this link being opened by somebody*, not about the money. The
     money does not move either way: "there is a problem" raises a hand, it
     does not reverse a payment.

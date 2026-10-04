@@ -11,12 +11,12 @@
   <div>
     <h1 style="margin:0">Pay run</h1>
     <p class="muted small" style="margin:2px 0 0">Everybody who is owed something, on one page. Set
-      the rule once, tick the people, and issue a voucher each in one go.</p>
+      the rule once, tick the people, and issue a bill each in one go.</p>
   </div>
   <div class="hdact">
     <a class="btn" href="/admin/vouchers/new">Pay one person instead</a>
     {% if rows and can_pay %}
-    <button class="btn primary" form="prun" style="margin:0">Issue the vouchers</button>
+    <button class="btn primary" form="prun" style="margin:0">Issue the bills</button>
     {% endif %}
   </div>
 </div>
@@ -27,7 +27,7 @@
 {% endif %}
 
 <form method="get" action="/admin/vouchers/run" class="card" style="margin:14px 0">
-  <h3 style="margin:0 0 10px;font-size:.95rem">What goes on every voucher</h3>
+  <h3 style="margin:0 0 10px;font-size:.95rem">What goes on every bill</h3>
   <div class="row-between" style="gap:18px;align-items:flex-end;flex-wrap:wrap">
     <div style="flex:0 0 240px"><label>Commission for
       <select name="period" onchange="this.form.submit()">
@@ -44,7 +44,7 @@
     <button class="btn">Refresh the list</button>
   </div>
   <p class="muted small" style="margin:10px 0 0">One rule for everybody, then exceptions per row.
-    Nobody appears twice, and nothing already on a voucher appears at all.</p>
+    Nobody appears twice, and nothing already on a bill appears at all.</p>
 </form>
 
 {% if rows %}
@@ -121,9 +121,9 @@
 </table>
 
 {% if can_pay %}
-<p class="muted small" style="margin-top:16px;max-width:620px">A voucher each, numbered in one
+<p class="muted small" style="margin-top:16px;max-width:620px">A bill each, numbered in one
   series. Each one locks what is on it &mdash; the runs, the reports and the adjustments &mdash; so
-  nothing here can turn up on another voucher. <b>Issue the vouchers</b> is at the top.</p>
+  nothing here can turn up on another bill. <b>Issue the bills</b> is at the top.</p>
 {% endif %}
 </form>
 
@@ -134,6 +134,6 @@
 {% endif %}
 
 <p class="muted small" style="margin-top:18px">A row whose deductions come to more than everything
-  else pays zero, and the remainder carries to the next voucher as a fresh adjustment. The row says
+  else pays zero, and the remainder carries to the next bill as a fresh adjustment. The row says
   so before you press anything.</p>
 {% endblock %}

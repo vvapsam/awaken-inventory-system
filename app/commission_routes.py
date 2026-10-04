@@ -803,7 +803,7 @@ def waiting_adjustments(db: Session, coach: str) -> list:
     """Every adjustment for this coach that nothing has carried yet.
 
     Nothing, not no payout: an adjustment can be claimed by a run's payout or
-    swept onto a payment voucher, and once either has it it must stop being
+    swept onto a vendor bill, and once either has it it must stop being
     offered on the next run. Two claims would pay the same money twice.
     """
     if not coach:
@@ -3933,15 +3933,15 @@ def register(app, deps):
             db.commit()
             return RedirectResponse(f"/commissions/{rid}?tab=documents",
                                     status_code=303)
-        # Same refusal for a payout a voucher has claimed, even an unpaid one.
-        # Reopening deletes the payout, and a voucher whose commission line has
+        # Same refusal for a payout a bill has claimed, even an unpaid one.
+        # Reopening deletes the payout, and a bill whose commission line has
         # silently vanished is a document that no longer adds up to its own
-        # total. Void the voucher first; that releases everything on it.
+        # total. Void the bill first; that releases everything on it.
         onvouch = [p for p in payouts if p.voucher_id]
         if onvouch:
             run.last_import_note = (
-                "Reopen refused — %s is on a payment voucher. Void the "
-                "voucher first; that releases everything on it."
+                "Reopen refused — %s is on a vendor bill. Void the "
+                "bill first; that releases everything on it."
                 % ", ".join(p.coach for p in onvouch))
             db.commit()
             return RedirectResponse(f"/commissions/{rid}?tab=documents",

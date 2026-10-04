@@ -266,7 +266,7 @@ with TestClient(app) as c:                      # startup seeds the chart
            follow_redirects=False)
     with Session(engine) as db:
         v = db.query(M.PaymentVoucher).one()
-        ck("the voucher is numbered", v.number == "PV-0001")
+        ck("the bill is numbered", v.number == "VB-0001")
         ck("the three totals are frozen on it",
            v.commission_total == Decimal("22800")
            and v.expense_total == TOTAL
@@ -300,9 +300,9 @@ with TestClient(app) as c:                      # startup seeds the chart
     out = c.post("/commissions/%d/reopen" % RUN, follow_redirects=False)
     with Session(engine) as db:
         run = db.get(M.CommissionRun, RUN)
-        ck("reopening a run on a voucher is refused",
+        ck("reopening a run on a bill is refused",
            run.status == M.RUN_FINALIZED
-           and "voucher" in (run.last_import_note or ""))
+           and "bill" in (run.last_import_note or ""))
 
     c.post("/admin/vouchers/%d/pay" % VID,
            data={"on": "2026-10-15", "method": "Bank transfer",
@@ -318,7 +318,7 @@ with TestClient(app) as c:                      # startup seeds the chart
     c.post("/admin/vouchers/%d/void" % VID, follow_redirects=False)
     with Session(engine) as db:
         ck("voiding keeps the number",
-           db.get(M.PaymentVoucher, VID).number == "PV-0001")
+           db.get(M.PaymentVoucher, VID).number == "VB-0001")
         ck("the payout goes back to unpaid and unclaimed",
            db.get(M.CommissionPayout, PAYOUT).voucher_id is None
            and db.get(M.CommissionPayout, PAYOUT).status == "unpaid")
@@ -338,12 +338,12 @@ with TestClient(app) as c:                      # startup seeds the chart
            follow_redirects=False)
     with Session(engine) as db:
         nums = sorted(v.number for v in db.query(M.PaymentVoucher))
-        ck("the series has no reused number", nums == ["PV-0001", "PV-0002"])
-        VID2 = (db.query(M.PaymentVoucher).filter_by(number="PV-0002")
+        ck("the series has no reused number", nums == ["VB-0001", "VB-0002"])
+        VID2 = (db.query(M.PaymentVoucher).filter_by(number="VB-0002")
                 .one()).id
 
     # ── putting a voided one back ──────────────────────────────────────
-    # PV-0002 took the payout that PV-0001 let go of, so PV-0001 cannot
+    # VB-0002 took the payout that VB-0001 let go of, so VB-0001 cannot
     # simply resume: half of it would be a voucher whose total no longer
     # matches what is on it.
     out = c.post("/admin/vouchers/%d/restore" % VID, follow_redirects=False)
@@ -361,7 +361,7 @@ with TestClient(app) as c:                      # startup seeds the chart
         v = db.get(M.PaymentVoucher, VID)
         ck("a voided voucher goes back to unpaid",
            v.status == M.VOUCHER_UNPAID and v.voided_at is None)
-        ck("under its own number", v.number == "PV-0001")
+        ck("under its own number", v.number == "VB-0001")
         ck("holding exactly what it held",
            db.get(M.CommissionPayout, PAYOUT).voucher_id == VID
            and db.get(M.ExpenseReport, RID).voucher_id == VID
@@ -395,7 +395,7 @@ with TestClient(app) as c:                      # startup seeds the chart
         ck("and the total is worked out again",
            v.total == Decimal("22800") and v.expense_total == Decimal(0)
            and v.adjustment_total == Decimal(0))
-        ck("the number is untouched", v.number == "PV-0001")
+        ck("the number is untouched", v.number == "VB-0001")
 
     # Put them back on.
     c.post("/admin/vouchers/%d/edit" % VID,
@@ -866,7 +866,7 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("an empty filter form is a real request",
        c.get("/admin/vouchers", params={"who": "", "status": "",
                                         "since": "", "until": ""})
-        .text.count("PV-0001") >= 1)
+        .text.count("VB-0001") >= 1)
 
     only_void = c.get("/admin/vouchers", params={"status": "void"}).text
     ck("a status narrows it", "Unpaid</span>" not in only_void)
@@ -878,7 +878,7 @@ with TestClient(app) as c:                      # startup seeds the chart
     def whose(text):
         import re
         cells = re.findall(r"<td><b>([^<]+)</b></td>", text)
-        return sorted({x for x in cells if not x.startswith("PV-")})
+        return sorted({x for x in cells if not x.startswith("VB-")})
 
     mine = c.get("/admin/vouchers", params={"who": "Chrizel Urbino"}).text
     ck("a name narrows it to that person", whose(mine) == ["Chrizel Urbino"])
@@ -896,7 +896,7 @@ with TestClient(app) as c:                      # startup seeds the chart
        c.get("/admin/vouchers",
              params={"since": "2020-01-01", "until": "2020-01-31"}).text)
     ck("and today's range has them all",
-       "PV-0001" in c.get("/admin/vouchers",
+       "VB-0001" in c.get("/admin/vouchers",
                           params={"since": date.today().isoformat()}).text)
 
     # Paging: one row at a time is not offered, but 25 is, so ask for 25 and
@@ -910,7 +910,7 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("and there is no summary bar over the list",
        "Issued, not yet paid" not in c.get("/admin/vouchers").text)
     ck("a page past the end lands on the last one rather than empty",
-       "PV-0001" in c.get("/admin/vouchers", params={"page": 999}).text)
+       "VB-0001" in c.get("/admin/vouchers", params={"page": 999}).text)
 
     # ── a name that is typed, not scrolled ─────────────────────────────
     build = c.get("/admin/vouchers/new", params={"who": "Julio Reyes"}).text
@@ -942,6 +942,21 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("the issue button is up in the header", 'form="vbuild"' in head)
 
     _mail.Mailer.send = _real_send
+
+    # ── and it all shows on the person's own profile ───────────────────
+    prof = c.get("/admin/staff/%d/edit" % JULIO)
+    ck("a person's profile opens", prof.status_code == 200)
+    ck("it carries what we owe them", "What we owe them" in prof.text
+       and "Vendor bills" in prof.text)
+    ck("with their bills on it, by number",
+       "VB-0001" in prof.text and "/admin/vouchers/%d" % VID in prof.text)
+    ck("and their expense reports",
+       "Expense reports" in prof.text and "ER-0001" in prof.text)
+    with Session(engine) as db:
+        NOBODY = db.query(M.Staff).filter_by(name="Julio Santos").one().id
+    ck("somebody with none says so rather than showing an empty table",
+       "Nothing has been paid to this person yet" in
+       c.get("/admin/staff/%d/edit" % NOBODY).text)
 
     for path in ["/expenses", "/admin/expenses", "/admin/vouchers",
                  "/admin/vouchers/new", "/admin/vouchers/run",

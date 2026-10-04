@@ -162,6 +162,7 @@
 {% if person %}
 <div class="subtabs" id="subtabs">
   <button type="button" class="subtab active" data-tab="txn">Transactions{% if activity and (activity.sales or activity.payments) %} <span class="subtab-c">{{ activity.sales|length + activity.payments|length }}</span>{% endif %}</button>
+  <button type="button" class="subtab" data-tab="owed">What we owe them{% if activity and (activity.bills or activity.claims) %} <span class="subtab-c">{{ activity.bills|length + activity.claims|length }}</span>{% endif %}</button>
   <button type="button" class="subtab" data-tab="waivers">Waivers{% if activity and activity.waivers %} <span class="subtab-c">{{ activity.waivers|length }}</span>{% endif %}</button>
 </div>
 <div class="subpanel" data-panel="txn">
@@ -205,6 +206,73 @@
 
   {% if not (activity.sales or activity.payments) %}
   <p class="muted">No purchases or payments recorded for this person yet.</p>
+  {% endif %}
+</div>
+
+{# ---------------- money going out ----------------
+   The Transactions tab above is money coming *in* — what this person bought
+   and paid. This is the other direction: what the business owes them and what
+   it has already handed over. Two directions on one screen, because a coach
+   who also buys protein is one person and a profile that only showed half of
+   that is a profile somebody has to cross-check by hand. #}
+<div class="subpanel hide" data-panel="owed">
+  {% if activity.bills or activity.claims %}
+  <div class="grid" style="margin-bottom:14px">
+    <div class="card stat"><div class="stat-label">Paid out</div>
+      <div class="stat-value">{{ peso(activity.paid_out) }}</div></div>
+    <div class="card stat"><div class="stat-label">Issued, not yet paid</div>
+      <div class="stat-value">{{ peso(activity.owing) }}</div></div>
+    <div class="card stat"><div class="stat-label">Bills</div>
+      <div class="stat-value">{{ activity.bills|length }}</div></div>
+  </div>
+  {% endif %}
+
+  {% if activity.bills %}
+  <h3>Vendor bills</h3>
+  <table class="dt">
+    <tr><th>Bill</th><th>Issued</th><th>What is on it</th><th>Net</th><th>State</th><th></th></tr>
+    {% for b in activity.bills %}
+    <tr{% if b.status == 'void' %} class="low"{% endif %}>
+      <td><b>{{ b.number }}</b>{% if b.batch %}<div class="muted small">{{ b.batch }}</div>{% endif %}</td>
+      <td>{{ b.issued_at.strftime('%Y-%m-%d') if b.issued_at else '' }}</td>
+      <td class="muted small">
+        {%- if b.commission_total %}commission {{ peso(b.commission_total) }}{% endif %}
+        {%- if b.expense_total %}{{ ' · ' if b.commission_total }}reimbursed {{ peso(b.expense_total) }}{% endif %}
+        {%- if b.adjustment_total %} &middot; adjusted {{ '−' if b.adjustment_total < 0 }}{{ peso(b.adjustment_total|abs) }}{% endif %}</td>
+      <td>{{ peso(b.total) }}</td>
+      <td>
+        {% if b.status == 'paid' %}<span class="tag">Paid</span>
+          {% if b.paid_on %}<div class="muted small">{{ b.paid_on.strftime('%d %b') }}</div>{% endif %}
+        {% elif b.status == 'void' %}<span class="tag" style="background:#8a94a1">Void</span>
+        {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
+      </td>
+      <td class="actions-cell"><a href="/admin/vouchers/{{ b.id }}">Open &rsaquo;</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if activity.claims %}
+  <h3>Expense reports</h3>
+  <table class="dt">
+    <tr><th>Report</th><th>Date</th><th>Lines</th><th>Total</th><th>State</th><th></th></tr>
+    {% for r in activity.claims %}
+    <tr>
+      <td><b>{{ r.number }}</b></td>
+      <td>{{ r.occurred_on.strftime('%Y-%m-%d') if r.occurred_on else '' }}</td>
+      <td class="muted">{{ r.lines|length }}</td>
+      <td>{{ peso(r.total) }}</td>
+      <td>{% if r.voucher_id %}<span class="tag">Paid</span>
+          {% else %}<span class="tag" style="background:#8a94a1">{{ EXPENSE_LABELS.get(r.status, r.status) }}</span>{% endif %}</td>
+      <td class="actions-cell"><a href="/admin/expenses/{{ r.id }}">Open &rsaquo;</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if not (activity.bills or activity.claims) %}
+  <p class="muted">Nothing has been paid to this person yet, and they have
+    claimed nothing back.</p>
   {% endif %}
 </div>
 

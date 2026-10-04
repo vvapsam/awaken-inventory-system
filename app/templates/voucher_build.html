@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block body %}
-{# Building one voucher. Three stacks, each of them "finished, and nothing has
+{# Building one bill. Three stacks, each of them "finished, and nothing has
    claimed it yet". A run still open, a report still waiting on approval and an
    adjustment already on a payout are all absent — not hidden, simply not yet
    owed or already settled. #}
 {% set err = request.query_params.get('err') %}
 <div class="row-between">
   <div>
-    <h1 style="margin:0">New payment voucher</h1>
+    <h1 style="margin:0">New vendor bill</h1>
     <p class="muted small" style="margin:2px 0 0">Everything {{ picked or 'this person' }} is owed
       right now, on one document and paid once. Tick what goes in; nothing is recalculated, only
       gathered.</p>
@@ -16,18 +16,18 @@
      have scrolled anything. The button belongs to the form below it through
      `form=`, so the fields can stay with what they describe. #}
   <div class="hdact">
-    <a class="btn" href="/admin/vouchers">All vouchers</a>
+    <a class="btn" href="/admin/vouchers">All bills</a>
     {% if picked and can_pay %}
-    <button class="btn primary" form="vbuild" style="margin:0">Issue the voucher</button>
+    <button class="btn primary" form="vbuild" style="margin:0">Issue the bill</button>
     {% endif %}
   </div>
 </div>
 
 {% if err == 'empty' %}
-<div class="alert bad"><b>Nothing ticked.</b> A voucher needs at least one thing on it.</div>
+<div class="alert bad"><b>Nothing ticked.</b> A bill needs at least one thing on it.</div>
 {% elif typed and not picked %}
 <div class="alert bad"><b>No single person matches &ldquo;{{ typed }}&rdquo;.</b>
-  Keep typing until the right name appears, then pick it off the list &mdash; a voucher made out
+  Keep typing until the right name appears, then pick it off the list &mdash; a bill made out
   to the wrong person is worse than one more keystroke.</div>
 {% endif %}
 
@@ -74,7 +74,7 @@
   </table>
   {% else %}
   <p class="muted small" style="margin:0">Nothing. Either they are not a coach, or every finalized
-    run of theirs is already on a voucher.</p>
+    run of theirs is already on a bill.</p>
   {% endif %}
 </div>
 
@@ -106,7 +106,7 @@
 <div class="card" style="margin-bottom:14px">
   <h3 style="margin:0 0 3px;font-size:.95rem">3 &middot; Adjustments</h3>
   <p class="muted small" style="margin:0 0 10px">Everything waiting on {{ picked.split(' ')[0] }},
-    already ticked. Untick one and it simply waits for the next voucher.</p>
+    already ticked. Untick one and it simply waits for the next bill.</p>
   {% if adjustments %}
   <table style="margin:0">
     <tr><th style="width:36px"></th><th>What it is</th><th>Account</th>
@@ -129,10 +129,10 @@
 </div>
 
 {% if can_pay %}
-<p class="muted small" style="margin-top:9px"><b>Issue the voucher</b> is at the top of the page.
-  Issuing locks every piece of it &mdash; nothing on this voucher can turn up on another one. If
+<p class="muted small" style="margin-top:9px"><b>Issue the bill</b> is at the top of the page.
+  Issuing locks every piece of it &mdash; nothing on this bill can turn up on another one. If
   the deductions came to more than everything else, it pays zero and the remainder carries to the
-  next voucher as a fresh adjustment.</p>
+  next bill as a fresh adjustment.</p>
 {% endif %}
 </form>
 

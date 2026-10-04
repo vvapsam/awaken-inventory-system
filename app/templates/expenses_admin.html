@@ -8,14 +8,14 @@
   <div>
     <h1 style="margin:0">Expense reports</h1>
     <p class="muted small" style="margin:2px 0 0">What staff paid for out of pocket. Approving one
-      is what makes the money owed; a payment voucher is what pays it.</p>
+      is what makes the money owed; a vendor bill is what pays it.</p>
   </div>
-  <div class="hdact"><a class="btn" href="/admin/vouchers">Payment vouchers</a></div>
+  <div class="hdact"><a class="btn" href="/admin/vouchers">Vendor bills</a></div>
 </div>
 
 {% if request.query_params.get('err') == 'who' %}
 <div class="alert bad"><b>Pick whose it is.</b> A report has to belong to somebody &mdash; it shows on
-  their list and it is paid on their voucher.</div>
+  their list and it is paid on their bill.</div>
 {% endif %}
 
 {# Paper receipts handed across the counter, a coach with no phone. The report
@@ -23,7 +23,7 @@
 <div class="card" style="margin:14px 0">
   <h3 style="margin:0 0 4px;font-size:.95rem">Start a report for somebody</h3>
   <p class="muted small" style="margin:0 0 10px">For receipts handed to you rather than filed from a
-    phone. It becomes their claim &mdash; on their list, on their voucher &mdash; and the trail says
+    phone. It becomes their claim &mdash; on their list, on their bill &mdash; and the trail says
     you typed it.</p>
   <form method="post" action="/admin/expenses/new" class="row-between"
         style="gap:10px;align-items:flex-end">
@@ -54,7 +54,7 @@
     <div class="sub">{{ counts.pending }} report{{ 's' if counts.pending != 1 }}</div></div>
   <div class="s"><div class="l">Approved, not yet paid</div>
     <div class="v">{{ peso(owed) }}</div>
-    <div class="sub">waiting for a voucher</div></div>
+    <div class="sub">waiting for a bill</div></div>
   <div class="s spacer"></div>
 </div>
 

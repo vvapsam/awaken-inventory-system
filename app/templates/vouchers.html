@@ -2,7 +2,7 @@
 {% block body %}
 <div class="row-between">
   <div>
-    <h1 style="margin:0">Payment vouchers</h1>
+    <h1 style="margin:0">Vendor bills</h1>
     <p class="muted small" style="margin:2px 0 0">Everything one person is owed &mdash; their
       commission, what they laid out of pocket, and whatever is being deducted &mdash; on one
       document and paid once.</p>
@@ -22,10 +22,10 @@
   <b>Just make the links</b> still works &mdash; you can pass them on yourself.</div>
 {% elif q.get('none') %}
 <div class="alert bad" style="margin-bottom:14px"><b>Nothing was ticked.</b>
-  Tick the vouchers you want, then choose what to do with them.</div>
+  Tick the bills you want, then choose what to do with them.</div>
 {% elif q.get('linked') %}
 <div class="alert" style="margin-bottom:14px"><b>{{ q.get('linked') }} new link{{ 's' if q.get('linked') != '1' }}.</b>
-  Open a voucher to copy its address. Anything that already had a working one was left alone.</div>
+  Open a bill to copy its address. Anything that already had a working one was left alone.</div>
 {% elif q.get('sent') or q.get('skipped') or q.get('failed') %}
 <div class="alert{{ ' bad' if q.get('failed') }}" style="margin-bottom:14px">
   <b>{{ q.get('sent', '0') }} sent.</b>
@@ -110,7 +110,7 @@
     </summary>
     <div class="menu">
       <div class="hd">Email</div>
-      <button form="bulk" name="action" value="send"{{ ' disabled' if not mail_ready }}>Send the voucher</button>
+      <button form="bulk" name="action" value="send"{{ ' disabled' if not mail_ready }}>Send the bill</button>
       <button form="bulk" name="action" value="resend"{{ ' disabled' if not mail_ready }}>Send it again</button>
       <div class="hd">Without emailing</div>
       <button form="bulk" name="action" value="link">Just make the links</button>
@@ -128,7 +128,7 @@
 </form>
 <table>
   <tr><th style="width:38px"><input type="checkbox" id="all" aria-label="Tick every voucher"></th>
-      <th style="width:96px">Voucher</th><th>Who</th><th style="width:150px">Issued</th>
+      <th style="width:96px">Bill</th><th>Who</th><th style="width:150px">Issued</th>
       <th>What is on it</th>
       <th style="text-align:right;width:124px">Net</th>
       <th style="width:120px">State</th>
@@ -210,11 +210,11 @@
 </script>
 {% else %}
 <div class="card"><p class="muted" style="margin:0">{% if narrowed %}Nothing matches that.
-  <a href="/admin/vouchers">Clear the filter</a> to see them all.{% else %}No vouchers yet.{% endif %}</p></div>
+  <a href="/admin/vouchers">Clear the filter</a> to see them all.{% else %}No bills yet.{% endif %}</p></div>
 {% endif %}
 
-<p class="muted small" style="margin-top:18px">A voucher gathers what is already owed; it never
+<p class="muted small" style="margin-top:18px">A bill gathers what is already owed; it never
   recalculates any of it. Once a payout, a report or an adjustment is on one, it can never appear on
-  another &mdash; which is what makes paying everything at once safe. Voiding a voucher releases all
+  another &mdash; which is what makes paying everything at once safe. Voiding a bill releases all
   of it back to where it was.</p>
 {% endblock %}

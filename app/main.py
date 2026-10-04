@@ -14,6 +14,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from decimal import Decimal
 from sqlalchemy import func, text, or_
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
@@ -34,6 +35,10 @@ from .models import (
     KIOSK_HYROX_RATES,
     HyroxGroup, HYROX_GROUP_DEFAULTS, HYROX_COACH_DEFAULTS,
     Waiver,
+    # What the business owes a person, for their own profile page.
+    ExpenseReport, EXPENSE_LABELS as _EXP_LABELS,
+    PaymentVoucher, VOUCHER_LABELS as _VB_LABELS,
+    VOUCHER_PAID, VOUCHER_UNPAID,
 )
 
 APP_TZ = os.environ.get("APP_TZ", "Asia/Manila")
@@ -128,6 +133,7 @@ from .models import ACCOUNT_KINDS as _ACCOUNT_KINDS
 templates.env.globals["ACCOUNT_KINDS"] = _ACCOUNT_KINDS
 from .models import EXPENSE_LABELS as _EXPENSE_LABELS
 templates.env.globals["EXPENSE_LABELS"] = _EXPENSE_LABELS
+templates.env.globals["VOUCHER_LABELS"] = _VB_LABELS
 from .models import CATEGORIES as _CATEGORIES
 templates.env.globals["CATEGORIES"] = _CATEGORIES
 from .models import CATEGORY_LABELS as _CATEGORY_LABELS
@@ -773,8 +779,8 @@ def startup():
                 "IS NOT NULL THEN ALTER TABLE commission_adjustments "
                 "  ADD COLUMN IF NOT EXISTS voucher_id INTEGER; "
                 "END IF; END $$;"))
-            # Which pay run a voucher was issued in, if it was issued with
-            # others. A string on each voucher: a run has no life beyond the
+            # Which pay run a bill was issued in, if it was issued with
+            # others. A string on each bill: a run has no life beyond the
             # moment it happened.
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.payment_vouchers') "
@@ -2246,9 +2252,26 @@ def _person_activity(db, pid):
     paid = sum(p.total for p in payments)
     waivers = (db.query(Waiver).filter(Waiver.customer_id == pid)
                .order_by(Waiver.signed_at.desc()).all())
+    # What the business owes this person, and what it has already paid them.
+    # Matched on the id *or* the name: a bill is made out to a person who may
+    # have been a coach on a rate sheet long before anybody linked them to a
+    # record here, and the name is the only thing those two shared.
+    who = (db.get(Staff, pid).name or "").strip() if db.get(Staff, pid) else ""
+    bills = (db.query(PaymentVoucher)
+             .filter(or_(PaymentVoucher.staff_id == pid,
+                         PaymentVoucher.person == who) if who
+                     else PaymentVoucher.staff_id == pid)
+             .order_by(PaymentVoucher.id.desc()).limit(200).all())
+    claims = (db.query(ExpenseReport)
+              .filter(ExpenseReport.staff_id == pid)
+              .order_by(ExpenseReport.id.desc()).limit(200).all())
+    out = sum((b.money for b in bills if b.status == VOUCHER_PAID), Decimal(0))
+    owing = sum((b.money for b in bills if b.status == VOUCHER_UNPAID),
+                Decimal(0))
     return {"sales": sales, "payments": payments, "charges": charges, "paid": paid,
             "balance": charges - paid, "waivers": waivers,
-            "has_any": bool(sales or payments or waivers)}
+            "bills": bills, "claims": claims, "paid_out": out, "owing": owing,
+            "has_any": bool(sales or payments or waivers or bills or claims)}
 
 
 def _form(request, db, staff, person=None, error=None, preset_type=""):
@@ -4002,7 +4025,7 @@ commission_routes.register(app, {
 })
 
 
-# ================= Reimbursements and payment vouchers =================
+# ================= Reimbursements and vendor bills =====================
 # What staff laid out of their own pocket, and the one document that pays a
 # person their commission, their reimbursements and their adjustments at once.
 # Registered after the commission module because it reads the same payouts and
@@ -4013,7 +4036,7 @@ expense_routes.register(app, {
     "render": render,
     "require": require,
     "require_admin": require_admin,
-    # The voucher a person opens from their email renders with nobody logged
+    # The bill a person opens from their email renders with nobody logged
     # in, so it needs the raw template environment rather than render().
     "templates": templates,
     "tz": _tz,

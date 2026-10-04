@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block body %}
-{# Changing what is on a voucher that has been issued but not paid.
+{# Changing what is on a bill that has been issued but not paid.
 
    Everything it already holds, plus everything else that person is owed and
-   nothing has claimed. The ticks say what the voucher should end up with —
+   nothing has claimed. The ticks say what the bill should end up with —
    what remains, not what changed — because a list of changes has to be read
    against a state somebody is no longer looking at.
 
    Saving lets go of everything and claims the ticked set again, through the
-   same two functions the voucher was built with. The number, the date and
+   same two functions the bill was built with. The number, the date and
    who issued it stay: this is the same document, corrected. #}
 {% set err = request.query_params.get('err') %}
 <div class="row-between">
@@ -16,7 +16,7 @@
     <h1 style="margin:0">Editing {{ v.number }} &middot; {{ v.person }}</h1>
     <p class="muted small" style="margin:2px 0 0">Issued
       {{ v.issued_at.strftime('%d %B %Y') if v.issued_at else '' }} &middot; not yet paid &middot;
-      <a href="/admin/vouchers/{{ v.id }}">back to the voucher</a></p>
+      <a href="/admin/vouchers/{{ v.id }}">back to the bill</a></p>
   </div>
   <div class="hdact">
     <a class="btn" href="/admin/vouchers/{{ v.id }}">Cancel</a>
@@ -27,13 +27,13 @@
 </div>
 
 {% if err == 'empty' %}
-<div class="alert bad"><b>Nothing ticked.</b> A voucher needs at least one thing on it. To end up
+<div class="alert bad"><b>Nothing ticked.</b> A bill needs at least one thing on it. To end up
   with none, void it instead &mdash; that keeps the number and says what happened.</div>
 {% endif %}
 
 <div class="alert" style="background:var(--teal-tint);border-color:var(--teal)">
-  <b>Ticked is what the voucher ends up with.</b> Unticking something hands it back to where it
-  came from, ready for another voucher; ticking something new claims it. The total is recalculated
+  <b>Ticked is what the bill ends up with.</b> Unticking something hands it back to where it
+  came from, ready for another bill; ticking something new claims it. The total is recalculated
   from what you leave ticked, and the number stays {{ v.number }}.</div>
 
 <form method="post" action="/admin/vouchers/{{ v.id }}/edit" id="vedit">
@@ -62,7 +62,7 @@
   </table>
   {% else %}
   <p class="muted small" style="margin:0">Nothing. Either they are not a coach, or every finalized
-    run of theirs is on another voucher.</p>
+    run of theirs is on another bill.</p>
   {% endif %}
 </div>
 
@@ -135,7 +135,7 @@
 </div>
 {% endif %}
 
-<p class="muted small" style="margin-top:18px">Only an unpaid voucher can be changed. Once the
+<p class="muted small" style="margin-top:18px">Only an unpaid bill can be changed. Once the
   money has left, a correction is an adjustment on the next one &mdash; unpicking a payment that
   has already gone is how a set of books stops matching a bank statement.</p>
 {% endblock %}

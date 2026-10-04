@@ -32,7 +32,7 @@
 {% if err == 'empty' %}
 <div class="alert bad"><b>Nothing on it.</b> A report with no lines cannot be approved.</div>
 {% elif err == 'paid' %}
-<div class="alert bad"><b>A voucher has already paid this.</b> Correct it with an adjustment
+<div class="alert bad"><b>A bill has already paid this.</b> Correct it with an adjustment
   instead &mdash; sending it back now would unpick money that has left.</div>
 {% endif %}
 
@@ -108,18 +108,18 @@
   <div class="card" style="flex:1">
     <h3 style="margin:0 0 4px;font-size:.95rem">If you are approving it</h3>
     <p class="muted small" style="margin:0">Approving locks the report and makes
-      {{ peso(r.total) }} owed. It is paid by a payment voucher, with whatever else
+      {{ peso(r.total) }} owed. It is paid by a vendor bill, with whatever else
       {{ r.person.split(' ')[0] }} is owed.</p>
   </div>
 </div>
 {% elif r.status == 'approved' %}
 <div class="card" style="margin-top:18px">
   {% if r.voucher_id %}
-  <p style="margin:0">Paid on <a href="/admin/vouchers/{{ r.voucher_id }}">voucher {{ r.voucher_id }}</a>.</p>
+  <p style="margin:0">Paid on <a href="/admin/vouchers/{{ r.voucher_id }}">bill {{ r.voucher_id }}</a>.</p>
   {% else %}
   <p style="margin:0 0 10px">Approved{% if r.reviewed_by %} by {{ r.reviewed_by.name }}{% endif %}
     {%- if r.reviewed_at %} on {{ r.reviewed_at.strftime('%d %B') }}{% endif %}.
-    Not yet paid &mdash; it will appear on {{ r.person.split(' ')[0] }}&rsquo;s next payment voucher.</p>
+    Not yet paid &mdash; it will appear on {{ r.person.split(' ')[0] }}&rsquo;s next vendor bill.</p>
   <a class="btn primary" href="/admin/vouchers/new?who={{ r.person|urlencode }}">Pay it now</a>
   {% if can_pay %}
   <form method="post" action="/admin/expenses/{{ r.id }}/return" style="display:inline-block;margin-left:8px">
