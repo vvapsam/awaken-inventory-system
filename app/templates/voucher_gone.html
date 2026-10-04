@@ -16,8 +16,9 @@ body{margin:0;background:var(--panel);color:var(--ink);
 .box svg{width:44px;height:44px;margin:0 auto 12px;display:block;color:#b9c2cc}
 .box h1{font-size:1.12rem;margin:0 0 8px}
 .box p{color:var(--muted);font-size:.9rem;line-height:1.6;margin:0 auto;max-width:46ch}
-.wm{text-align:center;font-size:.64rem;letter-spacing:.3em;font-weight:600;
-  color:var(--muted);margin-top:34px}
+.wm{text-align:center;margin-top:34px}
+.wm svg{width:24px;height:24px;display:block;margin:0 auto 7px;fill:#b9c2cc}
+.wm b{font-size:.64rem;letter-spacing:.3em;font-weight:700;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -40,6 +41,11 @@ body{margin:0;background:var(--panel);color:var(--ink);
     the email, or ask AWAKEN to send it again.</p>
   {% endif %}
 </div>
-<div class="wm">A W A K E N</div>
+<div class="wm">
+  <svg viewBox="0 0 200 200" aria-hidden="true">
+    <path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/>
+    <path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
+  <b>AWAKEN</b>
+</div>
 </body>
 </html>
