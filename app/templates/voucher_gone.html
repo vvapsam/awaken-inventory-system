@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Payment voucher — AWAKEN</title>
+<title>Payment voucher — Awaken Fitness Center</title>
 <link rel="icon" href="/static/logo.svg">
 <style>
 :root{--ink:#1a232e;--muted:#6b7683;--line:#e0e5ea;--panel:#eef1f4}
@@ -18,7 +18,7 @@ body{margin:0;background:var(--panel);color:var(--ink);
 .box p{color:var(--muted);font-size:.9rem;line-height:1.6;margin:0 auto;max-width:46ch}
 .wm{text-align:center;margin-top:34px}
 .wm svg{width:24px;height:24px;display:block;margin:0 auto 7px;fill:#b9c2cc}
-.wm b{font-size:.64rem;letter-spacing:.3em;font-weight:700;color:var(--muted)}
+.wm span{font-size:.78rem;font-weight:400;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -29,23 +29,23 @@ body{margin:0;background:var(--panel);color:var(--ink);
      reads as "they lost my payment", which is never what has occurred. #}
   {% if reason == 'expired' %}
   <h1>This link has expired</h1>
-  <p>Links stay open for {{ days }} days. Ask AWAKEN to send you a new one — the payment itself
+  <p>Links stay open for {{ days }} days. Ask Awaken Fitness Center to send you a new one — the payment itself
     hasn't changed and nothing has been lost.</p>
   {% elif reason == 'revoked' %}
   <h1>This link has been turned off</h1>
-  <p>AWAKEN has withdrawn it, usually because a newer one was sent. Check your email for a more
+  <p>Awaken Fitness Center has withdrawn it, usually because a newer one was sent. Check your email for a more
     recent message, or ask them to resend it.</p>
   {% else %}
   <h1>We can't find that voucher</h1>
   <p>The link may have been mistyped or cut short by a messaging app. Try opening it straight from
-    the email, or ask AWAKEN to send it again.</p>
+    the email, or ask Awaken Fitness Center to send it again.</p>
   {% endif %}
 </div>
 <div class="wm">
   <svg viewBox="0 0 200 200" aria-hidden="true">
     <path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/>
     <path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
-  <b>AWAKEN</b>
+  <span>Awaken Fitness Center</span>
 </div>
 </body>
 </html>
