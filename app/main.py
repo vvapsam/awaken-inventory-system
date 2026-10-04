@@ -779,7 +779,8 @@ def startup():
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.payment_vouchers') "
                 "IS NOT NULL THEN ALTER TABLE payment_vouchers "
-                "  ADD COLUMN IF NOT EXISTS batch VARCHAR; "
+                "  ADD COLUMN IF NOT EXISTS batch VARCHAR, "
+                "  ADD COLUMN IF NOT EXISTS released TEXT; "
                 "CREATE INDEX IF NOT EXISTS ix_payment_vouchers_batch "
                 "  ON payment_vouchers (batch); "
                 "END IF; END $$;"))

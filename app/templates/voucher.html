@@ -20,13 +20,20 @@
       else 'Email it again' }}</button>
     {% endif %}
     {% if v.status == 'unpaid' and can_pay %}
+    <a class="btn" href="/admin/vouchers/{{ v.id }}/edit">Edit what is on it</a>
     <button class="btn primary" form="vpay" style="margin:0">Mark paid {{ peso(v.total) }}</button>
+    {% endif %}
+    {% if v.status == 'void' and can_pay %}
+    <button class="btn primary" form="vback" style="margin:0">Put it back</button>
     {% endif %}
     {% if v.status != 'void' and can_pay %}
     <button class="btn danger" form="vvoid" style="margin:0">Void</button>
     {% endif %}
   </div>
 </div>
+{% if v.status == 'void' and can_pay %}
+<form method="post" action="/admin/vouchers/{{ v.id }}/restore" id="vback"></form>
+{% endif %}
 {% if v.status != 'void' and their_email and mail_ready %}
 <form method="post" action="/admin/vouchers/{{ v.id }}/send" id="vsend"></form>
 {% endif %}
@@ -34,11 +41,31 @@
 <form method="post" action="/admin/vouchers/{{ v.id }}/void" id="vvoid"></form>
 {% endif %}
 
+{% set q = request.query_params %}
+{% if q.get('err') == 'taken' %}
+<div class="alert bad"><b>It can&rsquo;t go back.</b> Something that was on it has since been put
+  on another voucher. Void that one first, or build a fresh voucher from what is left &mdash;
+  nothing is put back halfway, because a voucher whose total no longer matches what is on it is
+  worse than one that stays voided.</div>
+{% elif q.get('err') == 'gone' %}
+<div class="alert bad"><b>There is nothing left to put back.</b> What was on it has been paid or
+  deleted since. Build a fresh voucher instead.</div>
+{% elif q.get('restored') %}
+<div class="alert"><b>Put back, unpaid.</b> It holds exactly what it was holding, under the same
+  number.</div>
+{% elif q.get('edited') %}
+<div class="alert"><b>Saved.</b> Anything you unticked has gone back to where it came from, and the
+  total has been worked out again from what is on it now.</div>
+{% endif %}
+
 {% if v.status == 'void' %}
 <div class="alert" style="background:var(--low);border-color:var(--low-line)">
   <b>Voided{% if v.voided_at %} on {{ v.voided_at.strftime('%d %B') }}{% endif %}.</b>
   Everything that was on it went back to where it came from and can be put on a corrected voucher.
-  The number stays spent, so the series has no gap in it.</div>
+  The number stays spent, so the series has no gap in it.
+  {% if v.released and can_pay %}<br><b>Put it back</b> at the top returns it to unpaid with
+    exactly what it was holding &mdash; as long as none of it has gone onto another voucher since.
+  {% endif %}</div>
 {% endif %}
 
 <table style="margin-top:14px">
@@ -213,7 +240,9 @@
     <h3 style="margin:0 0 4px;font-size:.95rem">Undoing it</h3>
     <p class="muted small" style="margin:0">Voiding releases every piece back to where it was
       &mdash; the runs, the reports and the adjustments &mdash; so they can go on a corrected
-      voucher. Nothing is deleted. The button is at the top of the page.</p>
+      voucher. Nothing is deleted, and it can be put back. If only part of it is wrong,
+      <a href="/admin/vouchers/{{ v.id }}/edit">edit what is on it</a> instead. Both buttons are at
+      the top of the page.</p>
   </div>
 </div>
 {% elif v.status == 'paid' %}

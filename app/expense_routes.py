@@ -641,17 +641,31 @@ def register(app, deps):
                       today=date.today().isoformat(),
                       can_pay=(getattr(staff, "role", "") == "admin"))
 
-    def issue_voucher(db, staff, *, who, staff_id, payouts, reports,
-                      adjustments, note="", batch=None):
-        """One voucher: claim every piece, and freeze the figures.
+    def on_voucher(db, vid: int) -> tuple:
+        """The three stacks a voucher is holding right now."""
+        return (
+            db.query(CommissionPayout)
+            .filter(CommissionPayout.voucher_id == vid)
+            .order_by(CommissionPayout.id.asc()).all(),
+            db.query(ExpenseReport)
+            .filter(ExpenseReport.voucher_id == vid)
+            .order_by(ExpenseReport.id.asc()).all(),
+            db.query(CommissionAdjustment)
+            .filter(CommissionAdjustment.voucher_id == vid)
+            .order_by(CommissionAdjustment.id.asc()).all(),
+        )
+
+    def claim(db, voucher, staff, *, payouts, reports, adjustments):
+        """Put these on the voucher and freeze what they come to.
 
         The claim and the freeze happen together on purpose. A voucher that
         recorded its total without claiming its parts could pay the same
         payout twice; one that claimed them without freezing would restate
         itself every time somebody edited an adjustment upstream.
 
-        One function, so paying a person on their own and paying forty people
-        in a run cannot drift apart on the rule that matters.
+        One function, so paying one person, paying forty in a run, changing
+        what is on a voucher and putting a voided one back cannot drift apart
+        on the rule that matters.
         """
         commission = sum((Decimal(str(p.total or 0)) for p in payouts),
                          Decimal(0))
@@ -664,18 +678,12 @@ def register(app, deps):
         # so the money is neither forgiven nor taken twice.
         carry = Decimal(0)
         if net < 0:
-            carry = net
-            net = Decimal(0)
+            carry, net = net, Decimal(0)
 
-        voucher = PaymentVoucher(
-            number=next_number(db, PaymentVoucher, "PV"),
-            staff_id=staff_id, person=who, status=VOUCHER_UNPAID,
-            issued_at=now_utc(), issued_by_id=getattr(staff, "id", None),
-            commission_total=commission, expense_total=expenses,
-            adjustment_total=adjust, total=net,
-            batch=batch, note=(note or "").strip()[:800])
-        db.add(voucher)
-        db.flush()
+        voucher.commission_total = commission
+        voucher.expense_total = expenses
+        voucher.adjustment_total = adjust
+        voucher.total = net
         for p in payouts:
             p.voucher_id = voucher.id
         for r in reports:
@@ -685,12 +693,84 @@ def register(app, deps):
             a.paid_at = now_utc()
         if carry:
             db.add(CommissionAdjustment(
-                coach=who, coach_id=staff_id, occurred_on=date.today(),
+                coach=voucher.person, coach_id=voucher.staff_id,
+                occurred_on=date.today(),
                 title="Carried from %s" % voucher.number,
                 description="More was being deducted than this voucher could "
                             "cover. The remainder waits for the next one.",
                 amount=carry, created_by_id=getattr(staff, "id", None)))
         return voucher
+
+    def release(db, voucher, *, remember=False):
+        """Let go of everything on it, and of the remainder it created.
+
+        The pieces go back to exactly where they came from, so a corrected
+        voucher can pick them up. The carried remainder goes with them —
+        leaving it would deduct the same money twice on the next voucher.
+
+        With `remember`, what was let go is written onto the voucher, because
+        a cleared claim leaves no trace of where it had been and "put that
+        back" needs one.
+        """
+        payouts, reports, adjustments = on_voucher(db, voucher.id)
+        for p in payouts:
+            p.voucher_id = None
+            p.status = "unpaid"
+            p.paid_at = None
+        for r in reports:
+            r.voucher_id = None
+        for a in adjustments:
+            a.voucher_id = None
+            a.paid_at = None
+        for a in (db.query(CommissionAdjustment)
+                  .filter(CommissionAdjustment.title
+                          == "Carried from %s" % voucher.number,
+                          CommissionAdjustment.payout_id.is_(None),
+                          CommissionAdjustment.voucher_id.is_(None))):
+            db.delete(a)
+        if remember:
+            voucher.released = ",".join(
+                ["p:%d" % p.id for p in payouts]
+                + ["r:%d" % r.id for r in reports]
+                + ["a:%d" % a.id for a in adjustments])
+        return payouts, reports, adjustments
+
+    def remembered(db, voucher) -> tuple:
+        """What a void let go of, and whether it is all still free.
+
+        Returns (payouts, reports, adjustments, taken). `taken` names the
+        pieces somebody has since put on another voucher — nothing is put
+        back while that list has anything in it, because a payout on two
+        vouchers is the one mistake this whole design exists to prevent.
+        """
+        payouts, reports, adjustments, taken = [], [], [], []
+        for token in (voucher.released or "").split(","):
+            kind, _sep, raw = token.partition(":")
+            if not raw.isdigit():
+                continue
+            model = {"p": CommissionPayout, "r": ExpenseReport,
+                     "a": CommissionAdjustment}.get(kind)
+            row = db.get(model, int(raw)) if model else None
+            if row is None:
+                continue
+            if row.voucher_id is not None or getattr(row, "payout_id", None):
+                taken.append(row)
+                continue
+            {"p": payouts, "r": reports, "a": adjustments}[kind].append(row)
+        return payouts, reports, adjustments, taken
+
+    def issue_voucher(db, staff, *, who, staff_id, payouts, reports,
+                      adjustments, note="", batch=None):
+        """A new voucher, holding exactly these pieces."""
+        voucher = PaymentVoucher(
+            number=next_number(db, PaymentVoucher, "PV"),
+            staff_id=staff_id, person=who, status=VOUCHER_UNPAID,
+            issued_at=now_utc(), issued_by_id=getattr(staff, "id", None),
+            batch=batch, note=(note or "").strip()[:800])
+        db.add(voucher)
+        db.flush()
+        return claim(db, voucher, staff, payouts=payouts, reports=reports,
+                     adjustments=adjustments)
 
     def pay_voucher(db, voucher, *, on, method, reference, proof=None,
                     proof_mime=None):
@@ -986,7 +1066,8 @@ def register(app, deps):
 
         Void rather than delete: the number was issued, and a gap in a numbered
         series is a question nobody can answer a year later. The pieces go back
-        to exactly where they were, so a corrected voucher can pick them up.
+        to exactly where they were, so a corrected voucher can pick them up —
+        and what went back is written down, so this can be undone.
         """
         staff, redir = require_admin(request, db)
         if redir:
@@ -994,30 +1075,117 @@ def register(app, deps):
         voucher = db.get(PaymentVoucher, vid)
         if voucher is None or voucher.status == VOUCHER_VOID:
             return RedirectResponse("/admin/vouchers", status_code=303)
-        for p in (db.query(CommissionPayout)
-                  .filter(CommissionPayout.voucher_id == vid)):
-            p.voucher_id = None
-            p.status = "unpaid"
-            p.paid_at = None
-        for r in (db.query(ExpenseReport)
-                  .filter(ExpenseReport.voucher_id == vid)):
-            r.voucher_id = None
-        for a in (db.query(CommissionAdjustment)
-                  .filter(CommissionAdjustment.voucher_id == vid)):
-            a.voucher_id = None
-            a.paid_at = None
-        # The remainder this voucher created, if it created one, goes with it.
-        # Leaving it would deduct the same money twice on the next voucher.
-        for a in (db.query(CommissionAdjustment)
-                  .filter(CommissionAdjustment.title
-                          == "Carried from %s" % voucher.number,
-                          CommissionAdjustment.payout_id.is_(None),
-                          CommissionAdjustment.voucher_id.is_(None))):
-            db.delete(a)
+        release(db, voucher, remember=True)
         voucher.status = VOUCHER_VOID
         voucher.voided_at = now_utc()
         db.commit()
         return RedirectResponse("/admin/vouchers/%d" % vid, status_code=303)
+
+    @app.post("/admin/vouchers/{vid}/restore")
+    def voucher_restore(request: Request, vid: int,
+                        db: Session = Depends(get_db)):
+        """Put a voided voucher back, with what it was holding.
+
+        Voiding is usually a correction, and a correction made in error is
+        still an error. The number was never reused, so the document can
+        simply resume — but only if every piece it let go of is still free.
+        Anything that has since gone onto another voucher stops the whole
+        thing: a payout on two vouchers is the one mistake this design exists
+        to prevent, and quietly restoring the rest would leave a document
+        whose total no longer matches what is on it.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        voucher = db.get(PaymentVoucher, vid)
+        if voucher is None:
+            return RedirectResponse("/admin/vouchers", status_code=303)
+        back = "/admin/vouchers/%d" % vid
+        if voucher.status != VOUCHER_VOID:
+            return RedirectResponse(back, status_code=303)
+        payouts, reports, adjustments, taken = remembered(db, voucher)
+        if taken:
+            return RedirectResponse(back + "?err=taken", status_code=303)
+        if not (payouts or reports or adjustments):
+            return RedirectResponse(back + "?err=gone", status_code=303)
+        claim(db, voucher, staff, payouts=payouts, reports=reports,
+              adjustments=adjustments)
+        voucher.status = VOUCHER_UNPAID
+        voucher.voided_at = None
+        voucher.released = None
+        db.commit()
+        return RedirectResponse(back + "?restored=1", status_code=303)
+
+    @app.get("/admin/vouchers/{vid}/edit", response_class=HTMLResponse)
+    def voucher_edit(request: Request, vid: int,
+                     db: Session = Depends(get_db)):
+        """Change what is on an issued voucher, before the money goes.
+
+        Everything it already holds, plus everything else that person is owed
+        and nothing has claimed. Tick what the voucher should end up with —
+        what remains, not what changed — because a list of changes has to be
+        read against a state somebody is no longer looking at.
+        """
+        staff, redir = money_guard(request, db)
+        if redir:
+            return redir
+        voucher = db.get(PaymentVoucher, vid)
+        if voucher is None:
+            return RedirectResponse("/admin/vouchers", status_code=303)
+        if voucher.status != VOUCHER_UNPAID:
+            return RedirectResponse("/admin/vouchers/%d" % vid, status_code=303)
+        have_p, have_r, have_a = on_voucher(db, vid)
+        free_p, free_r, free_a = _claimable(db, voucher.person, voucher.staff_id)
+        on = {("p", x.id) for x in have_p} | {("r", x.id) for x in have_r} \
+            | {("a", x.id) for x in have_a}
+        return render(request, "voucher_edit.html", db, staff,
+                      active="vouchers", v=voucher, on=on,
+                      payouts=have_p + free_p, reports=have_r + free_r,
+                      adjustments=have_a + free_a,
+                      accounts=open_accounts(db),
+                      ACCOUNT_KINDS=ACCOUNT_KINDS,
+                      today=date.today().isoformat(),
+                      can_pay=(getattr(staff, "role", "") == "admin"))
+
+    @app.post("/admin/vouchers/{vid}/edit")
+    async def voucher_edit_save(request: Request, vid: int,
+                                db: Session = Depends(get_db)):
+        """Let go of everything, then claim exactly what was ticked.
+
+        Release-then-claim rather than a diff: the second path through the
+        same two functions the voucher was built with, so an edited voucher
+        and a fresh one cannot end up obeying different rules. The number,
+        the issue date and who issued it all stay — this is the same
+        document, corrected.
+        """
+        staff, redir = require_admin(request, db)
+        if redir:
+            return redir
+        voucher = db.get(PaymentVoucher, vid)
+        if voucher is None:
+            return RedirectResponse("/admin/vouchers", status_code=303)
+        back = "/admin/vouchers/%d/edit" % vid
+        if voucher.status != VOUCHER_UNPAID:
+            return RedirectResponse("/admin/vouchers/%d" % vid, status_code=303)
+        form = await request.form()
+        want_p = {int(v) for v in form.getlist("payout") if str(v).isdigit()}
+        want_r = {int(v) for v in form.getlist("report") if str(v).isdigit()}
+        want_a = {int(v) for v in form.getlist("adjustment") if str(v).isdigit()}
+
+        have_p, have_r, have_a = on_voucher(db, vid)
+        free_p, free_r, free_a = _claimable(db, voucher.person, voucher.staff_id)
+        take_p = [x for x in have_p + free_p if x.id in want_p]
+        take_r = [x for x in have_r + free_r if x.id in want_r]
+        take_a = [x for x in have_a + free_a if x.id in want_a]
+        if not (take_p or take_r or take_a):
+            return RedirectResponse(back + "?err=empty", status_code=303)
+
+        release(db, voucher)
+        claim(db, voucher, staff, payouts=take_p, reports=take_r,
+              adjustments=take_a)
+        db.commit()
+        return RedirectResponse("/admin/vouchers/%d?edited=1" % vid,
+                                status_code=303)
 
     @app.get("/admin/vouchers/{vid}/proof")
     def voucher_proof(request: Request, vid: int,

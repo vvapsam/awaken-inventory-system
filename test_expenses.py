@@ -339,6 +339,94 @@ with TestClient(app) as c:                      # startup seeds the chart
     with Session(engine) as db:
         nums = sorted(v.number for v in db.query(M.PaymentVoucher))
         ck("the series has no reused number", nums == ["PV-0001", "PV-0002"])
+        VID2 = (db.query(M.PaymentVoucher).filter_by(number="PV-0002")
+                .one()).id
+
+    # ── putting a voided one back ──────────────────────────────────────
+    # PV-0002 took the payout that PV-0001 let go of, so PV-0001 cannot
+    # simply resume: half of it would be a voucher whose total no longer
+    # matches what is on it.
+    out = c.post("/admin/vouchers/%d/restore" % VID, follow_redirects=False)
+    ck("it will not go back over something already claimed",
+       "err=taken" in out.headers["location"])
+    with Session(engine) as db:
+        ck("and nothing moved",
+           db.get(M.PaymentVoucher, VID).status == M.VOUCHER_VOID
+           and db.get(M.CommissionPayout, PAYOUT).voucher_id == VID2)
+
+    # Void the one that took it, and the way is clear.
+    c.post("/admin/vouchers/%d/void" % VID2, follow_redirects=False)
+    c.post("/admin/vouchers/%d/restore" % VID, follow_redirects=False)
+    with Session(engine) as db:
+        v = db.get(M.PaymentVoucher, VID)
+        ck("a voided voucher goes back to unpaid",
+           v.status == M.VOUCHER_UNPAID and v.voided_at is None)
+        ck("under its own number", v.number == "PV-0001")
+        ck("holding exactly what it held",
+           db.get(M.CommissionPayout, PAYOUT).voucher_id == VID
+           and db.get(M.ExpenseReport, RID).voucher_id == VID
+           and db.get(M.CommissionAdjustment, AID).voucher_id == VID)
+        ck("with the figures worked out again",
+           v.total == Decimal("22800") + TOTAL - Decimal("1500"))
+        ck("and nothing left to undo twice", v.released is None)
+    out = c.post("/admin/vouchers/%d/restore" % VID, follow_redirects=False)
+    ck("putting back one that is not void does nothing",
+       out.headers["location"] == "/admin/vouchers/%d" % VID)
+
+    # ── changing what is on an issued voucher ──────────────────────────
+    page = c.get("/admin/vouchers/%d/edit" % VID)
+    ck("an unpaid voucher can be edited", page.status_code == 200)
+    ck("and everything on it starts ticked",
+       page.text.count('name="payout" value="%d"' % PAYOUT) == 1
+       and page.text.count('name="report" value="%d"' % RID) == 1
+       and page.text.count('name="adjustment" value="%d"' % AID) == 1
+       and page.text.count("checked") >= 3)
+
+    # Drop the report and the adjustment; keep the commission.
+    c.post("/admin/vouchers/%d/edit" % VID,
+           data={"payout": [str(PAYOUT)]}, follow_redirects=False)
+    with Session(engine) as db:
+        v = db.get(M.PaymentVoucher, VID)
+        ck("what was unticked goes back where it came from",
+           db.get(M.ExpenseReport, RID).voucher_id is None
+           and db.get(M.CommissionAdjustment, AID).voucher_id is None)
+        ck("what was left stays on it",
+           db.get(M.CommissionPayout, PAYOUT).voucher_id == VID)
+        ck("and the total is worked out again",
+           v.total == Decimal("22800") and v.expense_total == Decimal(0)
+           and v.adjustment_total == Decimal(0))
+        ck("the number is untouched", v.number == "PV-0001")
+
+    # Put them back on.
+    c.post("/admin/vouchers/%d/edit" % VID,
+           data={"payout": [str(PAYOUT)], "report": [str(RID)],
+                 "adjustment": [str(AID)]}, follow_redirects=False)
+    with Session(engine) as db:
+        ck("and they can be added again",
+           db.get(M.PaymentVoucher, VID).total
+           == Decimal("22800") + TOTAL - Decimal("1500"))
+
+    out = c.post("/admin/vouchers/%d/edit" % VID, data={},
+                 follow_redirects=False)
+    ck("an edit that empties it is refused",
+       "err=empty" in out.headers["location"])
+    with Session(engine) as db:
+        ck("and it still holds everything",
+           db.get(M.CommissionPayout, PAYOUT).voucher_id == VID)
+
+    # Once the money has gone, it is no longer open to this.
+    c.post("/admin/vouchers/%d/pay" % VID,
+           data={"on": "2026-10-15", "method": "Cash", "reference": "x"},
+           follow_redirects=False)
+    ck("a paid voucher cannot be edited",
+       c.get("/admin/vouchers/%d/edit" % VID,
+             follow_redirects=False).status_code == 303)
+    out = c.post("/admin/vouchers/%d/edit" % VID,
+                 data={"payout": [str(PAYOUT)]}, follow_redirects=False)
+    ck("not even by posting at it",
+       out.headers["location"] == "/admin/vouchers/%d" % VID)
+    # Back to where the rest of the suite expects it.
+    c.post("/admin/vouchers/%d/void" % VID, follow_redirects=False)
 
     # ── a deduction bigger than everything else ────────────────────────
     with Session(engine) as db:

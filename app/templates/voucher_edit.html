@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block body %}
+{# Changing what is on a voucher that has been issued but not paid.
+
+   Everything it already holds, plus everything else that person is owed and
+   nothing has claimed. The ticks say what the voucher should end up with —
+   what remains, not what changed — because a list of changes has to be read
+   against a state somebody is no longer looking at.
+
+   Saving lets go of everything and claims the ticked set again, through the
+   same two functions the voucher was built with. The number, the date and
+   who issued it stay: this is the same document, corrected. #}
+{% set err = request.query_params.get('err') %}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Editing {{ v.number }} &middot; {{ v.person }}</h1>
+    <p class="muted small" style="margin:2px 0 0">Issued
+      {{ v.issued_at.strftime('%d %B %Y') if v.issued_at else '' }} &middot; not yet paid &middot;
+      <a href="/admin/vouchers/{{ v.id }}">back to the voucher</a></p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/admin/vouchers/{{ v.id }}">Cancel</a>
+    {% if can_pay %}
+    <button class="btn primary" form="vedit" style="margin:0">Save what is ticked</button>
+    {% endif %}
+  </div>
+</div>
+
+{% if err == 'empty' %}
+<div class="alert bad"><b>Nothing ticked.</b> A voucher needs at least one thing on it. To end up
+  with none, void it instead &mdash; that keeps the number and says what happened.</div>
+{% endif %}
+
+<div class="alert" style="background:var(--teal-tint);border-color:var(--teal)">
+  <b>Ticked is what the voucher ends up with.</b> Unticking something hands it back to where it
+  came from, ready for another voucher; ticking something new claims it. The total is recalculated
+  from what you leave ticked, and the number stays {{ v.number }}.</div>
+
+<form method="post" action="/admin/vouchers/{{ v.id }}/edit" id="vedit">
+
+<div class="card" style="margin:14px 0">
+  <h3 style="margin:0 0 3px;font-size:.95rem">1 &middot; Commission</h3>
+  <p class="muted small" style="margin:0 0 10px">Only finalized runs appear &mdash; a draft run is
+    a figure still being argued about.</p>
+  {% if payouts %}
+  <table style="margin:0">
+    <tr><th style="width:36px"></th><th>Period</th><th>Run</th>
+        <th style="width:96px">On it</th>
+        <th style="text-align:right;width:130px">Net</th></tr>
+    {% for p in payouts %}
+    <tr>
+      <td><input type="checkbox" name="payout" value="{{ p.id }}"
+                 {{ 'checked' if ('p', p.id) in on }}></td>
+      <td><b>{{ p.period_label or '—' }}</b>
+        <div class="muted small">{{ p.sessions }} session{{ 's' if p.sessions != 1 }}</div></td>
+      <td class="mono">{{ p.number }}</td>
+      <td>{% if ('p', p.id) in on %}<span class="tag">On it</span>
+          {% else %}<span class="muted small">Waiting</span>{% endif %}</td>
+      <td style="text-align:right;font-weight:650">{{ peso(p.total) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted small" style="margin:0">Nothing. Either they are not a coach, or every finalized
+    run of theirs is on another voucher.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <h3 style="margin:0 0 3px;font-size:.95rem">2 &middot; Reimbursements</h3>
+  <p class="muted small" style="margin:0 0 10px">Approved expense reports. One still waiting on
+    approval is not yet owed, so it is not here.</p>
+  {% if reports %}
+  <table style="margin:0">
+    <tr><th style="width:36px"></th><th>Report</th><th>Lines</th>
+        <th style="width:96px">On it</th>
+        <th style="text-align:right;width:130px">Total</th></tr>
+    {% for r in reports %}
+    <tr>
+      <td><input type="checkbox" name="report" value="{{ r.id }}"
+                 {{ 'checked' if ('r', r.id) in on }}></td>
+      <td><b>{{ r.number }}</b>
+        <div class="muted small">{{ r.occurred_on.strftime('%d %b %Y') if r.occurred_on else '' }}</div></td>
+      <td class="muted small">{{ r.lines|length }} line{{ 's' if r.lines|length != 1 }}</td>
+      <td>{% if ('r', r.id) in on %}<span class="tag">On it</span>
+          {% else %}<span class="muted small">Waiting</span>{% endif %}</td>
+      <td style="text-align:right;font-weight:650">{{ peso(r.total) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted small" style="margin:0">Nothing approved and unpaid.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <h3 style="margin:0 0 3px;font-size:.95rem">3 &middot; Adjustments</h3>
+  <p class="muted small" style="margin:0 0 10px">What is being deducted or added that is not a
+    session and not a receipt.</p>
+  {% if adjustments %}
+  <table style="margin:0">
+    <tr><th style="width:36px"></th><th>What</th><th style="width:170px">Account</th>
+        <th style="width:96px">On it</th>
+        <th style="text-align:right;width:130px">Amount</th></tr>
+    {% for a in adjustments %}
+    <tr>
+      <td><input type="checkbox" name="adjustment" value="{{ a.id }}"
+                 {{ 'checked' if ('a', a.id) in on }}></td>
+      <td><b>{{ a.title }}</b>
+        <div class="muted small">{{ a.occurred_on.strftime('%d %b %Y') if a.occurred_on else '' }}{%
+          if a.description %} &middot; {{ a.description }}{% endif %}</div></td>
+      <td class="muted small">{{ a.account.label if a.account else '—' }}</td>
+      <td>{% if ('a', a.id) in on %}<span class="tag">On it</span>
+          {% else %}<span class="muted small">Waiting</span>{% endif %}</td>
+      <td style="text-align:right;font-weight:650{% if a.deducts %};color:#a8392b{% endif %}">
+        {{ '−' if a.deducts }}{{ peso(a.money|abs) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted small" style="margin:0">Nothing waiting.</p>
+  {% endif %}
+</div>
+</form>
+
+{% if can_pay %}
+<div class="card">
+  <h3 style="margin:0 0 4px;font-size:.95rem">Add an adjustment first</h3>
+  <p class="muted small" style="margin:0 0 10px">Something to deduct or add that is not a session
+    and not a receipt. It appears in the list above as soon as you save it, ready to tick.</p>
+  {% set adj_action = "/commissions/adjustments/new" %}
+  {% set adj_coach = v.person %}
+  {% set adj_back = "/admin/vouchers/" ~ v.id ~ "/edit" %}
+  {% include "_adjust_form.html" %}
+</div>
+{% endif %}
+
+<p class="muted small" style="margin-top:18px">Only an unpaid voucher can be changed. Once the
+  money has left, a correction is an adjustment on the next one &mdash; unpicking a payment that
+  has already gone is how a set of books stops matching a bank statement.</p>
+{% endblock %}

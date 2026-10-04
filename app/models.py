@@ -1616,6 +1616,11 @@ class PaymentVoucher(Base):
     #: what stops a person opening theirs and reading everybody else's.
     batch = Column(String, index=True)
     voided_at = Column(DateTime(timezone=True))
+    #: What a void let go of, as "p:3,r:7,a:2". Written when it is voided, and
+    #: read if somebody puts it back. Without it there would be nothing to
+    #: undo: voiding clears the claim on every piece, and a cleared claim
+    #: leaves no trace of where it had been.
+    released = Column(Text)
     created_at = Column(DateTime(timezone=True), default=now_utc)
 
     staff = relationship("Staff", foreign_keys=[staff_id])
