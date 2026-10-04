@@ -856,6 +856,17 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("the list offers the filters",
        'name="status"' in page and 'name="since"' in page
        and 'name="until"' in page and 'name="per"' in page)
+    ck("the filters are behind a funnel, shut until there is one on",
+       '<details class="pop" >' in page or '<details class="pop">' in page)
+    ck("and none of them is compulsory",
+       'placeholder="Type a name&hellip;" >' in page
+       or 'required' not in page.split('name="who"')[1].split('>')[0])
+    ck("the bulk action is a menu rather than a card on the page",
+       'With ticked' in page and 'Do it to the ticked ones' not in page)
+    ck("an empty filter form is a real request",
+       c.get("/admin/vouchers", params={"who": "", "status": "",
+                                        "since": "", "until": ""})
+        .text.count("PV-0001") >= 1)
 
     only_void = c.get("/admin/vouchers", params={"status": "void"}).text
     ck("a status narrows it", "Unpaid</span>" not in only_void)
@@ -873,6 +884,11 @@ with TestClient(app) as c:                      # startup seeds the chart
     ck("a name narrows it to that person", whose(mine) == ["Chrizel Urbino"])
     ck("a surname on its own works too",
        whose(c.get("/admin/vouchers", params={"who": "reyes"}).text)
+       == ["Julio Reyes"])
+    # On the list a part-name shows everybody it could mean, rather than
+    # resolving to one person and quietly hiding the rest.
+    ck("a part-name shows everybody it matches",
+       whose(c.get("/admin/vouchers", params={"who": "julio"}).text)
        == ["Julio Reyes"])
 
     ck("a date range with nothing in it comes back empty",

@@ -612,14 +612,13 @@ def register(app, deps):
         q = db.query(PaymentVoucher)
         if status in dict(VOUCHER_STATUSES):
             q = q.filter(PaymentVoucher.status == status)
-        # A name resolves to one person where it can, and otherwise matches
-        # loosely: "reyes" with two of them should show both rather than
-        # nothing, because a list is a place to look rather than to decide.
+        # A name here matches loosely, always. Resolving it to one person is
+        # right when a voucher is being made out — the wrong Reyes costs
+        # money — and wrong when somebody is looking: typing "julio" and
+        # being shown nothing, because there is also a coach recorded as
+        # plain "Julio" with no vouchers, is the filter lying about the list.
         typed = (who or "").strip()
-        exact = _resolve(typed, names)
-        if exact:
-            q = q.filter(PaymentVoucher.person == exact)
-        elif typed:
+        if typed:
             q = q.filter(PaymentVoucher.person.ilike("%%%s%%" % typed))
         # Dates are the gym's own, so the bounds are converted rather than
         # compared raw: a voucher issued at 2am Manila is the previous day in

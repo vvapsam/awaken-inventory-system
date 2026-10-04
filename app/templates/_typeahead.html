@@ -3,13 +3,16 @@
    form posts, so with no script running it is still a plain text box that
    works — the list is a convenience, never the mechanism.
 
-   Expects: tah_name, tah_value, tah_label, tah_people, tah_submit (optional). #}
+   Expects: tah_name, tah_value, tah_label, tah_people, and optionally
+   tah_submit and tah_required. Required is opt-in: as a filter an empty box
+   means "anybody", and a field that refuses to submit empty makes the whole
+   form compulsory. #}
 <div class="tah" data-tah data-submit="{{ 'y' if tah_submit else '' }}">
   <label for="tah-{{ tah_name }}">{{ tah_label }}</label>
   <input id="tah-{{ tah_name }}" name="{{ tah_name }}" value="{{ tah_value or '' }}"
          type="text" autocomplete="off" spellcheck="false" role="combobox"
          aria-expanded="false" aria-autocomplete="list"
-         placeholder="Type a name&hellip;" required>
+         placeholder="Type a name&hellip;" {{ 'required' if tah_required }}>
   <ul class="tahl" hidden role="listbox"></ul>
   <script type="application/json" class="tahd">{{ tah_people|tojson }}</script>
 </div>

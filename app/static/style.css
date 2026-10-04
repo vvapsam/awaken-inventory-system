@@ -1332,13 +1332,44 @@ tr.adjoff td.amt{text-decoration:line-through}
 .tahl li b{color:var(--teal-dark)}
 .tahl li.none{color:var(--muted);cursor:default}
 
-/* ---- narrowing a long list, and walking it a page at a time ---------- */
+/* ---- narrowing a long list, and walking it a page at a time ----------
+   A toolbar of shut things. A filter panel that is always open spends the top
+   third of the screen saying "Any" four times, and the panel is the rarer
+   half of what somebody came to do: the list is the page. Both drawers are
+   <details>, so they open and shut with no script at all. */
+.tbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.tbar .sp{flex:1;min-width:0}
+details.pop{position:relative}
+details.pop>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+details.pop>summary::-webkit-details-marker{display:none}
+details.pop>summary::marker{content:""}
+details.pop>summary.btn{margin:0}
+.filtbox{position:absolute;z-index:50;left:0;top:calc(100% + 7px);width:max-content;
+  max-width:min(92vw,900px);background:var(--bg);border:1px solid var(--line);
+  border-radius:11px;box-shadow:0 14px 30px rgba(16,24,40,.14);padding:14px 15px}
 .filt{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:0}
 .filt .btn{margin:0}
-.filt label{margin:0}
-.filt input,.filt select{margin:0}
+.filt label{margin:0;font-size:.72rem}
+.filt input,.filt select{margin:0;padding:7px 9px;font-size:.85rem}
 .quick{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:11px;
-  padding-top:10px;border-top:1px solid var(--line);font-size:.82rem}
+  padding-top:10px;border-top:1px solid var(--line);font-size:.8rem}
+.menu{position:absolute;z-index:50;right:0;top:calc(100% + 7px);min-width:244px;
+  background:var(--bg);border:1px solid var(--line);border-radius:11px;
+  box-shadow:0 14px 30px rgba(16,24,40,.14);padding:5px}
+.menu button{display:block;width:100%;text-align:left;border:0;background:transparent;
+  padding:9px 11px;border-radius:7px;font:inherit;font-size:.86rem;font-weight:600;
+  cursor:pointer;color:inherit;margin:0}
+.menu button:hover:not([disabled]){background:var(--panel)}
+.menu button[disabled]{opacity:.45;cursor:not-allowed}
+.menu .hd{padding:8px 11px 3px;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+  padding:3px 11px;font-size:.74rem;white-space:nowrap}
 .pager{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
 .pager .sp{flex:1}
 .pager .btn{margin:0}
+@media (max-width:620px){
+  .filtbox{position:static;width:auto;max-width:none;box-shadow:none;margin-top:8px}
+  .menu{position:static;min-width:0;box-shadow:none;margin-top:8px}
+}
