@@ -659,6 +659,54 @@ with TestClient(app) as c:                      # startup seeds the chart
            rows[0].is_live and not rows[1].is_live)
         NEW = rows[0].token
     ck("and it opens", c.get("/v/%s" % NEW).status_code == 200)
+
+    # ── the list page, several at a time ───────────────────────────────
+    out = c.post("/admin/vouchers/send", data={"action": "send"},
+                 follow_redirects=False)
+    ck("ticking nothing says so rather than doing nothing quietly",
+       "none=1" in out.headers.get("location", ""))
+
+    # Links without email, for pasting into a chat.
+    out = c.post("/admin/vouchers/send",
+                 data={"action": "link", "voucher": [str(CHV), str(RICV)]},
+                 follow_redirects=False)
+    ck("links can be made for several at once",
+       "linked=1" in out.headers.get("location", ""))
+    with Session(engine) as db:
+        ck("and the voided one is left out",
+           db.query(M.VoucherLink).filter_by(voucher_id=RICV).count() == 0)
+        ck("while the live one has one",
+           db.query(M.VoucherLink).filter_by(voucher_id=CHV).count() == 1)
+
+    # Emailing several: one of them has no address, and the rest still go.
+    before = len(sent)
+    out = c.post("/admin/vouchers/send",
+                 data={"action": "send", "voucher": [str(SEND), str(CHV)]},
+                 follow_redirects=False)
+    where = out.headers.get("location", "")
+    ck("one person's missing address does not stop the others",
+       "sent=1" in where and "failed=1" in where)
+    ck("the one that could go, went", len(sent) == before + 1)
+
+    # The same press again: it has been sent, so it is left alone.
+    out = c.post("/admin/vouchers/send",
+                 data={"action": "send", "voucher": [str(SEND)]},
+                 follow_redirects=False)
+    ck("a voucher already sent is skipped, not sent twice",
+       len(sent) == before + 1
+       and "skipped=1" in out.headers.get("location", ""))
+
+    out = c.post("/admin/vouchers/send",
+                 data={"action": "resend", "voucher": [str(SEND)]},
+                 follow_redirects=False)
+    ck("sending again is a choice on the same screen",
+       len(sent) == before + 2 and "sent=1" in out.headers.get("location", ""))
+
+    page = c.get("/admin/vouchers").text
+    ck("the list offers the tick boxes", 'name="voucher"' in page
+       and 'action="/admin/vouchers/send"' in page)
+    ck("and says who has theirs", "Opened" in page or "Sent" in page)
+
     _mail.Mailer.send = _real_send
 
     for path in ["/expenses", "/admin/expenses", "/admin/vouchers",

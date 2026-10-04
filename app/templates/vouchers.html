@@ -38,14 +38,41 @@
 </div>
 {% endif %}
 
+{# ---------------- what the last press did ---------------- #}
+{% set q = request.query_params %}
+{% if q.get('setup') %}
+<div class="alert bad" style="margin-bottom:14px"><b>Mail isn't set up yet.</b>
+  {{ q.get('setup')|replace('+', ', ') }} missing on the server, so nothing was sent.
+  <b>Just make the links</b> still works &mdash; you can pass them on yourself.</div>
+{% elif q.get('none') %}
+<div class="alert bad" style="margin-bottom:14px"><b>Nothing was ticked.</b>
+  Tick the vouchers you want, then choose what to do with them.</div>
+{% elif q.get('linked') %}
+<div class="alert" style="margin-bottom:14px"><b>{{ q.get('linked') }} new link{{ 's' if q.get('linked') != '1' }}.</b>
+  Open a voucher to copy its address. Anything that already had a working one was left alone.</div>
+{% elif q.get('sent') or q.get('skipped') or q.get('failed') %}
+<div class="alert{{ ' bad' if q.get('failed') }}" style="margin-bottom:14px">
+  <b>{{ q.get('sent', '0') }} sent.</b>
+  {%- if q.get('skipped') %} {{ q.get('skipped') }} already had theirs &mdash; use
+    <b>Send it again</b> if you meant to.{% endif %}
+  {%- if q.get('failed') %} {{ q.get('failed') }} couldn't go &mdash;
+    {{ q.get('why', '')|replace('+', ' ') }}.{% endif %}</div>
+{% endif %}
+
 {% if rows %}
+<form method="post" action="/admin/vouchers/send" id="bulk">
 <table>
-  <tr><th style="width:96px">Voucher</th><th>Who</th><th style="width:150px">Issued</th>
+  <tr><th style="width:38px"><input type="checkbox" id="all" aria-label="Tick every voucher"></th>
+      <th style="width:96px">Voucher</th><th>Who</th><th style="width:150px">Issued</th>
       <th>What is on it</th>
       <th style="text-align:right;width:124px">Net</th>
-      <th style="width:120px">State</th><th style="width:70px"></th></tr>
+      <th style="width:120px">State</th>
+      <th style="width:128px">Sent</th><th style="width:70px"></th></tr>
   {% for v in rows %}
   <tr{% if v.status == 'void' %} class="low"{% endif %}>
+    <td>{% if v.status != 'void' %}
+      <input type="checkbox" name="voucher" value="{{ v.id }}" class="pick"
+             aria-label="Tick {{ v.number }}">{% endif %}</td>
     <td><b>{{ v.number }}</b></td>
     <td><b>{{ v.person }}</b></td>
     <td class="mono">{{ v.issued_at.strftime('%d %b %Y') if v.issued_at else '—' }}
@@ -61,10 +88,69 @@
       {% elif v.status == 'void' %}<span class="tag" style="background:#8a94a1">Void</span>
       {% else %}<span class="tag" style="background:#d9b45a;color:#4a3a12">Unpaid</span>{% endif %}
     </td>
+    {# Whether they have it, and whether they have looked. #}
+    <td class="muted small">
+      {% set lk = links.get(v.id) %}
+      {% if not lk %}&mdash;
+      {% elif lk.state == 'answered' %}<span class="tag" style="background:{{ '#2f7d6a' if lk.ack_ok else '#a8392b' }}">{{ 'Confirmed' if lk.ack_ok else 'Queried' }}</span>
+      {% elif lk.state == 'opened' %}<span class="tag">Opened</span>
+      {% elif lk.state == 'sent' %}Sent {{ lk.sent_at.strftime('%d %b') if lk.sent_at }}
+      {% elif lk.state == 'revoked' %}Turned off
+      {% elif lk.state == 'expired' %}Expired
+      {% else %}Link only{% endif %}
+    </td>
     <td><a href="/admin/vouchers/{{ v.id }}">Open</a></td>
   </tr>
   {% endfor %}
 </table>
+
+{# One press for a whole column of ticks. The three motions are the same ones
+   a single voucher offers — send to whoever hasn't had theirs, send again
+   regardless, or make links without emailing anybody — so there is nothing
+   here to learn that the one-at-a-time screen didn't already teach. #}
+<div class="card" style="margin-top:14px">
+  <div class="row-between" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div>
+      <h3 style="margin:0 0 3px;font-size:.95rem">Do it to the ticked ones</h3>
+      <p class="muted small" style="margin:0">Each one is its own email with its own private
+        link &mdash; nobody sees anybody else's. A voucher that has already been sent is skipped
+        unless you say otherwise.</p>
+    </div>
+    <div style="display:flex;gap:9px;align-items:flex-end">
+      <div style="min-width:210px"><label>Action
+        <select name="action" form="bulk">
+          <option value="send">Email the voucher</option>
+          <option value="resend">Email it again</option>
+          <option value="link">Just make the links</option>
+        </select></label></div>
+      <button class="btn primary" form="bulk" style="margin:0">Go</button>
+    </div>
+  </div>
+  {% if not mail_ready %}
+  <p class="muted small" style="margin:10px 0 0">Mail isn't set up on the server yet, so only
+    <b>Just make the links</b> will do anything.</p>
+  {% endif %}
+</div>
+</form>
+
+<script>
+{# Tick-all, and the header box reflecting what is actually ticked. #}
+(function () {
+  var all = document.getElementById('all');
+  if (!all) { return; }
+  var boxes = [].slice.call(document.querySelectorAll('.pick'));
+  all.addEventListener('change', function () {
+    boxes.forEach(function (b) { b.checked = all.checked; });
+  });
+  boxes.forEach(function (b) {
+    b.addEventListener('change', function () {
+      var on = boxes.filter(function (x) { return x.checked; }).length;
+      all.checked = on === boxes.length;
+      all.indeterminate = on > 0 && on < boxes.length;
+    });
+  });
+})();
+</script>
 {% else %}
 <div class="card"><p class="muted" style="margin:0">No vouchers yet.</p></div>
 {% endif %}

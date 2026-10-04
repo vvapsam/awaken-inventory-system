@@ -588,6 +588,11 @@ def register(app, deps):
                       rows=rows, people=[n for n, _i in _people(db)],
                       unpaid=sum((v.money for v in rows
                                   if v.status == VOUCHER_UNPAID), Decimal(0)),
+                      # Who has theirs, and who has looked at it — the column
+                      # that makes "send the ones that haven't gone" a glance
+                      # rather than an audit.
+                      links={v.id: _current_vlink(db, v.id) for v in rows},
+                      mail_ready=Mailer().cfg.configured,
                       can_pay=(getattr(staff, "role", "") == "admin"))
 
     @app.get("/admin/vouchers/new", response_class=HTMLResponse)
@@ -1231,6 +1236,54 @@ def register(app, deps):
         db.commit()
         out = {"sent": [], "skipped": [], "failed": []}
         out[status].append((voucher.person, detail))
+        return RedirectResponse(_tally(dest, out), status_code=303)
+
+    @app.post("/admin/vouchers/send")
+    async def vouchers_send(request: Request, db: Session = Depends(get_db)):
+        """Tick several on the list, choose what to do, press once.
+
+        The same three motions the single voucher offers, applied to a
+        selection: send to whoever hasn't had theirs, send again regardless,
+        or mint links without emailing anybody. Each voucher is committed on
+        its own, so one person with no address on their record does not undo
+        the rest.
+        """
+        staff, redir = money_guard(request, db)
+        if redir:
+            return redir
+        form = await request.form()
+        want = [int(v) for v in form.getlist("voucher") if str(v).isdigit()]
+        action = (form.get("action") or "send").strip()
+        dest = "/admin/vouchers"
+        if not want:
+            return RedirectResponse(dest + "?none=1", status_code=303)
+        rows = (db.query(PaymentVoucher).filter(PaymentVoucher.id.in_(want))
+                .order_by(PaymentVoucher.id.asc()).all())
+        now = now_utc()
+        out = {"sent": [], "skipped": [], "failed": []}
+
+        if action == "link":
+            made = 0
+            for v in rows:
+                if v.status == VOUCHER_VOID:
+                    continue
+                current = _current_vlink(db, v.id)
+                if current is None or not current.is_live:
+                    _issue_vlink(db, v.id, staff, now)
+                    made += 1
+            db.commit()
+            return RedirectResponse(dest + "?linked=%d" % made, status_code=303)
+
+        mailer = Mailer()
+        if not mailer.cfg.configured:
+            return RedirectResponse(dest + "?setup=" + "+".join(mailer.cfg.missing),
+                                    status_code=303)
+        base = base_url(request)
+        for v in rows:
+            status, detail = _send_voucher(db, v, staff, now, base, mailer,
+                                           force=(action == "resend"))
+            out[status].append((v.person, detail))
+            db.commit()
         return RedirectResponse(_tally(dest, out), status_code=303)
 
     @app.post("/admin/vouchers/run/{batch}/send")
