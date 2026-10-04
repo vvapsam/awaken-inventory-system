@@ -12,14 +12,14 @@
   background:none;border:0;border-right:1px solid var(--hair);
 }
 .seg .chip:last-child{border-right:0}
-.chip[aria-pressed="true"]{background:var(--teal);color:#04120F}
-.chip:focus-visible{outline:2px solid var(--teal);outline-offset:-3px}
+.chip[aria-pressed="true"]{background:var(--acc);color:#fff}
+.chip:focus-visible{outline:2px solid var(--acc);outline-offset:-3px}
 .find{
   font-family:var(--mono);flex:1 1 180px;min-width:150px;background:var(--panel);
   border:1px solid var(--hair);padding:9px 13px;color:var(--ink);font-size:.84rem;
 }
 .find::placeholder{color:var(--dimmer)}
-.find:focus-visible{outline:2px solid var(--teal);outline-offset:-1px}
+.find:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
 
 /* ---- the rows. No cards, no radius: rules, the way a board is ---- */
 .row{
@@ -36,7 +36,7 @@
 .row.lead{background:linear-gradient(90deg,rgba(201,133,0,.13),transparent 62%)}
 .row .pl{
   font-family:var(--head);font-weight:700;font-size:1.85rem;width:42px;
-  line-height:.9;color:var(--teal);flex:0 0 auto;font-variant-numeric:tabular-nums;
+  line-height:.9;color:var(--acc);flex:0 0 auto;font-variant-numeric:tabular-nums;
 }
 .row.lead .pl{color:var(--amber)}
 .row .pl.none{color:var(--dimmer);font-size:.9rem;font-weight:400}
@@ -47,14 +47,14 @@
   text-transform:uppercase;line-height:1.05;min-width:0;
   color:inherit;text-decoration:none;
 }
-a.nm:hover{color:var(--teal)}
-a.nm:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+a.nm:hover{color:var(--acc)}
+a.nm:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
 .row .cat{
   font-family:var(--head);font-weight:400;font-size:.7rem;letter-spacing:.14em;
   text-transform:uppercase;color:var(--dimmer);flex:0 0 auto;width:100px;
   text-align:right;
 }
-.row .cat.el{color:var(--teal);font-weight:500}
+.row .cat.el{color:var(--acc);font-weight:500}
 /* The two detail columns wear the same hues their cards do on the athlete
    page, so teal always means stations and blue always means transition. */
 .row .sub{
@@ -111,7 +111,7 @@ a.nm:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
   cursor:pointer;padding:12px 4px;flex:0 0 auto;
 }
 .rvstrip a.go:focus-visible,.rvstrip button.nah:focus-visible{
-  outline:2px solid var(--teal);outline-offset:3px}
+  outline:2px solid var(--acc);outline-offset:3px}
 @media (max-width:559px){
   .rvstrip a.go{flex:1 1 auto;text-align:center}
 }
@@ -129,7 +129,7 @@ a.nm:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
   .onsm{display:block;font-family:var(--head);font-weight:400;font-size:.6rem;
     letter-spacing:.14em;text-transform:uppercase;color:var(--dimmer);
     margin-top:3px}
-  .onsm.el{color:var(--teal)}
+  .onsm.el{color:var(--acc)}
   .row .who{align-items:flex-start;gap:10px}
   .row .fl{margin-top:2px}
   .row .nm{font-size:1.3rem}

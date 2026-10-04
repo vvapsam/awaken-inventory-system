@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1,
   viewport-fit=cover">
 <title>{% if ev %}{{ ev.name }} &mdash; live{% else %}Not live{% endif %}</title>
-<meta name="theme-color" content="#0A1C1D">
+<meta name="theme-color" content="#08090B">
 <meta name="robots" content="noindex, nofollow">
 <style>
 /* The live leaderboard.
@@ -31,9 +31,21 @@
  */
 *{box-sizing:border-box}
 :root{
-  --bg:#0A1C1D; --card:#0f2526; --line:#1b3a3a; --ink:#F2F5F7;
-  --dim:#8fa6a6; --mint:#88EAE0; --mintdim:#5cc8bd; --amber:#e8c98f;
-  --floor:#12211a; --floorline:#2c4632; --floorcard:#132a22;
+  /* Black, white and one red - the event's own three. There is no second
+     accent on purpose: a board with two bright hues makes you work out which
+     one you are being told about, and the only thing worth shouting here is
+     what is happening right now.
+     --hot does all of it: the live pill, the strip of people on the floor, the
+     station somebody is standing at, a clock still running, and the Advanced
+     side of the board. Everything finished is white, which is how a result
+     reads as settled. */
+  --bg:#08090B; --card:#121418; --line:#262A31; --ink:#F4F5F7;
+  --dim:#8B9099;
+  --hot:#F03A3F; --hotdim:#B81D22;
+  /* Stations already behind somebody. Neutral so the one they are on is the
+     only coloured segment in the bar. */
+  --done:#6E757E;
+  --floor:#140E0F; --floorline:#3A1E20; --floorcard:#19191D;
 }
 html,body{margin:0;background:var(--bg);color:var(--ink)}
 body{
@@ -69,8 +81,8 @@ body{
   filter:brightness(1.5) saturate(1.1);
 }
 .bg::after{content:"";position:absolute;inset:0;
-  background:linear-gradient(180deg,rgba(6,16,17,.62) 0%,rgba(6,16,17,.34) 34%,
-                             rgba(6,16,17,.50) 66%,rgba(6,16,17,.78) 100%)}
+  background:linear-gradient(180deg,rgba(6,7,9,.62) 0%,rgba(6,7,9,.34) 34%,
+                             rgba(6,7,9,.50) 66%,rgba(6,7,9,.78) 100%)}
 /* With a photo behind them the panels stop being solid and become glass, so
    the arena still reads through the board rather than being covered by it. */
 /* Transparent, not dark. html carries a background of its own, so body's is
@@ -78,13 +90,13 @@ body{
    which means an opaque body covers the very photograph it is meant to sit on.
    html's colour stays underneath as the fallback if the image never loads. */
 body.hasbg{background:transparent}
-body.hasbg .floor{background:rgba(10,32,27,.62);backdrop-filter:blur(3px)}
-body.hasbg .cell{background:rgba(9,26,24,.70)}
-body.hasbg .grp{background:rgba(8,24,25,.62);backdrop-filter:blur(3px)}
-body.hasbg .grp.elite{background:rgba(10,33,31,.66)}
-body.hasbg .row{background:rgba(10,28,29,.66)}
-body.hasbg .row.lead{background:rgba(13,44,40,.74)}
-body.hasbg .empty{background:rgba(10,28,29,.55)}
+body.hasbg .floor{background:rgba(20,14,15,.66);backdrop-filter:blur(3px)}
+body.hasbg .cell{background:rgba(14,14,17,.72)}
+body.hasbg .grp{background:rgba(12,13,16,.64);backdrop-filter:blur(3px)}
+body.hasbg .grp.elite{background:rgba(22,13,15,.70)}
+body.hasbg .row{background:rgba(14,15,18,.68)}
+body.hasbg .row.lead{background:rgba(30,16,18,.76)}
+body.hasbg .empty{background:rgba(14,15,18,.56)}
 
 .head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
 /* The mark is white on transparent, cut for the finisher card, and sits here
@@ -105,23 +117,26 @@ body.hasbg .empty{background:rgba(10,28,29,.55)}
 .live{
   margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;
   font-size:.7rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
-  color:var(--mint);background:#0d2f2d;border:1px solid #1c4a47;
+  color:var(--hot);background:#1C0B0C;border:1px solid #48181B;
   border-radius:999px;padding:7px 12px;
 }
-.dot{width:7px;height:7px;border-radius:50%;background:var(--mint);
+.dot{width:7px;height:7px;border-radius:50%;background:var(--hot);
   animation:pulse 2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.22}}
 @media (prefers-reduced-motion:reduce){
   .dot,.seg.on{animation:none}
 }
 
+/* MEN / WOMEN are labels, not news, so they are grey. The dim red they were
+   is a border colour and reads as muddy at this size - and spending the red on
+   a heading leaves nothing left for the one line that is actually live. */
 h2.band,h3.band{
   margin:0 0 10px;font-size:.76rem;font-weight:800;letter-spacing:.13em;
-  text-transform:uppercase;color:var(--mintdim);
+  text-transform:uppercase;color:var(--dim);
   display:flex;align-items:center;gap:9px;
 }
 h2.band .n,h3.band .n{color:var(--dim);font-weight:700;letter-spacing:.04em}
-h2.band.hot{color:var(--amber)}
+h2.band.hot{color:var(--hot)}
 
 /* ---- on the floor ---- */
 .floor{
@@ -148,14 +163,14 @@ h2.band.hot{color:var(--amber)}
 /* The strip mixes all four groups, so a card has to say which one it is.
    Advanced is coloured as well as lettered - on a screen across a room the
    colour lands before the letter does. */
-.sx.elite{color:var(--mint);border-color:var(--mintdim)}
+.sx.elite{color:var(--hot);border-color:var(--hotdim)}
 .cell .tm{margin-left:auto}
 .cell .where{
   display:flex;justify-content:space-between;align-items:baseline;gap:8px;
   margin-top:7px;font-size:.74rem;color:var(--dim);
 }
 .cell .where .st{
-  font-weight:800;color:var(--amber);letter-spacing:.02em;
+  font-weight:800;color:var(--hot);letter-spacing:.02em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .cell .where .reps{font-variant-numeric:tabular-nums;flex:0 0 auto}
@@ -163,8 +178,8 @@ h2.band.hot{color:var(--amber)}
 /* One segment per station, in race order. */
 .trk{display:flex;gap:3px;margin-top:9px}
 .seg{height:8px;flex:1;border-radius:2px;background:#20403e}
-.seg.dn{background:var(--mintdim)}
-.seg.on{background:var(--amber);animation:pulse 1.6s ease-in-out infinite}
+.seg.dn{background:var(--done)}
+.seg.on{background:var(--hot);animation:pulse 1.6s ease-in-out infinite}
 
 .nofloor{
   color:var(--dim);font-size:.84rem;padding:6px 2px 14px;
@@ -182,18 +197,18 @@ h2.band.hot{color:var(--amber)}
 .grp{
   flex:1 1 470px;min-width:0;
   border:1px solid var(--line);border-radius:15px;
-  padding:14px 14px 8px;background:#0c2021;
+  padding:14px 14px 8px;background:#101216;
 }
 /* The one difference between the two boxes, and it is deliberately small: a
-   mint edge and a mint name. Advanced is not more important than Open, it is
+   red edge and a red name. Advanced is not more important than Open, it is
    just the one people scan for first. */
-.grp.elite{border-color:#2c5f5a;background:#0d2725}
+.grp.elite{border-color:#4A181C;background:#160D0F}
 h2.gname{
   margin:0 0 12px;font-size:.95rem;font-weight:800;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink);
   display:flex;align-items:baseline;gap:10px;
 }
-.grp.elite h2.gname{color:var(--mint)}
+.grp.elite h2.gname{color:var(--hot)}
 h2.gname .gn{
   font-size:.68rem;color:var(--dim);font-weight:700;letter-spacing:.06em;
 }
@@ -207,21 +222,21 @@ h2.gname .gn{
   display:flex;flex-wrap:wrap;gap:9px 20px;margin:22px 2px 0;
   font-size:.86rem;font-weight:700;
 }
-.after a{color:var(--mint);text-decoration:none}
+.after a{color:var(--hot);text-decoration:none}
 .after a:hover{text-decoration:underline}
-.after a:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
+.after a:focus-visible{outline:2px solid var(--hot);outline-offset:3px}
 .row{
   display:flex;align-items:center;gap:11px;
   background:var(--card);border:1px solid var(--line);border-radius:11px;
   padding:10px 12px;margin-bottom:6px;min-width:0;
 }
-.row.lead{border-color:var(--mintdim);background:#10322e}
+.row.lead{border-color:var(--hotdim);background:#1A1012}
 .row.done{border-color:#1f5a52;background:#0e2b28}
 .row.waiting{opacity:.55;border-style:dashed}
 .row.out{opacity:.42}
 .pl{
   flex:0 0 auto;width:24px;text-align:center;font-weight:800;font-size:.95rem;
-  color:var(--mint);font-variant-numeric:tabular-nums;
+  color:var(--hot);font-variant-numeric:tabular-nums;
 }
 .pl.none{color:var(--dim);font-weight:600;font-size:.74rem}
 .fl{flex:0 0 auto;font-size:1.1rem;line-height:1}
@@ -234,7 +249,7 @@ h2.gname .gn{
   flex:0 0 auto;font-weight:800;font-size:1.05rem;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums;text-align:right;
 }
-.tm.run{color:var(--amber)}
+.tm.run{color:var(--hot)}
 .tm.none{color:var(--dim);font-weight:600;font-size:.8rem}
 .rule{
   height:1px;background:var(--line);margin:13px 2px 10px;
