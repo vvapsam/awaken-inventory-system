@@ -2310,14 +2310,55 @@ def register(app, deps):
         db.commit()
         return RedirectResponse(f"/events/{eid}/settings?saved=1", status_code=303)
 
+    def _split_pair(name: str):
+        """"Marc Damil & Ana Reyes" as the two people it names.
+
+        A doubles entry written by hand is written the way anybody writes a
+        doubles entry - two names and an ampersand - so that is what this
+        reads, along with the slash and the "and" somebody will type instead.
+        One name comes back with no partner, which is every solo line and is
+        why this can run over every line without being asked to.
+
+        Deliberately only the first split: "Jo & Ana & Mia" is not a pair and
+        guessing which two of the three to keep would be worse than leaving
+        the line alone.
+        """
+        bits = re.split(r"\s*(?:&|/|\+|\band\b)\s*", (name or "").strip(),
+                        maxsplit=1)
+        if len(bits) == 2 and bits[0].strip() and bits[1].strip():
+            return bits[0].strip(), bits[1].strip()
+        return (name or "").strip(), ""
+
+    def _added_entry(ev, key):
+        """The category a hand-added batch is being put into, or nothing.
+
+        Checked here rather than trusted off the form: the page was drawn
+        before the paste was typed, and a category can be closed or deleted in
+        between.
+        """
+        r = ev.rate((key or "").strip())
+        return r if r is not None and not r.closed else None
+
     @app.post("/events/{eid}/people")
     def event_add_people(request: Request, eid: int, bulk: str = Form(""),
+                         entry: str = Form(""),
                          db: Session = Depends(get_db)):
         """Paste a list — one per line, 'Name, email' or just a name.
 
         Thirty people arrive as a list from a sign-up sheet or a chat thread.
         Typing them into thirty separate forms is the kind of task that makes
         somebody abandon a tool on the first day.
+
+        A doubles entry is two names on one line - "Marc Damil & Ana Reyes" -
+        because that is one entry with one time and one row, and splitting it
+        across two lines is how a pair ends up on the board twice. The partner
+        can also be a third field after the address for anybody who would
+        rather keep the names in separate columns.
+
+        `entry` is one category for the whole paste. Thirty people pasted off a
+        sign-up sheet are nearly always thirty people in the same category, and
+        without it every one of them has to be opened and set by hand before
+        the board can put them in a column.
         """
         staff, redir = guard(request, db)
         if redir:
@@ -2325,6 +2366,7 @@ def register(app, deps):
         ev = db.get(Event, eid)
         if not ev:
             return RedirectResponse("/events", status_code=303)
+        rate = _added_entry(ev, entry)
         seen = {(p.email or "").lower() for p in ev.participants if p.email}
         added = 0
         for line in (bulk or "").splitlines():
@@ -2332,14 +2374,23 @@ def register(app, deps):
             if not line:
                 continue
             parts = [x.strip() for x in re.split(r"[,\t;]", line) if x.strip()]
-            name = parts[0]
+            name, mate = _split_pair(parts[0])
             email = next((x for x in parts[1:] if looks_like_email(x)), "")
+            # Anything left over that is not the address is the partner, for
+            # "Marc Damil, marc@example.com, Ana Reyes". The ampersand wins if
+            # both are there - it is the one the line itself is written with.
+            if not mate:
+                mate = next((x for x in parts[1:] if not looks_like_email(x)), "")
             if not name or (email and email.lower() in seen):
                 continue
             if email:
                 seen.add(email.lower())
-            db.add(EventParticipant(event_id=ev.id, name=name[:120],
-                                    email=email, token=new_token()))
+            db.add(EventParticipant(
+                event_id=ev.id, name=name[:120], email=email,
+                partner_name=(mate[:80] or None),
+                tier=rate.key if rate is not None else None,
+                amount=rate.amount if rate is not None else None,
+                token=new_token()))
             added += 1
         db.commit()
         return RedirectResponse(f"/events/{eid}?added={added}", status_code=303)
@@ -2354,6 +2405,8 @@ def register(app, deps):
         "instagram": ("instagram", "ig", "handle", "instagram handle", "@"),
         "waitlist": ("waitlist", "wait list", "waiting list", "list", "status",
                      "type"),
+        "partner": ("partner", "partner name", "partner's name", "pair",
+                    "teammate", "team mate", "buddy", "with"),
     }
     #: A waitlist cell can say any of these. Anything else means "in the room".
     _WAIT_WORDS = {"y", "yes", "true", "1", "w", "wait", "waitlist",
@@ -2395,14 +2448,20 @@ def register(app, deps):
                 return (row[i].strip() if i is not None and i < len(row) else "")
             if not cell("name"):
                 continue
-            out.append({"name": cell("name"), "email": cell("email"),
+            # A pair can arrive either way: its own column, or two names in
+            # the name cell. The column wins, because somebody who made one
+            # meant it.
+            name, mate = _split_pair(cell("name"))
+            out.append({"name": name, "email": cell("email"),
                         "instagram": cell("instagram"),
+                        "partner": cell("partner") or mate,
                         "waitlist": cell("waitlist").lower() in _WAIT_WORDS})
         return out, ""
 
     @app.post("/events/{eid}/people/upload")
     def event_upload_people(request: Request, eid: int,
                             file: UploadFile = None,
+                            entry: str = Form(""),
                             db: Session = Depends(get_db)):
         """Load the whole list from one file, waitlist included.
 
@@ -2425,6 +2484,7 @@ def register(app, deps):
         if err:
             request.session["event_upload"] = {"error": err}
             return RedirectResponse(back + "?up=bad", status_code=303)
+        rate = _added_entry(ev, entry)
         seen = {(p.email or "").lower() for p in ev.participants if p.email}
         added = waiting = dupes = 0
         for r in rows:
@@ -2439,6 +2499,9 @@ def register(app, deps):
             db.add(EventParticipant(
                 event_id=ev.id, name=r["name"][:120], email=addr,
                 instagram=clean_handle(r["instagram"]),
+                partner_name=(r["partner"][:80] or None),
+                tier=rate.key if rate is not None else None,
+                amount=rate.amount if rate is not None else None,
                 waitlist=r["waitlist"], token=new_token()))
             added += 1
             if r["waitlist"]:

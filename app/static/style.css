@@ -791,6 +791,13 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 .scancard.bad{border-color:#e0a79e;background:#fdf6f5}
 .scancard.bad .cstate{color:#8c2c20}
 .scancard.bad .cname:empty{display:none}
+/* One category for a whole pasted or uploaded list. Sits under the box it
+   applies to rather than beside the button, so it reads as part of what is
+   about to be added and not as a filter on what is already there. */
+.addcat{display:flex;align-items:center;gap:9px;margin-top:9px}
+.addcat label{font-size:.82rem;color:var(--muted);white-space:nowrap}
+.addcat select{max-width:260px}
+
 /* The second name on a pair, asked at the door.
 
    Deliberately the loudest thing on the card when it is open: it is a

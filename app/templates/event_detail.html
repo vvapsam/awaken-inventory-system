@@ -880,10 +880,31 @@
   <summary>+ Add participants</summary>
   <div class="body">
     <p class="muted small" style="margin:0 0 8px">One per line. <span class="mono">Name, email</span>
-      — or just a name if you don't have their address yet. Duplicated emails are skipped.</p>
+      — or just a name if you don't have their address yet. Duplicated emails are skipped.<br>
+      {# A pair is one entry with one time, so it is one line. Written the way
+         anybody writes a doubles entry rather than in a syntax somebody has to
+         be taught. #}
+      For a pair, put both names on the one line:
+      <span class="mono">Marc Damil &amp; Ana Reyes, marc@example.com</span>
+      &mdash; they go on the board together as <b>Marc D./Ana R.</b></p>
     <form method="post" action="/events/{{ ev.id }}/people">
       <textarea name="bulk" rows="7" style="width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.86rem"
-        placeholder="Marc Damil, marc@example.com&#10;Adrian Lim, adrian@example.com&#10;Viel Naval"></textarea>
+        placeholder="Marc Damil &amp; Ana Reyes, marc@example.com&#10;Adrian Lim, adrian@example.com&#10;Viel Naval"></textarea>
+      {% if ev.rates_open() %}
+      {# One category for the whole paste. Thirty names off a sign-up sheet are
+         nearly always thirty people in the same category, and without this
+         every one of them has to be opened and set by hand before the board
+         can put them in a column. #}
+      <div class="addcat">
+        <label for="addentry">Put them all in</label>
+        <select name="entry" id="addentry">
+          <option value="">&mdash; no category &mdash;</option>
+          {% for r in ev.rates_open() %}
+          <option value="{{ r.key }}">{{ r.label }}{% if r.pairs %} &middot; pairs{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
       <button class="btn primary" style="margin-top:9px">Add them</button>
     </form>
 
@@ -893,7 +914,8 @@
       <div class="small" style="font-weight:600;margin-bottom:4px">Or upload a file</div>
       <p class="muted small" style="margin:0 0 9px">CSV, first row the headings.
         <span class="mono">name</span> is the only one we need;
-        <span class="mono">email</span>, <span class="mono">instagram</span> and
+        <span class="mono">email</span>, <span class="mono">instagram</span>,
+        <span class="mono">partner</span> and
         <span class="mono">waitlist</span> are used if they're there. Put
         <span class="mono">yes</span> in the waitlist column for anybody who is a
         reserve — they stay out of every count and every send until you give them
@@ -902,6 +924,17 @@
             enctype="multipart/form-data">
         <input type="file" name="file" accept=".csv,text/csv" required
                style="padding:7px 9px">
+        {% if ev.rates_open() %}
+        <div class="addcat">
+          <label for="upentry">Put them all in</label>
+          <select name="entry" id="upentry">
+            <option value="">&mdash; no category &mdash;</option>
+            {% for r in ev.rates_open() %}
+            <option value="{{ r.key }}">{{ r.label }}{% if r.pairs %} &middot; pairs{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
         <button class="btn primary" style="margin-top:9px">Upload the list</button>
       </form>
     </div>

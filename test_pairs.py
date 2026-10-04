@@ -206,6 +206,67 @@ with TestClient(app) as c:
     ck("re-tick comes back", 'id="pairq"' in c.get("/r/leg3").text)
     c.post("/login", data={"username": "admin", "pin": "123456"})
 
+    # ------------------------------------------------------ added by hand --
+    # Thirty people off a sign-up sheet, pasted. A pair is one line with two
+    # names on it, because a pair is one entry with one time.
+    c.post("/events/%d/people" % EID, data={
+        "entry": DBL,
+        "bulk": ("Marc Damil & Ana Reyes, marc@example.com\n"
+                 "Adrian Lim, adrian@example.com, Viel Naval\n"
+                 "Jo Cruz and Mia Yu\n"
+                 "Solo Guy, solo@example.com\n")},
+        follow_redirects=False)
+    with Session(engine) as db:
+        by = {p.name: p for p in db.query(M.EventParticipant)
+              .filter(M.EventParticipant.event_id == EID).all()}
+        ck("ampersand splits the pair", "Marc Damil" in by
+           and by["Marc Damil"].partner_name == "Ana Reyes")
+        ck("the address still lands", by["Marc Damil"].email == "marc@example.com")
+        ck("a third field is the partner",
+           by["Adrian Lim"].partner_name == "Viel Naval")
+        ck("'and' splits too", "Jo Cruz" in by
+           and by["Jo Cruz"].partner_name == "Mia Yu")
+        ck("a solo line stays one person",
+           by["Solo Guy"].partner_name is None)
+        ck("the batch category is applied",
+           all(by[n].tier == DBL for n in
+               ["Marc Damil", "Adrian Lim", "Jo Cruz", "Solo Guy"]))
+        ck("pasted names read as a pair on the board",
+           board_name(by["Marc Damil"]) == "Marc D./Ana R.")
+        MARC = by["Marc Damil"].token
+
+    # The door asks a hand-added pair for nothing: it already has both names.
+    j = c.post("/events/%d/scan" % EID, data={"code": MARC}).json()
+    ck("a hand-added pair is not asked again",
+       j.get("pairs") is True and j.get("ask_partner") is False
+       and j.get("board") == "Marc D./Ana R.")
+
+    # A CSV with its own partner column.
+    csv = ("name,email,partner,waitlist\n"
+           "Nina Rey,nina@example.com,Bea Lao,\n"
+           "Tom Uy & Rico Sy,tom@example.com,,\n")
+    c.post("/events/%d/people/upload" % EID,
+           data={"entry": DBL},
+           files={"file": ("list.csv", csv, "text/csv")},
+           follow_redirects=False)
+    with Session(engine) as db:
+        by = {p.name: p for p in db.query(M.EventParticipant)
+              .filter(M.EventParticipant.event_id == EID).all()}
+        ck("csv partner column is read",
+           "Nina Rey" in by and by["Nina Rey"].partner_name == "Bea Lao")
+        ck("csv name cell can hold the pair",
+           "Tom Uy" in by and by["Tom Uy"].partner_name == "Rico Sy")
+        ck("csv batch category is applied", by["Nina Rey"].tier == DBL)
+
+    # A category that is closed, or made up, is not applied.
+    c.post("/events/%d/people" % EID,
+           data={"entry": "99999", "bulk": "Ghost Person"},
+           follow_redirects=False)
+    with Session(engine) as db:
+        g = (db.query(M.EventParticipant)
+             .filter_by(event_id=EID, name="Ghost Person").one())
+        ck("a category that is not the event's is ignored", g.tier is None)
+
     # ------------------------------------------------------ the public board --
     c.post("/events/%d/board-link" % EID, follow_redirects=False)
     with Session(engine) as db:
