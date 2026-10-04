@@ -2044,6 +2044,7 @@ def register(app, deps):
             reward_b_value: str = Form(""),
             sponsor_logo: UploadFile = None, drop_logo: str = Form(""),
             banner: UploadFile = None, drop_banner: str = Form(""),
+            board_bg: UploadFile = None, drop_board_bg: str = Form(""),
             reward_amount: str = Form(""), reward_by: str = Form(""),
             db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
@@ -2184,6 +2185,17 @@ def register(app, deps):
             if raw and len(raw) <= 3 * 1024 * 1024:
                 ev.banner = raw
                 ev.banner_mime = (banner.content_type or "image/png")
+        if drop_board_bg == "on":
+            ev.board_bg, ev.board_bg_mime = None, None
+        elif board_bg is not None and getattr(board_bg, "filename", ""):
+            raw = board_bg.file.read()
+            # This one goes on a wall screen rather than into a message, so it
+            # gets more room than the email images - but it is still served to
+            # every phone in the venue on the venue's wifi, which is the real
+            # ceiling here.
+            if raw and len(raw) <= 6 * 1024 * 1024:
+                ev.board_bg = raw
+                ev.board_bg_mime = (board_bg.content_type or "image/jpeg")
         # The offer. Blank means no offer at all rather than zero pesos off:
         # the box simply is not drawn, and the thank-you is a thank-you.
         amt = (reward_amount or "").replace(",", "").replace("\u20b1", "").strip()
@@ -3015,7 +3027,39 @@ def register(app, deps):
                 "board_public.html", {"request": request, "ev": None},
                 status_code=404)
         return templates.TemplateResponse("board_public.html", {
-            "request": request, "ev": ev, "cols": _board_ctx(ev)})
+            "request": request, "ev": ev, "cols": _board_ctx(ev),
+            # Whether, not what: the page asks for these by the same token it
+            # was opened with, so the board stays one address with no event id
+            # of ours printed into a public page.
+            "has_bg": bool(ev.board_bg), "has_logo": bool(ev.sponsor_logo)})
+
+    @app.get("/l/{token}/bg")
+    def board_bg(token: str, db: Session = Depends(get_db)):
+        """The photo behind one event's board.
+
+        Served off the board token rather than the event id, so the public page
+        carries exactly one address and a revoked link takes the picture with
+        it. Cached hard: it is the same bytes for every phone in the venue and
+        it does not change during a morning.
+        """
+        ev = (db.query(Event)
+              .filter(Event.board_token == token).first()) if token else None
+        if not ev or not ev.board_bg:
+            return Response(status_code=404)
+        return Response(content=ev.board_bg,
+                        media_type=ev.board_bg_mime or "image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/l/{token}/logo")
+    def board_logo(token: str, db: Session = Depends(get_db)):
+        """The event's own mark, beside ours in the board's header."""
+        ev = (db.query(Event)
+              .filter(Event.board_token == token).first()) if token else None
+        if not ev or not ev.sponsor_logo:
+            return Response(status_code=404)
+        return Response(content=ev.sponsor_logo,
+                        media_type=ev.sponsor_logo_mime or "image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
     def _results_ctx(ev, now=None):
         """Everybody's race, once the racing is over.
@@ -4713,6 +4757,22 @@ def register(app, deps):
         return Response(content=ev.sponsor_logo,
                         media_type=ev.sponsor_logo_mime or "image/png",
                         headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/events/{eid}/board-bg")
+    def event_board_bg(eid: int, db: Session = Depends(get_db)):
+        """The leaderboard photo, for the preview on the settings page.
+
+        Public, like the sponsor's mark and the banner beside it: these are
+        pictures the event publishes anyway, and this one is already served to
+        anybody holding the board link. The board itself asks by its own token
+        - see /l/{token}/bg - so no public page carries an event id of ours.
+        """
+        ev = db.get(Event, eid)
+        if not ev or not ev.board_bg:
+            return Response(status_code=404)
+        return Response(content=ev.board_bg,
+                        media_type=ev.board_bg_mime or "image/jpeg",
+                        headers={"Cache-Control": "private, max-age=600"})
 
     @app.get("/events/{eid}/banner")
     def event_banner(eid: int, db: Session = Depends(get_db)):

@@ -642,6 +642,12 @@ def startup():
                 "FROM commission_runs r WHERE r.id = c.run_id "
                 "  AND c.period_start IS NULL AND r.period_start IS NOT NULL; "
                 "END IF; END $$;"))
+            # The photo behind one event's live leaderboard.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS board_bg BYTEA; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS board_bg_mime VARCHAR; "
+                "END IF; END $$;"))
             # One list, not two. A rate and a category were the same choice
             # asked twice — and an event could end up with the rate hidden and
             # the category switched off, which is a form with no way to

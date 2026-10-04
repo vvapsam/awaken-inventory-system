@@ -1718,6 +1718,14 @@ class Event(Base):
     sponsor_logo = Column(LargeBinary)
     sponsor_logo_mime = Column(String)
 
+    #: The photo behind the live leaderboard. Per event, like everything else
+    #: that is a property of one class rather than of the gym: the arena shot
+    #: that belongs on a November race in Pasig is not the one that belongs on
+    #: a Tuesday morning foundation class, and an event with none gets the
+    #: plain dark board it has always had.
+    board_bg = Column(LargeBinary)
+    board_bg_mime = Column(String)
+
     #: The event's own header image, replacing the black bar and the AWAKEN
     #: mark at the top of its emails. Per event rather than per email: a class
     #: that has a look should carry it on everything it sends, and one image

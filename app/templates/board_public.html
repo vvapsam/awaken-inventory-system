@@ -45,10 +45,61 @@ body{
 }
 .wrap{max-width:1680px;margin:0 auto}
 
+/* The event's own photo, behind everything.
+ *
+ * Its own fixed layer rather than a background on <body>: background-attachment
+ * fixed is ignored on iOS, and a photo that scrolls away up the page is a photo
+ * nobody in the room sees after the first screenful. Cover rather than a true
+ * stretch - the shot is portrait and the screen in the room is landscape, and
+ * stretching one to the other turns an arena into a smear.
+ *
+ * The scrim is the whole reason this is readable. A race board is white type
+ * and thin rules; laid straight onto a photograph it stops being either.
+ */
+.bg{
+  position:fixed;inset:0;z-index:-2;background-repeat:no-repeat;
+  background-size:cover;
+  /* Low rather than centred: these photographs are a dark roof over a lit
+     floor, and a landscape screen cropping the middle out of a portrait shot
+     gets the one band that is neither. */
+  background-position:center 72%;
+  /* Lifted, because a picture chosen to sit under white poster type is darker
+     than a picture meant to be seen. Without this the board and the photograph
+     are the same black and the photograph may as well not be there. */
+  filter:brightness(1.5) saturate(1.1);
+}
+.bg::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(6,16,17,.62) 0%,rgba(6,16,17,.34) 34%,
+                             rgba(6,16,17,.50) 66%,rgba(6,16,17,.78) 100%)}
+/* With a photo behind them the panels stop being solid and become glass, so
+   the arena still reads through the board rather than being covered by it. */
+/* Transparent, not dark. html carries a background of its own, so body's is
+   painted as a box - and an in-flow box paints AFTER a negative-z-index layer,
+   which means an opaque body covers the very photograph it is meant to sit on.
+   html's colour stays underneath as the fallback if the image never loads. */
+body.hasbg{background:transparent}
+body.hasbg .floor{background:rgba(10,32,27,.62);backdrop-filter:blur(3px)}
+body.hasbg .cell{background:rgba(9,26,24,.70)}
+body.hasbg .grp{background:rgba(8,24,25,.62);backdrop-filter:blur(3px)}
+body.hasbg .grp.elite{background:rgba(10,33,31,.66)}
+body.hasbg .row{background:rgba(10,28,29,.66)}
+body.hasbg .row.lead{background:rgba(13,44,40,.74)}
+body.hasbg .empty{background:rgba(10,28,29,.55)}
+
 .head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
 /* The mark is white on transparent, cut for the finisher card, and sits here
    at the size a header wants rather than the size a card wanted. */
 .head .mark{flex:0 0 auto;width:64px;height:auto;display:block;opacity:.95}
+/* Ours first, then the event's, with a hairline between - the same lockup as
+   the finisher card, so the board and the card a finisher is handed agree
+   about whose morning this is. */
+.head .seam{flex:0 0 auto;width:1px;align-self:stretch;margin:4px 2px;
+  background:rgba(255,255,255,.22)}
+.head .guest{flex:0 0 auto;max-width:150px;max-height:62px;width:auto;
+  height:auto;display:block}
+@media (max-width:559px){
+  .head .guest{max-width:104px;max-height:46px}
+}
 .head h1{margin:0;font-size:1.5rem;font-weight:800;letter-spacing:-.025em}
 .head .sub{color:var(--dim);font-size:.78rem;margin-top:3px}
 .live{
@@ -246,7 +297,13 @@ h2.gname .gn{
 }
 </style>
 </head>
-<body>
+<body{% if has_bg %} class="hasbg"{% endif %}>
+
+{% if has_bg %}
+{# The photo, as its own layer under everything. Inline because it is one
+   declaration whose value is this event's own address and nothing else's. #}
+<div class="bg" style="background-image:url('/l/{{ ev.board_token }}/bg')"></div>
+{% endif %}
 
 {% if not ev %}
 <div class="wrap">
@@ -260,6 +317,10 @@ h2.gname .gn{
 <div class="wrap">
   <div class="head">
     <img class="mark" src="/static/card/awaken.png" alt="AWAKEN">
+    {% if has_logo %}
+    <span class="seam"></span>
+    <img class="guest" src="/l/{{ ev.board_token }}/logo" alt="">
+    {% endif %}
     <div>
       <h1>{{ ev.name }}</h1>
       <div class="sub">Live standings</div>

@@ -82,6 +82,35 @@
         </div>
       </div>
     </div>
+    {# The photo behind the live leaderboard. On the event rather than in the
+       static folder, for the same reason the sponsor's mark is: the arena that
+       belongs on a November race is not the one that belongs on a Tuesday
+       morning class. #}
+    <div style="grid-column:1/-1">
+      <label class="small" style="font-weight:600">Leaderboard background</label>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        {% if ev.board_bg %}
+        <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;
+                    flex:none;width:150px">
+          <img src="/events/{{ ev.id }}/board-bg" alt="{{ ev.name }}"
+               style="display:block;width:100%;height:auto"></div>
+        {% endif %}
+        <div style="flex:1;min-width:220px">
+          <input type="file" name="board_bg" accept="image/png,image/jpeg"
+                 style="padding:7px 9px">
+          <div class="muted small" style="margin:4px 0 0">Sits behind the live
+            leaderboard, filling the screen. It is cropped to fit rather than
+            squashed, so the middle of the picture is what survives &mdash; and
+            a dark one works best, because white names and thin rules sit on top
+            of it. Under 6 MB. Leave it empty for the plain dark board.</div>
+          {% if ev.board_bg %}
+          <label class="check small" style="margin-top:7px">
+            <input type="checkbox" name="drop_board_bg" value="on"> Remove the
+            background</label>
+          {% endif %}
+        </div>
+      </div>
+    </div>
     {# The thank-you offer. Two boxes, because both of them print into the
        email word for word and neither can be guessed. #}
     <div><label class="small" style="font-weight:600">Review reward</label>
