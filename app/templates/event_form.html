@@ -106,7 +106,10 @@ textarea.fbin{margin-top:10px;font-family:inherit;resize:vertical}
   color:var(--muted);margin-bottom:9px}
 .rhd,.rrow{display:grid;grid-template-columns:22px 1fr 138px 96px;gap:9px;align-items:center}
 /* A category has one more column than a rate: the places it holds. */
-.rhd4,.rrow4{grid-template-columns:22px 1fr 120px 78px 96px}
+.rhd4,.rrow4{grid-template-columns:22px 1fr 112px 70px 62px 96px}
+/* "Pair" is a box, not a number, so it gets the tick and nothing else. */
+.rrow4 .pairbox{display:flex;justify-content:center}
+.rrow4 .pairbox input{width:19px;height:19px}
 .rnote{margin-top:9px;font-size:.82rem;color:var(--muted);background:var(--wash,#f4f6f8);
   border-radius:9px;padding:9px 12px;line-height:1.5}
 .rnote b{color:var(--ink)}
@@ -293,6 +296,7 @@ function subLine(f){
     return D.rates.map(function(r){
       return esc(r.label || '(no name)') + ' ' + peso(r.amt) +
              (r.cap ? ' \u00b7 ' + r.used + '/' + r.cap : '') +
+             (r.pairs ? ' \u00b7 pair' : '') +
              (r.closed ? ' (closed)' : '');
     }).join('  \u00b7  ');
   }
@@ -311,7 +315,8 @@ function ratesHTML(){
   h += '<div class="rlbl">The categories &mdash; what somebody enters, what it ' +
        'costs, and how many places it holds</div>';
   h += '<div class="rhd rhd4"><span></span><span>Label</span><span>Price</span>' +
-       '<span>Slots</span><span></span></div>';
+       '<span>Slots</span><span style="text-align:center">Pair</span>' +
+       '<span></span></div>';
   for (var i=0;i<D.rates.length;i++){
     var r = D.rates[i];
     h += '<div class="rrow rrow4' + (r.closed ? ' shut' : '') + '" data-r="'+i+'">';
@@ -321,6 +326,9 @@ function ratesHTML(){
          'inputmode="numeric" value="'+esc(r.amt)+'" placeholder="0"></div>';
     h += '<input class="fbin" data-rk="cap" inputmode="numeric" value="' +
          (r.cap ? esc(r.cap) : '') + '" placeholder="&#8734;">';
+    h += '<label class="pairbox" title="Raced as a pair &mdash; ask for a ' +
+         'partner\'s name"><input type="checkbox" data-rk="pairs"' +
+         (r.pairs ? ' checked' : '') + '></label>';
     h += '<div class="rend">';
     if (r.used) h += '<span class="used">'+r.used+(r.cap ? '/'+r.cap : ' in')+'</span>';
     if (r.closed) h += '<button type="button" class="rx mild" data-reopen="'+i+'">Reopen</button>';
@@ -332,6 +340,10 @@ function ratesHTML(){
   if (!D.rates.filter(function(r){ return !r.closed && r.label; }).length)
     h += '<div class="warn"><b>No categories yet.</b> Nobody can register until ' +
          'there is at least one, because the sign-up has nothing to offer.</div>';
+  h += '<div class="rnote">Tick <b>Pair</b> on anything raced two to a team ' +
+       '&mdash; Doubles, a relay, whatever you call it. The sign-up then asks ' +
+       'for the partner\'s name, the door asks again if it came through blank, ' +
+       'and the board shows both: <b>Trina P./Vanessa S.</b></div>';
   h += '<div class="rnote">Leave <b>Slots</b> empty for no limit of its own. ' +
        'The event\'s own capacity is still the ceiling, and a category with no ' +
        'places left shows on the form as <b>Full</b> rather than disappearing ' +
@@ -511,7 +523,8 @@ cv.addEventListener('click', function(e){
     D.pages.splice(n,1); draw(); push(true); return;
   }
   if ((t = e.target.closest('[data-addrate]'))) {
-    D.rates.push({id:null, label:'', amt:'', cap:0, closed:false, used:0});
+    D.rates.push({id:null, label:'', amt:'', cap:0, pairs:false,
+                  closed:false, used:0});
     draw();
     var boxes = document.querySelectorAll('.fld.open .rrow [data-rk="label"]');
     if (boxes.length) boxes[boxes.length-1].focus();
@@ -589,7 +602,15 @@ function onEdit(e){
     push(false); return;
   }
   if (rk) {
-    D.rates[+el.closest('.rrow').getAttribute('data-r')][rk] = el.value;
+    var rr = +el.closest('.rrow').getAttribute('data-r');
+    // "Pair" is a tick, so it reads .checked. Everything else in that row is
+    // typed. It also redraws, because the sub-line under the collapsed card
+    // lists which categories are pairs.
+    if (rk === 'pairs') {
+      D.rates[rr].pairs = el.checked;
+      draw(); push(true); return;
+    }
+    D.rates[rr][rk] = el.value;
     push(false); return;
   }
   if (!k) return;

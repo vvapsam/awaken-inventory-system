@@ -50,6 +50,20 @@
       <div class="v" id="slottime"></div>
       <div class="s" id="slotno"></div>
     </div>
+    {# A pair with one name on it. Asked here because this is the last moment
+       anybody can be asked: the other half of the team is standing in front
+       of whoever is scanning, and after this they are on the floor and the
+       board is up. #}
+    <div class="cpair" id="pair" hidden>
+      <div class="l" id="pairlab">Who are they racing with?</div>
+      <div id="pairask">
+        <input type="text" id="pname" autocomplete="off" autocapitalize="words"
+               placeholder="Their partner's full name">
+        <button class="btn primary pbtn" id="psave" type="button">Save the name</button>
+        <div class="pnote" id="pnote">Goes on the board as both names.</div>
+      </div>
+      <div class="pwith" id="pwith" hidden></div>
+    </div>
     <div class="cmeta" id="meta"></div>
     <button class="btn primary big" id="next" type="button">Scan next</button>
   </div>
@@ -73,6 +87,13 @@
       elSlotTime = document.getElementById('slottime'),
       elSlotNo = document.getElementById('slotno'),
       elMeta = document.getElementById('meta'),
+      elPair = document.getElementById('pair'),
+      elPairLab = document.getElementById('pairlab'),
+      elPairAsk = document.getElementById('pairask'),
+      elPairWith = document.getElementById('pwith'),
+      elPName = document.getElementById('pname'),
+      btnPSave = document.getElementById('psave'),
+      elPNote = document.getElementById('pnote'),
       elWaves = document.getElementById('waves'),
       btnNext = document.getElementById('next'),
       hint = document.getElementById('hint'),
@@ -83,7 +104,11 @@
       // The same code stays in front of the lens for a second or two after a
       // scan. Without this it would re-post twenty times while somebody puts
       // their phone away.
-      lastCode = '', lastAt = 0, busy = false;
+      lastCode = '', lastAt = 0, busy = false,
+      // Whose card is on screen. The partner box posts against this rather
+      // than re-reading the QR, so a name can be typed long after the code
+      // has left the lens.
+      onCard = '';
 
   function show(kind, d){
     d = d || {};
@@ -109,7 +134,11 @@
       elSlot.hidden = true;
     }
 
+    onCard = d.token || '';
+    pair(d);
+
     var bits = [];
+    if (d.cat) bits.push(d.cat);
     if (d.handle) bits.push(d.handle);
     if (d.email) bits.push(d.email);
     elMeta.textContent = bits.join('  ·  ');
@@ -120,13 +149,66 @@
                (w.cap ? '/' + w.cap : '') + '</span>';
       }).join('');
     }
-    btnNext.focus();
+    // Whatever the card wants next is what gets the thumb. A pair missing a
+    // name wants the name; everything else wants "Scan next".
+    if (d.ask_partner) elPName.focus(); else btnNext.focus();
     if (navigator.vibrate) navigator.vibrate(kind === 'bad' ? [40,60,40] : 30);
   }
+
+  // Three states, and only on a category that is raced as a pair: ask for
+  // the name, show the name, or say nothing at all. A solo entry never sees
+  // this block, which is why the flag lives on the category rather than in
+  // the label somebody typed.
+  function pair(d){
+    if (!d.pairs) { elPair.hidden = true; return; }
+    elPair.hidden = false;
+    if (d.partner) {
+      elPair.className = 'cpair done';
+      elPairLab.textContent = 'Racing as a pair';
+      elPairAsk.hidden = true;
+      elPairWith.hidden = false;
+      elPairWith.textContent = d.board || d.partner;
+    } else {
+      elPair.className = 'cpair';
+      elPairLab.textContent = 'Who are they racing with?';
+      elPairAsk.hidden = false;
+      elPairWith.hidden = true;
+      elPName.value = '';
+      elPNote.textContent = 'Goes on the board as both names.';
+      btnPSave.disabled = false;
+    }
+  }
+
+  function savePartner(){
+    var name = (elPName.value || '').trim();
+    if (!name || !onCard) return;
+    btnPSave.disabled = true;
+    elPNote.textContent = 'Saving\u2026';
+    var body = new URLSearchParams();
+    body.append('token', onCard); body.append('name', name);
+    fetch('/events/{{ ev.id }}/scan/partner',
+          {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!d || !d.ok) throw new Error('no');
+        pair({pairs: true, partner: d.partner, board: d.board});
+      })
+      .catch(function(){
+        btnPSave.disabled = false;
+        elPNote.textContent = "Didn't save \u2014 try that again.";
+      });
+  }
+  btnPSave.addEventListener('click', savePartner);
+  // Enter is the key somebody's thumb is already on after typing a name.
+  elPName.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') { e.preventDefault(); savePartner(); }
+  });
 
   function again(){
     card.hidden = true;
     box.hidden = false;
+    elPair.hidden = true;
+    onCard = '';
     // Whatever was on screen is stale the moment the camera is back, so the
     // de-duplication window is cleared too — the same person can be re-scanned
     // deliberately and will be told they already have a time.

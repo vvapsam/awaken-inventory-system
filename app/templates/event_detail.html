@@ -489,7 +489,7 @@
        by category, so a roster you cannot read the categories off is a
        roster you end up copying into a spreadsheet. #}
     {% if 'gender' in cols %}
-    <td>{% if p.sex %}{{ 'Male' if p.sex == 'm' else 'Female' }}
+    <td>{% if p.sex %}{{ sex_label(p) }}
       {% else %}<span class="muted small">—</span>{% endif %}</td>
     {% endif %}
     {% if 'category' in cols %}
@@ -747,7 +747,7 @@
              anybody added by hand had no gender, which is how somebody ends up
              in the leaderboard's Unlisted column instead of Women. #}
           <select form="ed-{{ p.id }}" name="sex">
-            <option value="" {{ 'selected' if p.sex not in ('m', 'f') }}>Not set</option>
+            <option value="" {{ 'selected' if not sex_label(p) }}>Not set</option>
             {% for key, label in SEXES %}
             <option value="{{ key }}" {{ 'selected' if p.sex == key }}>{{ label }}</option>
             {% endfor %}
@@ -789,6 +789,15 @@
               if r.closed %} (closed){% endif %}</option>
             {% endfor %}
           </select></div>
+        {% if p.partner_name or ev.rate_rows()|selectattr('pairs')|list %}
+        {# Only on an event that has a category raced as a pair — and always
+           on somebody who already has a partner on file, so a name can still
+           be fixed or cleared after the category stopped being a pair. #}
+        <div class="fld wide"><label>Partner&rsquo;s name</label>
+          <input form="ed-{{ p.id }}" name="partner_name" maxlength="80"
+                 value="{{ p.partner_name or '' }}"
+                 placeholder="The second name on this entry"></div>
+        {% endif %}
         <div class="fld"><label>Amount</label>
           <input form="ed-{{ p.id }}" name="amount" inputmode="decimal"
                  value="{{ '%.2f'|format(p.amount) if p.amount is not none else '' }}"
@@ -935,7 +944,7 @@
   <tr>
     <td><div class="primary">{{ p.full_name }}</div>
       <div class="sub">{{ p.email }}{% if p.mobile %} · {{ p.mobile }}{% endif %}{%
-        if p.sex %} · {{ 'Male' if p.sex == 'm' else 'Female' }}{% endif %}</div></td>
+        if p.sex %} · {{ sex_label(p) }}{% endif %}</div></td>
     <td><div class="primary">{{ money(p.amount) }}</div>
       <div class="sub">{{ ev.rate_label(p.tier) or '—' }}</div></td>
     <td>{% if p.proof %}
@@ -1135,7 +1144,7 @@
     <td><div class="primary">{{ p.name }}</div>
       <div class="sub">{{ p.email or 'No email on record' }}</div></td>
     {% if 'gender' in gone_cols %}
-    <td>{% if p.sex %}{{ 'Male' if p.sex == 'm' else 'Female' }}
+    <td>{% if p.sex %}{{ sex_label(p) }}
       {% else %}<span class="muted small">—</span>{% endif %}</td>
     {% endif %}
     {% if 'category' in gone_cols %}

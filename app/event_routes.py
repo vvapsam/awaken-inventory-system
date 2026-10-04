@@ -57,7 +57,7 @@ from .models import (
     EVENT_RUNNING, EVENT_STATUSES,
     HANDLE_MAX, PAY_APPROVED, PAY_DRAFT, PAY_GRACE_HOURS, PAY_LABELS,
     PAY_RETURNED,
-    PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES,
+    PAY_SUBMITTED, RSVP_NO, RSVP_NONE, RSVP_YES, SEXES, SEX_KEYS, SEX_SHORT,
     TAGS_MISSING, TAGS_OK, TAGS_PENDING, TAG_LABELS,
     Event, EventParticipant, EventOrganiserLink, EventRate, EventStation,
     PaymentSetting, StationRun,
@@ -474,6 +474,39 @@ def short_name(p) -> str:
     return "%s %s." % (given, first[0].upper()) if first else given
 
 
+def short_text(name: str) -> str:
+    """The same shortening, for a name that is only ever a line of text.
+
+    A partner is typed in, not registered, so there is no given/family to read
+    — just whatever somebody wrote in the box. Everything after the first word
+    is treated as the family name, which is right for "Vanessa Sampang" and for
+    "Vanessa de la Cruz", and a single word is left whole.
+    """
+    bits = [b for b in (name or "").replace(",", " ").split() if b]
+    if not bits:
+        return ""
+    if len(bits) == 1:
+        return bits[0]
+    return "%s %s." % (bits[0], bits[1][0].upper())
+
+
+def board_name(p) -> str:
+    """What a public screen calls this entry.
+
+    One person is "Trina P.". A pair is "Trina P./Vanessa S." — one token, on
+    one row, because a pair is one entry with one time. The slash has no spaces
+    around it on purpose: it has to survive a narrow column on a phone without
+    wrapping into something that reads like two rows.
+
+    Nobody is ever reduced to their partner. With no partner on file this is
+    exactly the single name it always was, which is what lets every public
+    screen call this instead of ``short_name`` without a flag.
+    """
+    me = short_name(p)
+    mate = short_text(getattr(p, "partner_name", None))
+    return "%s/%s" % (me, mate) if mate else me
+
+
 def shift(t: str, minutes: int) -> str:
     """A time this many minutes earlier, clamped to the same day."""
     t = hhmm(t)
@@ -796,6 +829,10 @@ def register(app, deps):
         taken = rate_taken(ev, r.id)
         return {"key": r.key, "label": r.label, "price": r.amount,
                 "money": money(r.amount), "closed": bool(r.closed),
+                # Whether picking this one means naming a partner. Carried on
+                # the category rather than guessed from its label, so the form,
+                # the door and the board all ask the same question.
+                "pairs": bool(r.pairs),
                 "cap": cap, "taken": taken,
                 "left": max(cap - taken, 0) if cap else None,
                 "full": cap > 0 and taken >= cap}
@@ -968,6 +1005,7 @@ def register(app, deps):
         email = (form.get("email") or "").strip()
         mobile = re.sub(r"[^0-9+ ]", "", (form.get("mobile") or "").strip())[:24]
         sex = (form.get("sex") or "").strip()
+        partner = (form.get("partner_name") or "").strip()[:80]
         # Not required. Somebody who skips it, or whose browser sends nothing,
         # gets the default rather than a bounced form - a flag is decoration on
         # a board, not a thing worth turning anybody away over.
@@ -997,12 +1035,19 @@ def register(app, deps):
         if not (first and last and picked and looks_like_email(email)):
             return RedirectResponse("/r/%s?err=missing" % slug, status_code=303)
         if ("mobile" in need and not mobile) or \
-                ("sex" in need and sex not in ("m", "f")):
+                ("sex" in need and sex not in SEX_KEYS):
             return RedirectResponse("/r/%s?err=missing" % slug, status_code=303)
-        if sex not in ("m", "f"):
+        if sex not in SEX_KEYS:
             # An event that does not ask leaves it unset, which the board has
             # had an "Unlisted" column for since the day it was written.
             sex = None
+        # A partner only exists on a category that is raced as one. Somebody
+        # who typed a name, then changed their mind and picked Solo, is not
+        # carrying a second name onto the board.
+        if not (picked and picked.get("pairs")):
+            partner = ""
+        elif "partner" in need and not partner:
+            return RedirectResponse("/r/%s?err=missing" % slug, status_code=303)
         # The gym's own questions. A required one left blank is refused the
         # same way a missing email is - and the browser catches almost all of
         # them first, so this is the floor rather than the door.
@@ -1035,6 +1080,7 @@ def register(app, deps):
                 seen.first_name, seen.last_name = first, last
                 seen.name = "%s %s" % (first, last)
                 seen.mobile, seen.sex = mobile, sex
+                seen.partner_name = partner or None
                 seen.country = country
                 seen.tier = picked["key"]
                 seen.amount = picked["price"]
@@ -1051,7 +1097,8 @@ def register(app, deps):
         p = EventParticipant(
             event_id=ev.id, token=new_token(), name="%s %s" % (first, last),
             first_name=first, last_name=last, email=email, mobile=mobile,
-            sex=sex, country=country, tier=picked["key"],
+            sex=sex, partner_name=partner or None,
+            country=country, tier=picked["key"],
             amount=picked["price"], pay_status=PAY_DRAFT)
         db.add(p)
         db.flush()
@@ -1524,6 +1571,13 @@ def register(app, deps):
             note = "Had said they couldn't make it"
         else:
             note = "Their slot had lapsed"
+        # A pair with only one name on it. The door is the last moment
+        # anybody can be asked — after this they are on the floor and the
+        # board is up — so the scan card asks, with the other half of the
+        # team standing right there to spell it.
+        rate = ev.rate(p.tier) if p.tier else None
+        pairs = bool(rate is not None and rate.pairs)
+        mate = (p.partner_name or "").strip()
         return JSONResponse({
             "ok": True, "fresh": fresh, "name": p.name, "note": note,
             "token": p.token,
@@ -1531,9 +1585,46 @@ def register(app, deps):
             "handle": p.handle,
             "slot": p.slot_time or "",
             "slot_no": p.slot_no,
+            "pairs": pairs,
+            "cat": (rate.label if rate is not None else ""),
+            "partner": mate,
+            "ask_partner": pairs and not mate,
+            "board": board_name(p),
             "waves": _wave_counts(ev) if ev.slot_a_time else None,
             "counts": {"in": c["arrived"], "of": c["confirmed"]},
         })
+
+    @app.post("/events/{eid}/scan/partner")
+    def event_scan_partner(request: Request, eid: int, token: str = Form(""),
+                           name: str = Form(""),
+                           db: Session = Depends(get_db)):
+        """The second name on a pair, typed at the door.
+
+        Its own endpoint rather than a field on the scan, because it happens
+        after the scan: the code is read, the card says the partner is missing,
+        and somebody types it while the pair is standing in front of them. One
+        request, so a slow phone cannot lose the check-in along with the name.
+
+        No scan is re-run and no slot is re-assigned here. This writes one
+        string and says what the board will now read.
+        """
+        staff, redir = door_guard(request, db)
+        if redir:
+            return JSONResponse({"ok": False, "why": "signed out"},
+                                status_code=401)
+        ev = db.get(Event, eid)
+        if not ev:
+            return JSONResponse({"ok": False, "why": "no such event"},
+                                status_code=404)
+        tok = (token or "").strip().rstrip("/").split("/")[-1].split("?")[0]
+        p = _participant(db, tok) if tok else None
+        if not p or p.event_id != eid:
+            return JSONResponse({"ok": False, "why": "no such entry"},
+                                status_code=404)
+        p.partner_name = (name or "").strip()[:80] or None
+        db.commit()
+        return JSONResponse({"ok": True, "partner": p.partner_name or "",
+                             "board": board_name(p)})
 
     @app.post("/events/{eid}/people/{pid}/race-status")
     def event_race_status(request: Request, eid: int, pid: int,
@@ -2898,7 +2989,7 @@ def register(app, deps):
             key=lambda p: ((p.given or "").lower(), (p.family or "").lower()))
         rows = []
         for t in times:
-            here = [short_name(p) for p in people if p.heat_time == t]
+            here = [board_name(p) for p in people if p.heat_time == t]
             if not here:
                 continue                # an empty heat is not news to anybody
             rows.append({"t": t, "arrive": arrive_at(ev, t), "people": here})
@@ -2951,7 +3042,8 @@ def register(app, deps):
                 p = r["p"]
                 out.append({
                     "id": p.id,
-                    "name": short_name(p),
+                    # "Trina P." alone, or "Trina P./Vanessa S." on a pair.
+                    "name": board_name(p),
                     # The strip mixes all four groups, so each card has to
                     # say which one it is. Two letters, because that is all
                     # the room a card has - "A\u00b7W" is the Advanced women's
@@ -2963,7 +3055,7 @@ def register(app, deps):
                     # hardcoded "E".
                     "sx": "%s\u00b7%s" % (
                         CATEGORY_LABELS[category_key(p.category)][:1].upper(),
-                        {"m": "M", "f": "W"}.get(p.sex, "-")),
+                        SEX_SHORT.get(p.sex, "-")),
                     "elite": category_key(p.category) == "elite",
                     # Whether they belong in the strip rather than a column.
                     # Decided here, so the page and the feed cannot disagree
@@ -3083,10 +3175,10 @@ def register(app, deps):
                 raced, moving = race_totals(p, now)
                 row = {
                     "id": p.id,
-                    "name": short_name(p),
+                    "name": board_name(p),
                     "cat": (col["key"].split(":")[0]
                             if ":" in col["key"] else ""),
-                    "sex": p.sex if p.sex in ("m", "f") else "",
+                    "sex": p.sex if p.sex in SEX_KEYS else "",
                     "group": col["label"],
                     "flag": country_flag(p.country),
                     "cc": country_code(p.country),
@@ -3299,7 +3391,7 @@ def register(app, deps):
                       None)
         return {
             "who": {
-                "name": short_name(p),
+                "name": board_name(p),
                 "flag": country_flag(p.country),
                 "country": country_name(p.country),
                 "group": mine["label"] if mine else "",
@@ -4002,6 +4094,7 @@ def register(app, deps):
                           instagram: str = Form(""), country: str = Form(""),
                           sex: str = Form(""), category: str = Form(""),
                           age: str = Form(""), mobile: str = Form(""),
+                          partner_name: str = Form(""),
                           entry: str = Form(""), amount: str = Form(""),
                           pay: str = Form("keep"), rsvp: str = Form("keep"),
                           db: Session = Depends(get_db)):
@@ -4042,7 +4135,11 @@ def register(app, deps):
         # Blank is a real answer - "we do not know" - and is not the same as
         # guessing. Anything that is not one of the two is stored as nothing.
         want = (sex or "").strip().lower()
-        p.sex = want if want in {k for k, _l in SEXES} else None
+        p.sex = want if want in SEX_KEYS else None
+        # Who they are racing with. Blank clears it, and it is not tied to the
+        # category here: staff fixing a spelling should not have their edit
+        # thrown away because the category was switched the same minute.
+        p.partner_name = (partner_name or "").strip()[:80] or None
         # No blank branch: the category has no "not set". Anything unreadable
         # lands on Open, which is where somebody who has not been looked at
         # yet belongs anyway.

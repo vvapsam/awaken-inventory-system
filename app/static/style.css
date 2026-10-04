@@ -791,6 +791,27 @@ td.h4{background:#a3d1d1}td.h5{background:#7cbdbd;color:#04302f}
 .scancard.bad{border-color:#e0a79e;background:#fdf6f5}
 .scancard.bad .cstate{color:#8c2c20}
 .scancard.bad .cname:empty{display:none}
+/* The second name on a pair, asked at the door.
+
+   Deliberately the loudest thing on the card when it is open: it is a
+   question, and a question that reads as a footnote is a question nobody
+   answers. The input is full width and 16px or more, because anything smaller
+   makes an iPhone zoom the whole page on focus and the queue watches somebody
+   pinch their way back out. */
+.scancard .cpair{margin:16px auto 0;padding:14px;border-radius:12px;
+  background:var(--panel);border:1px dashed var(--line);max-width:340px;
+  text-align:left}
+.scancard .cpair .l{font-size:.63rem;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted)}
+.scancard .cpair input{width:100%;margin-top:7px;padding:12px;font-size:1.02rem;
+  border:1px solid var(--line);border-radius:9px;background:var(--bg);
+  color:var(--ink)}
+.scancard .cpair .pbtn{width:100%;margin-top:9px}
+.scancard .cpair .pnote{font-size:.78rem;color:var(--muted);margin-top:8px}
+/* Already on file, or just saved. A statement, not a question. */
+.scancard .cpair.done{border-style:solid;text-align:center}
+.scancard .cpair .pwith{font-size:1.05rem;font-weight:600;color:var(--ink);
+  margin-top:3px;word-break:break-word}
 /* How full each wave is, beside the head count. */
 .waves{display:inline-flex;gap:10px;margin-left:12px;flex-wrap:wrap}
 .waves span{background:var(--panel);border:1px solid var(--line);border-radius:999px;
@@ -1049,6 +1070,9 @@ body.picking .tt .lane .hint::after{content:"Put them here"}
 .sx{font-size:.66rem;font-weight:700;border-radius:999px;padding:1px 5px;flex:0 0 auto}
 .sx.f{background:#f4e8f2;color:#8a3f7a}
 .sx.m{background:#e5eefa;color:#2c5a94}
+/* A mixed pair. Its own colour rather than one of the other two, because the
+   whole point of the chip is telling the three apart at a glance. */
+.sx.x{background:#e9f1e7;color:#3d6b36}
 
 .picker{position:absolute;z-index:60;background:#fff;border:1px solid var(--line);
   border-radius:8px;box-shadow:0 8px 26px rgba(20,35,55,.16);width:240px;padding:8px}

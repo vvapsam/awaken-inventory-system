@@ -61,7 +61,7 @@ class Ghost:
     """A built-in field on an event whose form has never been opened.
 
     The rows get written the first time somebody opens the builder. Until
-    then the sign-up page still has to draw six fields in the right order, so
+    then the sign-up page still has to draw every field in the right order, so
     it draws these: the same shape, in the order the page has always used, and
     nothing written to the database by somebody merely looking at a form.
     """
@@ -116,10 +116,22 @@ def ensure_builtins(db, ev) -> list:
         # somebody has already arranged. Everything from there down shifts by
         # one, so nothing lands on top of anything else.
         for key, label, locked in missing:
-            after = next((rows[k] for k in BUILTIN_KEYS[BUILTIN_KEYS.index(key) + 1:]
+            at_k = BUILTIN_KEYS.index(key)
+            after = next((rows[k] for k in BUILTIN_KEYS[at_k + 1:]
                           if k in rows), None)
-            at = after.position if after is not None else (
-                max((q.position for q in ev.questions), default=-1) + 1)
+            if after is not None:
+                at = after.position
+            else:
+                # Nothing built-in sits below it, so it goes directly under
+                # the last built-in that does exist. Not at the bottom of the
+                # form: the gym's own questions are down there, and a field
+                # that belongs beside the category should not arrive beneath
+                # the shirt size.
+                before = next((rows[k] for k in
+                               reversed(BUILTIN_KEYS[:at_k]) if k in rows),
+                              None)
+                at = (before.position + 1) if before is not None else (
+                    max((q.position for q in ev.questions), default=-1) + 1)
             for q in ev.questions:
                 if q.position >= at:
                     q.position += 1
@@ -150,10 +162,23 @@ def plan(ev) -> list:
         return ghosts + [q for q in rows if not q.hidden]
     out = [q for q in rows if not q.hidden]
     # A field added to BUILTIN_FIELDS after this event was seeded would
-    # otherwise vanish from the form. Put it back, at the end.
+    # otherwise vanish from the form. Put it back where it belongs — directly
+    # under the built-in above it — rather than at the end, which is below the
+    # gym's own questions and reads as an afterthought on a live form. The
+    # builder writes it a real row in the same place on its next visit.
     for i, (k, l, r) in enumerate(BUILTIN_FIELDS):
-        if k not in have:
-            out.append(Ghost(k, l, r, 900 + i))
+        if k in have:
+            continue
+        ghost = Ghost(k, l, r, 900 + i)
+        above = None
+        for pk in reversed(BUILTIN_KEYS[:i]):
+            above = next((q for q in out if q.builtin == pk), None)
+            if above is not None:
+                break
+        if above is not None:
+            out.insert(out.index(above) + 1, ghost)
+        else:
+            out.append(ghost)
     return out
 
 
@@ -483,6 +508,7 @@ def doc(db, ev) -> dict:
         "look": ev.rate_look or "tiles",
         "rates": [{"id": r.id, "label": r.label, "amt": money_out(r.amount),
                    "cap": r.capacity or 0, "closed": bool(r.closed),
+                   "pairs": bool(r.pairs),
                    "used": use.get(r.id, 0)}
                   for r in ev.rate_rows()],
     }
@@ -497,10 +523,13 @@ BUILTIN_COLS = {
     "email": (["event_participants.email"], ""),
     "mobile": (["event_participants.mobile"], ""),
     "country": (["event_participants.country"], "Two letters, ISO-3166."),
-    "sex": (["event_participants.sex"], "'m' or 'f'."),
+    "sex": (["event_participants.sex"], "'m', 'f' or 'x' for mixed."),
     "tier": (["event_participants.tier", "event_participants.amount"],
              "The category's id, and what it cost at the moment they picked "
              "it."),
+    "partner": (["event_participants.partner_name"],
+                "Only asked on a category raced as a pair, and asked again at "
+                "the door if it is still blank."),
 }
 
 
@@ -670,6 +699,11 @@ def save_rates(db, ev, body) -> None:
         r.label = label
         r.amount = money_in(item.get("amt"))
         r.capacity = cap_in(item.get("cap"))
+        # Raced as a pair. Switching it on makes the sign-up ask for a second
+        # name and makes the door ask for it again if it is still missing;
+        # switching it off stops asking and leaves whatever is already on file,
+        # because a name somebody typed is not ours to throw away.
+        r.pairs = bool(item.get("pairs"))
         r.closed = bool(item.get("closed"))
         r.position = i
         keep.add(r.id)

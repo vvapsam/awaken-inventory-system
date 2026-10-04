@@ -166,13 +166,19 @@ a.nm:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
             aria-pressed="false">{{ label }}</button>
     {% endfor %}
   </div>
+  {# Same reason as the categories above: built from the list rather than
+     typed out, so adding Mixed added a chip instead of needing one. A chip
+     only appears if somebody on the page is in it — an event of nothing but
+     solos should not offer to filter down to the mixed pairs and show an
+     empty page. #}
+  {% set on_page = rows|map(attribute='sex')|list %}
   <div class="seg">
     <button type="button" class="chip" data-f="sex" data-v=""
             aria-pressed="true">Everyone</button>
-    <button type="button" class="chip" data-f="sex" data-v="m"
-            aria-pressed="false">Men</button>
-    <button type="button" class="chip" data-f="sex" data-v="f"
-            aria-pressed="false">Women</button>
+    {% for key, _label in SEXES %}{% if key in on_page %}
+    <button type="button" class="chip" data-f="sex" data-v="{{ key }}"
+            aria-pressed="false">{{ SEX_COLUMNS[key] }}</button>
+    {% endif %}{% endfor %}
   </div>
   <input class="find" id="find" type="search" placeholder="Find a name…"
          autocapitalize="none" spellcheck="false" aria-label="Find a name">

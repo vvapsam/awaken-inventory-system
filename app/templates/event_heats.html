@@ -384,8 +384,9 @@
     var h = +t.slice(0, 2), m = t.slice(3);
     return ((h + 11) % 12 + 1) + ":" + m + " " + (h < 12 ? "AM" : "PM");
   }
+  var SXL = {m: "M", f: "F", x: "MX"};
   function sx(p){
-    return p.s ? '<span class="sx ' + p.s + '">' + (p.s === "f" ? "F" : "M") +
+    return p.s ? '<span class="sx ' + p.s + '">' + (SXL[p.s] || "?") +
       '</span>' : '';
   }
 

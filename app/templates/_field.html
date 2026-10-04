@@ -49,7 +49,9 @@
   <div class="lbl">{{ q.title }}{% if req %}<span class="req">*</span>
     {% else %}<span class="opt">&nbsp;&mdash; optional</span>{% endif %}</div>
   {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
-  <div class="seg">
+  {# One column per option rather than the default two, so adding Mixed did
+     not leave a third tile sitting on a row of its own. #}
+  <div class="seg" style="grid-template-columns:repeat({{ sexes|length }},1fr)">
     {% for k, label in sexes %}
     <label><input type="radio" name="sex" value="{{ k }}" {{ 'required' if req }}
       {{ 'checked' if p and p.sex == k }}>{{ label }}</label>
@@ -78,7 +80,7 @@
   <select class="q" name="tier" required>
     <option value="">Choose&hellip;</option>
     {% for t in tiers %}
-    <option value="{{ t.key }}">{{ t.label }} &mdash; {{ t.money }}{%
+    <option value="{{ t.key }}" data-pairs="{{ 1 if t.pairs else 0 }}">{{ t.label }} &mdash; {{ t.money }}{%
       if t.left is not none %} &middot; {{ t.left }} left{% endif %}</option>
     {% endfor %}
   </select>
@@ -87,6 +89,7 @@
     {% for t in tiers %}
     <label class="{{ 'gone' if t.full }}">
       <input type="radio" name="tier" value="{{ t.key }}" required
+             data-pairs="{{ 1 if t.pairs else 0 }}"
              {{ 'disabled' if t.full }}>
       {{ t.label }}<small>{{ t.money }}{% if t.full %} &middot; Full{%
         elif t.left is not none %} &middot; {{ t.left }} left{% endif %}</small></label>
@@ -95,6 +98,32 @@
   {% endif %}
   <div class="note grey">We check this on our side &mdash; pick honestly and
     we'll sort it out if it doesn't match.</div>
+  {% endif %}
+
+{% elif q.builtin == 'partner' %}
+  {# Only on an event that actually has a pairs category, and only shown once
+     one of those is picked. Two guards rather than one: the first keeps the
+     question off a solo-only event without anybody having to switch it off,
+     and the second keeps it off the screen of somebody entering Solo on an
+     event that offers both.
+
+     Never `required`, whatever the builder says. A required box that is
+     hidden is a form the browser refuses to send while pointing at something
+     nobody can see — the server asks for it instead, and only when the
+     category picked is one that needs it. #}
+  {% if tiers|selectattr('pairs')|list %}
+  <div class="pairq" id="pairq" {{ 'hidden' if not (p and p.partner_name) }}>
+    <div class="lbl">{{ q.title }}{% if req %}<span class="req">*</span>
+      {% else %}<span class="opt">&nbsp;&mdash; optional</span>{% endif %}</div>
+    {% if q.help %}<div class="hint">{{ q.help }}</div>{% endif %}
+    <input type="text" name="partner_name" autocomplete="off"
+           autocapitalize="words" maxlength="80"
+           placeholder="Their full name"
+           value="{{ p.partner_name or '' if p }}">
+    <div class="note grey">Both names go on the board together &mdash;
+      &ldquo;Trina P./Vanessa S.&rdquo; You can leave it and tell us at the
+      door.</div>
+  </div>
   {% endif %}
 
 {% elif q.kind == 'terms' %}

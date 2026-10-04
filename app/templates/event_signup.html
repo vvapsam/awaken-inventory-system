@@ -398,6 +398,36 @@ details.acct summary{font-size:.86rem;color:var(--teal-dark);font-weight:650;cur
 
 {% if step == 0 and not shut %}
 <script>
+// "Who are you racing with?" — asked only of somebody who picked a category
+// that is raced as a pair.
+//
+// Driven off a flag the category carries, not off the word "Doubles" in its
+// label: the label belongs to the gym and will one day read Pairs, Duo or
+// Team of 2, and a form that stops asking because somebody renamed a category
+// is a form nobody can explain. The box is emptied on the way out, so a name
+// typed and then abandoned for Solo cannot ride along.
+(function(){
+  var box = document.getElementById('pairq');
+  if (!box) return;
+  var input = box.querySelector('input');
+  function look(){
+    var on = false;
+    [].slice.call(document.querySelectorAll('[name="tier"]')).forEach(function(el){
+      if (el.tagName === 'SELECT') {
+        var o = el.options[el.selectedIndex];
+        if (o && o.getAttribute('data-pairs') === '1') on = true;
+      } else if (el.checked && el.getAttribute('data-pairs') === '1') {
+        on = true;
+      }
+    });
+    if (!on && input) input.value = '';
+    box.hidden = !on;
+  }
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.name === 'tier') look();
+  });
+  look();
+})();
 // The form in pages. Everything is already in the page; this shows one chunk
 // at a time and sends the lot in one go at the end.
 //

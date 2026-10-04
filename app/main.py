@@ -122,6 +122,10 @@ from .countries import COUNTRIES, country_code, country_name, flag
 templates.env.globals["COUNTRIES"] = COUNTRIES
 from .models import SEXES as _SEXES
 templates.env.globals["SEXES"] = _SEXES
+from .models import sex_label as _sex_label
+templates.env.globals["sex_label"] = _sex_label
+from .models import SEX_COLUMNS as _SEX_COLUMNS
+templates.env.globals["SEX_COLUMNS"] = _SEX_COLUMNS
 from .models import CATEGORIES as _CATEGORIES
 templates.env.globals["CATEGORIES"] = _CATEGORIES
 from .models import CATEGORY_LABELS as _CATEGORY_LABELS
@@ -641,6 +645,20 @@ def startup():
                 "  period_start = r.period_start, period_end = r.period_end "
                 "FROM commission_runs r WHERE r.id = c.run_id "
                 "  AND c.period_start IS NULL AND r.period_start IS NOT NULL; "
+                "END IF; END $$;"))
+            # Two names on one entry: a category that is raced as a pair,
+            # and who the second person is. Free text on the participant
+            # rather than a row of their own — a partner has no email, no
+            # payment and no code, they are the other half of this entry.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_rates') IS NOT NULL "
+                "THEN ALTER TABLE event_rates ADD COLUMN IF NOT EXISTS "
+                "  pairs BOOLEAN NOT NULL DEFAULT FALSE; "
+                "END IF; END $$;"))
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_participants') "
+                "IS NOT NULL THEN ALTER TABLE event_participants "
+                "  ADD COLUMN IF NOT EXISTS partner_name VARCHAR; "
                 "END IF; END $$;"))
             # The photo behind one event's live leaderboard.
             conn.execute(text(

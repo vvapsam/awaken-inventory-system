@@ -4,7 +4,7 @@
 <div class="bar">
   <a class="back" href="/race/e/{{ ev.id }}/h/{{ (p.heat_time or '')|replace(':','') }}">‹</a>
   <div class="mid"><h1>{{ p.full_name }}</h1>
-    <div class="sub">{{ h12(p.heat_time) }} heat{% if p.sex %} · {{ 'Female' if p.sex == 'f' else 'Male' }}{% endif %}{% if test %} · <span class="tag">TEST</span>{% endif %}</div></div>
+    <div class="sub">{{ h12(p.heat_time) }} heat{% if p.sex %} · {{ sex_label(p) }}{% endif %}{% if test %} · <span class="tag">TEST</span>{% endif %}</div></div>
   <div class="pill {% if phase == 'done' %}done{% else %}live{% endif %}">{{ 'Done' if phase == 'done' else 'Live' }}</div>
 </div>
 

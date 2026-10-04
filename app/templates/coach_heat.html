@@ -21,7 +21,7 @@
           {%- elif x.mine %}Yours{% if x.started %} · station {{ x.pos }} of {{ x.total }}{% endif %}
           {%- elif x.coach %}{{ x.coach }}
           {%- else %}Free{% endif -%}
-          {%- if x.p.sex %} · {{ 'Female' if x.p.sex == 'f' else 'Male' }}{% endif %}
+          {%- if x.p.sex %} · {{ sex_label(x.p) }}{% endif %}
           {%- if x.test %} · clock starts on the grab{% endif %}
         </div>
       </div>

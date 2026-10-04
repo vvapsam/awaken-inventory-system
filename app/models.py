@@ -1463,8 +1463,27 @@ PAY_LABELS = {
     PAY_RETURNED: "Sent back",
 }
 
-#: Male / female, as asked for on the form.
-SEXES = [("m", "Male"), ("f", "Female")]
+#: Male / female / mixed, as asked for on the form.
+#:
+#: "Mixed" is here because a pair is not a gender and the form has to be able
+#: to say so. A Doubles team of one man and one woman is racing the mixed
+#: field, not the men's one, and making them pick one of their two halves is
+#: how a board ends up with a woman in the men's column. It is a key of its
+#: own rather than a blank, because a blank means "we never asked" and lands
+#: in the Unlisted column — which is a gap to be closed, not a group to rank.
+SEXES = [("m", "Male"), ("f", "Female"), ("x", "Mixed")]
+SEX_LABELS = dict(SEXES)
+SEX_KEYS = [k for k, _l in SEXES]
+#: How a column on the board names each one. Not the same words as the form:
+#: a person is Male, a column is Men.
+SEX_COLUMNS = {"m": "Men", "f": "Women", "x": "Mixed"}
+#: Two characters, for the chip on a card where that is all the room there is.
+SEX_SHORT = {"m": "M", "f": "W", "x": "MX"}
+
+
+def sex_label(p) -> str:
+    """What to call somebody's gender in a sentence. Blank when unset."""
+    return SEX_LABELS.get(getattr(p, "sex", None) or "", "")
 
 #: The competitive category, crossing gender rather than replacing it: a field
 #: of four - Advanced Men, Advanced Women, Open Men, Open Women. Both are asked
@@ -2098,15 +2117,14 @@ def h12(t):
 #: go in one Unlisted column rather than one per category: it is a gap to be
 #: closed, not a group to be ranked, and it disappears the moment it is filled
 #: in. Every column here only appears if there is anybody in it.
-BOARD_COLUMNS = ([("%s:%s" % (ck, sk), "%s %s" % (cl, "Men" if sk == "m"
-                                                  else "Women"))
+BOARD_COLUMNS = ([("%s:%s" % (ck, sk), "%s %s" % (cl, SEX_COLUMNS[sk]))
                   for ck, cl in CATEGORIES for sk, _sl in SEXES]
                  + [("", "Unlisted")])
 
 
 def board_key(p) -> str:
     """Which column somebody belongs in."""
-    if p.sex not in ("m", "f"):
+    if p.sex not in SEX_KEYS:
         return ""
     return "%s:%s" % (category_key(getattr(p, "category", None)), p.sex)
 
@@ -2569,6 +2587,10 @@ BUILTIN_FIELDS = [
     #: the price off from the slots meant two fields that were always the same
     #: choice, and a form could end up asking neither.
     ("tier",   "Category",         True),
+    #: Only drawn when the event has a category that is entered as a pair,
+    #: and only shown once one of those is picked. An event of nothing but
+    #: solos never asks, without anybody having to switch it off.
+    ("partner", "Partner's name",  False),
 ]
 BUILTIN_LABELS = {k: l for k, l, _r in BUILTIN_FIELDS}
 BUILTIN_LOCKED = {k for k, _l, r in BUILTIN_FIELDS if r}
@@ -2807,6 +2829,16 @@ class EventRate(Base):
     #: category: Solo has thirty places and Doubles has ten, and the room can
     #: still have room while the one somebody wanted is full.
     capacity = Column(Integer, nullable=False, default=0)
+    #: Is this one entered as a pair? Doubles, mixed doubles, a relay — the
+    #: label is whatever the gym calls it, and this is the flag the rest of
+    #: the system reads.
+    #:
+    #: A flag rather than matching the word "Doubles" in the label. The label
+    #: is the gym's to write and it will one day read "Pairs", "Duo", "Team
+    #: of 2" or "Doubles (Open)", and a board that stops asking for a partner
+    #: because somebody renamed a category is a board nobody can explain.
+    pairs = Column(Boolean, nullable=False, default=False,
+                   server_default="false")
     position = Column(Integer, nullable=False, default=0)
     #: Still valid on the registrations that picked it, no longer offered to
     #: anybody new. The honest version of deleting an early-bird price.
@@ -3062,7 +3094,16 @@ class EventParticipant(Base):
     first_name = Column(String)
     last_name = Column(String)
     mobile = Column(String)
-    sex = Column(String)                     # 'm' / 'f'
+    sex = Column(String)                     # 'm' / 'f' / 'x'
+    #: Who they are racing with, on a category that is entered as a pair.
+    #: Free text and nothing else: the partner is not a row here — they have
+    #: no email, no payment and no QR of their own — they are the second name
+    #: on this entry. One token on the board reads "Trina P./Vanessa S."
+    #:
+    #: Asked on the form when there is a pairs category, and asked again at
+    #: the door if it is still blank when they scan in, which is the last
+    #: moment anybody can be asked before the board goes up.
+    partner_name = Column(String)
     #: 'elite' / 'open'. NOT NULL with a default for the same reason as the
     #: country below: this crosses gender rather than replacing it, so a null
     #: here would put a fifth, nameless column on the leaderboard rather than
