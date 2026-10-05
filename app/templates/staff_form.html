@@ -95,6 +95,19 @@
 
     <label>PIN {% if person %}(blank = keep current){% endif %}</label>
     <input name="pin" type="password" inputmode="numeric" placeholder="at least 4 digits">
+    {# A PIN you type for somebody else is one two people know, so it only
+       ever gets them through the door once. #}
+    <p class="muted small" style="margin:4px 0 0">
+      {% if person and person.id == staff.id %}This is your own login &mdash; what you type here
+        is your PIN from now on.
+      {% elif person and person.must_change_pin %}<b>Waiting on them.</b> They have not chosen
+        their own PIN yet; their next sign-in will ask for one.
+      {% elif person and person.pin_set_at %}They chose this one themselves on
+        {{ (person.pin_set_at|local).strftime('%d %b %Y') }}. Typing a new one here resets them,
+        and their next sign-in will ask them to pick again.
+      {% else %}Whatever you type is temporary: their next sign-in stops and asks them to choose
+        their own.
+      {% endif %}</p>
 
     <div id="perm-block">
       <label>Permissions</label>

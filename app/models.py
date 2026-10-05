@@ -188,6 +188,16 @@ class Staff(Base):
     role_id = Column(Integer, ForeignKey("roles.id", ondelete="SET NULL"))
     pin_hash = Column(String)
     pin_salt = Column(String)
+    #: Their next sign-in stops at "choose a new PIN" and goes no further.
+    #:
+    #: Set when somebody else chose the PIN — an admin creating the account or
+    #: resetting it — because a PIN two people know is not a PIN. Cleared the
+    #: moment they pick their own, and never set by changing it themselves.
+    must_change_pin = Column(Boolean, nullable=False, default=False,
+                             server_default="false")
+    #: When they last chose one, so "has anybody actually done this" has an
+    #: answer on the people screen.
+    pin_set_at = Column(DateTime(timezone=True))
     permissions = Column(Text, nullable=False, default="")  # comma-separated keys
     phone = Column(String)
     # --- affiliate / coach billing (affiliates only) ---

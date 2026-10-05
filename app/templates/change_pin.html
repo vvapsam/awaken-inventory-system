@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Choose a PIN — Awaken Fitness Center</title>
+<link rel="icon" href="/static/logo.svg">
+<link rel="stylesheet" href="/static/style.css?v={{ ASSET_V }}">
+{# Its own page rather than a screen inside the app, because the app is shut
+   until this is done. A chrome with a menu on it would offer twenty things
+   that all bounce straight back here. #}
+<style>
+body{background:var(--panel)}
+.box{max-width:420px;margin:56px auto;background:var(--bg);border:1px solid var(--line);
+  border-radius:12px;padding:28px 26px}
+.box h1{font-size:1.2rem;margin:0 0 6px}
+.box p.why{color:var(--muted);font-size:.88rem;line-height:1.6;margin:0 0 18px}
+.box label{font-size:.76rem;color:var(--muted);margin-top:12px}
+.box input{font-size:1.1rem;letter-spacing:.2em;padding:11px 12px}
+.box .btn{width:100%;margin-top:18px}
+.mark{display:flex;align-items:center;gap:9px;justify-content:center;margin-bottom:22px}
+.mark svg{width:26px;height:26px;fill:var(--ink,#1a232e)}
+.mark span{font-size:14px}
+.rule{color:var(--muted);font-size:.78rem;line-height:1.6;margin:14px 0 0}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="mark">
+    <svg viewBox="0 0 200 200" aria-hidden="true">
+      <path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"/>
+      <path d="M100 96 L116 126 L100 156 L84 126 Z"/></svg>
+    <span>Awaken Fitness Center</span>
+  </div>
+
+  {% if forced %}
+  <h1>Choose your own PIN</h1>
+  <p class="why">Hi {{ person.name.split(' ')[0] }} &mdash; the PIN you just used was set for you,
+    which means somebody else knows it. Pick one only you know and you&rsquo;ll use that from now
+    on. Nothing else opens until you do.</p>
+  {% else %}
+  <h1>Change your PIN</h1>
+  <p class="why">Pick a new one. You&rsquo;ll use it the next time you sign in.</p>
+  {% endif %}
+
+  {% if error %}<div class="alert bad" style="margin-bottom:14px">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/change-pin">
+    <label for="pin">New PIN</label>
+    <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="new-password"
+           required minlength="{{ PIN_MIN }}" maxlength="{{ PIN_MAX }}" autofocus>
+    <label for="again">Type it again</label>
+    <input id="again" name="again" type="password" inputmode="numeric"
+           autocomplete="new-password" required minlength="{{ PIN_MIN }}" maxlength="{{ PIN_MAX }}">
+    <button class="btn primary big">Save it</button>
+  </form>
+
+  <p class="rule">{{ PIN_MIN }} to {{ PIN_MAX }} digits. Not the one you have now, and not the
+    same digit over and over.</p>
+  {% if forced %}
+  <p class="rule"><a href="/logout">Sign out instead</a></p>
+  {% endif %}
+</div>
+</body>
+</html>

@@ -54,6 +54,53 @@ def _tz():
 
 BASE_DIR = os.path.dirname(__file__)
 app = FastAPI(title="AWAKEN System")
+
+#: What stays reachable while an account is waiting to choose a PIN. Public
+#: pages by token, the login pair, the static files, and the screen that does
+#: the choosing. Everything else is the app, and the app is what is shut.
+_PIN_FREE = (
+    "/change-pin", "/login", "/logout", "/static/", "/favicon",
+    "/healthz", "/docs", "/redoc", "/openapi.json",
+    # Public, reached by a token or a slug and never by a logged-in menu.
+    "/board", "/welcome", "/order", "/waiver", "/kiosk/",
+    "/product-image", "/order-logo", "/order-qr", "/order-proof",
+    "/statement/", "/e/", "/v/", "/d/", "/c/", "/h/", "/i/", "/l/", "/o/",
+    "/p/", "/r/",
+)
+
+
+def _pin_free(path: str) -> bool:
+    return path == "/" or any(path == a.rstrip("/") or path.startswith(a)
+                              for a in _PIN_FREE)
+
+
+@app.middleware("http")
+async def force_pin_change(request: Request, call_next):
+    """Stop a signed-in account that owes us a new PIN, wherever it goes."""
+    sid = None
+    try:
+        sid = request.session.get("staff_id")
+    except Exception:
+        # Before SessionMiddleware has run, or on a request without one.
+        sid = None
+    if sid and not _pin_free(request.url.path):
+        from .db import SessionLocal
+        db = SessionLocal()
+        try:
+            person = db.get(Staff, sid)
+            owes = bool(person and person.has_access and person.is_active
+                        and person.must_change_pin)
+        finally:
+            db.close()
+        if owes:
+            return RedirectResponse("/change-pin", status_code=303)
+    return await call_next(request)
+
+
+# Registered before SessionMiddleware on purpose. Starlette runs the
+# last-added middleware outermost, so a gate added after it would be asked to
+# read `request.session` before the session had been loaded — and would read
+# nothing, every time, silently letting everybody through.
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SECRET_KEY", "dev-insecure-change-me"),
@@ -256,6 +303,21 @@ def startup():
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR"))
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS notes TEXT"))
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
+        # Everybody picks their own PIN. The UPDATE sits inside the "column is
+        # not there yet" branch so it runs exactly once, on the deploy that
+        # introduces it: every account that can sign in is asked to choose a
+        # new PIN the next time it does, and never again after that. Outside
+        # the branch it would re-force the whole gym on every deploy.
+        conn.execute(text(
+            "DO $$ BEGIN IF to_regclass('public.entity') IS NOT NULL "
+            "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+            "  WHERE table_name = 'entity' AND column_name = 'must_change_pin') "
+            "THEN ALTER TABLE entity "
+            "  ADD COLUMN must_change_pin BOOLEAN NOT NULL DEFAULT false; "
+            "UPDATE entity SET must_change_pin = true WHERE has_access; "
+            "END IF; END $$;"))
+        conn.execute(text(
+            "ALTER TABLE entity ADD COLUMN IF NOT EXISTS pin_set_at TIMESTAMPTZ"))
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.sales') IS NOT NULL THEN ALTER TABLE sales ADD COLUMN IF NOT EXISTS pricing_group_id INTEGER REFERENCES pricing_groups(id) ON DELETE SET NULL; END IF; END $$;"))
         # Kiosk walk-in activities (Open Gym / Private Coaching / HYROX matrix) —
         # kiosk_plans already exists (seeded 23 Jul), so these need explicit ALTERs.
@@ -1534,6 +1596,73 @@ def welcome_hub(request: Request):
     return templates.TemplateResponse("welcome.html", {"request": request, "k": ""})
 
 
+# ---------- everybody picks their own PIN ----------
+#
+# A PIN somebody else chose is a PIN two people know. An admin creating an
+# account or resetting one has to type something, so what they type is
+# temporary by construction: the account's next sign-in stops here.
+#
+# The gate is middleware rather than a check inside `require()`, because the
+# race app, the mobile screens and the kiosk each reach for `current_staff`
+# directly and a rule written in one of four places is a rule with three holes
+# in it.
+
+#: Four is the shortest thing worth typing at a till; twelve is past the point
+#: where anybody remembers it. Digits only, because the login screen offers a
+#: number pad and a PIN somebody cannot type on their own phone is a PIN they
+#: will write on the monitor.
+PIN_MIN, PIN_MAX = 4, 12
+
+def _pin_problem(db, person, new: str, again: str) -> str:
+    """Why this PIN will not do — or an empty string."""
+    new = (new or "").strip()
+    if not new.isdigit():
+        return "A PIN is digits only."
+    if not (PIN_MIN <= len(new) <= PIN_MAX):
+        return "A PIN is between %d and %d digits." % (PIN_MIN, PIN_MAX)
+    if new != (again or "").strip():
+        return "The two PINs are not the same."
+    if len(set(new)) == 1:
+        return "That is the same digit over and over — pick something else."
+    if person.pin_hash and verify_pin(new, person.pin_hash, person.pin_salt):
+        return "That is the PIN you already have."
+    return ""
+
+
+@app.get("/change-pin", response_class=HTMLResponse)
+def change_pin_form(request: Request, db: Session = Depends(get_db)):
+    person = current_staff(request, db)
+    if not person:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        "change_pin.html",
+        {"request": request, "person": person, "error": None,
+         "forced": bool(person.must_change_pin),
+         "PIN_MIN": PIN_MIN, "PIN_MAX": PIN_MAX, "ASSET_V": _asset_version()})
+
+
+@app.post("/change-pin", response_class=HTMLResponse)
+def change_pin(request: Request, pin: str = Form(""), again: str = Form(""),
+               db: Session = Depends(get_db)):
+    person = current_staff(request, db)
+    if not person:
+        return RedirectResponse("/login", status_code=303)
+    forced = bool(person.must_change_pin)
+    why = _pin_problem(db, person, pin, again)
+    if why:
+        return templates.TemplateResponse(
+            "change_pin.html",
+            {"request": request, "person": person, "error": why,
+             "forced": forced, "PIN_MIN": PIN_MIN, "PIN_MAX": PIN_MAX,
+             "ASSET_V": _asset_version()})
+    person.pin_hash, person.pin_salt = hash_pin(pin.strip())
+    person.must_change_pin = False
+    person.pin_set_at = datetime.now(timezone.utc)
+    db.commit()
+    return RedirectResponse(_post_login_dest(request, person) + "?pin=set",
+                            status_code=303)
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("login.html", {"request": request, "error": None})
@@ -1549,6 +1678,8 @@ def login(request: Request, username: str = Form(...), pin: str = Form(...), db:
             "login.html", {"request": request, "error": "Wrong username or PIN."}
         )
     request.session["staff_id"] = staff.id
+    if staff.must_change_pin:
+        return RedirectResponse("/change-pin", status_code=303)
     return RedirectResponse(_post_login_dest(request, staff), status_code=303)
 
 
@@ -2320,7 +2451,7 @@ def _norm_code(c):
     return "".join(ch for ch in (c or "").strip().upper() if ch.isalnum() or ch == "-")
 
 
-def _apply_access(db, person, form, err):
+def _apply_access(db, person, form, err, by=None):
     """Apply the login side of the form to `person`. Returns an error response
     (via `err`) or None on success."""
     username = _norm_username(form.get("username"))
@@ -2346,11 +2477,18 @@ def _apply_access(db, person, form, err):
     person.role = "admin" if (role and role.is_admin) else "staff"
     person.permissions = "" if (role and role.is_admin) else _clean_perms(form.getlist("permissions"))
     if pin.strip():
-        if len(pin) < 4:
-            return err("PIN must be at least 4 digits.")
+        if len(pin) < PIN_MIN:
+            return err("PIN must be at least %d digits." % PIN_MIN)
         person.pin_hash, person.pin_salt = hash_pin(pin)
+        # A PIN you typed for somebody else is a PIN two people know, so it is
+        # temporary: their next sign-in stops at "choose your own". Changing
+        # your own does not do this to you — you already know it, and there is
+        # nobody to hide it from.
+        person.must_change_pin = (by is None or by.id != person.id)
+        if not person.must_change_pin:
+            person.pin_set_at = datetime.now(timezone.utc)
     elif not person.pin_hash:
-        return err("Set a PIN (at least 4 digits) for this login.")
+        return err("Set a PIN (at least %d digits) for this login." % PIN_MIN)
     return None
 
 
@@ -2411,7 +2549,7 @@ async def staff_create(request: Request, db: Session = Depends(get_db)):
     if r:
         return r
     if has_access:
-        r = _apply_access(db, new, form, err)
+        r = _apply_access(db, new, form, err, by=staff)
         if r:
             return r
     db.add(new)
@@ -2460,7 +2598,7 @@ async def staff_update(request: Request, sid: int, db: Session = Depends(get_db)
 
     person.has_access = has_access
     if has_access:
-        r = _apply_access(db, person, form, err)
+        r = _apply_access(db, person, form, err, by=staff)
         if r:
             return r
     db.commit()
