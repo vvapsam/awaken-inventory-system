@@ -9,7 +9,8 @@
   Approving says the figures are correct and clears them for payout.</p>
 
 {% if result %}
-<div class="notice">Approved {{ result.n }} coach{{ 'es' if result.n != 1 }} —
+<div class="notice">{{ 'Withdrew approval from' if result.undo else 'Approved' }}
+  {{ result.n }} coach{{ 'es' if result.n != 1 }} &mdash;
   {{ result.names | join(', ') }}.</div>
 {% endif %}
 
@@ -44,14 +45,21 @@
 
 {{ searchbar('coaches', 'Search coach…') }}
 
-{% set pickable = coaches | rejectattr('signoff') | selectattr('commission') | list %}
+{# Everybody carrying commission can be ticked, approved or not: the bar
+   offers both directions, so a tick box that vanished the moment somebody was
+   approved would make taking it back the one thing you cannot do in a batch. #}
+{% set pickable = coaches | selectattr('commission') | list %}
+{% set approved = coaches | selectattr('signoff') | selectattr('commission') | list %}
 <form method="post" action="/commissions/{{ run.id }}/signoff-many" id="manyform">
 {% if is_draft and can_pay and pickable %}
 <div class="selbar" id="selbar" hidden>
   <b><span id="seln">0</span> coach<span id="selp">es</span> selected</b>
   <span class="selamt" id="selamt"></span>
   <span style="flex:1"></span>
-  <button class="btn" style="padding:5px 12px">✓ Approve selected</button>
+  <button class="btn" style="padding:5px 12px" name="confirm" value="on">&#10003; Approve selected</button>
+  {% if approved %}
+  <button class="btn" style="padding:5px 12px" name="confirm" value="off">Withdraw selected</button>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -60,7 +68,7 @@
   <tr>
     {% if is_draft and can_pay and pickable %}
     <th style="width:34px"><input type="checkbox" class="chk" id="selall"
-        title="Select every coach still awaiting approval"></th>
+        title="Select every coach with commission on this run"></th>
     {% endif %}
     <th>Coach</th>
     <th style="text-align:right">Sessions</th>
@@ -73,7 +81,7 @@
   </thead>
   <tbody>
   {% for c in coaches %}
-  {% set can_tick = is_draft and can_pay and not c.signoff and c.commission %}
+  {% set can_tick = is_draft and can_pay and c.commission %}
   {# An unread comment tints the row, the way "needs a look" already does. #}
   <tr {% if c.unread %}style="background:#fff8f7"{% elif c.signoff %}style="background:var(--teal-tint)"{% endif %}>
     {% if is_draft and can_pay and pickable %}

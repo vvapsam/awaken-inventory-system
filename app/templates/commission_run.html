@@ -67,13 +67,42 @@
     <a class="btn" href="/commissions/{{ run.id }}/statements">✉ Statements</a>
     {% endif %}
     {% if run.status == RUN_FINALIZED and can_pay %}
-    <form method="post" action="/commissions/{{ run.id }}/reopen"
-          onsubmit="return confirm('Reopen {{ run.period_label or run.period }} as a draft? Its payouts and delegator charges are deleted and every coach has to be approved again.')">
-      <button class="btn" title="Delete the payouts and put this run back to draft">↩ Reopen as draft</button>
-    </form>
+      {# A button that looks available and then quietly refuses is how
+         somebody presses it four times and decides the app is broken. When
+         something downstream is holding this run, the button says so instead
+         of pretending. #}
+      {% if reopen_stop %}
+      <button class="btn" disabled
+              title="Blocked — see the note below">↩ Reopen as draft</button>
+      {% else %}
+      <form method="post" action="/commissions/{{ run.id }}/reopen"
+            onsubmit="return confirm('Reopen {{ run.period_label or run.period }} as a draft? Its payouts and delegator charges are deleted and every coach has to be approved again.')">
+        <button class="btn" title="Delete the payouts and put this run back to draft">↩ Reopen as draft</button>
+      </form>
+      {% endif %}
     {% endif %}
   </div>
 </div>
+
+{% if reopen_stop %}
+<div class="alert bad">
+  <b>This run can&rsquo;t go back to draft yet.</b>
+  {{ reopen_stop.who }} {{ 'is' if reopen_stop.rows|length == 1 else 'are' }}
+  {{ reopen_stop.what }}, and reopening deletes the payout &mdash; which would leave a document
+  that no longer adds up to its own total. {{ reopen_stop.fix }}
+  {% if reopen_stop.why == 'bill' %}
+  <div style="margin-top:7px">
+    {% for r in reopen_stop.rows %}
+    {% if r.bill %}<a class="btn" style="padding:4px 11px;margin-right:6px"
+       href="/admin/vouchers/{{ r.bill.id }}">{{ r.coach }} &middot; {{ r.bill.number }}</a>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="muted small" style="margin-top:7px">Once it is clear, reopening deletes the payouts
+    and every coach has to be approved again &mdash; and you can withdraw approvals one at a time,
+    or several at once, from <b>By coach</b>.</div>
+</div>
+{% endif %}
 
 {# Everything above the tabs earns its height or folds away. Five stat cards,
    two full-width notices and an import banner used to push the actual work

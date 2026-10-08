@@ -47,6 +47,8 @@ from .models import (
     CommissionDelegatorLink, DELEGATOR_LINK_DAYS, to_local,
     DelegatorPayment, PaymentSetting,
     CommissionStatementLink, STATEMENT_LINK_DAYS, Staff,
+    # A payout a bill has claimed is a payout this run cannot let go of.
+    PaymentVoucher,
 )
 
 MONTHS = ("January February March April May June July August September "
@@ -3357,6 +3359,7 @@ def register(app, deps):
             row["last_from_coach"] = from_coach
             row["unread"] = unread.get(row["coach"], 0)
         return render(request, "commission_run.html", db, staff, run=run, tab=tab,
+                      reopen_stop=reopen_block(db, run),
                       plans=plans, prows=prows, ptotals=ptotals,
                       totals=run_totals(run), block=blockers(run, db),
                       adjusted=adjusted, dropped=dropped, delegated=delegated,
@@ -3559,10 +3562,18 @@ def register(app, deps):
         live = {c["coach"] for c in coach_summary(run)}
         now = datetime.now(timezone.utc)
         done = [c for c in wanted if c in live]
+        # Taking approvals back in a batch, for the same reason giving them is
+        # a batch: an admin who has just found something wrong with the import
+        # should not open seven screens to undo seven ticks.
+        undo = (form.get("confirm") or "on") != "on"
         for coach in done:
-            _signoff_one(db, run, coach, staff, now)
+            if undo:
+                void_signoff(db, rid, coach)
+            else:
+                _signoff_one(db, run, coach, staff, now)
         db.commit()
-        request.session["signoff_result"] = {"n": len(done), "names": done[:12]}
+        request.session["signoff_result"] = {"n": len(done), "names": done[:12],
+                                             "undo": undo}
         return RedirectResponse(back, status_code=303)
 
     @app.post("/commissions/{rid}/booking/{bid}/rate")
@@ -3907,6 +3918,42 @@ def register(app, deps):
         return RedirectResponse("/commissions", status_code=303)
 
     # ---------------------------------------------------------------- phase 4
+
+    def reopen_block(db: Session, run) -> dict:
+        """Why this run cannot go back to draft — before anybody presses it.
+
+        The same two refusals the POST enforces, computed for the page that
+        offers the button. A button that looks available and then quietly
+        refuses is how somebody presses it four times and concludes the app
+        is broken.
+        """
+        if run is None or run.status != RUN_FINALIZED:
+            return {}
+        payouts = db.query(CommissionPayout).filter_by(run_id=run.id).all()
+        paid = [p for p in payouts if p.status == "paid"]
+        if paid:
+            return {"why": "paid",
+                    "who": ", ".join(p.coach for p in paid),
+                    "what": "already marked paid",
+                    "fix": "Un-mark the payout first.",
+                    "rows": [{"coach": p.coach, "id": p.id, "bill": None}
+                             for p in paid]}
+        onbill = [p for p in payouts if p.voucher_id]
+        if onbill:
+            bills = {}
+            for v in (db.query(PaymentVoucher)
+                      .filter(PaymentVoucher.id.in_(
+                          [p.voucher_id for p in onbill]))):
+                bills[v.id] = v
+            return {"why": "bill",
+                    "who": ", ".join(p.coach for p in onbill),
+                    "what": "on a vendor bill",
+                    "fix": "Void the bill first; that releases everything "
+                           "on it.",
+                    "rows": [{"coach": p.coach, "id": p.id,
+                              "bill": bills.get(p.voucher_id)}
+                             for p in onbill]}
+        return {}
 
     @app.post("/commissions/{rid}/reopen")
     def commission_reopen(request: Request, rid: int,
