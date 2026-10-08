@@ -150,6 +150,108 @@ def by_account(lines) -> list:
     return rows
 
 
+# ── claiming and releasing, at module level ───────────────────────────
+#
+# Out of `register()`'s closure because the commissions side needs them too:
+# forcing a finalized run back to draft has to void the bills holding its
+# payouts, and the rule for letting go of a bill must exist once. Nothing in
+# here touches the request — only the session and the rows.
+
+def on_voucher(db, vid: int) -> tuple:
+    """The three stacks a bill is holding right now."""
+    return (
+        db.query(CommissionPayout)
+        .filter(CommissionPayout.voucher_id == vid)
+        .order_by(CommissionPayout.id.asc()).all(),
+        db.query(ExpenseReport)
+        .filter(ExpenseReport.voucher_id == vid)
+        .order_by(ExpenseReport.id.asc()).all(),
+        db.query(CommissionAdjustment)
+        .filter(CommissionAdjustment.voucher_id == vid)
+        .order_by(CommissionAdjustment.id.asc()).all(),
+    )
+
+def claim(db, voucher, staff, *, payouts, reports, adjustments):
+    """Put these on the bill and freeze what they come to.
+
+    The claim and the freeze happen together on purpose. A bill that
+    recorded its total without claiming its parts could pay the same
+    payout twice; one that claimed them without freezing would restate
+    itself every time somebody edited an adjustment upstream.
+
+    One function, so paying one person, paying forty in a run, changing
+    what is on a bill and putting a voided one back cannot drift apart
+    on the rule that matters.
+    """
+    commission = sum((Decimal(str(p.total or 0)) for p in payouts),
+                     Decimal(0))
+    expenses = sum((r.total for r in reports), Decimal(0))
+    adjust = sum((a.money for a in adjustments), Decimal(0))
+    net = commission + expenses + adjust
+    # A bill never pays a negative number. If the deductions came to
+    # more than everything else, it pays zero and the remainder is written
+    # back as a fresh waiting adjustment — the same rule a payout follows,
+    # so the money is neither forgiven nor taken twice.
+    carry = Decimal(0)
+    if net < 0:
+        carry, net = net, Decimal(0)
+
+    voucher.commission_total = commission
+    voucher.expense_total = expenses
+    voucher.adjustment_total = adjust
+    voucher.total = net
+    for p in payouts:
+        p.voucher_id = voucher.id
+    for r in reports:
+        r.voucher_id = voucher.id
+    for a in adjustments:
+        a.voucher_id = voucher.id
+        a.paid_at = now_utc()
+    if carry:
+        db.add(CommissionAdjustment(
+            coach=voucher.person, coach_id=voucher.staff_id,
+            occurred_on=date.today(),
+            title="Carried from %s" % voucher.number,
+            description="More was being deducted than this bill could "
+                        "cover. The remainder waits for the next one.",
+            amount=carry, created_by_id=getattr(staff, "id", None)))
+    return voucher
+
+def release(db, voucher, *, remember=False):
+    """Let go of everything on it, and of the remainder it created.
+
+    The pieces go back to exactly where they came from, so a corrected
+    voucher can pick them up. The carried remainder goes with them —
+    leaving it would deduct the same money twice on the next voucher.
+
+    With `remember`, what was let go is written onto the voucher, because
+    a cleared claim leaves no trace of where it had been and "put that
+    back" needs one.
+    """
+    payouts, reports, adjustments = on_voucher(db, voucher.id)
+    for p in payouts:
+        p.voucher_id = None
+        p.status = "unpaid"
+        p.paid_at = None
+    for r in reports:
+        r.voucher_id = None
+    for a in adjustments:
+        a.voucher_id = None
+        a.paid_at = None
+    for a in (db.query(CommissionAdjustment)
+              .filter(CommissionAdjustment.title
+                      == "Carried from %s" % voucher.number,
+                      CommissionAdjustment.payout_id.is_(None),
+                      CommissionAdjustment.voucher_id.is_(None))):
+        db.delete(a)
+    if remember:
+        voucher.released = ",".join(
+            ["p:%d" % p.id for p in payouts]
+            + ["r:%d" % r.id for r in reports]
+            + ["a:%d" % a.id for a in adjustments])
+    return payouts, reports, adjustments
+
+
 def register(app, deps):
     render = deps["render"]
     require = deps["require"]
@@ -691,100 +793,6 @@ def register(app, deps):
                       ACCOUNT_KINDS=ACCOUNT_KINDS,
                       today=date.today().isoformat(),
                       can_pay=(getattr(staff, "role", "") == "admin"))
-
-    def on_voucher(db, vid: int) -> tuple:
-        """The three stacks a bill is holding right now."""
-        return (
-            db.query(CommissionPayout)
-            .filter(CommissionPayout.voucher_id == vid)
-            .order_by(CommissionPayout.id.asc()).all(),
-            db.query(ExpenseReport)
-            .filter(ExpenseReport.voucher_id == vid)
-            .order_by(ExpenseReport.id.asc()).all(),
-            db.query(CommissionAdjustment)
-            .filter(CommissionAdjustment.voucher_id == vid)
-            .order_by(CommissionAdjustment.id.asc()).all(),
-        )
-
-    def claim(db, voucher, staff, *, payouts, reports, adjustments):
-        """Put these on the bill and freeze what they come to.
-
-        The claim and the freeze happen together on purpose. A bill that
-        recorded its total without claiming its parts could pay the same
-        payout twice; one that claimed them without freezing would restate
-        itself every time somebody edited an adjustment upstream.
-
-        One function, so paying one person, paying forty in a run, changing
-        what is on a bill and putting a voided one back cannot drift apart
-        on the rule that matters.
-        """
-        commission = sum((Decimal(str(p.total or 0)) for p in payouts),
-                         Decimal(0))
-        expenses = sum((r.total for r in reports), Decimal(0))
-        adjust = sum((a.money for a in adjustments), Decimal(0))
-        net = commission + expenses + adjust
-        # A bill never pays a negative number. If the deductions came to
-        # more than everything else, it pays zero and the remainder is written
-        # back as a fresh waiting adjustment — the same rule a payout follows,
-        # so the money is neither forgiven nor taken twice.
-        carry = Decimal(0)
-        if net < 0:
-            carry, net = net, Decimal(0)
-
-        voucher.commission_total = commission
-        voucher.expense_total = expenses
-        voucher.adjustment_total = adjust
-        voucher.total = net
-        for p in payouts:
-            p.voucher_id = voucher.id
-        for r in reports:
-            r.voucher_id = voucher.id
-        for a in adjustments:
-            a.voucher_id = voucher.id
-            a.paid_at = now_utc()
-        if carry:
-            db.add(CommissionAdjustment(
-                coach=voucher.person, coach_id=voucher.staff_id,
-                occurred_on=date.today(),
-                title="Carried from %s" % voucher.number,
-                description="More was being deducted than this bill could "
-                            "cover. The remainder waits for the next one.",
-                amount=carry, created_by_id=getattr(staff, "id", None)))
-        return voucher
-
-    def release(db, voucher, *, remember=False):
-        """Let go of everything on it, and of the remainder it created.
-
-        The pieces go back to exactly where they came from, so a corrected
-        voucher can pick them up. The carried remainder goes with them —
-        leaving it would deduct the same money twice on the next voucher.
-
-        With `remember`, what was let go is written onto the voucher, because
-        a cleared claim leaves no trace of where it had been and "put that
-        back" needs one.
-        """
-        payouts, reports, adjustments = on_voucher(db, voucher.id)
-        for p in payouts:
-            p.voucher_id = None
-            p.status = "unpaid"
-            p.paid_at = None
-        for r in reports:
-            r.voucher_id = None
-        for a in adjustments:
-            a.voucher_id = None
-            a.paid_at = None
-        for a in (db.query(CommissionAdjustment)
-                  .filter(CommissionAdjustment.title
-                          == "Carried from %s" % voucher.number,
-                          CommissionAdjustment.payout_id.is_(None),
-                          CommissionAdjustment.voucher_id.is_(None))):
-            db.delete(a)
-        if remember:
-            voucher.released = ",".join(
-                ["p:%d" % p.id for p in payouts]
-                + ["r:%d" % r.id for r in reports]
-                + ["a:%d" % a.id for a in adjustments])
-        return payouts, reports, adjustments
 
     def remembered(db, voucher) -> tuple:
         """What a void let go of, and whether it is all still free.

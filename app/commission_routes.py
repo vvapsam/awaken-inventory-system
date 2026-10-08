@@ -3956,13 +3956,16 @@ def register(app, deps):
         return {}
 
     @app.post("/commissions/{rid}/reopen")
-    def commission_reopen(request: Request, rid: int,
+    def commission_reopen(request: Request, rid: int, force: str = Form(""),
                           db: Session = Depends(get_db)):
         """Put a finalized run back to draft and tear up its documents.
 
-        Admin only, and refused once any payout is marked paid: reopening a run
-        somebody has already been paid from is how a coach ends up paid twice.
-        Un-mark the payout first if that really is what you want.
+        Admin only. Refused while a payout is on a vendor bill or already
+        marked paid — unless `force`, which does not skip the check but
+        *clears what it is checking for*: the bills holding those payouts are
+        voided first, by the same function the Void button uses, which hands
+        every piece back where it came from. Skipping the check would leave a
+        bill whose commission line had silently vanished; this leaves no bill.
         """
         staff, redir = guard_money(request, db)
         if redir:
@@ -3972,6 +3975,38 @@ def register(app, deps):
             return RedirectResponse(f"/commissions/{rid}", status_code=303)
         payouts = db.query(CommissionPayout).filter_by(run_id=rid).all()
         charges = db.query(CommissionCharge).filter_by(run_id=rid).all()
+        forced = (force or "") == "1"
+        undone = []
+
+        if forced:
+            # Imported here rather than at the top: expense_routes imports
+            # this module for the email wordmark, so a module-level import
+            # back would be a cycle.
+            from .expense_routes import release as release_bill
+            from .models import PaymentVoucher as _VB, VOUCHER_VOID as _VOID
+            vids = {p.voucher_id for p in payouts if p.voucher_id}
+            for v in (db.query(_VB).filter(_VB.id.in_(vids)) if vids else []):
+                if v.status == _VOID:
+                    continue
+                release_bill(db, v, remember=True)
+                v.status = _VOID
+                v.voided_at = datetime.now(timezone.utc)
+                undone.append("%s (%s%s)" % (v.number, v.person,
+                                             ", was paid" if v.paid_on else ""))
+            # A payout marked paid outside any bill. The money is recorded as
+            # having left, so this is the one the warning is really about —
+            # it is un-marked rather than quietly ignored, and named in the
+            # note so the trail says what was torn up.
+            for p in payouts:
+                if p.status == "paid":
+                    undone.append("%s paid %s" % (
+                        p.coach,
+                        p.paid_at.strftime("%d %b") if p.paid_at else ""))
+                    p.status = "unpaid"
+                    p.paid_at = None
+            db.flush()
+            payouts = db.query(CommissionPayout).filter_by(run_id=rid).all()
+
         if any(p.status == "paid" for p in payouts):
             run.last_import_note = (
                 "Reopen refused — %s already marked paid. Un-mark it on the "
@@ -4021,7 +4056,8 @@ def register(app, deps):
         run.last_import_note = (
             "Reopened as a draft by %s · %d document%s deleted · every coach "
             "needs approving again." % (getattr(staff, "name", "someone"), n,
-                                        "" if n == 1 else "s"))
+                                        "" if n == 1 else "s")
+            + (" · Forced: voided %s" % "; ".join(undone) if undone else ""))
         db.commit()
         return RedirectResponse(f"/commissions/{rid}", status_code=303)
 

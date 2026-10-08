@@ -74,6 +74,11 @@
       {% if reopen_stop %}
       <button class="btn" disabled
               title="Blocked — see the note below">↩ Reopen as draft</button>
+      <form method="post" action="/commissions/{{ run.id }}/reopen"
+            onsubmit="return confirm('Force {{ run.period_label or run.period }} back to draft?\n\nThis voids {{ reopen_stop.rows|length }} vendor bill{{ 's' if reopen_stop.rows|length != 1 }} — {{ reopen_stop.who }}{{ ' — and un-marks money recorded as already paid' if reopen_stop.why == 'paid' }}. Everything on those bills goes back to waiting, the payouts are deleted and every coach has to be approved again.\n\nThe run says afterwards what was torn up.')">
+        <input type="hidden" name="force" value="1">
+        <button class="btn danger" title="Void what is holding it, then reopen">↩ Force it back to draft</button>
+      </form>
       {% else %}
       <form method="post" action="/commissions/{{ run.id }}/reopen"
             onsubmit="return confirm('Reopen {{ run.period_label or run.period }} as a draft? Its payouts and delegator charges are deleted and every coach has to be approved again.')">
@@ -98,9 +103,13 @@
     {% endfor %}
   </div>
   {% endif %}
-  <div class="muted small" style="margin-top:7px">Once it is clear, reopening deletes the payouts
-    and every coach has to be approved again &mdash; and you can withdraw approvals one at a time,
-    or several at once, from <b>By coach</b>.</div>
+  <div class="muted small" style="margin-top:7px">Clear it yourself, or press
+    <b>Force it back to draft</b>: that voids {{ 'that bill' if reopen_stop.rows|length == 1
+      else 'those bills' }} for you &mdash; the same Void the bill page offers, so everything on
+    {{ 'it' if reopen_stop.rows|length == 1 else 'them' }} goes back to waiting rather than
+    vanishing &mdash; and then reopens. Either way the payouts are deleted, every coach has to be
+    approved again, and you can withdraw approvals one at a time or several at once from
+    <b>By coach</b>.</div>
 </div>
 {% endif %}
 

@@ -127,13 +127,66 @@ with TestClient(app) as c:
        "go back to draft yet" in page and 'class="alert bad"' in page)
     ck("naming who is holding it", "Ric Flores" in page and BILLNO in page)
     ck("with a way to the bill", "/admin/vouchers/%d" % BILL in page)
-    ck("and the button is not offered",
-       "Reopen as draft</button>" in page and "/reopen" not in page)
+    ck("the plain button is withheld",
+       "disabled" in page.split("Reopen as draft")[0][-120:])
+    ck("and the only way through is the forced one",
+       page.count('action="/commissions/%d/reopen"' % RID) == 1
+       and 'name="force" value="1"' in page)
 
     out = c.post("/commissions/%d/reopen" % RID, follow_redirects=False)
     with Session(engine) as db:
         ck("posting at it anyway is refused",
            db.get(M.CommissionRun, RID).status == M.RUN_FINALIZED)
+
+    # ── forcing it ─────────────────────────────────────────────────────
+    # The force does not skip the check; it clears what the check is for.
+    ck("the page offers a way through", "force" in page
+       and "Force it back to draft" in page)
+    # Mark the bill paid as well, so the force has both reasons to beat.
+    c.post("/admin/vouchers/%d/pay" % BILL,
+           data={"on": "2026-10-15", "method": "Cash", "reference": "x"},
+           follow_redirects=False)
+    with Session(engine) as db:
+        ck("the bill is paid and the payout with it",
+           db.get(M.PaymentVoucher, BILL).status == M.VOUCHER_PAID
+           and db.get(M.CommissionPayout, PAY).status == "paid")
+    ck("and the page now says that is what is holding it",
+       "already marked paid" in c.get("/commissions/%d" % RID).text)
+
+    c.post("/commissions/%d/reopen" % RID, data={"force": "1"},
+           follow_redirects=False)
+    with Session(engine) as db:
+        run = db.get(M.CommissionRun, RID)
+        ck("forcing reopens it", run.status == M.RUN_DRAFT)
+        ck("the bill is voided, not left dangling",
+           db.get(M.PaymentVoucher, BILL).status == M.VOUCHER_VOID)
+        ck("its payout is gone with the rest",
+           db.query(M.CommissionPayout).filter_by(run_id=RID).count() == 0)
+        ck("every approval went too",
+           db.query(M.CommissionSignoff).filter_by(run_id=RID).count() == 0)
+        ck("and the run says what was torn up",
+           "Forced" in (run.last_import_note or "")
+           and BILLNO in run.last_import_note)
+    ck("so the coaches can be approved again",
+       "Awaiting approval" in c.get("/commissions/%d?tab=coaches" % RID).text)
+
+    # Put it back the way the rest of the test expects: finalize again.
+    c.post("/commissions/%d/signoff-many" % RID,
+           data={"coach": ["Ric Flores", "Laurent Javier"], "confirm": "on"},
+           follow_redirects=False)
+    c.post("/commissions/%d/finalize" % RID, follow_redirects=False)
+    with Session(engine) as db:
+        ck("and the run can be finalized all over again",
+           db.get(M.CommissionRun, RID).status == M.RUN_FINALIZED)
+        PAY = (db.query(M.CommissionPayout).filter_by(run_id=RID,
+                                                      coach="Ric Flores")
+               .one()).id
+    c.post("/admin/vouchers/new",
+           data={"who": "Ric Flores", "payout": [str(PAY)]},
+           follow_redirects=False)
+    with Session(engine) as db:
+        BILL = (db.query(M.PaymentVoucher)
+                .filter(M.PaymentVoucher.status != M.VOUCHER_VOID).one()).id
 
     # Void the bill and the way is clear.
     c.post("/admin/vouchers/%d/void" % BILL, follow_redirects=False)
