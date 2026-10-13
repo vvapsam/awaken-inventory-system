@@ -201,6 +201,63 @@ with TestClient(app) as c:
     ck("showing the entries it has earned", ">6<" in r.text or "6" in r.text)
     ck("and who used their code", "Friends who used their code" in r.text)
 
+    # ------------------------------------------------- the link and setup
+    r = c.get("/admin/survey")
+    ck("the link is on the page", "/survey" in r.text and "Copy the link" in r.text)
+    ck("and a QR to download", "/admin/survey/qr.png" in r.text)
+    ck("one link per channel", all(("ch=" + code) in r.text
+                                   for code, _ in __import__("app.survey_routes",
+                                       fromlist=["CHANNELS"]).CHANNELS if code))
+    r = c.get("/admin/survey/qr.png")
+    ck("the QR is a real PNG", r.status_code == 200
+       and r.content[:8] == b"\x89PNG\r\n\x1a\n" and len(r.content) > 400)
+    r = c.get("/admin/survey/qr.png?ch=ig")
+    ck("and one per channel too", r.status_code == 200 and len(r.content) > 400)
+
+    r = c.get("/survey?ch=ig")
+    ck("the channel reaches the form", '"channel": "ig"' in r.text)
+    c.post("/survey", json={**entry("09195550001"), "channel": "ig"})
+    with Session(engine) as db:
+        g = db.query(M.SurveyResponse).filter(
+            M.SurveyResponse.mobile == "+639195550001").first()
+        ck("and is stored on the entry", g.channel == "ig")
+    r = c.get("/admin/survey")
+    ck("the channel tally is shown", "Instagram" in r.text)
+    ck("and the channel is a column", ">ig<" in r.text)
+
+    # dates print on the form, from the settings
+    r = c.get("/survey")
+    ck("the closing date prints", "Sun 25 October" in r.text)
+    ck("the announcement date prints", "Fri 6 November" in r.text)
+    c.post("/admin/survey/setup", data={"open": "1", "closes_on": "2026-11-01",
+                                        "announces_on": "2026-11-15", "cap": "3"},
+           follow_redirects=False)
+    r = c.get("/survey")
+    ck("a moved date moves on the form", "Sun 1 November" in r.text)
+    ck("and in the fine print", "Sunday 1 November 2026" in r.text)
+    ck("the cap follows the setting", '"cap": 3' in r.text)
+    with Session(engine) as db:
+        from app.survey_routes import entries_for
+        me = db.query(M.SurveyResponse).filter(
+            M.SurveyResponse.mobile == "+639171111111").first()
+        ck("and the count obeys the new cap", entries_for(db, me) == 4)
+
+    # closing it
+    c.post("/admin/survey/setup", data={"closes_on": "2026-11-01",
+                                        "announces_on": "2026-11-15", "cap": "3"},
+           follow_redirects=False)
+    r = c.get("/survey")
+    ck("a closed survey shows a closed page", "That&rsquo;s a wrap" in r.text
+       or "That\u2019s a wrap" in r.text or "wrap" in r.text)
+    ck("and not the form", "START THE SURVEY" not in r.text.upper())
+    r = c.post("/survey", json=entry("09198880000"))
+    ck("and refuses late entries", r.status_code == 403)
+    c.post("/admin/survey/setup", data={"open": "1", "closes_on": "2026-11-01",
+                                        "announces_on": "2026-11-15", "cap": "5"},
+           follow_redirects=False)
+    r = c.post("/survey", json=entry("09198880000"))
+    ck("reopening lets them back in", r.status_code == 200)
+
 bad = [n for n, ok in res if not ok]
 print("\n%d checks, %d failed" % (len(res), len(bad)))
 for n in bad:

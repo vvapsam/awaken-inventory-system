@@ -18,6 +18,68 @@
   </div>
 </div>
 
+{# The link, said once, where somebody looking for it would look. Everything
+   that can change without a release is on this card and nowhere else. #}
+<div class="card" style="margin-top:16px">
+  <div class="row-between" style="align-items:flex-start;gap:16px;flex-wrap:wrap">
+    <div style="flex:1 1 320px;min-width:0">
+      <h2 style="margin:0 0 4px;font-size:15px">The link</h2>
+      <p class="muted small" style="margin:0 0 8px">Anyone can open this. No login.</p>
+      <input id="plink" type="text" readonly value="{{ link }}"
+             style="width:100%;font-family:ui-monospace,monospace;font-size:13px"
+             onclick="this.select()">
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn" onclick="
+          var i=document.getElementById('plink'); i.select();
+          navigator.clipboard&&navigator.clipboard.writeText(i.value);
+          this.textContent='Copied'; var b=this;
+          setTimeout(function(){ b.textContent='Copy the link'; },1500);">Copy the link</button>
+        <a class="btn" href="/admin/survey/qr.png" target="_blank">Download the QR</a>
+        <a class="btn" href="{{ link }}" target="_blank">Open it</a>
+      </div>
+    </div>
+
+    <form method="post" action="/admin/survey/setup" style="flex:0 1 360px;min-width:300px">
+      <h2 style="margin:0 0 8px;font-size:15px">Setup</h2>
+      <label style="display:flex;align-items:center;gap:9px;margin-bottom:12px;cursor:pointer">
+        <input type="checkbox" name="open" value="1" style="width:17px;height:17px;flex:0 0 auto;margin:0"
+               {{ 'checked' if cfg.open != '0' }}>
+        <span style="flex:1 1 auto;text-align:left;white-space:nowrap">Accepting answers</span>
+      </label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="flex:1 1 140px">Entries close
+          <input type="date" name="closes_on" value="{{ cfg.closes_on }}"></label>
+        <label style="flex:1 1 140px">Winner announced
+          <input type="date" name="announces_on" value="{{ cfg.announces_on }}"></label>
+      </div>
+      <label style="display:block;margin-top:8px">Extra entries per person, at most
+        <input type="number" name="cap" min="0" max="50" value="{{ cfg.cap }}" style="width:90px"></label>
+      <p class="muted small" style="margin:8px 0 10px">The dates print on the form. Zero means no cap on referrals.</p>
+      <button class="btn primary" type="submit">Save</button>
+    </form>
+  </div>
+
+  {# One link per channel, because a self-reported "where did you find this?"
+     is answered badly and this one counts itself. #}
+  <div style="margin-top:18px;border-top:1px solid var(--line,#e0e5ea);padding-top:14px">
+    <h2 style="margin:0 0 3px;font-size:15px">A link for each place you post it</h2>
+    <p class="muted small" style="margin:0 0 10px">Same questions on every one. If the channels disagree, the sample is skewed and you will be able to see it.</p>
+    <table class="list" style="margin:0">
+      <thead><tr><th>Where</th><th>Link</th><th style="text-align:right">Completed</th><th style="width:120px"></th></tr></thead>
+      <tbody>
+        {% for label, code, n in by_channel %}
+          <tr>
+            <td style="white-space:nowrap">{{ label }}</td>
+            <td style="font-family:ui-monospace,monospace;font-size:12px;word-break:break-all">{{ link_for(code) }}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums">{{ n }}</td>
+            <td><a class="btn" href="/admin/survey/qr.png{{ '?ch=' ~ code if code }}" target="_blank">QR</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 {% if not rows %}
   <p class="muted" style="margin:22px 0">Nothing here yet.</p>
 {% else %}
@@ -31,6 +93,7 @@
         <th style="text-align:right">Entries</th>
         <th style="white-space:nowrap">Code</th>
         <th style="white-space:nowrap">Via</th>
+        <th style="white-space:nowrap">From</th>
         {% if show != 'complete' %}<th>Why</th>{% endif %}
         {% for key, label in questions %}
           <th style="white-space:nowrap">{{ label }}</th>
@@ -51,6 +114,7 @@
         <td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.entries or '' }}</td>
         <td style="white-space:nowrap;font-family:ui-monospace,monospace;font-size:12px">{{ r.row.ref_code or '' }}</td>
         <td style="white-space:nowrap;font-family:ui-monospace,monospace;font-size:12px">{{ r.row.referred_by or '' }}</td>
+        <td style="white-space:nowrap">{{ r.row.channel or '—' }}</td>
         {% if show != 'complete' %}
           <td style="white-space:nowrap">{{ 'Outside Metro Manila' if r.row.reason == 'area' else 'Under 18' }}</td>
         {% endif %}

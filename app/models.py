@@ -3956,6 +3956,19 @@ def norm_ph_mobile(raw):
     return None
 
 
+class SurveySetting(Base):
+    """The few things about the survey that change without a deploy.
+
+    Key/value like the commission settings, for the same reason: the office
+    needs to close the survey on the day it closes, and a date that lives in
+    a template is a date that needs a release to move.
+    """
+    __tablename__ = "survey_settings"
+    id = Column(Integer, primary_key=True)
+    key = Column(String, nullable=False, unique=True)
+    value = Column(Text, nullable=False, default="")
+
+
 class SurveyResponse(Base):
     """One person's answers, or one person's turning away.
 
@@ -3998,6 +4011,10 @@ class SurveyResponse(Base):
     #: The code they arrived on, if any. Stored as the code rather than a
     #: foreign key so an entry that is later deleted cannot orphan this one.
     referred_by = Column(String, index=True)
+    #: Which link they came in on - the desk poster, Instagram, an email.
+    #: Self-reported channel questions are answered badly; a separate link per
+    #: channel is the version that can be counted.
+    channel = Column(String, index=True)
 
     #: Every answer, as ``{"q4_occupation": "Employed", ...}``.
     answers = Column(Text, nullable=False, default="{}")

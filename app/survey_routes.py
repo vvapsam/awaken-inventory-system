@@ -26,12 +26,17 @@ from __future__ import annotations
 import csv
 import io
 import json
+import io
 import secrets
 import time
+
+import qrcode
 from datetime import datetime, timezone
 
 from fastapi import Depends, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import (
+    HTMLResponse, JSONResponse, RedirectResponse, Response,
+)
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -39,7 +44,7 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .models import (
     SURVEY_OUT_AGE, SURVEY_OUT_AREA, SURVEY_REFERRAL_CAP, SurveyResponse,
-    norm_ph_mobile, now_utc, to_local,
+    SurveySetting, norm_ph_mobile, now_utc, to_local,
 )
 
 #: The questions, in the order they are asked, as (payload key, column head).
@@ -107,6 +112,75 @@ CHECK_PER_HOUR = 40
 _checks = {}
 
 
+#: What the survey does before anybody changes anything. Dates as plain ISO;
+#: the form prints them, so the office moves a date here rather than in a
+#: template and a release.
+DEFAULTS = {
+    "open": "1",
+    "closes_on": "2026-10-25",
+    "announces_on": "2026-11-06",
+    "cap": str(SURVEY_REFERRAL_CAP),
+}
+
+#: The links worth handing out separately. Same questions on each, so if the
+#: channels disagree the sample is skewed and you can see it - which a
+#: self-reported "where did you find this?" never quite tells you.
+CHANNELS = [
+    ("", "The plain link"),
+    ("desk", "Front desk / poster"),
+    ("ig", "Instagram"),
+    ("fb", "Facebook"),
+    ("email", "Email"),
+    ("condo", "Neighbourhood / condo"),
+    ("event", "Event"),
+]
+
+
+def settings(db):
+    """Every setting, with the defaults filled in for whatever is missing."""
+    out = dict(DEFAULTS)
+    for row in db.query(SurveySetting).all():
+        if row.key in out:
+            out[row.key] = row.value
+    return out
+
+
+def put(db, key, value):
+    row = db.query(SurveySetting).filter(SurveySetting.key == key).first()
+    if row is None:
+        row = SurveySetting(key=key)
+        db.add(row)
+    row.value = value
+
+
+def is_open(db):
+    return settings(db).get("open") != "0"
+
+
+def say_date(iso, long=False):
+    """``2026-10-25`` as somebody would read it aloud."""
+    try:
+        d = datetime.strptime(iso, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return iso or ""
+    return d.strftime("%A %-d %B %Y" if long else "%a %-d %B")
+
+
+def cap_of(db):
+    try:
+        return max(0, int(settings(db).get("cap") or 0))
+    except ValueError:
+        return SURVEY_REFERRAL_CAP
+
+
+def public_link(request, ch=""):
+    """The address to hand out. Built from the request so it is right on
+    whatever host this is actually served from, rather than a constant that
+    is wrong on staging."""
+    base = str(request.base_url).rstrip("/") + "/survey"
+    return base + ("?ch=" + ch if ch else "")
+
+
 def _client_ip(request):
     """The address the request came from, honouring the proxy header.
 
@@ -150,7 +224,7 @@ def decide(answers):
     return "complete", None
 
 
-def entries_for(db, row):
+def entries_for(db, row, cap=None):
     """One entry, plus one per friend who finished on their code.
 
     Counted at read time rather than stored. A stored tally is a number that
@@ -162,8 +236,9 @@ def entries_for(db, row):
            .filter(SurveyResponse.referred_by == row.ref_code,
                    SurveyResponse.outcome == "complete")
            .scalar() or 0)
-    if SURVEY_REFERRAL_CAP:
-        n = min(n, SURVEY_REFERRAL_CAP)
+    cap = cap_of(db) if cap is None else cap
+    if cap:
+        n = min(n, cap)
     return 1 + n
 
 
@@ -192,9 +267,15 @@ def register(app, deps):
     # ---------------------------------------------------------------- public
 
     @app.get("/survey", response_class=HTMLResponse)
-    def survey_form(request: Request, ref: str = "",
+    def survey_form(request: Request, ref: str = "", ch: str = "",
                     db: Session = Depends(get_db)):
         """The form. No login — this is the whole point of it."""
+        cfg = settings(db)
+        if cfg.get("open") == "0":
+            return templates.TemplateResponse("survey_closed.html", {
+                "request": request,
+                "announces": say_date(cfg.get("announces_on"), long=True),
+            }, status_code=200)
         known = ""
         if ref:
             hit = (db.query(SurveyResponse)
@@ -205,10 +286,15 @@ def register(app, deps):
         base = str(request.base_url).rstrip("/")
         return templates.TemplateResponse("survey.html", {
             "request": request,
+            "closes_short": say_date(cfg.get("closes_on")),
+            "closes_long": say_date(cfg.get("closes_on"), long=True),
+            "announces_short": say_date(cfg.get("announces_on")),
+            "announces_long": say_date(cfg.get("announces_on"), long=True),
             "cfg": json.dumps({
                 "share_base": base + "/survey",
-                "cap": SURVEY_REFERRAL_CAP,
+                "cap": cap_of(db),
                 "referred_by": known,
+                "channel": (ch or "")[:24],
             }),
         })
 
@@ -238,6 +324,8 @@ def register(app, deps):
         answers; it does not get a say in whether they qualify, what their
         code is, or how many entries they end up with.
         """
+        if not is_open(db):
+            return JSONResponse({"error": "closed"}, status_code=403)
         data = await request.json() or {}
         answers = data.get("answers") or {}
         person = data.get("person") or {}
@@ -276,6 +364,7 @@ def register(app, deps):
             email=(person.get("email") or "")[:160].lower() or None if outcome == "complete" else None,
             ref_code=new_code(db) if outcome == "complete" else None,
             referred_by=came_from,
+            channel=((data.get("channel") or "")[:24] or None),
             answers=json.dumps(keep, ensure_ascii=False),
             consent_privacy=bool(consent.get("privacy")),
             consent_promo=bool(consent.get("promo_rules")),
@@ -319,6 +408,44 @@ def register(app, deps):
         except ValueError:
             return {}
 
+    @app.get("/admin/survey/qr.png")
+    def survey_qr(request: Request, ch: str = "",
+                  db: Session = Depends(get_db)):
+        """The link as a square, for a poster or an Instagram story.
+
+        Generated here rather than in the browser so it can be saved at a
+        size that survives being printed and photographed off a wall.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        qr = qrcode.QRCode(box_size=14, border=3)
+        qr.add_data(public_link(request, ch))
+        qr.make(fit=True)
+        buf = io.BytesIO()
+        qr.make_image(fill_color="#0b2a26", back_color="white").save(buf, format="PNG")
+        name = "awaken-survey%s.png" % (("-" + ch) if ch else "")
+        return Response(buf.getvalue(), media_type="image/png",
+                        headers={"Content-Disposition":
+                                 'attachment; filename="%s"' % name})
+
+    @app.post("/admin/survey/setup")
+    async def survey_setup(request: Request, db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        form = await request.form()
+        put(db, "open", "1" if form.get("open") else "0")
+        for key in ("closes_on", "announces_on"):
+            val = (form.get(key) or "").strip()
+            if val:
+                put(db, key, val)
+        cap = (form.get("cap") or "").strip()
+        if cap.isdigit():
+            put(db, "cap", cap)
+        db.commit()
+        return RedirectResponse("/admin/survey", status_code=303)
+
     @app.get("/admin/survey", response_class=HTMLResponse)
     def survey_list(request: Request, show: str = "complete",
                     db: Session = Depends(get_db)):
@@ -338,9 +465,18 @@ def register(app, deps):
             "entries": entries_for(db, r),
             "when": to_local(r.created_at),
         } for r in rows]
+        by_channel = [(label, code, db.query(func.count(SurveyResponse.id))
+                       .filter(SurveyResponse.outcome == "complete",
+                               SurveyResponse.channel == (code or None))
+                       .scalar() or 0)
+                      for code, label in CHANNELS]
+        cfg = settings(db)
         return render(request, "survey_list.html", db, staff, active="survey",
                       rows=packed, questions=QUESTIONS, show=show, tally=tally,
-                      cell=cell)
+                      cell=cell, cfg=cfg, channels=CHANNELS,
+                      by_channel=by_channel,
+                      link=public_link(request, ""),
+                      link_for=lambda c: public_link(request, c))
 
     @app.get("/admin/survey.csv")
     def survey_csv(request: Request, show: str = "complete",
@@ -351,8 +487,8 @@ def register(app, deps):
         buf = io.StringIO()
         w = csv.writer(buf)
         head = ["When", "Outcome", "Reason", "Nickname", "Mobile", "Email",
-                "Entries", "Code", "Referred by", "Seconds", "IP", "Device",
-                "Screen", "Timezone"]
+                "Entries", "Code", "Referred by", "Channel", "Seconds", "IP",
+                "Device", "Screen", "Timezone"]
         w.writerow(head + [label for _, label in QUESTIONS])
         for r in _rows(db, show):
             a = _answers(r)
@@ -361,7 +497,8 @@ def register(app, deps):
                 when.strftime("%Y-%m-%d %H:%M") if when else "",
                 r.outcome, r.reason or "", r.nickname or "", r.mobile,
                 r.email or "", entries_for(db, r), r.ref_code or "",
-                r.referred_by or "", r.seconds_taken or "", r.ip or "",
+                r.referred_by or "", r.channel or "", r.seconds_taken or "",
+                r.ip or "",
                 r.user_agent or "", r.screen or "", r.timezone_name or "",
             ] + [cell(a.get(k)) for k, _ in QUESTIONS])
         return Response(
