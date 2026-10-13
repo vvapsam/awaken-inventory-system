@@ -64,6 +64,13 @@ with TestClient(app) as c:
     ck("and carries its settings", '"share_base"' in r.text and '"cap": 5' in r.text)
     ck("no code is minted in the browser", "function newCode" not in r.text)
     ck("and nothing is said about keeping the number", "is noted so you" not in r.text)
+    ck("the word exercise appears nowhere", "exercis" not in r.text.lower())
+    ck("question 9 asks about fitness activities",
+       "What fitness activities do you do now?" in r.text)
+    ck("question 13 asks about fitness activities",
+       "in total, on fitness activities?" in r.text)
+    ck("and question 10 asks about training",
+       "how many days a week did you train?" in r.text)
 
     # ------------------------------------------------------------ one entry
     r = c.post("/survey", json=entry("0917 111 1111"))
