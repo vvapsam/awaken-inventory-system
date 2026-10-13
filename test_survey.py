@@ -31,13 +31,15 @@ DEV = {"user_agent": "Mozilla/5.0 (iPhone)", "screen": "390x844",
        "platform": "iPhone"}
 
 
-def entry(mobile, *, lives="Within Metro Manila", age="25-34", name="Maria",
+def entry(mobile, *, lives="Within Metro Manila", age="25-34", gender="Female",
+          name="Maria",
           email="maria@email.com", ref=None, **extra):
     a = {"q1_lives": lives, "q1_city": "Pasig", "q2_age": age,
-         "q4_occupation": "Employed", "q6_travel": "21-30 min",
-         "q9_activities": ["CrossFit", "Hybrid - HYROX/DEKA"],
-         "q13_budget": "5000-7499", "q16_goals": ["Strength"],
-         "q30_anything_else": "More evening classes"}
+         "q3_gender": gender,
+         "q5_occupation": "Employed", "q7_travel": "21-30 min",
+         "q10_activities": ["CrossFit", "Hybrid - HYROX/DEKA"],
+         "q14_budget": "5000-7499", "q17_goals": ["Strength"],
+         "q31_anything_else": "More evening classes"}
     a.update(extra)
     return {"seconds_taken": 412,
             "consent": {"privacy": True, "promo_rules": True},
@@ -73,10 +75,22 @@ with TestClient(app) as c:
                  "Team sports (such as basketball, volleyball or football)",
                  "Outdoor activities (such as hiking or climbing)"):
         ck("question 9 offers %s" % want.split(" (")[0].lower(), want in r.text)
-    ck("nineteen ways to answer question 9, Other and None included",
-       r.text.count('name="q9" value=') == 19)
+    ck("gender is asked", "3. What is your gender?" in r.text)
+    for g in ("Female", "Male", "Non-binary", "Prefer not to say"):
+        ck("gender offers %s" % g.lower(), ('value="%s"' % g) in r.text)
+    ck("and it is question 3, beside age",
+       r.text.index("What is your age group") < r.text.index("What is your gender")
+       < r.text.index("How can we reach you"))
+    ck("the services question is reworked",
+       "Hybrid classes (HYROX or DEKA preparation)" in r.text
+       and "Small group coaching, two to four people" in r.text
+       and "Nutrition guidance" in r.text)
+    ck("and no longer repeats the goals question",
+       "Structured programs for a specific goal" not in r.text)
+    ck("nineteen ways to answer question 10, Other and None included",
+       r.text.count('name="q10" value=') == 19)
     ck("only one of them stands alone",
-       r.text.count('name="q9" value="None" data-alone') == 1)
+       r.text.count('name="q10" value="None" data-alone') == 1)
     ck("question 9 asks about fitness activities",
        "What fitness activities do you do now?" in r.text)
     ck("question 13 asks about fitness activities",
@@ -98,8 +112,9 @@ with TestClient(app) as c:
             M.SurveyResponse.mobile == "+639171111111").first()
         ck("stored against the normalised number", row is not None)
         ck("what they typed is kept too", row.mobile_raw == "0917 111 1111")
-        ck("answers stored as JSON", json.loads(row.answers)["q13_budget"] == "5000-7499")
-        ck("a list answer survives", json.loads(row.answers)["q9_activities"] == ["CrossFit", "Hybrid - HYROX/DEKA"])
+        ck("answers stored as JSON", json.loads(row.answers)["q14_budget"] == "5000-7499")
+        ck("gender stored", json.loads(row.answers)["q3_gender"] == "Female")
+        ck("a list answer survives", json.loads(row.answers)["q10_activities"] == ["CrossFit", "Hybrid - HYROX/DEKA"])
         ck("IP recorded", bool(row.ip))
         ck("device recorded", row.user_agent.startswith("Mozilla") and row.screen == "390x844")
         ck("timezone recorded", row.timezone_name == "Asia/Manila")
@@ -139,6 +154,7 @@ with TestClient(app) as c:
             M.SurveyResponse.mobile == "+639172222222").first()
         kept = json.loads(out.answers)
         ck("only the screening answers are kept", sorted(kept) == ["q1_lives", "q2_age"])
+        ck("and gender is not one of them", "q3_gender" not in kept)
         ck("no nickname kept for somebody turned away", out.nickname is None)
         ck("no email either", out.email is None)
         ck("but the number is", out.mobile == "+639172222222")
@@ -284,9 +300,9 @@ with TestClient(app) as c:
     c.post("/survey", json={**entry("09196660002"),
                             "answers": {**entry("09196660002")["answers"],
                                         "q2_age": "45-54", "q1_city": "Makati",
-                                        "q4_occupation": "Student",
-                                        "q13_budget": "3000-4999",
-                                        "q16_goals": ["Lose fat", "Mobility"]}})
+                                        "q5_occupation": "Student",
+                                        "q14_budget": "3000-4999",
+                                        "q17_goals": ["Lose fat", "Mobility"]}})
     r = c.get("/admin/survey/results")
     ck("the results page opens", r.status_code == 200)
     ck("it leads with how many answered", "Completed" in r.text and "In the draw" in r.text)
