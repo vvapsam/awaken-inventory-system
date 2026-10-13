@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block body %}
+{# Every answer, as one wide table. A survey is read by looking down a column
+   and asking "how many said that", so the columns are the questions and the
+   rows are the people - not the other way round, and not a dashboard of
+   charts nobody can check the arithmetic of. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Survey responses</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      {{ tally.complete }} completed &middot; {{ tally.out }} turned away
+    </p>
+  </div>
+  <div class="hdact">
+    <a class="btn" href="/admin/survey?show={{ 'out' if show == 'complete' else 'complete' }}">
+      {{ 'Show turned away' if show == 'complete' else 'Show completed' }}</a>
+    <a class="btn primary" href="/admin/survey.csv?show={{ show }}">Download CSV</a>
+  </div>
+</div>
+
+{% if not rows %}
+  <p class="muted" style="margin:22px 0">Nothing here yet.</p>
+{% else %}
+<div style="overflow-x:auto;margin-top:16px;border:1px solid var(--line, #e0e5ea);border-radius:10px">
+  <table class="list" style="min-width:2400px;margin:0">
+    <thead>
+      <tr>
+        <th style="white-space:nowrap">When</th>
+        <th style="white-space:nowrap">Who</th>
+        <th style="white-space:nowrap">Mobile</th>
+        <th style="text-align:right">Entries</th>
+        <th style="white-space:nowrap">Code</th>
+        <th style="white-space:nowrap">Via</th>
+        {% if show != 'complete' %}<th>Why</th>{% endif %}
+        {% for key, label in questions %}
+          <th style="white-space:nowrap">{{ label }}</th>
+        {% endfor %}
+        <th style="white-space:nowrap">Took</th>
+        <th style="white-space:nowrap">IP</th>
+        <th style="white-space:nowrap">Device</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="white-space:nowrap">
+          <a href="/admin/survey/{{ r.row.id }}">{{ r.when.strftime('%d %b, %H:%M') if r.when else '' }}</a>
+        </td>
+        <td style="white-space:nowrap">{{ r.row.nickname or '—' }}</td>
+        <td style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ r.row.mobile }}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.entries or '' }}</td>
+        <td style="white-space:nowrap;font-family:ui-monospace,monospace;font-size:12px">{{ r.row.ref_code or '' }}</td>
+        <td style="white-space:nowrap;font-family:ui-monospace,monospace;font-size:12px">{{ r.row.referred_by or '' }}</td>
+        {% if show != 'complete' %}
+          <td style="white-space:nowrap">{{ 'Outside Metro Manila' if r.row.reason == 'area' else 'Under 18' }}</td>
+        {% endif %}
+        {% for key, label in questions %}
+          <td>{{ cell(r.answers.get(key)) }}</td>
+        {% endfor %}
+        <td style="white-space:nowrap">{{ (r.row.seconds_taken ~ 's') if r.row.seconds_taken else '' }}</td>
+        <td style="white-space:nowrap;font-size:12px">{{ r.row.ip or '' }}</td>
+        <td style="font-size:11px;max-width:220px">{{ (r.row.user_agent or '')[:70] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="muted small" style="margin:10px 2px 0">Scroll sideways for the rest of the questions, or take the CSV.</p>
+{% endif %}
+{% endblock %}

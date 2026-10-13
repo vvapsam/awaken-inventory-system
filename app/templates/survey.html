@@ -1,0 +1,1981 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Awaken Fitness Survey</title>
+<style>
+:root{
+  /* C: dark ground, teal where it counts. Contrast pushed a little past the
+     mock - plenty of people fill this in outdoors. */
+  --bg:#0d1012; --card:#141a1e; --raise:#1a2127;
+  --ink:#f4f6f7; --mut:#aab4bc; --faint:#828d96;
+  --line:#242c32; --hair:#1d242a; --soft:#11171a;
+  --teal:#4db6b6; --tealD:#6fcccc; --tealL:#11322f; --tealLine:#1d5f5a;
+  --onTeal:#06201f;
+  --red:#ef9385; --redL:#2b1b18; --redLine:#4a2a24;
+  --amb:#e8c983; --ambL:#272015; --ambB:#4b3f20;
+  --fld:#11171a; --fldLine:#2d363d;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:15px; line-height:1.55;
+}
+.wrap{max-width:700px;margin:0 auto;padding:0 16px 80px}
+
+/* ---- masthead ---- */
+.mast{
+  position:sticky; top:0; z-index:20; background:rgba(13,16,18,.93);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  padding:14px 0 10px; border-bottom:1px solid var(--line);
+}
+.mastin{display:flex;align-items:center;gap:10px}
+.mark{width:24px;height:24px;flex:0 0 auto;fill:var(--ink)}
+.brand{letter-spacing:.02em}
+.brand{font-size:13.5px;color:var(--mut);font-weight:500}
+.bar{height:4px;border-radius:999px;background:var(--line);margin-top:11px;overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:var(--teal);border-radius:999px;transition:width .28s ease}
+.barlab{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:var(--faint)}
+
+/* ---- cards & steps ---- */
+.step{display:none}
+.step.on{display:block}
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:14px;
+  padding:0 0 22px; margin-top:16px; overflow:hidden;
+}
+.card>*:not(.hero){margin-left:20px;margin-right:20px}
+
+/* ---- the section header band ----
+   The gradient is a stand-in. Drop a photo in and it takes over:
+       .hero[data-hero="3"]{--photo:url('img/section-3.jpg')}
+   Keep them dark and low-contrast or the heading stops being readable. */
+.hero{
+  position:relative; padding:22px 20px 20px; min-height:150px;
+  display:flex; align-items:flex-end;
+  background-image:var(--photo,none), var(--wash);
+  background-size:cover; background-position:center;
+}
+.hero:after{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 2px,transparent 2px 13px);
+}
+.hero:before{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(to top,rgba(13,16,18,.92) 0%,rgba(13,16,18,.25) 55%,transparent 100%);
+}
+.heroin{position:relative;z-index:2;width:100%}
+.hero .mk{width:21px;height:21px;fill:#fff;margin-bottom:9px;display:block}
+.eyebrow{
+  font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--teal);
+}
+.hero h1{
+  margin:6px 0 0;font-size:27px;font-weight:800;line-height:1.06;
+  letter-spacing:-0.025em;text-transform:uppercase;color:#fff;
+}
+.hero.tall{min-height:260px}
+@media (max-height:900px){.hero.tall{min-height:178px}}
+@media (max-height:720px){.hero{min-height:124px}.hero.tall{min-height:168px}}
+.hero.tall h1{font-size:33px}
+@media (max-width:420px){
+  .hero h1{font-size:24px}
+  .hero.tall h1{font-size:29px}
+}
+/* Drop real photos in by uncommenting these and putting the files beside the
+   page. Shoot them dark, or shoot them bright and they will fight the heading.
+.hero[data-hero="0"]{--photo:url('img/hero-welcome.jpg')}
+.hero[data-hero="1"]{--photo:url('img/hero-1.jpg')}
+.hero[data-hero="2"]{--photo:url('img/hero-2.jpg')}
+.hero[data-hero="3"]{--photo:url('img/hero-3.jpg')}
+.hero[data-hero="4"]{--photo:url('img/hero-4.jpg')}
+.hero[data-hero="5"]{--photo:url('img/hero-5.jpg')}
+.hero[data-hero="6"]{--photo:url('img/hero-6.jpg')}
+.hero[data-hero="7"]{--photo:url('img/hero-7.jpg')}
+*/
+.hero[data-hero="0"]{--wash:radial-gradient(130% 95% at 18% 4%,rgba(0,128,128,.6) 0%,rgba(0,128,128,0) 62%),linear-gradient(158deg,#16303a 0%,#0d1012 74%)}
+.hero[data-hero="1"]{--wash:radial-gradient(120% 90% at 22% 0%,rgba(0,128,128,.5) 0%,rgba(0,128,128,0) 60%),linear-gradient(160deg,#16303a 0%,#0d1012 72%)}
+.hero[data-hero="2"]{--wash:radial-gradient(120% 90% at 78% 0%,rgba(0,110,140,.45) 0%,rgba(0,110,140,0) 60%),linear-gradient(200deg,#152c38 0%,#0d1012 74%)}
+.hero[data-hero="3"]{--wash:radial-gradient(120% 90% at 30% 8%,rgba(0,140,120,.45) 0%,rgba(0,140,120,0) 62%),linear-gradient(150deg,#163431 0%,#0d1012 73%)}
+.hero[data-hero="4"]{--wash:radial-gradient(125% 95% at 70% 0%,rgba(0,128,150,.42) 0%,rgba(0,128,150,0) 60%),linear-gradient(185deg,#142e3a 0%,#0d1012 74%)}
+.hero[data-hero="5"]{--wash:radial-gradient(120% 90% at 20% 6%,rgba(0,120,128,.46) 0%,rgba(0,120,128,0) 60%),linear-gradient(165deg,#152f36 0%,#0d1012 72%)}
+.hero[data-hero="6"]{--wash:radial-gradient(120% 90% at 80% 4%,rgba(0,100,120,.44) 0%,rgba(0,100,120,0) 60%),linear-gradient(195deg,#132b35 0%,#0d1012 74%)}
+.hero[data-hero="7"]{--wash:radial-gradient(130% 95% at 40% 0%,rgba(0,140,140,.5) 0%,rgba(0,140,140,0) 60%),linear-gradient(170deg,#17343a 0%,#0d1012 71%)}
+h1{margin:0;font-size:25px;font-weight:700;letter-spacing:-0.02em;line-height:1.2}
+h2{margin:0 0 2px;font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--teal)}
+.lede{margin:16px 0 0;font-size:14.5px;color:var(--mut);line-height:1.7}
+
+/* ---- questions ---- */
+.q{padding:20px 0;border-top:1px solid var(--hair)}
+.q:first-of-type{border-top:0;padding-top:17px}
+.qn{display:block;font-size:15.5px;font-weight:650;line-height:1.45}
+.qn .req{color:var(--red);font-weight:400}
+.hint{margin:5px 0 0;font-size:12.5px;color:var(--faint);line-height:1.55}
+.opts{margin:13px 0 0;display:flex;flex-direction:column;gap:7px}
+
+/* a tappable row — 44px min so a thumb can hit it */
+.opt{
+  display:flex; align-items:flex-start; gap:11px; min-height:48px;
+  padding:12px 14px; border:1px solid var(--fldLine); border-radius:10px;
+  background:var(--raise); cursor:pointer; font-size:14.5px; line-height:1.4;
+  color:var(--mut); transition:border-color .12s, background .12s, color .12s;
+}
+.opt:hover{border-color:var(--teal);color:var(--ink)}
+.opt input{margin:2px 0 0;width:17px;height:17px;flex:0 0 auto;accent-color:var(--teal);cursor:pointer}
+.opt.sel{border-color:var(--teal);background:var(--tealL);color:var(--ink);font-weight:600}
+.opt.lock{opacity:.35;cursor:not-allowed}
+.opt.lock:hover{border-color:var(--fldLine)}
+.opt .sub{display:block;font-size:12px;color:var(--faint);margin-top:1px}
+
+/* ---- text fields ---- */
+.fl{display:block;margin-top:13px}
+.fl>span{display:block;font-size:12.5px;color:var(--mut);margin-bottom:5px}
+input[type=text],input[type=tel],input[type=email],select,textarea{
+  width:100%; min-height:46px; padding:11px 12px; font-family:inherit; font-size:15px;
+  color:var(--ink); background:var(--fld); border:1px solid var(--fldLine); border-radius:9px;
+}
+textarea{min-height:100px;resize:vertical;line-height:1.55}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),linear-gradient(135deg,var(--mut) 50%,transparent 50%);background-position:calc(100% - 19px) 20px,calc(100% - 14px) 20px;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:-1px;border-color:var(--teal)}
+.sub-q{margin-top:14px;padding:14px 15px;border-left:3px solid var(--tealLine);background:var(--soft);border-radius:0 9px 9px 0}
+.sub-q .qn{font-size:14.5px}
+.warn{
+  margin-top:11px;padding:11px 13px;border:1px solid var(--ambB);background:var(--ambL);
+  border-radius:9px;font-size:12.5px;color:var(--amb);line-height:1.6;
+}
+.warn b{font-weight:700}
+.hide{display:none}
+
+/* ---- counters, errors, notes ---- */
+.cnt{margin-top:9px;font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
+.cnt.full{color:var(--amb);font-weight:650}
+.err{
+  margin-top:9px;padding:10px 13px;border-radius:8px;background:var(--redL);border:1px solid var(--redLine);
+  color:var(--red);font-size:13px;font-weight:600;line-height:1.5;
+}
+.note{
+  margin-top:13px;padding:13px 15px;border:1px solid var(--ambB);background:var(--ambL);
+  border-radius:9px;font-size:13px;color:var(--amb);line-height:1.6;
+}
+.note b{font-weight:700}
+/* The prize, said once, warmly. */
+.prize{
+  margin-top:16px;padding:17px 18px;border:1px solid var(--tealLine);
+  border-radius:11px;background:var(--tealL);
+}
+.pz{
+  font-size:16.5px;font-weight:750;color:var(--teal);line-height:1.3;
+  letter-spacing:-0.01em;margin-bottom:7px;
+}
+.prize p{margin:0 0 6px;font-size:13.5px;color:var(--ink);line-height:1.6;opacity:.92}
+.prize p:last-child{margin-bottom:0}
+.when{
+  margin-top:11px !important;padding-top:10px;border-top:1px solid var(--tealLine);
+  font-size:12.5px;opacity:1 !important;color:var(--mut) !important;
+}
+.when b{color:var(--ink);font-weight:650}
+.prize b{color:var(--teal)}
+
+
+/* Everything a person could reasonably want to check, one tap away and
+   out of the way of everybody who would not have read it anyway. */
+.fine{margin-top:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
+.fine>summary{
+  list-style:none;cursor:pointer;padding:12px 15px;font-size:13px;font-weight:650;
+  color:var(--mut);display:flex;align-items:center;gap:9px;min-height:46px;
+}
+.fine>summary::-webkit-details-marker{display:none}
+.fine>summary:before{
+  content:"";width:7px;height:7px;flex:0 0 auto;border-right:2px solid var(--teal);
+  border-bottom:2px solid var(--teal);transform:rotate(45deg);margin-top:-3px;
+  transition:transform .18s ease;
+}
+.fine[open]>summary:before{transform:rotate(-135deg);margin-top:2px}
+.fine>summary:hover{color:var(--ink)}
+.fineb{padding:2px 15px 15px;border-top:1px solid var(--line);margin-top:-1px}
+.fineb h4{
+  margin:14px 0 5px;font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--teal);
+}
+.fineb p{margin:0;font-size:12.5px;color:var(--mut);line-height:1.75}
+.fineb ul{margin:0;padding-left:0;list-style:none}
+.fineb li{
+  position:relative;margin:0 0 9px;padding-left:15px;font-size:12.5px;
+  color:var(--mut);line-height:1.65;
+}
+.fineb li:last-child{margin-bottom:0}
+.fineb li:before{
+  content:"";position:absolute;left:0;top:8px;width:5px;height:5px;
+  border-radius:50%;background:var(--tealLine);
+}
+.fineb b{color:var(--ink);font-weight:650}
+.fineb a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}
+.fineb a:hover{color:var(--tealD)}
+
+.privacy{
+  margin-top:13px;padding:15px 16px;background:var(--soft);border:1px solid var(--line);
+  border-radius:9px;font-size:12.5px;color:var(--mut);line-height:1.75;
+}
+.privacy b{color:var(--ink);font-weight:650}
+
+/* ---- buttons ---- */
+.nav{display:flex;gap:10px;margin-top:18px;align-items:center}
+.btn{
+  min-height:50px;padding:0 24px;border:0;border-radius:10px;background:var(--teal);
+  color:var(--onTeal);font-family:inherit;font-size:14px;font-weight:750;cursor:pointer;
+  letter-spacing:.07em;text-transform:uppercase;
+}
+.btn:hover{background:var(--tealD)}
+.btn.ghost{background:transparent;border:1px solid var(--fldLine);color:var(--mut)}
+.btn.ghost:hover{background:var(--raise);color:var(--ink)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.navnote{font-size:12px;color:var(--faint);margin-left:auto;text-align:right;line-height:1.4}
+
+/* ---- end screens ---- */
+.end{text-align:center;padding:40px 4px}
+.end .ring{
+  width:70px;height:70px;margin:0 auto 18px;border-radius:50%;
+  background:var(--tealL);display:flex;align-items:center;justify-content:center;
+}
+.end h1{font-size:25px}
+.end p{margin:10px auto 0;max-width:460px;font-size:14.5px;color:var(--mut);line-height:1.65}
+details.dump{margin-top:22px;text-align:left}
+details.dump>summary{cursor:pointer;font-size:13px;color:var(--teal);font-weight:650;padding:7px 0}
+pre{
+  margin:10px 0 0;padding:14px;background:var(--soft);border:1px solid var(--line);
+  border-radius:9px;font-size:11.5px;line-height:1.5;overflow-x:auto;color:var(--ink);
+}
+.refbox{
+  margin-top:24px;padding:24px 18px;border:1px solid var(--tealLine);border-radius:12px;
+  background:var(--soft);text-align:center;
+}
+.refbox h2{margin:0}
+.entries{
+  display:inline-block;margin-bottom:12px;padding:6px 15px;border-radius:999px;
+  background:var(--tealL);color:var(--teal);font-size:13px;font-weight:650;
+}
+.entries b{font-size:15px}
+#refqr{
+  display:block;margin:0 auto;border-radius:10px;border:4px solid #fff;
+  background:#fff;width:200px;height:200px;image-rendering:pixelated;
+}
+.refcode{
+  margin-top:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:21px;font-weight:700;letter-spacing:.16em;color:var(--ink);
+}
+.refbtns{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-top:16px}
+.refbtns .btn{min-height:44px;font-size:14px;padding:0 16px}
+.reflink{
+  margin-top:12px;font-size:11.5px;color:var(--faint);word-break:break-all;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.5;
+}
+.ig{
+  margin:16px 0 0;font-size:12.5px;color:var(--faint);text-align:center;
+}
+.ig a{color:var(--teal);text-decoration:none;font-weight:650}
+.ig a:hover{text-decoration:underline;text-underline-offset:2px}
+.foot{margin-top:22px;font-size:11.5px;color:var(--faint);text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mast">
+    <div class="mastin">
+      <svg class="mark" viewBox="0 0 200 200" aria-hidden="true">
+        <path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path>
+        <path d="M100 96 L116 126 L100 156 L84 126 Z"></path>
+      </svg>
+      <span class="brand">Awaken Fitness Center</span>
+    </div>
+    <div class="bar" role="progressbar" aria-label="Survey progress"><i id="prog"></i></div>
+    <div class="barlab"><span id="plab">Getting started</span><span id="pnum"></span></div>
+  </div>
+
+  <form id="sv" novalidate>
+
+  <!-- ============ 0 · WELCOME & CONSENT ============ -->
+  <section class="step on" data-step="0" data-label="Getting started">
+    <div class="card">
+      <div class="hero tall" data-hero="0">
+        <div class="heroin">
+          <svg class="mk" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path><path d="M100 96 L116 126 L100 156 L84 126 Z"></path></svg>
+          <div class="eyebrow">Awaken Fitness Center</div>
+          <h1>What does fitness look like for you?</h1>
+        </div>
+      </div>
+      <p class="lede">We&rsquo;d love to hear about your habits, preferences and challenges. A seven-minute survey for adults living in Metro Manila.</p>
+
+      <div class="note" id="referredNote" style="display:none">
+        <b>A friend shared this with you.</b> Completing the survey earns them an extra entry, and you&rsquo;ll receive a code of your own at the end.
+      </div>
+
+      <div class="prize">
+        <div class="pz">Win a free 1-year membership</div>
+        <p>As a thank-you for completing the survey, you&rsquo;ll be entered into the draw. The membership is transferrable.</p>
+        <p>One entry per person. Invite friends through your referral QR code for up to <b id="capWords">5 extra</b> entries.</p>
+        <p class="when">Entries close <b>Sunday 25 October</b> &middot; winner announced <b>Friday 6 November</b></p>
+      </div>
+
+
+      <details class="fine">
+        <summary>Prize rules and privacy</summary>
+        <div class="fineb">
+          <h4>The prize</h4>
+          <ul>
+            <li><b>What</b> &mdash; one free 1-year Awaken membership. Transferrable to another person. Not exchangeable for cash.</li>
+            <li><b>When</b> &mdash; entries close <b>Sunday 25 October 2026</b>. One winner drawn at random and announced <b>Friday 6 November 2026</b>.</li>
+            <li><b>Entries</b> &mdash; one per mobile number. Your referral QR earns one extra entry for every friend who completes the survey and qualifies, up to five.</li>
+            <li><b>One person, one entry</b> &mdash; entering more than once using different mobile numbers is not allowed. Duplicate or fraudulent entries, including referring yourself or using numbers you do not hold, may be disqualified along with any other entries connected to them. Awaken&rsquo;s decision on any disqualification is final.</li>
+            <li><b>Who can join</b> &mdash; adults aged 18 and over living in Metro Manila.</li>
+            <li><b>Claiming</b> &mdash; in person at Awaken Fitness, Pasig City, by the person holding the mobile number on the entry. An entry whose number we cannot verify cannot be claimed, so please enter it carefully.</li>
+            <li><b>Deadline</b> &mdash; claim within 30 days of the announcement, or the prize is forfeited.</li>
+          </ul>
+
+          <h4>Your details</h4>
+          <ul>
+            <li><b>What we keep</b> &mdash; your nickname, mobile number and email, and your answers. If this round isn&rsquo;t open to you, we keep your mobile number only, so you aren&rsquo;t asked again.</li>
+            <li><b>Why</b> &mdash; your mobile number ensures each person answers once and is how we contact you if you win. Your email is a secondary contact.</li>
+            <li><b>Who sees it</b> &mdash; Awaken only. We do not sell or share your details.</li>
+            <li><b>Messages</b> &mdash; we will only contact you about this survey and the prize draw, nothing else.</li>
+            <li><b>How long</b> &mdash; your name, number and email are deleted <b>30 days after the draw</b>. The winner&rsquo;s details are kept until the prize is claimed or forfeited, then deleted.</li>
+            <li><b>Your device</b> &mdash; limited technical information is recorded solely to identify duplicate entries.</li>
+            <li><b>Your rights</b> &mdash; you may request a copy of your answers, or have them deleted, at any time. Email <a href="mailto:admin@awakengym.com">admin@awakengym.com</a> or ask at the front desk. Handled under the Data Privacy Act (RA 10173).</li>
+          </ul>
+        </div>
+      </details>
+
+      <div class="opts" style="margin-top:16px">
+        <label class="opt" data-gate>
+          <input type="checkbox" name="c_privacy" value="yes">
+          <span>I agree to Awaken collecting and using my answers as described. <span class="sub">Required</span></span>
+        </label>
+        <label class="opt" data-gate>
+          <input type="checkbox" name="c_promo" value="yes">
+          <span>I have read and accept the prize rules, including one entry per person. <span class="sub">Required</span></span>
+        </label>
+      </div>
+
+      <div id="e_consent" class="err hide"></div>
+
+      <div class="nav">
+        <button type="button" class="btn" data-go="1">Start the survey</button>
+      </div>
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+    </div>
+  </section>
+
+  <!-- ============ 1 · WHO YOU ARE ============ -->
+  <section class="step" data-step="1" data-label="About you">
+    <div class="card">
+      <div class="hero" data-hero="1">
+        <div class="heroin">
+          <svg class="mk" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path><path d="M100 96 L116 126 L100 156 L84 126 Z"></path></svg>
+          <div class="eyebrow">Section 1 of 7</div>
+          <h1>About you</h1>
+        </div>
+      </div>
+      <p class="lede">Three quick details, then we&rsquo;ll get into the questions.</p>
+
+      <div class="q">
+        <span class="qn">1. Where do you currently live? <span class="req">*</span></span>
+        <div class="opts" data-radio="q1">
+          <label class="opt"><input type="radio" name="q1" value="Within Metro Manila"><span>Within Metro Manila</span></label>
+          <label class="opt"><input type="radio" name="q1" value="Outside Metro Manila"><span>Outside Metro Manila</span></label>
+        </div>
+        <div class="sub-q hide" id="s_ncr">
+          <label class="fl" style="margin-top:0"><span>Which city or municipality?</span>
+            <select name="q1_ncr" data-list="ncr"></select>
+          </label>
+        </div>
+        <p class="hint">Please don&rsquo;t give us your exact address.</p>
+      </div>
+
+      <div class="q">
+        <span class="qn">2. What is your age group? <span class="req">*</span></span>
+        <div class="opts" data-radio="q2">
+          <label class="opt"><input type="radio" name="q2" value="Under 18"><span>Under 18</span></label>
+          <label class="opt"><input type="radio" name="q2" value="18-24"><span>18&ndash;24</span></label>
+          <label class="opt"><input type="radio" name="q2" value="25-34"><span>25&ndash;34</span></label>
+          <label class="opt"><input type="radio" name="q2" value="35-44"><span>35&ndash;44</span></label>
+          <label class="opt"><input type="radio" name="q2" value="45-54"><span>45&ndash;54</span></label>
+          <label class="opt"><input type="radio" name="q2" value="55 or older"><span>55 or older</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">3. How can we reach you if you win? <span class="req">*</span></span>
+        <label class="fl"><span>Nickname</span>
+          <input type="text" name="q3_name" autocomplete="nickname" placeholder="Juan">
+        </label>
+        <label class="fl"><span>Mobile number <span style="color:var(--faint)">(Philippine numbers only)</span></span>
+          <input type="tel" name="q3_mobile" inputmode="tel" autocomplete="tel" placeholder="0917 123 4567">
+        </label>
+        <p class="hint" id="normshow"></p>
+        <div class="warn">
+          <b>Please double-check this.</b> Your mobile number identifies your entry. If we cannot
+          verify it at the gym, the prize cannot be claimed.
+          <span style="display:block;margin-top:7px;padding-top:7px;border-top:1px solid var(--ambB)">
+            One person, one entry. Entering again on another number may disqualify every entry linked to you.
+          </span>
+        </div>
+        <label class="fl"><span>Email address</span>
+          <input type="email" name="q3_email" inputmode="email" autocomplete="email" placeholder="juan@email.com">
+        </label>
+        <p class="hint">A secondary contact, in case we cannot reach you by phone.</p>
+      </div>
+
+      <div id="e1" class="err hide"></div>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-go="0">Back</button>
+        <button type="button" class="btn" data-go="2">Next</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2 · GETTING THERE ============ -->
+  <section class="step" data-step="2" data-label="Getting there">
+    <div class="card">
+      <div class="hero" data-hero="2">
+        <div class="heroin">
+          <svg class="mk" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path><path d="M100 96 L116 126 L100 156 L84 126 Z"></path></svg>
+          <div class="eyebrow">Section 2 of 7</div>
+          <h1>Getting there</h1>
+        </div>
+      </div>
+      <p class="lede">Your day, and what it would take to get you to a gym.</p>
+
+      <div class="q">
+        <span class="qn">4. Which best describes your current occupation? <span class="req">*</span></span>
+        <div class="opts" data-radio="q4">
+          <label class="opt"><input type="radio" name="q4" value="Employed"><span>Employed</span></label>
+          <label class="opt"><input type="radio" name="q4" value="Self-employed / Business owner"><span>Self-employed or business owner</span></label>
+          <label class="opt"><input type="radio" name="q4" value="Student"><span>Student</span></label>
+          <label class="opt"><input type="radio" name="q4" value="Not employed"><span>Currently not employed</span></label>
+          <label class="opt"><input type="radio" name="q4" value="Retired"><span>Retired</span></label>
+          <label class="opt" data-other="q4"><input type="radio" name="q4" value="Other"><span>Something else</span></label>
+        </div>
+        <div class="sub-q hide" data-otherfor="q4">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q4_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">5. Where do you usually work or study? <span class="req">*</span></span>
+        <div class="opts" data-radio="q5">
+          <label class="opt"><input type="radio" name="q5" value="At a workplace or school"><span>At a workplace or school</span></label>
+          <label class="opt"><input type="radio" name="q5" value="Mix of home and workplace"><span>A mix of home and a workplace or school</span></label>
+          <label class="opt"><input type="radio" name="q5" value="Entirely from home"><span>Entirely from home</span></label>
+          <label class="opt"><input type="radio" name="q5" value="Varies"><span>My location varies</span></label>
+          <label class="opt"><input type="radio" name="q5" value="No regular location"><span>I don&rsquo;t have a regular workplace or school</span></label>
+        </div>
+        <div class="sub-q hide" id="s_work">
+          <span class="qn">If you regularly go somewhere to work or study, where is it?</span>
+          <label class="fl"><span>City or municipality</span>
+            <select name="q5_city" data-list="all"></select>
+          </label>
+          <label class="fl"><span>Business district, barangay or nearby landmark</span>
+            <input type="text" name="q5_area" placeholder="e.g. BGC, Ortigas Center, near Robinsons">
+          </label>
+          <p class="hint">Please don&rsquo;t give us your exact address.</p>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">6. What is the longest one-way trip you&rsquo;d realistically make to a gym? <span class="req">*</span></span>
+        <div class="opts" data-radio="q6">
+          <label class="opt"><input type="radio" name="q6" value="<=10 min"><span>10 minutes or less</span></label>
+          <label class="opt"><input type="radio" name="q6" value="11-20 min"><span>11&ndash;20 minutes</span></label>
+          <label class="opt"><input type="radio" name="q6" value="21-30 min"><span>21&ndash;30 minutes</span></label>
+          <label class="opt"><input type="radio" name="q6" value="31-45 min"><span>31&ndash;45 minutes</span></label>
+          <label class="opt"><input type="radio" name="q6" value=">45 min"><span>More than 45 minutes</span></label>
+          <label class="opt"><input type="radio" name="q6" value="Would not travel"><span>I wouldn&rsquo;t travel to a gym</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">7. How important is parking when you choose a gym? <span class="req">*</span></span>
+        <div class="opts" data-radio="q7">
+          <label class="opt"><input type="radio" name="q7" value="Essential"><span>Essential &mdash; I need parking to use the gym</span></label>
+          <label class="opt"><input type="radio" name="q7" value="Preferred"><span>Preferred, but not essential</span></label>
+          <label class="opt"><input type="radio" name="q7" value="Not a consideration"><span>Not a consideration</span></label>
+        </div>
+      </div>
+
+      <div id="e2" class="err hide"></div>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-go="1">Back</button>
+        <button type="button" class="btn" data-go="3">Next</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3 · HABITS & BUDGET ============ -->
+  <section class="step" data-step="3" data-label="Habits &amp; budget">
+    <div class="card">
+      <div class="hero" data-hero="3">
+        <div class="heroin">
+          <svg class="mk" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path><path d="M100 96 L116 126 L100 156 L84 126 Z"></path></svg>
+          <div class="eyebrow">Section 3 of 7</div>
+          <h1>What you do now</h1>
+        </div>
+      </div>
+      <p class="lede">What you do today, and what you&rsquo;d spend.</p>
+
+      <div class="q">
+        <span class="qn">8. Which best describes you today? <span class="req">*</span></span>
+        <p class="hint">If more than one applies, pick your main arrangement.</p>
+        <div class="opts" data-radio="q8">
+          <label class="opt"><input type="radio" name="q8" value="Member"><span>I have a gym or studio membership</span></label>
+          <label class="opt"><input type="radio" name="q8" value="Pay per visit"><span>I pay for individual visits or class packages</span></label>
+          <label class="opt"><input type="radio" name="q8" value="Free exercise"><span>I exercise without paying for a gym or studio</span></label>
+          <label class="opt"><input type="radio" name="q8" value="Want to start"><span>I&rsquo;m not exercising, but I want to start</span></label>
+          <label class="opt"><input type="radio" name="q8" value="No plans"><span>I&rsquo;m not exercising and have no plans to start</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">9. What kinds of exercise do you do now? <span class="req">*</span></span>
+        <p class="hint">Select all that apply.</p>
+        <div class="opts" data-check="q9">
+          <label class="opt"><input type="checkbox" name="q9" value="Gym - weights and cardio"><span>Traditional gym workouts &mdash; weights and cardio machines</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="CrossFit"><span>CrossFit</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Hybrid - HYROX/DEKA"><span>Hybrid fitness training &mdash; HYROX, DEKA and similar</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Pilates"><span>Pilates</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Yoga"><span>Yoga</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Boxing/martial arts"><span>Boxing or martial arts</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Dance fitness"><span>Dance fitness &mdash; Zumba and similar</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Indoor cycling"><span>Indoor cycling or spin classes</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Running"><span>Running or jogging</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Walking"><span>Walking for exercise</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Outdoor cycling"><span>Outdoor cycling</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Wall climbing"><span>Wall climbing</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Sports"><span>Sports &mdash; badminton, basketball, pickleball and similar</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="Swimming"><span>Swimming</span></label>
+          <label class="opt" data-other="q9"><input type="checkbox" name="q9" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q9" value="None" data-alone><span>I don&rsquo;t exercise at the moment</span></label>
+        </div>
+        <div class="sub-q hide" data-otherfor="q9">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q9_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">10. In the past four weeks, how often did you exercise in a typical week? <span class="req">*</span></span>
+        <div class="opts" data-radio="q10">
+          <label class="opt"><input type="radio" name="q10" value="Not at all"><span>Not at all</span></label>
+          <label class="opt"><input type="radio" name="q10" value="<1/wk"><span>Less than once a week</span></label>
+          <label class="opt"><input type="radio" name="q10" value="1-2/wk"><span>1&ndash;2 days a week</span></label>
+          <label class="opt"><input type="radio" name="q10" value="3-4/wk"><span>3&ndash;4 days a week</span></label>
+          <label class="opt"><input type="radio" name="q10" value="5+/wk"><span>5 or more days a week</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">11. How long have you been training regularly? <span class="req">*</span></span>
+        <div class="opts" data-radio="q11">
+          <label class="opt"><input type="radio" name="q11" value="Not started"><span>I haven&rsquo;t started yet</span></label>
+          <label class="opt"><input type="radio" name="q11" value="<6 months"><span>Less than 6 months</span></label>
+          <label class="opt"><input type="radio" name="q11" value="6mo-2yr"><span>6 months to 2 years</span></label>
+          <label class="opt"><input type="radio" name="q11" value="2-5yr"><span>2 to 5 years</span></label>
+          <label class="opt"><input type="radio" name="q11" value="5yr+"><span>More than 5 years</span></label>
+          <label class="opt"><input type="radio" name="q11" value="Lapsed"><span>I used to train regularly, but not now</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">12. How would you describe yourself in a gym? <span class="req">*</span></span>
+        <p class="hint">There&rsquo;s no wrong answer &mdash; it tells us what level to pitch classes at.</p>
+        <div class="opts" data-radio="q12">
+          <label class="opt"><input type="radio" name="q12" value="Beginner"><span>New to it &mdash; I&rsquo;d want someone to show me the basics</span></label>
+          <label class="opt"><input type="radio" name="q12" value="Improver"><span>Some experience &mdash; I can get through a workout on my own, but I&rsquo;d want guidance on technique or what to do</span></label>
+          <label class="opt"><input type="radio" name="q12" value="Confident"><span>Confident &mdash; I follow my own program and know my way around the equipment</span></label>
+          <label class="opt"><input type="radio" name="q12" value="Advanced"><span>Advanced &mdash; I train to a competition or performance standard</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">13. Roughly how much would you spend per month, in total, on exercise? <span class="req">*</span></span>
+        <p class="hint">Include memberships, classes, coaching and court or venue fees. Leave out clothing, equipment and supplements.</p>
+        <div class="opts" data-radio="q13">
+          <label class="opt"><input type="radio" name="q13" value="<2000"><span>Less than &#8369;2,000</span></label>
+          <label class="opt"><input type="radio" name="q13" value="2000-2999"><span>&#8369;2,000 &ndash; &#8369;2,999</span></label>
+          <label class="opt"><input type="radio" name="q13" value="3000-4999"><span>&#8369;3,000 &ndash; &#8369;4,999</span></label>
+          <label class="opt"><input type="radio" name="q13" value="5000-7499"><span>&#8369;5,000 &ndash; &#8369;7,499</span></label>
+          <label class="opt"><input type="radio" name="q13" value="7500-9999"><span>&#8369;7,500 &ndash; &#8369;9,999</span></label>
+          <label class="opt"><input type="radio" name="q13" value="10000+"><span>&#8369;10,000 or more</span></label>
+          <label class="opt"><input type="radio" name="q13" value="Unsure"><span>I&rsquo;m not sure</span></label>
+        </div>
+      </div>
+
+      <div class="q hide" id="q14wrap">
+        <span class="qn">14. Which gym or studio do you use most often?</span>
+        <label class="fl"><span>Gym or studio</span>
+          <select name="q14" data-list="gyms"></select>
+        </label>
+        <div class="sub-q hide" data-otherfor="q14">
+          <label class="fl" style="margin-top:0"><span>Please name it</span><input type="text" name="q14_other"></label>
+        </div>
+        <label class="fl"><span>Which branch? <span style="color:var(--faint)">(optional)</span></span>
+          <input type="text" name="q14_branch" placeholder="e.g. BGC, Katipunan">
+        </label>
+      </div>
+
+      <div class="q hide" id="q15wrap">
+        <span class="qn">15. What made you choose that one?</span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q15" data-max="3">
+          <label class="opt"><input type="checkbox" name="q15" value="Location"><span>Convenient location</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Price"><span>Affordable price</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Equipment"><span>Equipment or facilities</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Coaching"><span>Quality of coaching</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Classes"><span>Classes or programs</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Schedule"><span>Opening hours or class times that suit me</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Community"><span>Friends or community</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Flexible terms"><span>Flexible membership options</span></label>
+          <label class="opt" data-other="q15"><input type="checkbox" name="q15" value="Other"><span>Something else</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q15">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q15">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q15_other"></label>
+        </div>
+      </div>
+
+      <div id="e3" class="err hide"></div>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-go="2">Back</button>
+        <button type="button" class="btn" data-go="4">Next</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4 · GOALS & NEEDS ============ -->
+  <section class="step" data-step="4" data-label="Goals &amp; needs">
+    <div class="card">
+      <div class="hero" data-hero="4">
+        <div class="heroin">
+          <svg class="mk" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path><path d="M100 96 L116 126 L100 156 L84 126 Z"></path></svg>
+          <div class="eyebrow">Section 4 of 7</div>
+          <h1>What you want</h1>
+        </div>
+      </div>
+      <p class="lede">What you&rsquo;d want out of a gym.</p>
+
+      <div class="q">
+        <span class="qn">16. What are your main fitness goals? <span class="req">*</span></span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q16" data-max="3">
+          <label class="opt"><input type="checkbox" name="q16" value="General health"><span>Improve general health</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Lose fat"><span>Lose body fat or manage weight</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Build muscle"><span>Build muscle or gain weight</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Strength"><span>Get stronger</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Endurance"><span>Improve endurance</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Mobility"><span>Improve mobility and everyday movement</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Stress"><span>Manage stress</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Social"><span>Enjoy activities and meet people</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Event prep"><span>Prepare for a sport or fitness event</span></label>
+          <label class="opt" data-other="q16"><input type="checkbox" name="q16" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="No goal" data-alone><span>No fitness goal right now</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q16">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q16">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q16_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">17. What would actually get you to join a gym? <span class="req">*</span></span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q17" data-max="3">
+          <label class="opt"><input type="checkbox" name="q17" value="Specific goal"><span>A specific health or fitness goal</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Equipment access"><span>Equipment or facilities I don&rsquo;t have elsewhere</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Coaching"><span>Coaching and guidance on how to train</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Program/accountability"><span>A structured program and accountability</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Enjoyable classes"><span>Classes or activities I&rsquo;d enjoy</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Friends/family"><span>Encouragement from friends or family</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Community"><span>A welcoming, supportive community</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Location/schedule"><span>A convenient location and schedule</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Affordable offer"><span>An affordable offer or trial</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Event prep"><span>Preparing for a sport or fitness event</span></label>
+          <label class="opt" data-other="q17"><input type="checkbox" name="q17" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Not interested" data-alone><span>I&rsquo;m not interested in joining a gym</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q17">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q17">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q17_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">18. Which gym services would you realistically use? <span class="req">*</span></span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q18" data-max="3">
+          <label class="opt"><input type="checkbox" name="q18" value="Open gym"><span>Equipment access for my own workouts</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Beginner sessions"><span>Beginner sessions teaching the basics</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Strength classes"><span>Coached strength classes</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Endurance/hybrid classes"><span>Coached endurance or hybrid classes</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Personal training"><span>Personal training</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Goal programs"><span>Structured programs for a specific goal</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Mobility classes"><span>Mobility or stretching classes</span></label>
+          <label class="opt" data-other="q18"><input type="checkbox" name="q18" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="None" data-alone><span>None of these</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q18">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q18">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q18_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">19. Which amenities would you want? <span class="req">*</span></span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q19" data-max="3">
+          <label class="opt"><input type="checkbox" name="q19" value="Co-working"><span>Co-working space</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Cafe"><span>Caf&eacute;</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Sauna"><span>Sauna</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Cold plunge"><span>Cold plunge</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Showers"><span>Showers and changing rooms</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Lockers"><span>Lockers</span></label>
+          <label class="opt" data-other="q19"><input type="checkbox" name="q19" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="None" data-alone><span>None of these</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q19">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q19">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q19_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">20. What&rsquo;s missing from your current gym or fitness options? <span class="req">*</span></span>
+        <p class="hint">Select up to three. This is the one we most want to hear about.</p>
+        <div class="opts" data-check="q20" data-max="3">
+          <label class="opt"><input type="checkbox" name="q20" value="Affordable options"><span>Affordable options</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Convenient locations"><span>Convenient locations</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Hours/schedules"><span>Opening hours or class times that suit me</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Equipment/space"><span>Enough equipment or floor space</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Coaching"><span>Good coaching or personal guidance</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Beginner support"><span>Support for beginners</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Goal programs"><span>Structured programs for my goals</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Variety"><span>A wider variety of activities</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Community"><span>A welcoming, supportive community</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Cleanliness"><span>Clean, well-kept facilities</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Amenities"><span>Amenities I&rsquo;d actually use</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Flexible payment"><span>Flexible membership or payment options</span></label>
+          <label class="opt" data-other="q20"><input type="checkbox" name="q20" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="Nothing" data-alone><span>Nothing &mdash; I&rsquo;m happy as it is</span></label>
+          <label class="opt"><input type="checkbox" name="q20" value="N/A" data-alone><span>Doesn&rsquo;t apply to me</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q20">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q20">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q20_other"></label>
+        </div>
+      </div>
+
+      <div id="e4" class="err hide"></div>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-go="3">Back</button>
+        <button type="button" class="btn" data-go="5">Next</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5 · SCHEDULE ============ -->
+  <section class="step" data-step="5" data-label="Schedule">
+    <div class="card">
+      <div class="hero" data-hero="5">
+        <div class="heroin">
+          <svg class="mk" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path><path d="M100 96 L116 126 L100 156 L84 126 Z"></path></svg>
+          <div class="eyebrow">Section 5 of 7</div>
+          <h1>When and how</h1>
+        </div>
+      </div>
+      <p class="lede">When you&rsquo;d train, and how you&rsquo;d want to pay.</p>
+
+      <div class="q">
+        <span class="qn">21. What days and times would you realistically train? <span class="req">*</span></span>
+        <p class="hint">Days &mdash; select all that apply.</p>
+        <div class="opts" data-check="q21d">
+          <label class="opt"><input type="checkbox" name="q21d" value="Weekdays"><span>Weekdays</span></label>
+          <label class="opt"><input type="checkbox" name="q21d" value="Weekends"><span>Weekends</span></label>
+          <label class="opt"><input type="checkbox" name="q21d" value="Varies" data-alone><span>My schedule varies</span></label>
+          <label class="opt"><input type="checkbox" name="q21d" value="Not training" data-alone id="q21none"><span>I don&rsquo;t plan to train</span></label>
+        </div>
+        <div id="s_times">
+          <p class="hint" style="margin-top:16px">Times &mdash; select all that apply.</p>
+          <div class="opts" data-check="q21t">
+            <label class="opt"><input type="checkbox" name="q21t" value="Before 7am"><span>Before 7 AM</span></label>
+            <label class="opt"><input type="checkbox" name="q21t" value="7-10am"><span>7 AM to before 10 AM</span></label>
+            <label class="opt"><input type="checkbox" name="q21t" value="10am-1pm"><span>10 AM to before 1 PM</span></label>
+            <label class="opt"><input type="checkbox" name="q21t" value="1-5pm"><span>1 PM to before 5 PM</span></label>
+            <label class="opt"><input type="checkbox" name="q21t" value="5-8pm"><span>5 PM to before 8 PM</span></label>
+            <label class="opt"><input type="checkbox" name="q21t" value="8pm+"><span>8 PM onward</span></label>
+            <label class="opt"><input type="checkbox" name="q21t" value="Varies" data-alone><span>My training times vary</span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">22. Which arrangement would fit your routine best? <span class="req">*</span></span>
+        <div class="opts" data-radio="q22">
+          <label class="opt"><input type="radio" name="q22" value="One gym, one focus"><span>One gym focused on my main type of training</span></label>
+          <label class="opt"><input type="radio" name="q22" value="One gym, many activities"><span>One gym offering several types of activities</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Mix of places"><span>A mix of gyms, studios and sports</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Mostly home/outdoor"><span>Mainly home or outdoor exercise, with occasional gym visits</span></label>
+          <label class="opt"><input type="radio" name="q22" value="No paid gym"><span>No paid gym use</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Unsure"><span>I&rsquo;m not sure</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">23. Which payment option would you prefer? <span class="req">*</span></span>
+        <div class="opts" data-radio="q23">
+          <label class="opt"><input type="radio" name="q23" value="Per visit"><span>Pay per visit</span></label>
+          <label class="opt"><input type="radio" name="q23" value="Session package"><span>A package of sessions or class credits</span></label>
+          <label class="opt"><input type="radio" name="q23" value="Monthly, no commitment"><span>Monthly membership, no long commitment</span></label>
+          <label class="opt"><input type="radio" name="q23" value="Longer term, lower rate"><span>A longer membership at a lower monthly rate</span></label>
+          <label class="opt"><input type="radio" name="q23" value="Short program"><span>A short program with a set start and end</span></label>
+          <label class="opt"><input type="radio" name="q23" value="Won't pay"><span>I don&rsquo;t plan to pay for gym services</span></label>
+          <label class="opt"><input type="radio" name="q23" value="Unsure"><span>I&rsquo;m not sure</span></label>
+        </div>
+      </div>
+
+      <div id="e5" class="err hide"></div>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-go="4">Back</button>
+        <button type="button" class="btn" data-go="6">Next</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 6 · JOINING & STAYING ============ -->
+  <section class="step" data-step="6" data-label="Joining &amp; staying">
+    <div class="card">
+      <div class="hero" data-hero="6">
+        <div class="heroin">
+          <svg class="mk" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path><path d="M100 96 L116 126 L100 156 L84 126 Z"></path></svg>
+          <div class="eyebrow">Section 6 of 7</div>
+          <h1>Sticking with it</h1>
+        </div>
+      </div>
+      <p class="lede">What gets in the way, and what keeps you going.</p>
+
+      <div class="q">
+        <span class="qn">24. What would be your biggest barriers to joining or using a gym regularly? <span class="req">*</span></span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q24" data-max="3">
+          <label class="opt"><input type="checkbox" name="q24" value="Cost"><span>Cost</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Travel/location"><span>Travel time or an inconvenient location</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Commitments"><span>Work, school or family commitments</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Hours/schedules"><span>Opening hours or class times that don&rsquo;t suit me</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Don't know how"><span>Not knowing how to exercise</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Intimidated"><span>Feeling intimidated or out of place</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Energy/routine"><span>Low energy, or trouble keeping a routine</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Health/injury"><span>Health concerns or injury</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Other activities"><span>I&rsquo;d rather do other activities</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="Long commitments"><span>Long membership commitments</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="No interest"><span>No interest right now</span></label>
+          <label class="opt" data-other="q24"><input type="checkbox" name="q24" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q24" value="No barriers" data-alone><span>No major barriers</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q24">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q24">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q24_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">25. Have you ever cancelled or not renewed a gym membership or class package? <span class="req">*</span></span>
+        <div class="opts" data-radio="q25">
+          <label class="opt"><input type="radio" name="q25" value="Yes"><span>Yes</span></label>
+          <label class="opt"><input type="radio" name="q25" value="No"><span>No</span></label>
+          <label class="opt"><input type="radio" name="q25" value="Never purchased"><span>I&rsquo;ve never bought one</span></label>
+        </div>
+      </div>
+
+      <div class="q hide" id="q26wrap">
+        <span class="qn">26. What was the main reason, the last time?</span>
+        <div class="opts" data-radio="q26">
+          <label class="opt"><input type="radio" name="q26" value="Too expensive"><span>It became too expensive</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Not using enough"><span>I wasn&rsquo;t using it enough to justify the cost</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Moved/location"><span>I moved, or the location became inconvenient</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Commitments changed"><span>My work, school or family commitments changed</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Schedule didn't suit"><span>The hours or class times didn&rsquo;t suit me</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Lost motivation"><span>I lost motivation or struggled to keep a routine</span></label>
+          <label class="opt"><input type="radio" name="q26" value="No results"><span>I wasn&rsquo;t seeing the results I wanted</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Poor coaching/service"><span>I wasn&rsquo;t happy with the coaching or service</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Equipment/facilities"><span>The equipment or facilities didn&rsquo;t meet my needs</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Too crowded"><span>It was too crowded</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Not welcome"><span>I didn&rsquo;t feel comfortable or welcome</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Health/injury"><span>I had a health concern or injury</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Switched"><span>I switched to another gym or activity</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Program ended"><span>My program or event prep ended</span></label>
+          <label class="opt" data-other="q26"><input type="radio" name="q26" value="Other"><span>Something else</span></label>
+        </div>
+        <div class="sub-q hide" data-otherfor="q26">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q26_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">27. From your experience, what makes you keep going to a gym? <span class="req">*</span></span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q27" data-max="3">
+          <label class="opt"><input type="checkbox" name="q27" value="Location"><span>A convenient location</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Schedule fit"><span>Hours or class times that fit my routine</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Value"><span>Affordable pricing and good value</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Coaching/program"><span>Coaching, or a clear program</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Friendly staff"><span>Friendly staff and coaches</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Seeing progress"><span>Seeing progress toward my goals</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Enjoyment"><span>Actually enjoying the workouts</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Community"><span>Friends, or a community I like</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Event goal"><span>Preparing for an event or goal</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Equipment/amenities"><span>The equipment and amenities</span></label>
+          <label class="opt" data-other="q27"><input type="checkbox" name="q27" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="Nothing has" data-alone><span>Nothing has kept me consistent</span></label>
+          <label class="opt"><input type="checkbox" name="q27" value="N/A" data-alone><span>I&rsquo;ve never used a gym</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q27">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q27">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q27_other"></label>
+        </div>
+      </div>
+
+      <div id="e6" class="err hide"></div>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-go="5">Back</button>
+        <button type="button" class="btn" data-go="7">Next</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 7 · LAST BIT ============ -->
+  <section class="step" data-step="7" data-label="Last bit">
+    <div class="card">
+      <div class="hero" data-hero="7">
+        <div class="heroin">
+          <svg class="mk" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 20 L168 180 L140 180 L100 74 L60 180 L32 180 Z"></path><path d="M100 96 L116 126 L100 156 L84 126 Z"></path></svg>
+          <div class="eyebrow">Section 7 of 7</div>
+          <h1>Nearly done</h1>
+        </div>
+      </div>
+      <p class="lede">Two questions and an open box.</p>
+
+      <div class="q">
+        <span class="qn">28. What&rsquo;s your connection to Awaken? <span class="req">*</span></span>
+        <div class="opts" data-radio="q28">
+          <label class="opt"><input type="radio" name="q28" value="Current member"><span>Current member</span></label>
+          <label class="opt"><input type="radio" name="q28" value="Former member"><span>Former member</span></label>
+          <label class="opt"><input type="radio" name="q28" value="Attended once"><span>I&rsquo;ve been to a class or event, but I&rsquo;m not a member</span></label>
+          <label class="opt"><input type="radio" name="q28" value="Know of it"><span>I know about Awaken but have never been</span></label>
+          <label class="opt"><input type="radio" name="q28" value="Never heard"><span>I hadn&rsquo;t heard of Awaken before this survey</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">29. Where did you find this survey? <span class="req">*</span></span>
+        <div class="opts" data-radio="q29">
+          <label class="opt"><input type="radio" name="q29" value="Awaken social/gym"><span>Awaken&rsquo;s social media or at the gym</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Neighborhood/condo"><span>A neighbourhood or condo community</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Fitness/sports group"><span>A fitness or sports group</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Work/school"><span>Work or school</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Friend/family"><span>A friend or family member</span></label>
+          <label class="opt" data-other="q29"><input type="radio" name="q29" value="Other"><span>Somewhere else</span></label>
+        </div>
+        <div class="sub-q hide" data-otherfor="q29">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q29_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">30. Anything else you&rsquo;d want from a gym that we didn&rsquo;t ask about?</span>
+        <p class="hint">Optional, and there&rsquo;s no wrong answer. This is often the most useful box on the whole form.</p>
+        <label class="fl" style="margin-top:9px">
+          <textarea name="q30" placeholder="Tell us anything&hellip;"></textarea>
+        </label>
+      </div>
+
+      <div id="e7" class="err hide"></div>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-go="6">Back</button>
+        <button type="button" class="btn" id="submitBtn">Submit my answers</button>
+      </div>
+    </div>
+  </section>
+
+  </form>
+
+  <!-- ============ DONE ============ -->
+  <section class="step" data-step="99" data-label="Done">
+    <div class="card end">
+      <div class="ring">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.4" style="width:30px;height:30px">
+          <path d="M4.5 12.5l5 5 10-11"></path>
+        </svg>
+      </div>
+      <h1>Thank you &mdash; that&rsquo;s in</h1>
+      <p>You&rsquo;re entered into the draw for the free Awaken membership. If you win, we&rsquo;ll call the number you gave us, and you&rsquo;ll claim the prize in person at the gym &mdash; please bring that phone.</p>
+      <p style="margin-top:14px"><b id="donenum" style="color:var(--ink)"></b></p>
+
+      <div class="refbox">
+        <div class="entries"><b id="entryCount">1</b> entry so far</div>
+        <h2 style="color:var(--teal)">Share it, earn more</h2>
+        <p style="margin:4px auto 0">Every friend who completes the survey using your code earns you one more entry, up to <b id="capWords2">5 extra</b>.</p>
+
+        <canvas id="refqr" aria-label="Your referral QR code" style="margin-top:16px"></canvas>
+        <div class="refcode" id="refcode">&mdash;</div>
+
+        <div class="refbtns">
+          <button type="button" class="btn" id="shareBtn">Share my code</button>
+          <button type="button" class="btn ghost" id="copyBtn">Copy the link</button>
+          <button type="button" class="btn ghost" id="saveQrBtn">Save the QR</button>
+        </div>
+        <div class="reflink" id="reflink"></div>
+        <p style="margin:12px auto 0;font-size:12px;color:var(--faint)">Your friend must also be 18 or over, live in Metro Manila, and complete the survey.</p>
+      </div>
+
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+    </div>
+  </section>
+
+
+
+
+  <!-- ============ OUTSIDE METRO MANILA ============ -->
+  <section class="step" data-step="97" data-label="Thank you">
+    <div class="card end">
+      <h1>Thank you for your interest</h1>
+      <p>For this round, we&rsquo;re hearing from Metro Manila residents. We hope to include more areas in future surveys &mdash; and you&rsquo;re always welcome at Awaken.</p>
+
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+    </div>
+  </section>
+
+  <!-- ============ UNDER 18 ============ -->
+  <section class="step" data-step="98" data-label="Thank you">
+    <div class="card end">
+      <h1>Thank you for your interest</h1>
+      <p>For this round, we&rsquo;re hearing from adults aged 18 and over. If you&rsquo;d like to train at Awaken, come by with a parent or guardian and we&rsquo;ll talk you through the options.</p>
+
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+    </div>
+  </section>
+
+</div>
+<script id="cfg" type="application/json">{{ cfg|safe }}</script>
+<script>
+(function(){
+"use strict";
+var CFG = {};
+try { CFG = JSON.parse(document.getElementById("cfg").textContent) || {}; }
+catch (e) { CFG = {}; }
+
+/* ---------------------------------------------------------------
+   Lists. Kept here, not in the HTML, so they are the one place to
+   edit when a gym opens or a city is missing.
+   --------------------------------------------------------------- */
+var NCR = ["Caloocan","Las Piñas","Makati","Malabon","Mandaluyong","Manila",
+  "Marikina","Muntinlupa","Navotas","Parañaque","Pasay","Pasig","Pateros",
+  "Quezon City","San Juan","Taguig","Valenzuela"];
+
+var NEAR = ["Antipolo","Bacoor","Los Baños","Biñan","Cainta",
+  "Calamba","Dasmariñas","General Trias","Imus","Marilao","Meycauayan",
+  "Rodriguez (Montalban)","San Jose del Monte","San Mateo","San Pedro",
+  "Santa Rosa","Taytay"];
+
+var PROV = ["Rizal","Cavite","Laguna","Bulacan","Batangas","Pampanga","Bataan",
+  "Tarlac","Quezon","Nueva Ecija","Zambales","Pangasinan","--",
+  "Abra","Agusan del Norte","Agusan del Sur","Aklan","Albay","Antique","Apayao",
+  "Aurora","Basilan","Batanes","Benguet","Biliran","Bohol","Bukidnon","Cagayan",
+  "Camarines Norte","Camarines Sur","Camiguin","Capiz","Catanduanes","Cebu",
+  "Cotabato","Davao de Oro","Davao del Norte","Davao del Sur","Davao Occidental",
+  "Davao Oriental","Dinagat Islands","Eastern Samar","Guimaras","Ifugao",
+  "Ilocos Norte","Ilocos Sur","Iloilo","Isabela","Kalinga","La Union",
+  "Lanao del Norte","Lanao del Sur","Leyte","Maguindanao del Norte",
+  "Maguindanao del Sur","Marinduque","Masbate","Misamis Occidental",
+  "Misamis Oriental","Mountain Province","Negros Occidental","Negros Oriental",
+  "Northern Samar","Nueva Vizcaya","Occidental Mindoro","Oriental Mindoro",
+  "Palawan","Quirino","Romblon","Samar","Sarangani","Siquijor","Sorsogon",
+  "South Cotabato","Southern Leyte","Sultan Kudarat","Sulu","Surigao del Norte",
+  "Surigao del Sur","Tawi-Tawi","Zamboanga del Norte","Zamboanga del Sur",
+  "Zamboanga Sibugay"];
+
+var GYMS = {
+  "Gyms": ["Anytime Fitness","Gold's Gym","Fitness First","Slimmers World",
+           "360 Fitness Club","UFC Gym","Gorilla Fitness","Elorde Boxing Gym",
+           "A CrossFit box","An independent or local gym",
+           "My condo or office building gym"],
+  "Studios": ["Plana Forma","Ride Revolution","Saddle Row","Electric Studio",
+              "Beyond Yoga","A Pilates studio","A yoga studio",
+              "A boxing or martial arts studio"]
+};
+
+/* ---------------------------------------------------------------
+   Select population
+   --------------------------------------------------------------- */
+function opt(v, label){ var o=document.createElement("option"); o.value=v; o.textContent=label||v; return o; }
+
+function fill(sel){
+  var kind = sel.getAttribute("data-list");
+  sel.appendChild(opt("", "Please choose…"));
+  if (kind === "ncr"){
+    NCR.forEach(function(c){ sel.appendChild(opt(c)); });
+  } else if (kind === "prov"){
+    var g1 = document.createElement("optgroup"); g1.label = "Near Metro Manila";
+    var g2 = document.createElement("optgroup"); g2.label = "Everywhere else";
+    var into = g1;
+    PROV.forEach(function(p){
+      if (p === "--"){ into = g2; return; }
+      into.appendChild(opt(p));
+    });
+    sel.appendChild(g1); sel.appendChild(g2);
+  } else if (kind === "all"){
+    var a = document.createElement("optgroup"); a.label = "Metro Manila";
+    NCR.forEach(function(c){ a.appendChild(opt(c)); });
+    var b = document.createElement("optgroup"); b.label = "Nearby";
+    NEAR.forEach(function(c){ b.appendChild(opt(c)); });
+    sel.appendChild(a); sel.appendChild(b);
+    sel.appendChild(opt("Somewhere else"));
+  } else if (kind === "gyms"){
+    Object.keys(GYMS).forEach(function(k){
+      var g = document.createElement("optgroup"); g.label = k;
+      GYMS[k].forEach(function(n){ g.appendChild(opt(n)); });
+      sel.appendChild(g);
+    });
+    sel.appendChild(opt("Other", "Other — not listed"));
+  }
+}
+[].forEach.call(document.querySelectorAll("select[data-list]"), fill);
+
+/* ---------------------------------------------------------------
+   Helpers
+   --------------------------------------------------------------- */
+function $(s, r){ return (r||document).querySelector(s); }
+function all(s, r){ return [].slice.call((r||document).querySelectorAll(s)); }
+function val(name){ var el = document.querySelector('[name="'+name+'"]'); return el ? el.value.trim() : ""; }
+function picked(name){ var el = document.querySelector('input[name="'+name+'"]:checked'); return el ? el.value : ""; }
+function ticked(name){ return all('input[name="'+name+'"]:checked').map(function(i){ return i.value; }); }
+function show(el, on){ if (el) el.classList[on ? "remove" : "add"]("hide"); }
+
+/* Paint the chosen rows. A radio or checkbox on its own is a small
+   target on a phone; the whole row has to look chosen, not just the dot. */
+function paint(){
+  all(".opt").forEach(function(l){
+    var i = l.querySelector("input");
+    if (i) l.classList.toggle("sel", i.checked);
+  });
+}
+
+/* ---------------------------------------------------------------
+   "Select alone" options, and the cap of three
+   --------------------------------------------------------------- */
+function groupRules(grp){
+  var name = grp.getAttribute("data-check");
+  var max  = parseInt(grp.getAttribute("data-max") || "0", 10);
+  var boxes = all('input[name="'+name+'"]', grp);
+  var alone = boxes.filter(function(b){ return b.hasAttribute("data-alone") && b.checked; });
+
+  if (alone.length){
+    boxes.forEach(function(b){
+      if (b !== alone[0]){ b.checked = false; b.disabled = true; b.closest(".opt").classList.add("lock"); }
+    });
+  } else {
+    boxes.forEach(function(b){ b.disabled = false; b.closest(".opt").classList.remove("lock"); });
+    if (max){
+      var n = boxes.filter(function(b){ return b.checked; }).length;
+      if (n >= max){
+        boxes.forEach(function(b){
+          if (!b.checked){ b.disabled = true; b.closest(".opt").classList.add("lock"); }
+        });
+      }
+    }
+  }
+
+  if (max){
+    var c = $('[data-cntfor="'+name+'"]');
+    if (c){
+      var k = boxes.filter(function(b){ return b.checked; }).length;
+      c.textContent = k + " of " + max + " chosen" + (k >= max ? " — untick one to change your mind" : "");
+      c.classList.toggle("full", k >= max);
+    }
+  }
+}
+function allGroups(){ all("[data-check]").forEach(groupRules); }
+
+/* ---------------------------------------------------------------
+   "Something else" text boxes
+   --------------------------------------------------------------- */
+function otherBoxes(){
+  all("[data-other]").forEach(function(lab){
+    var name = lab.getAttribute("data-other");
+    var inp = lab.querySelector("input");
+    var box = $('[data-otherfor="'+name+'"]');
+    if (box) show(box, inp.checked);
+  });
+  // the gym dropdown is a select, not a tick
+  var g = document.querySelector('select[name="q14"]');
+  if (g) show($('[data-otherfor="q14"]'), g.value === "Other");
+}
+
+/* ---------------------------------------------------------------
+   Everything that appears or disappears
+   --------------------------------------------------------------- */
+function conditionals(){
+  var q1 = picked("q1");
+  show($("#s_ncr"),  q1 === "Within Metro Manila");
+
+  var q5 = picked("q5");
+  show($("#s_work"), q5 === "At a workplace or school" || q5 === "Mix of home and workplace" || q5 === "Varies");
+
+  var q8 = picked("q8");
+  var pays = (q8 === "Member" || q8 === "Pay per visit");
+  show($("#q14wrap"), pays);
+  show($("#q15wrap"), pays && !!val("q14"));
+
+  // "I don't plan to train" hides the time choices rather than leaving
+  // somebody to answer a question that cannot apply to them.
+  var noTrain = $("#q21none").checked;
+  show($("#s_times"), !noTrain);
+  if (noTrain) all('input[name="q21t"]').forEach(function(b){ b.checked = false; });
+
+  show($("#q26wrap"), picked("q25") === "Yes");
+
+  otherBoxes();
+}
+
+/* ---------------------------------------------------------------
+   Philippine mobile numbers
+   09XX, +639XX, 639XX and 9XX all describe the same person, so they
+   are reduced to one shape before anything is compared.
+   --------------------------------------------------------------- */
+function normPH(raw){
+  var d = String(raw || "").replace(/\D/g, "");
+  d = d.replace(/^0+/, "");
+  if (d.length === 12 && d.indexOf("63") === 0) d = d.slice(2);
+  return /^9\d{9}$/.test(d) ? "+63" + d : null;
+}
+function pretty(n){
+  if (!n) return "";
+  var d = n.slice(3);
+  return "+63 " + d.slice(0,3) + " " + d.slice(3,6) + " " + d.slice(6);
+}
+/* An address with no @ or no dot is a typo, not a preference. Anything
+   stricter than this starts rejecting real addresses. */
+function emailOK(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || "").trim()); }
+
+var mob = document.querySelector('[name="q3_mobile"]');
+var shown = $("#normshow");
+mob.addEventListener("input", function(){
+  var n = normPH(mob.value);
+  if (!mob.value.trim()){ shown.textContent = ""; shown.style.color = ""; return; }
+  if (n){ shown.textContent = "✓ " + pretty(n); shown.style.color = "var(--teal)"; }
+  else  { shown.textContent = "That doesn’t look like a Philippine mobile number yet."; shown.style.color = "var(--red)"; }
+});
+
+/* ---------------------------------------------------------------
+   What each step insists on
+   --------------------------------------------------------------- */
+var RULES = {
+  1: function(){
+    var m = [];
+    var where = picked("q1");
+    if (!where) m.push("1");
+    if (where === "Within Metro Manila" && !val("q1_ncr")) m.push("1 \u2014 your city");
+    if (!picked("q2")) m.push("2");
+    if (!val("q3_name")) m.push("3 \u2014 your name");
+    if (!normPH(val("q3_mobile"))) m.push("3 \u2014 a valid mobile number");
+    if (!emailOK(val("q3_email"))) m.push("3 \u2014 a valid email address");
+    return m;
+  },
+  2: function(){
+    var m = [];
+    if (!picked("q4")) m.push("4");
+    if (picked("q4") === "Other" && !val("q4_other")) m.push("4 \u2014 tell us what");
+    if (!picked("q5")) m.push("5");
+    if (!$("#s_work").classList.contains("hide") && !val("q5_city")) m.push("5 \u2014 the city you work or study in");
+    if (!picked("q6")) m.push("6");
+    if (!picked("q7")) m.push("7");
+    return m;
+  },
+  3: function(){
+    var m = [];
+    if (!picked("q8")) m.push("8");
+    if (!ticked("q9").length) m.push("9");
+    if (ticked("q9").indexOf("Other") > -1 && !val("q9_other")) m.push("9 \u2014 tell us what");
+    if (!picked("q10")) m.push("10");
+    if (!picked("q11")) m.push("11");
+    if (!picked("q12")) m.push("12");
+    if (!picked("q13")) m.push("13");
+    if (!$("#q14wrap").classList.contains("hide") && !val("q14")) m.push("14");
+    if (val("q14") === "Other" && !val("q14_other")) m.push("14 \u2014 name it");
+    if (!$("#q15wrap").classList.contains("hide") && !ticked("q15").length) m.push("15");
+    if (ticked("q15").indexOf("Other") > -1 && !val("q15_other")) m.push("15 \u2014 tell us what");
+    return m;
+  },
+  4: function(){
+    var m = [];
+    [16,17,18,19,20].forEach(function(n){
+      var q = "q" + n, t = ticked(q);
+      if (!t.length) m.push(String(n));
+      if (t.indexOf("Other") > -1 && !val(q + "_other")) m.push(n + " \u2014 tell us what");
+    });
+    return m;
+  },
+  5: function(){
+    var m = [];
+    if (!ticked("q21d").length) m.push("21 \u2014 the days");
+    if (!$("#s_times").classList.contains("hide") && !ticked("q21t").length) m.push("21 \u2014 the times");
+    if (!picked("q22")) m.push("22");
+    if (!picked("q23")) m.push("23");
+    return m;
+  },
+  6: function(){
+    var m = [];
+    if (!ticked("q24").length) m.push("24");
+    if (ticked("q24").indexOf("Other") > -1 && !val("q24_other")) m.push("24 \u2014 tell us what");
+    if (!picked("q25")) m.push("25");
+    if (!$("#q26wrap").classList.contains("hide") && !picked("q26")) m.push("26");
+    if (picked("q26") === "Other" && !val("q26_other")) m.push("26 \u2014 tell us what");
+    if (!ticked("q27").length) m.push("27");
+    if (ticked("q27").indexOf("Other") > -1 && !val("q27_other")) m.push("27 \u2014 tell us what");
+    return m;
+  },
+  7: function(){
+    var m = [];
+    if (!picked("q28")) m.push("28");
+    if (!picked("q29")) m.push("29");
+    if (picked("q29") === "Other" && !val("q29_other")) m.push("29 \u2014 tell us what");
+    return m;
+  }
+};
+
+function complain(step, missing){
+  var box = $("#e" + step);
+  if (!box) return;
+  if (!missing.length){ box.classList.add("hide"); return; }
+  box.textContent = (missing.length === 1 ? "Still needed: question " : "Still needed: questions ") + missing.join(", ") + ".";
+  box.classList.remove("hide");
+  box.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+/* ---------------------------------------------------------------
+   Stepping
+   --------------------------------------------------------------- */
+var LAST = 7;
+function goto(n){
+  all(".step").forEach(function(s){
+    s.classList.toggle("on", s.getAttribute("data-step") === String(n));
+  });
+  var pct = (n === 99) ? 100 : (n >= 97 ? 0 : Math.round((n / (LAST + 1)) * 100));
+  $("#prog").style.width = pct + "%";
+  var cur = document.querySelector('.step[data-step="' + n + '"]');
+  $("#plab").textContent = cur ? cur.getAttribute("data-label") : "";
+  $("#pnum").textContent = (n >= 1 && n <= LAST) ? ("Section " + n + " of " + LAST) : "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.addEventListener("click", function(ev){
+  var b = ev.target.closest("[data-go]");
+  if (!b) return;
+  var to = parseInt(b.getAttribute("data-go"), 10);
+  var from = parseInt(document.querySelector(".step.on").getAttribute("data-step"), 10);
+
+  // going back never asks for anything
+  if (to < from || from === 97 || from === 98){ goto(to); return; }
+
+  if (from === 0){
+    var ok = document.querySelector('[name="c_privacy"]').checked &&
+             document.querySelector('[name="c_promo"]').checked;
+    var e = $("#e_consent");
+    if (!ok){
+      e.textContent = "Please tick both required boxes so we can accept your answers.";
+      e.classList.remove("hide");
+      return;
+    }
+    e.classList.add("hide");
+    goto(1);
+    return;
+  }
+
+  var missing = RULES[from] ? RULES[from]() : [];
+  if (missing.length){ complain(from, missing); return; }
+  complain(from, []);
+
+  if (from === 1){
+    /* Ask the server once, here, whether this number is already spent.
+       Finding that out after thirty questions is the version somebody
+       gives up on us over. */
+    if (sending) return;
+    sending = true;
+    post("/survey/check", { mobile: val("q3_mobile") }, function(status, j){
+      sending = false;
+      if (status === 200 && j.ok === false && j.why === "used"){
+        $("#e1").textContent = "That mobile number has already been entered. One entry per person.";
+        $("#e1").classList.remove("hide");
+        $("#e1").scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      // screened out, and that is the end of it
+      if (picked("q1") === "Outside Metro Manila"){ screenOut("area"); return; }
+      if (picked("q2") === "Under 18"){ screenOut("age"); return; }
+      goto(to);
+    });
+    return;
+  }
+  goto(to);
+});
+
+/* ---------------------------------------------------------------
+   The device details, captured for one purpose only: spotting the
+   same phone answering five times. Never used to reject anybody.
+   The IP address is added server-side, where it actually lives.
+   --------------------------------------------------------------- */
+/* ---------------------------------------------------------------
+   The server
+   The page sends answers and is told what they came to. It does not
+   decide whether somebody qualifies, what their code is, or how many
+   entries they have - a form that ruled on its own outcome would have
+   whatever outcome the person wanted.
+   --------------------------------------------------------------- */
+var sending = false;
+
+function post(path, body, done){
+  fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then(function(r){
+    return r.json().catch(function(){ return {}; })
+            .then(function(j){ done(r.status, j || {}); });
+  }).catch(function(){ done(0, {}); });
+}
+
+function device(){
+  var s = window.screen || {};
+  return {
+    user_agent: navigator.userAgent || "",
+    screen: (s.width || 0) + "x" + (s.height || 0),
+    viewport: window.innerWidth + "x" + window.innerHeight,
+    pixel_ratio: window.devicePixelRatio || 1,
+    timezone: (function(){ try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e){ return ""; } })(),
+    tz_offset_min: new Date().getTimezoneOffset(),
+    language: navigator.language || "",
+    languages: (navigator.languages || []).join(","),
+    platform: navigator.platform || "",
+    touch_points: navigator.maxTouchPoints || 0,
+    note: "IP address is recorded server-side"
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   A small QR encoder: byte mode, error level M, versions 1-10.
+   Written in rather than pulled from a CDN, so the page keeps working with
+   no network - which is the whole point of a code somebody scans at a gym.
+   --------------------------------------------------------------------------- */
+var QR = (function(){
+  "use strict";
+
+  // data codewords, ec codewords per block, and the block split, at level M
+  var SPEC = {
+    1:[16,10,[16]],                       2:[28,16,[28]],
+    3:[44,26,[44]],                       4:[64,18,[32,32]],
+    5:[86,24,[43,43]],                    6:[108,16,[27,27,27,27]],
+    7:[124,18,[31,31,31,31]],             8:[154,22,[38,38,39,39]],
+    9:[182,22,[36,36,36,37,37]],         10:[216,26,[43,43,43,43,44]]
+  };
+  var ALIGN = {1:[],2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],
+               7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50]};
+  var VINFO = {7:0x07C94, 8:0x085BC, 9:0x09A99, 10:0x0A4D3};
+
+  // GF(256), primitive polynomial 0x11d
+  var EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  (function(){
+    var x = 1;
+    for (var i = 0; i < 255; i++){
+      EXP[i] = x; LOG[x] = i;
+      x <<= 1; if (x & 0x100) x ^= 0x11d;
+    }
+    for (i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  })();
+  function mul(a,b){ return (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]]; }
+
+  function genPoly(n){
+    var g = [1];
+    for (var i = 0; i < n; i++){
+      var ng = new Array(g.length + 1).fill(0);
+      for (var j = 0; j < g.length; j++){
+        ng[j]   ^= g[j];                  // shift up: multiply by x
+        ng[j+1] ^= mul(g[j], EXP[i]);     // and add the root
+      }
+      g = ng;
+    }
+    return g;
+  }
+
+  function ecc(data, n){
+    var g = genPoly(n), res = data.concat(new Array(n).fill(0));
+    for (var i = 0; i < data.length; i++){
+      var c = res[i];
+      if (c === 0) continue;
+      for (var j = 0; j < g.length; j++) res[i+j] ^= mul(g[j], c);
+    }
+    return res.slice(data.length);
+  }
+
+  function utf8(str){
+    var out = [], s = unescape(encodeURIComponent(str));
+    for (var i = 0; i < s.length; i++) out.push(s.charCodeAt(i));
+    return out;
+  }
+
+  function encode(text){
+    var bytes = utf8(text), ver = 0;
+    for (var v = 1; v <= 10; v++){
+      var cb = (v < 10) ? 8 : 16;
+      if (4 + cb + 8 * bytes.length <= SPEC[v][0] * 8){ ver = v; break; }
+    }
+    if (!ver) throw new Error("too long for this encoder");
+
+    var spec = SPEC[ver], total = spec[0], ecLen = spec[1], blocks = spec[2];
+    var cntBits = (ver < 10) ? 8 : 16;
+
+    // bit stream
+    var bits = [];
+    function put(v, n){ for (var i = n - 1; i >= 0; i--) bits.push((v >> i) & 1); }
+    put(4, 4);
+    put(bytes.length, cntBits);
+    bytes.forEach(function(b){ put(b, 8); });
+    for (var t = 0; t < 4 && bits.length < total * 8; t++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+    var dcw = [];
+    for (var i = 0; i < bits.length; i += 8){
+      var b = 0; for (var k = 0; k < 8; k++) b = (b << 1) | bits[i+k];
+      dcw.push(b);
+    }
+    var pad = [0xEC, 0x11], pi = 0;
+    while (dcw.length < total) dcw.push(pad[pi++ % 2]);
+
+    // split into blocks, ec each, then interleave
+    var dblocks = [], eblocks = [], at = 0;
+    blocks.forEach(function(len){
+      var d = dcw.slice(at, at + len); at += len;
+      dblocks.push(d); eblocks.push(ecc(d, ecLen));
+    });
+    var out = [], maxD = Math.max.apply(null, blocks);
+    for (i = 0; i < maxD; i++)
+      dblocks.forEach(function(d){ if (i < d.length) out.push(d[i]); });
+    for (i = 0; i < ecLen; i++)
+      eblocks.forEach(function(e){ out.push(e[i]); });
+
+    return { ver: ver, codewords: out };
+  }
+
+  /* ---- module placement ---- */
+  function build(ver, codewords){
+    var n = 17 + 4 * ver;
+    var m = [], fixed = [];
+    for (var i = 0; i < n; i++){ m.push(new Array(n).fill(0)); fixed.push(new Array(n).fill(0)); }
+    function set(r, c, v){ m[r][c] = v; fixed[r][c] = 1; }
+
+    function finder(r, c){
+      for (var dr = -1; dr <= 7; dr++) for (var dc = -1; dc <= 7; dc++){
+        var rr = r + dr, cc = c + dc;
+        if (rr < 0 || cc < 0 || rr >= n || cc >= n) continue;
+        var on = (dr >= 0 && dr <= 6 && (dc === 0 || dc === 6)) ||
+                 (dc >= 0 && dc <= 6 && (dr === 0 || dr === 6)) ||
+                 (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4);
+        set(rr, cc, on ? 1 : 0);
+      }
+    }
+    finder(0, 0); finder(0, n - 7); finder(n - 7, 0);
+
+    for (var i2 = 8; i2 < n - 8; i2++){
+      set(6, i2, i2 % 2 === 0 ? 1 : 0);
+      set(i2, 6, i2 % 2 === 0 ? 1 : 0);
+    }
+
+    var ac = ALIGN[ver];
+    ac.forEach(function(r){ ac.forEach(function(c){
+      if ((r <= 8 && c <= 8) || (r <= 8 && c >= n - 9) || (r >= n - 9 && c <= 8)) return;
+      for (var dr = -2; dr <= 2; dr++) for (var dc = -2; dc <= 2; dc++){
+        var on = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
+        set(r + dr, c + dc, on ? 1 : 0);
+      }
+    }); });
+
+    set(n - 8, 8, 1);  // the always-dark module
+
+    // reserve the format areas
+    for (i2 = 0; i2 <= 8; i2++){
+      if (i2 !== 6){ if (!fixed[8][i2]) set(8, i2, 0); if (!fixed[i2][8]) set(i2, 8, 0); }
+    }
+    for (i2 = 0; i2 < 8; i2++){
+      if (!fixed[8][n-1-i2]) set(8, n-1-i2, 0);
+      if (!fixed[n-1-i2][8]) set(n-1-i2, 8, 0);
+    }
+    if (ver >= 7){
+      for (i2 = 0; i2 < 18; i2++){
+        var r = Math.floor(i2 / 3), c = i2 % 3;
+        set(n - 11 + c, r, 0); set(r, n - 11 + c, 0);
+      }
+    }
+
+    // data, zigzagging up and down in column pairs
+    var bitAt = 0, dir = -1, row = n - 1;
+    for (var col = n - 1; col > 0; col -= 2){
+      if (col === 6) col--;
+      for (;;){
+        for (var k = 0; k < 2; k++){
+          var cc = col - k;
+          if (!fixed[row][cc]){
+            var bit = 0;
+            if (bitAt < codewords.length * 8)
+              bit = (codewords[bitAt >> 3] >> (7 - (bitAt & 7))) & 1;
+            m[row][cc] = bit; bitAt++;
+          }
+        }
+        row += dir;
+        if (row < 0 || row >= n){ row -= dir; dir = -dir; break; }
+      }
+    }
+    return { m: m, fixed: fixed, n: n };
+  }
+
+  var MASKS = [
+    function(i,j){ return (i+j) % 2 === 0; },
+    function(i){ return i % 2 === 0; },
+    function(i,j){ return j % 3 === 0; },
+    function(i,j){ return (i+j) % 3 === 0; },
+    function(i,j){ return (Math.floor(i/2) + Math.floor(j/3)) % 2 === 0; },
+    function(i,j){ return (i*j) % 2 + (i*j) % 3 === 0; },
+    function(i,j){ return ((i*j) % 2 + (i*j) % 3) % 2 === 0; },
+    function(i,j){ return ((i+j) % 2 + (i*j) % 3) % 2 === 0; }
+  ];
+
+  function bch(v, gen, bits){
+    var d = v << (bits);
+    var genBits = gen.toString(2).length - 1;
+    while (d.toString(2).length - 1 >= genBits + 0 && (d >> genBits) !== 0){
+      d ^= gen << (d.toString(2).length - 1 - genBits);
+    }
+    return d;
+  }
+
+  function formatBits(mask){
+    var v = (0x00 << 3) | mask;            // 00 = error level M
+    var d = v << 10;
+    for (var i = 14; i >= 10; i--) if ((d >> i) & 1) d ^= 0x537 << (i - 10);
+    return ((v << 10) | d) ^ 0x5412;
+  }
+
+  function penalty(m, n){
+    var p = 0, i, j, run, c;
+    for (i = 0; i < n; i++){
+      run = 1;
+      for (j = 1; j < n; j++){
+        if (m[i][j] === m[i][j-1]) run++; else { if (run >= 5) p += run - 2; run = 1; }
+      }
+      if (run >= 5) p += run - 2;
+    }
+    for (j = 0; j < n; j++){
+      run = 1;
+      for (i = 1; i < n; i++){
+        if (m[i][j] === m[i-1][j]) run++; else { if (run >= 5) p += run - 2; run = 1; }
+      }
+      if (run >= 5) p += run - 2;
+    }
+    for (i = 0; i < n - 1; i++) for (j = 0; j < n - 1; j++)
+      if (m[i][j] === m[i][j+1] && m[i][j] === m[i+1][j] && m[i][j] === m[i+1][j+1]) p += 3;
+    var pat = [1,0,1,1,1,0,1,0,0,0,0];
+    function hit(get){
+      for (var s = 0; s + 11 <= n; s++){
+        var okf = true;
+        for (var t = 0; t < 11; t++) if (get(s + t) !== pat[t]){ okf = false; break; }
+        if (okf) return true;
+      }
+      return false;
+    }
+    for (i = 0; i < n; i++){
+      for (var s = 0; s + 11 <= n; s++){
+        var a = true, b = true;
+        for (var t = 0; t < 11; t++){
+          if (m[i][s+t] !== pat[t]) a = false;
+          if (m[s+t][i] !== pat[t]) b = false;
+        }
+        if (a) p += 40;
+        if (b) p += 40;
+      }
+    }
+    var dark = 0;
+    for (i = 0; i < n; i++) for (j = 0; j < n; j++) dark += m[i][j];
+    var pct = dark * 100 / (n * n);
+    p += Math.floor(Math.abs(pct - 50) / 5) * 10;
+    return p;
+  }
+
+  function matrix(text, forceMask){
+    var e = encode(text);
+    var b = build(e.ver, e.codewords), n = b.n;
+    var best = null, bestScore = Infinity, bestMask = 0;
+    for (var mask = 0; mask < 8; mask++){
+      if (forceMask != null && mask !== forceMask) continue;
+      var g = b.m.map(function(r){ return r.slice(); });
+      for (var i = 0; i < n; i++) for (var j = 0; j < n; j++)
+        if (!b.fixed[i][j] && MASKS[mask](i, j)) g[i][j] ^= 1;
+
+      var f = formatBits(mask);
+      for (var k = 0; k < 15; k++){
+        var bit = (f >> (14 - k)) & 1;
+        if (k < 6) g[8][k] = bit;
+        else if (k === 6) g[8][7] = bit;
+        else if (k === 7) g[8][8] = bit;
+        else if (k === 8) g[7][8] = bit;
+        else g[14 - k][8] = bit;
+
+        if (k < 7) g[n - 1 - k][8] = bit;
+        else g[8][n - 15 + k] = bit;
+      }
+      g[n - 8][8] = 1;
+
+      if (e.ver >= 7){
+        var vi = VINFO[e.ver];
+        for (k = 0; k < 18; k++){
+          var vb = (vi >> k) & 1, r = Math.floor(k / 3), c = k % 3;
+          g[n - 11 + c][r] = vb; g[r][n - 11 + c] = vb;
+        }
+      }
+
+      var sc = penalty(g, n);
+      if (sc < bestScore){ bestScore = sc; best = g; bestMask = mask; }
+    }
+    return best;
+  }
+
+  function draw(canvas, text, opts){
+    opts = opts || {};
+    var m = matrix(text), n = m.length;
+    var quiet = 4, scale = opts.scale || 6;
+    var size = (n + quiet * 2) * scale;
+    canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = opts.bg || "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = opts.fg || "#000000";
+    for (var i = 0; i < n; i++) for (var j = 0; j < n; j++)
+      if (m[i][j]) ctx.fillRect((j + quiet) * scale, (i + quiet) * scale, scale, scale);
+    return canvas;
+  }
+
+  return { matrix: matrix, draw: draw };
+})();
+
+
+/* ---------------------------------------------------------------
+   Referrals
+   Each friend who finishes with your code earns you one more entry.
+
+   NOTE FOR THE REAL BUILD: this code is generated in the browser so
+   the preview works. On the server it must be issued there, stored
+   against the entry, and RANDOM - never derived from the mobile
+   number. There are only about a billion PH mobile numbers, so a
+   code that is a hash of one can be worked backwards in minutes,
+   and the QR gets shared around.
+   --------------------------------------------------------------- */
+var SHARE_BASE = CFG.share_base || "/survey";
+var REFERRAL_CAP = (CFG.cap == null) ? 5 : CFG.cap;
+
+var capTxt = REFERRAL_CAP ? (REFERRAL_CAP + " extra") : "as many as you like";
+["capWords","capWords2"].forEach(function(id){ var e = $("#" + id); if (e) e.textContent = capTxt; });
+
+// Checked server-side before the page was built: a code that does not exist,
+// or belongs to somebody who was turned away, arrives here empty.
+var CAME_FROM = CFG.referred_by || "";
+if (CAME_FROM){
+  var rn = $("#referredNote");
+  if (rn) rn.style.display = "";
+}
+
+var MY_CODE = "", MY_LINK = "";
+
+function showReferral(code){
+  MY_CODE = code || "";
+  MY_LINK = SHARE_BASE + "?ref=" + MY_CODE;
+  $("#refcode").textContent = MY_CODE;
+  $("#reflink").textContent = MY_LINK;
+  try {
+    QR.draw($("#refqr"), MY_LINK, { scale: 8, fg: "#1a232e", bg: "#ffffff" });
+  } catch (err) {
+    $("#refqr").style.display = "none";   // the code and link still work
+  }
+}
+
+function flash(btn, word){
+  var was = btn.textContent;
+  btn.textContent = word;
+  setTimeout(function(){ btn.textContent = was; }, 1600);
+}
+
+$("#copyBtn").addEventListener("click", function(){
+  var b = this;
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(MY_LINK).then(function(){ flash(b, "Copied"); },
+                                               function(){ flash(b, "Copy it by hand"); });
+  } else flash(b, "Copy it by hand");
+});
+
+$("#shareBtn").addEventListener("click", function(){
+  var b = this;
+  var msg = "I just did Awaken Fitness Center's survey - takes about 7 minutes and you could win a free membership. Use my link: " + MY_LINK;
+  if (navigator.share){
+    navigator.share({ title: "Awaken Fitness survey", text: msg, url: MY_LINK })
+      .catch(function(){ /* they closed the sheet; nothing to say */ });
+  } else if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(msg).then(function(){ flash(b, "Message copied"); },
+                                            function(){ flash(b, "Copy the link below"); });
+  } else flash(b, "Copy the link below");
+});
+
+$("#saveQrBtn").addEventListener("click", function(){
+  var b = this;
+  try {
+    var a = document.createElement("a");
+    a.href = $("#refqr").toDataURL("image/png");
+    a.download = "awaken-survey-" + MY_CODE + ".png";
+    a.click();
+  } catch (err) { flash(b, "Screenshot it instead"); }
+});
+
+/* ---------------------------------------------------------------
+   Screened out
+   Nothing to agree to and no way back: the number is kept so the same
+   person cannot answer differently a minute later, and the screen says
+   thank you rather than negotiating.
+   --------------------------------------------------------------- */
+function screenOut(why){
+  var payload = {
+    seconds_taken: Math.round((Date.now() - started) / 1000),
+    consent: {
+      privacy: document.querySelector('[name="c_privacy"]').checked,
+      promo_rules: document.querySelector('[name="c_promo"]').checked
+    },
+    person: { mobile_raw: val("q3_mobile") },
+    answers: { q1_lives: picked("q1"), q2_age: picked("q2") },
+    referral: { referred_by: CAME_FROM || null },
+    device: device()
+  };
+  if (sending) return;
+  sending = true;
+  // They are shown the door either way. If the write failed, that is ours
+  // to notice, not something to hold a stranger on a spinner for.
+  post("/survey", payload, function(){
+    sending = false;
+    goto(why === "area" ? 97 : 98);
+  });
+}
+
+/* ---------------------------------------------------------------
+   Submit
+   --------------------------------------------------------------- */
+var started = Date.now();
+$("#sv").addEventListener("submit", function(e){ e.preventDefault(); });
+
+$("#submitBtn").addEventListener("click", function(){
+  var missing = RULES[7]();
+  if (missing.length){ complain(7, missing); return; }
+  complain(7, []);
+  if (sending) return;
+
+  var n = normPH(val("q3_mobile"));
+  var out = {
+    seconds_taken: Math.round((Date.now() - started) / 1000),
+    consent: {
+      privacy: document.querySelector('[name="c_privacy"]').checked,
+      promo_rules: document.querySelector('[name="c_promo"]').checked
+    },
+    person: { name: val("q3_name"), mobile_raw: val("q3_mobile"),
+              email: val("q3_email").toLowerCase() },
+    referral: { referred_by: CAME_FROM || null },
+    answers: {
+      q1_lives: picked("q1"), q1_city: val("q1_ncr"),
+      q2_age: picked("q2"),
+      q4_occupation: picked("q4"), q4_other: val("q4_other"),
+      q5_where: picked("q5"), q5_city: val("q5_city"), q5_area: val("q5_area"),
+      q6_travel: picked("q6"),
+      q7_parking: picked("q7"),
+      q8_status: picked("q8"),
+      q9_activities: ticked("q9"), q9_other: val("q9_other"),
+      q10_frequency: picked("q10"),
+      q11_training_since: picked("q11"),
+      q12_level: picked("q12"),
+      q13_budget: picked("q13"),
+      q14_gym: val("q14"), q14_other: val("q14_other"), q14_branch: val("q14_branch"),
+      q15_why: ticked("q15"), q15_other: val("q15_other"),
+      q16_goals: ticked("q16"), q16_other: val("q16_other"),
+      q17_motivation: ticked("q17"), q17_other: val("q17_other"),
+      q18_services: ticked("q18"), q18_other: val("q18_other"),
+      q19_amenities: ticked("q19"), q19_other: val("q19_other"),
+      q20_missing: ticked("q20"), q20_other: val("q20_other"),
+      q21_days: ticked("q21d"), q21_times: ticked("q21t"),
+      q22_arrangement: picked("q22"),
+      q23_payment: picked("q23"),
+      q24_barriers: ticked("q24"), q24_other: val("q24_other"),
+      q25_cancelled: picked("q25"),
+      q26_reason: picked("q26"), q26_other: val("q26_other"),
+      q27_keeps_going: ticked("q27"), q27_other: val("q27_other"),
+      q28_awaken: picked("q28"),
+      q29_found_via: picked("q29"), q29_other: val("q29_other"),
+      q30_anything_else: val("q30")
+    },
+    device: device()
+  };
+
+  var btn = this, was = btn.textContent;
+  sending = true;
+  btn.textContent = "Sending\u2026";
+  btn.disabled = true;
+
+  post("/survey", out, function(status, j){
+    sending = false;
+    btn.textContent = was;
+    btn.disabled = false;
+    if (status === 409){
+      complain(7, []);
+      $("#e7").textContent = "That mobile number has already been entered. One entry per person.";
+      $("#e7").classList.remove("hide");
+      return;
+    }
+    if (status !== 200){
+      complain(7, []);
+      $("#e7").textContent = "We couldn\u2019t save that just now. Please check your connection and try again.";
+      $("#e7").classList.remove("hide");
+      return;
+    }
+    if (j.outcome !== "complete"){ goto(j.reason === "age" ? 98 : 97); return; }
+    showReferral(j.code);
+    $("#entryCount").textContent = j.entries || 1;
+    $("#donenum").textContent = "Entered under " + pretty(n);
+    window.__lastSurvey = out;
+    goto(99);
+  });
+});
+
+/* ---------------------------------------------------------------
+   One listener for the whole form
+   --------------------------------------------------------------- */
+$("#sv").addEventListener("change", function(){
+  allGroups();
+  conditionals();
+  paint();
+});
+$("#sv").addEventListener("input", paint);
+
+allGroups();
+conditionals();
+paint();
+goto(0);
+})();
+</script>
+</body>
+</html>

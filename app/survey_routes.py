@@ -1,0 +1,388 @@
+"""The market research survey: a public form, and the table it fills.
+
+Registered from main.py via ``register(app, deps)`` like the other feature
+modules, so this file never imports main.
+
+Three decisions shape everything here:
+
+* **The mobile number is the identity, not the email.** A second email address
+  is free and instant; a second SIM costs money and, under PH SIM registration
+  law, has to be registered. Numbers are normalised before anything is
+  compared, because ``0917 123 4567`` and ``+639171234567`` are one person and
+  a de-duplication that does not know that silently does nothing.
+
+* **Being turned away is still an entry.** Somebody outside Metro Manila gets
+  a row, and their number is spent. Without that they could simply answer the
+  first question differently a minute later.
+
+* **The browser is not trusted about anything that matters.** It sends the
+  answers; the server decides whether they qualify, issues the referral code
+  and counts the entries. A form that let the page declare its own outcome
+  would be a form where the outcome is whatever somebody wants it to be.
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+import json
+import secrets
+import time
+from datetime import datetime, timezone
+
+from fastapi import Depends, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from .db import get_db
+from .models import (
+    SURVEY_OUT_AGE, SURVEY_OUT_AREA, SURVEY_REFERRAL_CAP, SurveyResponse,
+    norm_ph_mobile, now_utc, to_local,
+)
+
+#: The questions, in the order they are asked, as (payload key, column head).
+#: The admin table and the CSV are both built from this one list, so adding a
+#: question to the form is a one-line change here and nothing else.
+QUESTIONS = [
+    ("q1_lives",            "Lives"),
+    ("q1_city",             "City"),
+    ("q2_age",              "Age"),
+    ("q4_occupation",       "Occupation"),
+    ("q4_other",            "Occupation (other)"),
+    ("q5_where",            "Works/studies"),
+    ("q5_city",             "Work city"),
+    ("q5_area",             "Work area"),
+    ("q6_travel",           "Will travel"),
+    ("q7_parking",          "Parking"),
+    ("q8_status",           "Today"),
+    ("q9_activities",       "Activities"),
+    ("q9_other",            "Activities (other)"),
+    ("q10_frequency",       "How often"),
+    ("q11_training_since",  "Training for"),
+    ("q12_level",           "Level"),
+    ("q13_budget",          "Budget/month"),
+    ("q14_gym",             "Current gym"),
+    ("q14_other",           "Gym (other)"),
+    ("q14_branch",          "Branch"),
+    ("q15_why",             "Why that gym"),
+    ("q15_other",           "Why (other)"),
+    ("q16_goals",           "Goals"),
+    ("q16_other",           "Goals (other)"),
+    ("q17_motivation",      "Would join for"),
+    ("q17_other",           "Would join (other)"),
+    ("q18_services",        "Services"),
+    ("q18_other",           "Services (other)"),
+    ("q19_amenities",       "Amenities"),
+    ("q19_other",           "Amenities (other)"),
+    ("q20_missing",         "Missing today"),
+    ("q20_other",           "Missing (other)"),
+    ("q21_days",            "Days"),
+    ("q21_times",           "Times"),
+    ("q22_arrangement",     "Arrangement"),
+    ("q23_payment",         "Payment"),
+    ("q24_barriers",        "Barriers"),
+    ("q24_other",           "Barriers (other)"),
+    ("q25_cancelled",       "Ever cancelled"),
+    ("q26_reason",          "Cancel reason"),
+    ("q26_other",           "Cancel (other)"),
+    ("q27_keeps_going",     "Keeps them going"),
+    ("q27_other",           "Keeps going (other)"),
+    ("q28_awaken",          "Knows Awaken"),
+    ("q29_found_via",       "Found via"),
+    ("q29_other",           "Found via (other)"),
+    ("q30_anything_else",   "Anything else"),
+]
+
+#: No O/0 and no I/1: this gets read off a phone screen and typed by hand.
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+CODE_LEN = 8
+
+#: Checking a number before the survey is filled in saves somebody answering
+#: thirty questions only to be told their number is spent. It also answers
+#: "has this number entered?" to anybody who asks, so it is held to a few
+#: tries per address per hour.
+CHECK_PER_HOUR = 40
+_checks = {}
+
+
+def _client_ip(request):
+    """The address the request came from, honouring the proxy header.
+
+    Railway terminates TLS in front of the app, so ``request.client`` is the
+    proxy on every request and the real address is the first hop in
+    X-Forwarded-For. Same reading waivers already use.
+    """
+    xff = request.headers.get("x-forwarded-for") or ""
+    if xff:
+        return xff.split(",")[0].strip()
+    return getattr(getattr(request, "client", None), "host", None)
+
+
+def _rate_ok(ip):
+    now = time.time()
+    hits = [t for t in _checks.get(ip or "", []) if now - t < 3600]
+    hits.append(now)
+    _checks[ip or ""] = hits
+    return len(hits) <= CHECK_PER_HOUR
+
+
+def new_code(db):
+    """A code nobody else holds. Random, never derived from the number."""
+    for _ in range(40):
+        code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LEN))
+        if not db.query(SurveyResponse).filter(SurveyResponse.ref_code == code).first():
+            return code
+    raise RuntimeError("could not issue a referral code")
+
+
+def decide(answers):
+    """Does this entry qualify, and if not, why?
+
+    Read from the answers on the server. The browser screens people out too,
+    for their sake, but what it reports is a courtesy rather than a fact.
+    """
+    if (answers.get("q1_lives") or "") != "Within Metro Manila":
+        return "screened_out", SURVEY_OUT_AREA
+    if (answers.get("q2_age") or "") == "Under 18":
+        return "screened_out", SURVEY_OUT_AGE
+    return "complete", None
+
+
+def entries_for(db, row):
+    """One entry, plus one per friend who finished on their code.
+
+    Counted at read time rather than stored. A stored tally is a number that
+    can be wrong, and this one is cheap: the draw is run once.
+    """
+    if row.is_out or not row.ref_code:
+        return 0
+    n = (db.query(func.count(SurveyResponse.id))
+           .filter(SurveyResponse.referred_by == row.ref_code,
+                   SurveyResponse.outcome == "complete")
+           .scalar() or 0)
+    if SURVEY_REFERRAL_CAP:
+        n = min(n, SURVEY_REFERRAL_CAP)
+    return 1 + n
+
+
+def cell(value):
+    """One answer as one piece of text, whatever shape it arrived in."""
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return " | ".join(str(v) for v in value if str(v).strip())
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return str(value)
+
+
+def register(app, deps):
+    render = deps["render"]
+    require = deps["require"]
+    templates = deps["templates"]
+
+    def guard(request, db):
+        """Admins only. The table holds mobile numbers for everybody who
+        answered, which is exactly the kind of list that should not be one
+        permission tick away from the front desk."""
+        return require(request, db, admin=True)
+
+    # ---------------------------------------------------------------- public
+
+    @app.get("/survey", response_class=HTMLResponse)
+    def survey_form(request: Request, ref: str = "",
+                    db: Session = Depends(get_db)):
+        """The form. No login — this is the whole point of it."""
+        known = ""
+        if ref:
+            hit = (db.query(SurveyResponse)
+                     .filter(SurveyResponse.ref_code == ref.strip().upper())
+                     .first())
+            if hit is not None and not hit.is_out:
+                known = hit.ref_code
+        base = str(request.base_url).rstrip("/")
+        return templates.TemplateResponse("survey.html", {
+            "request": request,
+            "cfg": json.dumps({
+                "share_base": base + "/survey",
+                "cap": SURVEY_REFERRAL_CAP,
+                "referred_by": known,
+            }),
+        })
+
+    @app.post("/survey/check")
+    async def survey_check(request: Request, db: Session = Depends(get_db)):
+        """Has this number been used? Asked once, as section one is left.
+
+        It does tell a caller whether a given number has entered, which is why
+        it is rate limited. The alternative - finding out after thirty
+        questions - is worse for the honest majority.
+        """
+        ip = _client_ip(request)
+        if not _rate_ok(ip):
+            return JSONResponse({"error": "slow down"}, status_code=429)
+        data = await request.json()
+        mob = norm_ph_mobile((data or {}).get("mobile"))
+        if not mob:
+            return JSONResponse({"ok": False, "why": "format"})
+        used = db.query(SurveyResponse).filter(SurveyResponse.mobile == mob).first()
+        return JSONResponse({"ok": used is None, "why": "used" if used else ""})
+
+    @app.post("/survey")
+    async def survey_submit(request: Request, db: Session = Depends(get_db)):
+        """One entry, complete or turned away.
+
+        Everything that decides anything is worked out here. The page sends
+        answers; it does not get a say in whether they qualify, what their
+        code is, or how many entries they end up with.
+        """
+        data = await request.json() or {}
+        answers = data.get("answers") or {}
+        person = data.get("person") or {}
+        consent = data.get("consent") or {}
+        dev = data.get("device") or {}
+
+        mob = norm_ph_mobile(person.get("mobile_raw") or person.get("mobile"))
+        if not mob:
+            return JSONResponse({"error": "mobile"}, status_code=400)
+        if not (consent.get("privacy") and consent.get("promo_rules")):
+            return JSONResponse({"error": "consent"}, status_code=400)
+
+        outcome, reason = decide(answers)
+
+        if db.query(SurveyResponse).filter(SurveyResponse.mobile == mob).first():
+            return JSONResponse({"error": "used"}, status_code=409)
+
+        # Only the screening answers are kept for somebody we turned away.
+        # They did not consent to a market research record and we have no use
+        # for one; the number is the only thing that has to survive.
+        keep = answers if outcome == "complete" else {
+            k: answers.get(k) for k in ("q1_lives", "q2_age")}
+
+        came_from = (data.get("referral") or {}).get("referred_by") or ""
+        came_from = came_from.strip().upper() or None
+        if came_from:
+            src = (db.query(SurveyResponse)
+                     .filter(SurveyResponse.ref_code == came_from).first())
+            if src is None or src.is_out:
+                came_from = None
+
+        row = SurveyResponse(
+            outcome=outcome, reason=reason,
+            mobile=mob, mobile_raw=(person.get("mobile_raw") or "")[:40] or None,
+            nickname=(person.get("name") or "")[:80] or None if outcome == "complete" else None,
+            email=(person.get("email") or "")[:160].lower() or None if outcome == "complete" else None,
+            ref_code=new_code(db) if outcome == "complete" else None,
+            referred_by=came_from,
+            answers=json.dumps(keep, ensure_ascii=False),
+            consent_privacy=bool(consent.get("privacy")),
+            consent_promo=bool(consent.get("promo_rules")),
+            ip=_client_ip(request),
+            user_agent=(dev.get("user_agent") or "")[:400] or None,
+            screen=(dev.get("screen") or "")[:40] or None,
+            viewport=(dev.get("viewport") or "")[:40] or None,
+            timezone_name=(dev.get("timezone") or "")[:60] or None,
+            language=(dev.get("language") or "")[:40] or None,
+            platform=(dev.get("platform") or "")[:60] or None,
+            seconds_taken=int(data.get("seconds_taken") or 0) or None,
+        )
+        db.add(row)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two tabs, one number, submitted together. The first one won.
+            db.rollback()
+            return JSONResponse({"error": "used"}, status_code=409)
+
+        return JSONResponse({
+            "outcome": outcome,
+            "reason": reason or "",
+            "code": row.ref_code or "",
+            "entries": entries_for(db, row),
+        })
+
+    # ----------------------------------------------------------------- admin
+
+    def _rows(db, show):
+        q = db.query(SurveyResponse)
+        if show == "complete":
+            q = q.filter(SurveyResponse.outcome == "complete")
+        elif show == "out":
+            q = q.filter(SurveyResponse.outcome != "complete")
+        return q.order_by(SurveyResponse.created_at.desc()).all()
+
+    def _answers(row):
+        try:
+            return json.loads(row.answers or "{}")
+        except ValueError:
+            return {}
+
+    @app.get("/admin/survey", response_class=HTMLResponse)
+    def survey_list(request: Request, show: str = "complete",
+                    db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        rows = _rows(db, show)
+        tally = {
+            "complete": db.query(func.count(SurveyResponse.id))
+                          .filter(SurveyResponse.outcome == "complete").scalar() or 0,
+            "out": db.query(func.count(SurveyResponse.id))
+                     .filter(SurveyResponse.outcome != "complete").scalar() or 0,
+        }
+        packed = [{
+            "row": r,
+            "answers": _answers(r),
+            "entries": entries_for(db, r),
+            "when": to_local(r.created_at),
+        } for r in rows]
+        return render(request, "survey_list.html", db, staff, active="survey",
+                      rows=packed, questions=QUESTIONS, show=show, tally=tally,
+                      cell=cell)
+
+    @app.get("/admin/survey.csv")
+    def survey_csv(request: Request, show: str = "complete",
+                   db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        head = ["When", "Outcome", "Reason", "Nickname", "Mobile", "Email",
+                "Entries", "Code", "Referred by", "Seconds", "IP", "Device",
+                "Screen", "Timezone"]
+        w.writerow(head + [label for _, label in QUESTIONS])
+        for r in _rows(db, show):
+            a = _answers(r)
+            when = to_local(r.created_at)
+            w.writerow([
+                when.strftime("%Y-%m-%d %H:%M") if when else "",
+                r.outcome, r.reason or "", r.nickname or "", r.mobile,
+                r.email or "", entries_for(db, r), r.ref_code or "",
+                r.referred_by or "", r.seconds_taken or "", r.ip or "",
+                r.user_agent or "", r.screen or "", r.timezone_name or "",
+            ] + [cell(a.get(k)) for k, _ in QUESTIONS])
+        return Response(
+            buf.getvalue(), media_type="text/csv",
+            headers={"Content-Disposition":
+                     'attachment; filename="awaken-survey.csv"'})
+
+    @app.get("/admin/survey/{rid}", response_class=HTMLResponse)
+    def survey_one(request: Request, rid: int, db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        row = db.query(SurveyResponse).get(rid)
+        if row is None:
+            return render(request, "survey_list.html", db, staff, active="survey",
+                          rows=[], questions=QUESTIONS, show="complete",
+                          tally={"complete": 0, "out": 0}, cell=cell)
+        return render(request, "survey_one.html", db, staff, active="survey",
+                      row=row, answers=_answers(row), questions=QUESTIONS,
+                      entries=entries_for(db, row), when=to_local(row.created_at),
+                      cell=cell,
+                      friends=(db.query(SurveyResponse)
+                                 .filter(SurveyResponse.referred_by == (row.ref_code or "\x00"))
+                                 .order_by(SurveyResponse.created_at).all()))

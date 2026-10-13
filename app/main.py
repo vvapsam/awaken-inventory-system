@@ -303,6 +303,16 @@ def startup():
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR"))
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS notes TEXT"))
         conn.execute(text("ALTER TABLE entity ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
+        # The survey table is created by create_all above. These two cover a
+        # database that already has it from an earlier deploy: the unique
+        # index is what actually stops one person entering twice, so it is
+        # stated here rather than left to the model alone.
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.survey_responses') IS NOT NULL THEN "
+                          "CREATE UNIQUE INDEX IF NOT EXISTS ix_survey_mobile_once "
+                          "ON survey_responses (mobile); "
+                          "CREATE UNIQUE INDEX IF NOT EXISTS ix_survey_code_once "
+                          "ON survey_responses (ref_code) WHERE ref_code IS NOT NULL; "
+                          "END IF; END $$;"))
         # Everybody picks their own PIN. The UPDATE sits inside the "column is
         # not there yet" branch so it runs exactly once, on the deploy that
         # introduces it: every account that can sign in is asked to choose a
@@ -4259,5 +4269,19 @@ plan_routes.register(app, {
     "require": require,
     "require_admin": require_admin,
     # The client's copy is public — there is no login on that side.
+    "templates": templates,
+})
+
+
+# ================= Market research survey =================
+# A public form that anybody may answer once, and the table it fills. The
+# mobile number is the identity and the whole of the de-duplication, so the
+# module owns the normalising as well as the routes — see survey_routes.
+from . import survey_routes  # noqa: E402
+
+survey_routes.register(app, {
+    "render": render,
+    "require": require,
+    # The form itself is public — there is no login on that side.
     "templates": templates,
 })

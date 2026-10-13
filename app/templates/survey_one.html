@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block body %}
+{# One person, read top to bottom. The wide table answers "how many said
+   that"; this answers "who is this, and what did they actually say". #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">{{ row.nickname or row.mobile }}</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      {{ when.strftime('%d %b %Y, %H:%M') if when else '' }} &middot;
+      <a href="/admin/survey">back to all responses</a></p>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <table class="list" style="margin:0">
+    <tr><th style="width:190px">Mobile</th><td>{{ row.mobile }}
+      {% if row.mobile_raw and row.mobile_raw != row.mobile %}
+        <span class="muted small">(typed as {{ row.mobile_raw }})</span>{% endif %}</td></tr>
+    <tr><th>Email</th><td>{{ row.email or '—' }}</td></tr>
+    <tr><th>Outcome</th><td>
+      {% if row.is_out %}
+        Turned away &mdash; {{ 'outside Metro Manila' if row.reason == 'area' else 'under 18' }}
+      {% else %}Completed{% endif %}</td></tr>
+    {% if not row.is_out %}
+      <tr><th>Entries</th><td>{{ entries }}
+        {% if friends %}<span class="muted small">(1 + {{ friends|length }} referred)</span>{% endif %}</td></tr>
+      <tr><th>Their code</th><td style="font-family:ui-monospace,monospace">{{ row.ref_code }}</td></tr>
+    {% endif %}
+    <tr><th>Came in on</th><td style="font-family:ui-monospace,monospace">{{ row.referred_by or '—' }}</td></tr>
+    <tr><th>Took</th><td>{{ (row.seconds_taken ~ ' seconds') if row.seconds_taken else '—' }}</td></tr>
+    <tr><th>IP</th><td>{{ row.ip or '—' }}</td></tr>
+    <tr><th>Device</th><td class="small">{{ row.user_agent or '—' }}</td></tr>
+    <tr><th>Screen</th><td class="small">{{ row.screen or '—' }}
+      {% if row.viewport %}&middot; window {{ row.viewport }}{% endif %}
+      {% if row.timezone_name %}&middot; {{ row.timezone_name }}{% endif %}
+      {% if row.language %}&middot; {{ row.language }}{% endif %}</td></tr>
+  </table>
+</div>
+
+{% if friends %}
+<div class="card" style="margin-top:16px">
+  <h2 style="margin:0 0 8px;font-size:16px">Friends who used their code</h2>
+  <table class="list" style="margin:0">
+    {% for f in friends %}
+      <tr>
+        <td><a href="/admin/survey/{{ f.id }}">{{ f.nickname or f.mobile }}</a></td>
+        <td style="text-align:right">{{ 'counted' if not f.is_out else 'did not qualify' }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px">
+  <h2 style="margin:0 0 8px;font-size:16px">Answers</h2>
+  <table class="list" style="margin:0">
+    {% for key, label in questions %}
+      {% set v = cell(answers.get(key)) %}
+      {% if v %}
+        <tr><th style="width:230px;vertical-align:top">{{ label }}</th><td>{{ v }}</td></tr>
+      {% endif %}
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

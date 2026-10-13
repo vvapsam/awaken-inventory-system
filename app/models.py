@@ -3925,3 +3925,103 @@ class EventPlanComment(Base):
 
     plan = relationship("EventPlan", back_populates="comments")
     resolved_by = relationship("Staff", foreign_keys=[resolved_by_id])
+
+
+# ================= Market research survey =================
+
+#: Extra entries one person can earn by referring friends. Zero means no cap.
+SURVEY_REFERRAL_CAP = 5
+
+#: Why somebody was turned away, rather than a bare boolean: the two reasons
+#: want different wording on the way out, and the office wants to count them
+#: separately when deciding whether the next round opens wider.
+SURVEY_OUT_AREA = "area"
+SURVEY_OUT_AGE = "age"
+
+
+def norm_ph_mobile(raw):
+    """``0917 123 4567``, ``+639171234567`` and ``639171234567`` are one person.
+
+    Returns ``+639XXXXXXXXX`` or None. This is the whole of the survey's
+    identity check, so it lives here rather than in the route: a second caller
+    that normalised slightly differently would quietly let the same person in
+    twice, which is the one thing the number is there to prevent.
+    """
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    digits = digits.lstrip("0")
+    if len(digits) == 12 and digits.startswith("63"):
+        digits = digits[2:]
+    if len(digits) == 10 and digits.startswith("9"):
+        return "+63" + digits
+    return None
+
+
+class SurveyResponse(Base):
+    """One person's answers, or one person's turning away.
+
+    Both outcomes are rows in the same table, and deliberately so. The mobile
+    number is unique across all of them, which is what stops somebody who has
+    just been told the survey is not open to them from going straight back and
+    saying they live somewhere else. A separate "rejected" table would have
+    left that number free.
+
+    The answers themselves are a JSON blob rather than thirty columns. The
+    question list is going to change between rounds and a schema that has to
+    be migrated every time somebody reworks question 14 is a schema nobody
+    will rework question 14 in. The admin table reads the blob through one
+    ordered list of questions, so adding a question is a one-line change.
+    """
+    __tablename__ = "survey_responses"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime(timezone=True), default=now_utc, index=True)
+
+    #: ``complete`` or ``screened_out``. Derived on the server from the
+    #: answers, never taken from the browser.
+    outcome = Column(String, nullable=False, default="complete")
+    #: Set only when screened out: SURVEY_OUT_AREA or SURVEY_OUT_AGE.
+    reason = Column(String)
+
+    #: Normalised, and the real primary identity of an entry.
+    mobile = Column(String, nullable=False, unique=True, index=True)
+    #: Exactly what they typed, kept so a mistyped number can be read back to
+    #: somebody at the desk who swears they entered it correctly.
+    mobile_raw = Column(String)
+    nickname = Column(String)
+    email = Column(String)
+
+    #: Their own code, printed as a QR at the end. Random and server-issued,
+    #: never derived from the number: there are only about a billion PH mobile
+    #: numbers, so a code that was a hash of one could be worked backwards,
+    #: and this code gets shared around group chats.
+    ref_code = Column(String, unique=True, index=True)
+    #: The code they arrived on, if any. Stored as the code rather than a
+    #: foreign key so an entry that is later deleted cannot orphan this one.
+    referred_by = Column(String, index=True)
+
+    #: Every answer, as ``{"q4_occupation": "Employed", ...}``.
+    answers = Column(Text, nullable=False, default="{}")
+
+    consent_privacy = Column(Boolean, nullable=False, default=False)
+    consent_promo = Column(Boolean, nullable=False, default=False)
+
+    #: How the entry reached us. Kept to spot one phone answering five times -
+    #: never to reject anybody on its own, because shared gym wifi puts twenty
+    #: honest members behind one address.
+    ip = Column(String)
+    user_agent = Column(Text)
+    screen = Column(String)
+    viewport = Column(String)
+    timezone_name = Column(String)
+    language = Column(String)
+    platform = Column(String)
+    seconds_taken = Column(Integer)
+
+    #: Set when the prize is handed over at the desk.
+    claimed_at = Column(DateTime(timezone=True))
+    claimed_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    claimed_by = relationship("Staff", foreign_keys=[claimed_by_id])
+
+    @property
+    def is_out(self):
+        return self.outcome != "complete"
