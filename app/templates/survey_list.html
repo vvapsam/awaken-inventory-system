@@ -14,7 +14,8 @@
   <div class="hdact">
     <a class="btn" href="/admin/survey?show={{ 'out' if show == 'complete' else 'complete' }}">
       {{ 'Show turned away' if show == 'complete' else 'Show completed' }}</a>
-    <a class="btn primary" href="/admin/survey.csv?show={{ show }}">Download CSV</a>
+    <a class="btn" href="/admin/survey.csv?show={{ show }}">Download CSV</a>
+    <a class="btn primary" href="/admin/survey/results">See the results</a>
   </div>
 </div>
 

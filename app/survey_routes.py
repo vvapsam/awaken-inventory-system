@@ -100,6 +100,83 @@ QUESTIONS = [
     ("q30_anything_else",   "Anything else"),
 ]
 
+
+#: Questions whose answers are sentences, not options. Counting these would
+#: produce a bar chart of one-per-person, so they are listed instead.
+FREE_TEXT = {"q5_area", "q14_branch", "q30_anything_else"} | {
+    k for k, _ in QUESTIONS if k.endswith("_other")}
+
+#: Where each question belongs, so the page reads in the order it was asked
+#: rather than as forty-six cards in a row.
+SECTIONS = [
+    ("Who answered",        ["q1_lives", "q1_city", "q2_age", "q4_occupation",
+                             "q5_where", "q5_city"]),
+    ("Getting there",       ["q6_travel", "q7_parking"]),
+    ("What they do now",    ["q8_status", "q9_activities", "q10_frequency",
+                             "q11_training_since", "q12_level", "q13_budget",
+                             "q14_gym", "q15_why"]),
+    ("What they want",      ["q16_goals", "q17_motivation", "q18_services",
+                             "q19_amenities", "q20_missing"]),
+    ("When and how",        ["q21_days", "q21_times", "q22_arrangement",
+                             "q23_payment"]),
+    ("Sticking with it",    ["q24_barriers", "q25_cancelled", "q26_reason",
+                             "q27_keeps_going"]),
+    ("Awaken",              ["q28_awaken", "q29_found_via"]),
+    ("In their words",      ["q20_other", "q24_other", "q5_area", "q14_branch",
+                             "q30_anything_else"]),
+]
+
+LABELS = dict(QUESTIONS)
+
+
+def count_one(answers, key):
+    """How many people gave each answer, commonest first.
+
+    Returns (answered, [(value, n), ...]). The denominator is people who
+    answered *this* question, not everybody: a question only some people see
+    would otherwise read as though most of the gym ignored it.
+    """
+    counts = {}
+    answered = 0
+    for a in answers:
+        v = a.get(key)
+        vals = ([str(x) for x in v if str(x).strip()] if isinstance(v, list)
+                else ([str(v)] if v is not None and str(v).strip() else []))
+        if vals:
+            answered += 1
+        for x in vals:
+            counts[x] = counts.get(x, 0) + 1
+    return answered, sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def free_text(answers, key):
+    """The sentences, with identical ones folded together.
+
+    Returns (total written, [(text, how many said it), ...]). Two people
+    asking for the same thing is the single most useful signal an open box
+    gives you, and a list that printed it twice would bury it.
+    """
+    seen = {}
+    total = 0
+    for a in answers:
+        v = a.get(key)
+        if v is None or not str(v).strip():
+            continue
+        total += 1
+        t = " ".join(str(v).split())
+        seen[t] = seen.get(t, 0) + 1
+    out = sorted(seen.items(), key=lambda kv: (-kv[1], -len(kv[0])))
+    return total, out
+
+
+def median_seconds(rows):
+    xs = sorted(r.seconds_taken for r in rows if r.seconds_taken)
+    if not xs:
+        return None
+    mid = len(xs) // 2
+    return xs[mid] if len(xs) % 2 else (xs[mid - 1] + xs[mid]) // 2
+
+
 #: No O/0 and no I/1: this gets read off a phone screen and typed by hand.
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CODE_LEN = 8
@@ -477,6 +554,75 @@ def register(app, deps):
                       by_channel=by_channel,
                       link=public_link(request, ""),
                       link_for=lambda c: public_link(request, c))
+
+    @app.get("/admin/survey/results", response_class=HTMLResponse)
+    def survey_results(request: Request, ch: str = "",
+                       db: Session = Depends(get_db)):
+        """What the answers add up to.
+
+        One question per block, commonest answer first. Deliberately plain
+        bars rather than a wall of pie charts: the only thing anybody wants
+        from a survey question is "how many said that, out of how many", and
+        a bar whose length is the count answers it without being decoded.
+        """
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        q = db.query(SurveyResponse).filter(SurveyResponse.outcome == "complete")
+        if ch:
+            q = q.filter(SurveyResponse.channel == (ch if ch != "-" else None))
+        rows = q.all()
+        answers = [_answers(r) for r in rows]
+        total = len(rows)
+
+        blocks, singles = [], []
+        for heading, keys in SECTIONS:
+            items = []
+            for key in keys:
+                label = LABELS.get(key, key)
+                if key in FREE_TEXT:
+                    wrote, said = free_text(answers, key)
+                    if said:
+                        items.append({"key": key, "label": label, "kind": "text",
+                                      "said": said[:40], "more": max(0, len(said) - 40),
+                                      "answered": wrote})
+                    continue
+                answered, counts = count_one(answers, key)
+                if not counts:
+                    continue
+                # A single answer at 100% is not a chart - it is a fact, and
+                # usually one the screening already guaranteed. Drawing one
+                # full-width bar for it just teaches people to scroll past.
+                if len(counts) < 2:
+                    singles.append((label, counts[0][0], counts[0][1], answered))
+                    continue
+                top = counts[0][1]
+                items.append({
+                    "key": key, "label": label, "kind": "bars",
+                    "answered": answered,
+                    "multi": any(isinstance(a.get(key), list) for a in answers),
+                    "rows": [{"value": v, "n": n,
+                              "pct": round(100.0 * n / answered) if answered else 0,
+                              "width": round(100.0 * n / top, 1) if top else 0}
+                             for v, n in counts],
+                })
+            if items:
+                blocks.append({"heading": heading, "cards": items})
+
+        turned = (db.query(func.count(SurveyResponse.id))
+                    .filter(SurveyResponse.outcome != "complete").scalar() or 0)
+        med = median_seconds(rows)
+        draw = sum(entries_for(db, r) for r in rows)
+        return render(request, "survey_results.html", db, staff, active="survey",
+                      blocks=blocks, singles=singles, total=total, turned=turned,
+                      median_mins=(round(med / 60.0, 1) if med else None),
+                      draw=draw, channels=CHANNELS, ch=ch,
+                      by_channel=[(label, code,
+                                   db.query(func.count(SurveyResponse.id))
+                                     .filter(SurveyResponse.outcome == "complete",
+                                             SurveyResponse.channel == (code or None))
+                                     .scalar() or 0)
+                                  for code, label in CHANNELS])
 
     @app.get("/admin/survey.csv")
     def survey_csv(request: Request, show: str = "complete",

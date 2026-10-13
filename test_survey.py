@@ -258,6 +258,53 @@ with TestClient(app) as c:
     r = c.post("/survey", json=entry("09198880000"))
     ck("reopening lets them back in", r.status_code == 200)
 
+    # --------------------------------------------------------- the results
+    # Some spread, or every question is one answer at 100% and the page
+    # correctly folds the lot away.
+    c.post("/survey", json=entry("09196660001", **{"q2_age": "35-44"}))
+    c.post("/survey", json={**entry("09196660002"),
+                            "answers": {**entry("09196660002")["answers"],
+                                        "q2_age": "45-54", "q1_city": "Makati",
+                                        "q4_occupation": "Student",
+                                        "q13_budget": "3000-4999",
+                                        "q16_goals": ["Lose fat", "Mobility"]}})
+    r = c.get("/admin/survey/results")
+    ck("the results page opens", r.status_code == 200)
+    ck("it leads with how many answered", "Completed" in r.text and "In the draw" in r.text)
+    ck("and how long it took them", "Typical time" in r.text)
+    ck("questions are grouped as they were asked",
+       all(h in r.text for h in ("Who answered", "What they want", "In their words")))
+    ck("an answer is counted", "Employed" in r.text and "5000-7499" in r.text)
+    ck("multi-select says the shares pass 100", "add past 100" in r.text)
+    ck("the open box is read, not counted", "More evening classes" in r.text)
+    ck("and repeats are folded with a count", "&times;" in r.text or "\u00d7" in r.text)
+    ck("bars are one hue, not a ramp", r.text.count("background:#008080") <= 2)
+    ck("a question everybody answered the same is not drawn as one full bar",
+       "Everybody said the same" in r.text and "Within Metro Manila" in r.text)
+    ck("the denominator is stated", "answered" in r.text and "not everybody" in r.text)
+    ck("and the raw rows are one click away", '/admin/survey.csv' in r.text
+       and 'href="/admin/survey"' in r.text)
+    ck("a channel can be read on its own", "results?ch=ig" in r.text)
+    r2 = c.get("/admin/survey/results?ch=ig")
+    ck("and that view is narrower", r2.status_code == 200
+       and "Completed" in r2.text)
+    r3 = c.get("/admin/survey")
+    ck("the table points at the results", "See the results" in r3.text)
+
+    with Session(engine) as db:
+        from app.survey_routes import count_one, free_text, median_seconds
+        a = [{"x": "A"}, {"x": "B"}, {"x": "A"}, {"x": ""}, {}]
+        answered, counts = count_one(a, "x")
+        ck("counting ignores the blanks", answered == 3)
+        ck("and orders by commonest", counts == [("A", 2), ("B", 1)])
+        m = [{"y": ["A", "B"]}, {"y": ["B"]}, {"y": []}]
+        answered, counts = count_one(m, "y")
+        ck("a multi-select counts each pick", counts == [("B", 2), ("A", 1)])
+        ck("against the people who answered it", answered == 2)
+        wrote, said = free_text([{"t": "ab"}, {"t": "abcd"}, {"t": " "}, {"t": "ab"}], "t")
+        ck("free text counts everybody who wrote", wrote == 3)
+        ck("the same sentence twice is folded together", said == [("ab", 2), ("abcd", 1)])
+
 bad = [n for n, ok in res if not ok]
 print("\n%d checks, %d failed" % (len(res), len(bad)))
 for n in bad:

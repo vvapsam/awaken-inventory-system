@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block body %}
+{# Bars, one hue, longest first. Not a value-ramp: colouring each bar darker
+   where it is bigger would spend the only free channel restating the length
+   the bar already shows. The number and the share sit at the tip, so nobody
+   has to measure anything against an axis. #}
+<style>
+  .kpis{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px}
+  .kpi{flex:1 1 150px;background:#fff;border:1px solid #e0e5ea;border-radius:11px;padding:14px 16px}
+  .kpi .k{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7683}
+  .kpi .v{font-size:30px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px}
+  .kpi .s{font-size:12px;color:#8a929b}
+
+  .qsec{margin-top:26px}
+  .qsec>h2{margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.13em;
+    text-transform:uppercase;color:#008080}
+  .qcard{background:#fff;border:1px solid #e0e5ea;border-radius:11px;padding:16px 18px;margin-bottom:12px}
+  .qcard h3{margin:0;font-size:15px;font-weight:650}
+  .qcard .base{margin:2px 0 13px;font-size:12px;color:#8a929b}
+
+  .brow{display:flex;align-items:center;gap:11px;padding:3px 0}
+  .bname{flex:0 0 clamp(120px,32%,260px);font-size:13px;line-height:1.35;color:#1a232e}
+  .btrack{flex:1 1 auto;min-width:40px;display:flex;align-items:center;gap:9px}
+  /* 24px cap, square where it starts, rounded at the data end */
+  .bbar{height:18px;max-height:24px;background:#008080;border-radius:0 4px 4px 0;min-width:2px}
+  .bval{flex:0 0 auto;font-size:12.5px;color:#6b7683;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .bval b{color:#1a232e;font-weight:650}
+
+  .said{margin:0;padding:0;list-style:none}
+  .said li{padding:9px 0;border-top:1px solid #f2f5f7;font-size:13.5px;line-height:1.6;color:#1a232e}
+  .said li:first-child{border-top:0}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
+  .chip{padding:6px 12px;border:1px solid #d7dde4;border-radius:999px;font-size:12.5px;
+    text-decoration:none;color:#1a232e;background:#fff}
+  .chip.on{background:#e6f2f2;border-color:#008080;color:#006a6a;font-weight:650}
+</style>
+
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Results</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      What the answers add up to &mdash;
+      <a href="/admin/survey">every response, row by row</a> &middot;
+      <a href="/admin/survey.csv">CSV</a></p>
+  </div>
+</div>
+
+{% if total == 0 %}
+  <p class="muted" style="margin:22px 0">No completed responses yet.</p>
+{% else %}
+
+<div class="kpis">
+  <div class="kpi">
+    <div class="k">Completed</div>
+    <div class="v">{{ total }}</div>
+    <div class="s">{{ turned }} turned away</div>
+  </div>
+  <div class="kpi">
+    <div class="k">In the draw</div>
+    <div class="v">{{ draw }}</div>
+    <div class="s">entries, referrals counted</div>
+  </div>
+  <div class="kpi">
+    <div class="k">Typical time</div>
+    <div class="v">{{ median_mins if median_mins else '—' }}<span style="font-size:16px;font-weight:600">{{ ' min' if median_mins }}</span></div>
+    <div class="s">median, start to submit</div>
+  </div>
+</div>
+
+{# Reading one channel at a time is the point of having separate links: if the
+   front desk and Instagram disagree, the sample is skewed and this is where
+   you would see it. #}
+<div class="chips">
+  <a class="chip {{ 'on' if not ch }}" href="/admin/survey/results">Everyone</a>
+  {% for label, code, n in by_channel %}
+    {% if code and n %}
+      <a class="chip {{ 'on' if ch == code }}" href="/admin/survey/results?ch={{ code }}">{{ label }} ({{ n }})</a>
+    {% endif %}
+  {% endfor %}
+</div>
+
+{% for b in blocks %}
+  <div class="qsec">
+    <h2>{{ b.heading }}</h2>
+    {% for it in b.cards %}
+      <div class="qcard">
+        <h3>{{ it.label }}</h3>
+        {% if it.kind == 'bars' %}
+          <p class="base">{{ it.answered }} of {{ total }} answered{% if it.multi %} &middot; up to three each, so the shares add past 100%{% endif %}</p>
+          {% for r in it.rows %}
+            <div class="brow" title="{{ r.value }} — {{ r.n }} of {{ it.answered }} ({{ r.pct }}%)">
+              <div class="bname">{{ r.value }}</div>
+              <div class="btrack">
+                <div class="bbar" style="width:{{ r.width }}%"></div>
+                <div class="bval"><b>{{ r.n }}</b> &middot; {{ r.pct }}%</div>
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <p class="base">{{ it.answered }} wrote something{% if it.more %} &middot; {{ it.said|length }} shown, the rest are in the CSV{% endif %}</p>
+          <ul class="said">
+            {% for line, n in it.said %}
+              <li>{{ line }}{% if n > 1 %}
+                <span style="color:#008080;font-weight:650;font-size:12px"> &times;{{ n }}</span>{% endif %}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% endfor %}
+
+{% if singles %}
+<div class="qsec">
+  <h2>Everybody said the same</h2>
+  <div class="qcard">
+    <p class="base" style="margin-bottom:10px">One answer, no spread &mdash; a bar for these would only be something to scroll past.</p>
+    <table class="list" style="margin:0">
+      {% for label, value, n, answered in singles %}
+        <tr><th style="width:230px">{{ label }}</th>
+            <td>{{ value }} <span class="muted small">&mdash; all {{ n }} who answered</span></td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<p class="muted small" style="margin:22px 2px 0">
+  Shares are out of the people who answered that question, not everybody.
+  A question only some people see would otherwise read as though most of the gym ignored it.</p>
+{% endif %}
+{% endblock %}
