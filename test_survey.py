@@ -65,6 +65,18 @@ with TestClient(app) as c:
     ck("no code is minted in the browser", "function newCode" not in r.text)
     ck("and nothing is said about keeping the number", "is noted so you" not in r.text)
     ck("the word exercise appears nowhere", "exercis" not in r.text.lower())
+    for want in ("Calisthenics / bodyweight training",
+                 "Functional training / HIIT classes",
+                 "Obstacle course racing / OCR (such as Spartan)",
+                 "Aerial / pole fitness (including aerial hoop)",
+                 "Racket sports (such as badminton, tennis or pickleball)",
+                 "Team sports (such as basketball, volleyball or football)",
+                 "Outdoor activities (such as hiking or climbing)"):
+        ck("question 9 offers %s" % want.split(" (")[0].lower(), want in r.text)
+    ck("nineteen ways to answer question 9, Other and None included",
+       r.text.count('name="q9" value=') == 19)
+    ck("only one of them stands alone",
+       r.text.count('name="q9" value="None" data-alone') == 1)
     ck("question 9 asks about fitness activities",
        "What fitness activities do you do now?" in r.text)
     ck("question 13 asks about fitness activities",
