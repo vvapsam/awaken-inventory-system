@@ -454,6 +454,9 @@ def register(app, deps):
                 "cap": cap_of(db),
                 "referred_by": known,
                 "channel": (ch or "")[:24],
+                # Keys the device marker to this round, so a marker left
+                # by one survey cannot shut somebody out of the next.
+                "round": cfg.get("closes_on") or "",
             }),
         }, headers=NO_CACHE)
 

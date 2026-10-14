@@ -1319,6 +1319,28 @@ var Q14_ALL    = Q14_BRANDS.concat(Q14_KINDS, [Q14_NONE]);
 var BRAND_ANSWERS = Q14_BRANDS;
 
 /* ---------------------------------------------------------------
+   Remembering on the phone
+
+   A note left in the browser so that reopening the link on the same
+   device is recognised at once, before anything is typed. It is a
+   courtesy, not a control: clearing the browser or opening a private
+   window wipes it, and a different phone never had it. The entry that
+   actually counts lives on the server and cannot be wiped from here.
+
+   Keyed to the round, so a marker from this survey cannot shut somebody
+   out of the next one. Every call is wrapped, because storage throws
+   rather than returns in a private window.
+   --------------------------------------------------------------- */
+var DONE_KEY = "awaken_survey_done_" + (CFG.round || "round");
+
+function markDone(){
+  try { window.localStorage.setItem(DONE_KEY, "1"); } catch (e) {}
+}
+function alreadyDone(){
+  try { return window.localStorage.getItem(DONE_KEY) === "1"; } catch (e) { return false; }
+}
+
+/* ---------------------------------------------------------------
    The question 14 search box
    A plain list of eighteen is a lot of thumb on a phone, and a native
    select hides the options behind a tap. This types to filter, and the
@@ -1852,7 +1874,7 @@ function stepForward(){
            function(status, j){
         sending = false;
         $("#oneNext").disabled = false;
-        if (status === 200 && j && j.seen === true){ goto(96); return; }
+        if (status === 200 && j && j.seen === true){ markDone(); goto(96); return; }
         // A check that could not be made is not a refusal. They carry on,
         // and the server has the last word when the answers arrive.
         land(nextFrom());
@@ -2359,6 +2381,7 @@ function screenOut(why){
   // to notice, not something to hold a stranger on a spinner for.
   post("/survey", payload, function(status){
     sending = false;
+    if (status === 200 || status === 409) markDone();
     // Already on file: say so, rather than thanking them for an entry we
     // did not just take.
     if (status === 409){ goto(96); return; }
@@ -2450,6 +2473,7 @@ function submitSurvey(){
     btn.textContent = was;
     btn.disabled = false;
     if (status === 409){
+      markDone();
       goto(96);
       return;
     }
@@ -2463,6 +2487,7 @@ function submitSurvey(){
     showReferral(j.code);
     $("#entryCount").textContent = j.entries || 1;
     $("#donenum").textContent = "Entered under " + pretty(n);
+    markDone();
     window.__lastSurvey = out;
     goto(99);
   });
@@ -2484,7 +2509,9 @@ paint();
 /* The server has already decided. The page is told only to show the
    screen, never why - the way out is on it either way, so the screen
    gives nothing away about which rule matched. */
-goto(0);
+/* This device has been through it already. Say so before asking
+   anything; the server still decides for anybody who gets past it. */
+if (alreadyDone()) goto(96); else goto(0);
 })();
 </script>
 </body>

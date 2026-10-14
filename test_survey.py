@@ -141,6 +141,18 @@ with TestClient(app) as c:
        and "pay only for my membership" in r.text)
     ck("and the cap never closes an escape option",
        'if (!b.checked && !b.hasAttribute("data-alone")){' in r.text)
+    # The phone remembers too, so reopening the link is recognised before
+    # anything is typed. A courtesy only - the server is still the gate.
+    ck("the page carries a round key for the device marker", '"round"' in r.text)
+    ck("and the marker is keyed to it",
+       'var DONE_KEY = "awaken_survey_done_" + (CFG.round || "round");' in r.text)
+    ck("reading it is wrapped, because storage throws in a private window",
+       "try { return window.localStorage.getItem(DONE_KEY)" in r.text)
+    ck("and so is writing it",
+       "try { window.localStorage.setItem(DONE_KEY" in r.text)
+    ck("a remembered device is recognised on arrival",
+       "if (alreadyDone()) goto(96); else goto(0);" in r.text)
+
     ck("14 is searched, not scrolled",
        'id="q14search"' in r.text and 'role="combobox"' in r.text)
     ck("and what it submits is a hidden field the box sets",
