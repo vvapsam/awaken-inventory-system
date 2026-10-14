@@ -3999,6 +3999,9 @@ class SurveyAttempt(Base):
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime(timezone=True), default=now_utc, index=True)
     matched = Column(String, nullable=False)        # mobile | email | ip
+    #: True when the entry was refused, False when it was only noted. The
+    #: number and the address refuse; a shared connection never does.
+    blocked = Column(Boolean, nullable=False, default=True)
     mobile = Column(String, index=True)
     email = Column(String)
     ip = Column(String, index=True)

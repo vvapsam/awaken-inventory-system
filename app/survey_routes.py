@@ -367,28 +367,31 @@ def register(app, deps):
         except (TypeError, ValueError):
             return SURVEY_IP_WINDOW_HOURS
 
-    def ip_recently_entered(db, ip, hours):
-        """Did an entry come off this connection in the last few hours?
+    def ip_recently_entered(db, ip, hours, ignore_id=None):
+        """Did another entry come off this connection in the last few hours?
 
-        Deliberately a window rather than a ban. One address can be a whole
-        gym floor, an office or a carrier's mobile pool, so holding it
-        forever would lock out everybody who came after the first person.
-        A couple of hours catches the person going straight round again
-        and lets the next honest one through this afternoon.
+        Used to flag, never to refuse. An address is a building, not a
+        person: a gym floor, an office and a mobile carrier's pool all put
+        dozens of unrelated people behind one of them, so a second entry
+        from the same address is most often simply the next person. It is
+        worth a look and nothing stronger.
         """
         if not ip or hours <= 0:
             return None
         since = now_utc() - timedelta(hours=hours)
-        return (db.query(SurveyResponse)
-                  .filter(SurveyResponse.ip == ip,
-                          SurveyResponse.created_at >= since)
+        q = db.query(SurveyResponse).filter(SurveyResponse.ip == ip,
+                                            SurveyResponse.created_at >= since)
+        if ignore_id is not None:
+            q = q.filter(SurveyResponse.id != ignore_id)
+        return (q
                   .order_by(SurveyResponse.created_at.desc())
                   .first())
 
     def log_attempt(db, matched, *, mobile=None, email=None,
-                    ip=None, user_agent=None):
-        """Write down every refusal, so next time there is a record."""
+                    ip=None, user_agent=None, blocked=True):
+        """Write down what the rules caught, refused or merely noticed."""
         db.add(SurveyAttempt(matched=matched, mobile=mobile, email=email,
+                             blocked=blocked,
                              ip=ip, user_agent=(user_agent or "")[:400] or None))
         try:
             db.commit()
@@ -415,7 +418,7 @@ def register(app, deps):
 
     @app.get("/survey", response_class=HTMLResponse)
     def survey_form(request: Request, ref: str = "", ch: str = "",
-                    again: int = 0, db: Session = Depends(get_db)):
+                    db: Session = Depends(get_db)):
         """The form. No login — this is the whole point of it."""
         cfg = settings(db)
         # The deadline has to shut the door, not just the switch - otherwise
@@ -434,14 +437,6 @@ def register(app, deps):
                      .first())
             if hit is not None and not hit.is_out:
                 known = hit.ref_code
-        # Checked here rather than in the page: it needs no JavaScript, it
-        # cannot be skipped, and it happens the instant the link is opened.
-        hours = ip_window(db)
-        seen = None if again else ip_recently_entered(db, _client_ip(request), hours)
-        if seen is not None:
-            log_attempt(db, "ip", ip=_client_ip(request),
-                        user_agent=request.headers.get("user-agent"))
-
         base = str(request.base_url).rstrip("/")
         return templates.TemplateResponse("survey.html", {
             "request": request,
@@ -458,7 +453,6 @@ def register(app, deps):
                 "cap": cap_of(db),
                 "referred_by": known,
                 "channel": (ch or "")[:24],
-                "seen_here": seen is not None,
             }),
         }, headers=NO_CACHE)
 
@@ -553,6 +547,15 @@ def register(app, deps):
                 dup = "email"
             log_attempt(db, dup, mobile=mob, email=mail, ip=ip, user_agent=ua)
             return JSONResponse({"error": dup}, status_code=409)
+
+        # The entry is in. If another one came off this connection recently,
+        # that is worth your eye and nothing more: a gym's wifi, an office
+        # and a mobile carrier all hand the same address to everybody behind
+        # them, so refusing on it turns away the friend standing next to the
+        # last respondent. Flagged for review, exactly as the rules say.
+        if ip_recently_entered(db, ip, ip_window(db), ignore_id=row.id):
+            log_attempt(db, "ip", mobile=mob, email=mail, ip=ip,
+                        user_agent=ua, blocked=False)
 
         return JSONResponse({
             "outcome": outcome,
@@ -651,8 +654,9 @@ def register(app, deps):
                 })
         return out
 
-    def refusals(db, limit=40):
+    def refusals(db, blocked=True, limit=40):
         rows = (db.query(SurveyAttempt)
+                  .filter(SurveyAttempt.blocked.is_(blocked))
                   .order_by(SurveyAttempt.created_at.desc())
                   .limit(limit).all())
         return [{"when": to_local(r.created_at), "matched": r.matched,
@@ -688,8 +692,14 @@ def register(app, deps):
                       rows=packed, questions=QUESTIONS, show=show, tally=tally,
                       cell=cell, cfg=cfg, channels=CHANNELS,
                       by_channel=by_channel, clusters=clusters(db),
-                      refusals=refusals(db),
-                      refused_total=db.query(func.count(SurveyAttempt.id)).scalar() or 0,
+                      refusals=refusals(db, blocked=True),
+                      refused_total=db.query(func.count(SurveyAttempt.id))
+                                      .filter(SurveyAttempt.blocked.is_(True))
+                                      .scalar() or 0,
+                      flagged=refusals(db, blocked=False),
+                      flagged_total=db.query(func.count(SurveyAttempt.id))
+                                      .filter(SurveyAttempt.blocked.is_(False))
+                                      .scalar() or 0,
                       ip_hours=ip_window(db),
                       link=public_link(request, ""),
                       link_for=lambda c: public_link(request, c)))

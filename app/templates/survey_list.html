@@ -89,8 +89,8 @@
 <div class="card" style="margin-top:16px">
   <h3 style="margin:0 0 4px">Turned down &mdash; {{ refused_total }} second attempt{{ '' if refused_total == 1 else 's' }}</h3>
   <p class="muted" style="margin:0 0 12px;font-size:13px">
-    Every entry the one-per-person rule refused, newest first. A connection
-    counts as already answered for {{ ip_hours }} hour{{ '' if ip_hours == 1 else 's' }}.
+    Entries the one-per-person rule refused on the mobile number or the
+    email address, newest first.
   </p>
   <table class="list" style="margin:0">
     <thead><tr><th>When</th><th>Caught by</th><th>Mobile</th><th>Email</th><th>Network</th></tr></thead>
@@ -99,6 +99,31 @@
       <tr>
         <td>{{ a.when.strftime('%d %b %H:%M') }}</td>
         <td><b>{{ a.matched }}</b></td>
+        <td>{{ a.mobile }}</td>
+        <td>{{ a.email }}</td>
+        <td class="muted" style="font-size:12px">{{ a.ip }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if flagged %}
+<div class="card" style="margin-top:16px">
+  <h3 style="margin:0 0 4px">Flagged for review &mdash; {{ flagged_total }}</h3>
+  <p class="muted" style="margin:0 0 12px;font-size:13px">
+    Entries that went through, but arrived from a connection another entry
+    had used in the previous {{ ip_hours }} hour{{ '' if ip_hours == 1 else 's' }}.
+    Usually this is simply the next person on the same wifi, so nothing is
+    refused on it &mdash; it is here for you to judge.
+  </p>
+  <table class="list" style="margin:0">
+    <thead><tr><th>When</th><th>Mobile</th><th>Email</th><th>Network</th></tr></thead>
+    <tbody>
+      {% for a in flagged %}
+      <tr>
+        <td>{{ a.when.strftime('%d %b %H:%M') }}</td>
         <td>{{ a.mobile }}</td>
         <td>{{ a.email }}</td>
         <td class="muted" style="font-size:12px">{{ a.ip }}</td>

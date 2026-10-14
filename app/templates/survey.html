@@ -338,7 +338,7 @@ pre{
 
           <h4>Your details</h4>
           <ul>
-            <li><b>What we keep</b> &mdash; your nickname, mobile number and email, and your answers. If this round isn&rsquo;t open to you, we keep your mobile number only, so you aren&rsquo;t asked again.</li>
+            <li><b>What we keep</b> &mdash; your nickname, mobile number and email, and your answers. If this round isn&rsquo;t open to you, we keep only your mobile number and email, so you aren&rsquo;t asked again.</li>
             <li><b>Why</b> &mdash; your mobile number ensures each person answers once and is how we contact you if you win. Your email is a secondary contact.</li>
             <li><b>Who sees it</b> &mdash; Awaken only. We do not sell or share your details.</li>
             <li><b>Messages</b> &mdash; we will only contact you about this survey and the prize draw, nothing else.</li>
@@ -1050,8 +1050,8 @@ pre{
   <!-- ============ ALREADY IN ============ -->
   <!-- One message, whatever caught it. Which rule matched is our business,
        not a hint for somebody working out what to change next time, and
-       nothing here invites a second go. The ?again=1 link still works for
-       the desk, but it is not advertised to the person reading this. -->
+       nothing here invites a second go. Reached only after a submission:
+       the number or the address was already spent. -->
   <section class="step" data-step="96" data-label="Already in">
     <div class="card end">
       <h1>We already have your response</h1>
@@ -1999,7 +1999,7 @@ paint();
 /* The server has already decided. The page is told only to show the
    screen, never why - the way out is on it either way, so the screen
    gives nothing away about which rule matched. */
-goto(CFG.seen_here ? 96 : 0);
+goto(0);
 })();
 </script>
 </body>

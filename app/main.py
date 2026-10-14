@@ -318,6 +318,10 @@ def startup():
                           "CREATE INDEX IF NOT EXISTS ix_survey_ip_recent "
                           "ON survey_responses (ip, created_at); "
                           "END IF; END $$;"))
+        conn.execute(text("DO $$ BEGIN IF to_regclass('public.survey_attempts') IS NOT NULL THEN "
+                          "ALTER TABLE survey_attempts ADD COLUMN IF NOT EXISTS "
+                          "blocked BOOLEAN NOT NULL DEFAULT TRUE; "
+                          "END IF; END $$;"))
         # Everybody picks their own PIN. The UPDATE sits inside the "column is
         # not there yet" branch so it runs exactly once, on the deploy that
         # introduces it: every account that can sign in is asked to choose a

@@ -307,52 +307,33 @@ with TestClient(app) as c:
         ck("and none of them holds a code that could be claimed",
            all(m.ref_code is None for m in minors))
 
-    # ------------------------------------------ one connection, a short window
+    # ----------------------------------- a shared connection is noted, not shut
     from app import models as _M
     r = c.get("/survey")
-    ck("opening the link again names this connection as already answered",
-       '"seen_here": true' in r.text)
-    r = c.get("/survey?again=1")
-    ck("and somebody else on it can still say so and carry on",
-       '"seen_here": false' in r.text)
+    ck("opening the link never turns anybody away", r.status_code == 200)
+    ck("and the page is told nothing about connections",
+       "seen_here" not in r.text and "ip_hours" not in r.text)
 
-    ck("the page is not told how long the window is", "ip_hours" not in r.text)
-    screen = r.text.split('data-step="96"')[1].split("</section>")[0]
-    ck("the screen says the rule, not which one matched",
-       "Only one survey submission per person" in screen
-       and "disqualification from the raffle" in screen)
-    ck("nor how it was spotted",
-       not any(w in screen for w in
-               ("connection", "mobile number", "email address", "hour", "IP")))
-    ck("and nothing on it offers another go",
-       "again=1" not in screen and "someone else" not in screen.lower())
-
-    # A cached survey page is indistinguishable from a broken duplicate
-    # check: stale questions, stale wording, and JavaScript calling an
-    # endpoint that has since been removed. It cost an evening once.
-    r = c.get("/survey")
-    ck("the survey page refuses to be cached",
-       "no-store" in r.headers.get("cache-control", ""))
-    ck("and says so the old way too, for older proxies",
-       r.headers.get("pragma") == "no-cache")
+    # Two people, one wifi. Both get in; the second is flagged for a human.
+    r = c.post("/survey", json=entry("0917 940 0001", email="wifi1@email.com"))
+    ck("the first person on a connection gets in", r.status_code == 200)
+    r = c.post("/survey", json=entry("0917 940 0002", email="wifi2@email.com"))
+    ck("and so does the next one, on the same connection", r.status_code == 200)
+    ck("with a real entry in the draw", r.json()["entries"] >= 1)
+    ck("and a code of their own", bool(r.json()["code"]))
 
     with Session(engine) as db:
-        # Push every entry back beyond the window and the connection frees up.
-        db.query(_M.SurveyResponse).update(
-            {_M.SurveyResponse.created_at:
-             _M.now_utc() - timedelta(hours=5)}, synchronize_session=False)
-        db.commit()
-    r = c.get("/survey")
-    ck("once the window passes the connection is free again",
-       '"seen_here": false' in r.text)
-
-    with Session(engine) as db:
-        n = db.query(_M.SurveyAttempt).filter(
-            _M.SurveyAttempt.matched == "ip").count()
-        ck("and the connection refusal was recorded too", n >= 1)
-
-    from app.models import SURVEY_IP_WINDOW_HOURS
-    ck("the window is four hours", SURVEY_IP_WINDOW_HOURS == 4)
+        flags = db.query(_M.SurveyAttempt).filter(
+            _M.SurveyAttempt.matched == "ip").all()
+        ck("the second one is flagged", len(flags) >= 1)
+        ck("but recorded as allowed, not refused",
+           all(f.blocked is False for f in flags))
+        hard = db.query(_M.SurveyAttempt).filter(
+            _M.SurveyAttempt.blocked.is_(True)).all()
+        ck("while the number and address refusals stay refusals",
+           hard and all(f.matched in ("mobile", "email") for f in hard))
+        ck("and no refusal was ever recorded against a connection",
+           not any(f.matched == "ip" for f in hard))
 
     # -------------------------------------------- closing time, not closing day
     from app.survey_routes import say_clock, say_date, deadline, is_open
