@@ -82,6 +82,18 @@ with TestClient(app) as c:
         ck("question 9 offers %s" % want.split(" (")[0].lower(), want in r.text)
     ck("gender is asked", "3. What is your gender?" in r.text)
 
+    # 13 keeps "I'm not sure" - nobody tracks their total spend across a
+    # membership, drop-ins and court fees. The follow-up does not: what a
+    # non-payer would be willing to pay is the number it exists for, and
+    # "Nothing" already covers anybody who truly would not.
+    import re as _re3
+    willing = _re3.findall(r'name="q13_willing" value="([^"]*)"', r.text)
+    ck("the follow-up has no opt-out", "Unsure" not in willing)
+    ck("and offers six real figures instead", len(willing) == 6)
+    ck("but still lets somebody say nothing", "0" in willing)
+    ck("and 13 itself keeps its one, where it is honest",
+       'name="q13" value="Unsure"' in r.text)
+
     # One question at a time. The markup keeps its seven sections so the
     # conditionals, the rules and the payload all still read the same DOM;
     # what changed is that only one question is on screen at once.
