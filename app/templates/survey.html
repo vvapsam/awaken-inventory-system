@@ -365,7 +365,7 @@ pre{
       <div class="nav">
         <button type="button" class="btn" data-go="1">Start the survey</button>
       </div>
-      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengymph" target="_blank" rel="noopener">&#64;awakengymph</a></p>
     </div>
   </section>
 
@@ -1030,7 +1030,7 @@ pre{
         <p style="margin:12px auto 0;font-size:12px;color:var(--faint)">Your friend must also be 18 or over, live in Metro Manila, and complete the survey.</p>
       </div>
 
-      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengymph" target="_blank" rel="noopener">&#64;awakengymph</a></p>
     </div>
   </section>
 
@@ -1043,20 +1043,21 @@ pre{
       <h1>Thank you for your interest</h1>
       <p>For this round, we&rsquo;re hearing from Metro Manila residents. We hope to include more areas in future surveys &mdash; and you&rsquo;re always welcome at Awaken.</p>
 
-      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengymph" target="_blank" rel="noopener">&#64;awakengymph</a></p>
     </div>
   </section>
 
   <!-- ============ ALREADY IN ============ -->
+  <!-- One message, whatever caught it. Which rule matched is our business,
+       not a hint for somebody working out what to change next time. -->
   <section class="step" data-step="96" data-label="Already in">
     <div class="card end">
       <h1>We already have your response</h1>
-      <p id="dupWhy">Thank you &mdash; your entry is already in, so there is nothing more you need to do.</p>
-      <p>It is one entry per person. Entering more than once may forfeit your entry or disqualify it from the draw, so please leave it with us.</p>
+      <p>Only one survey submission per person is allowed. Attempts to submit multiple responses will be automatically flagged for review. Confirmed duplicate submissions will result in disqualification from the raffle.</p>
       <p class="muted">If you think this is a mistake, email <a href="mailto:admin@awakengym.com">admin@awakengym.com</a> and we will sort it out.</p>
-      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
-      <p id="notMe" class="muted hide" style="margin-top:18px">
-        Not you? <a href="/survey?again=1">Someone else can answer here.</a>
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengymph" target="_blank" rel="noopener">&#64;awakengymph</a></p>
+      <p class="muted" style="margin-top:18px">
+        Answering for someone else? <a href="/survey?again=1">Start a new response.</a>
       </p>
     </div>
   </section>
@@ -1067,7 +1068,7 @@ pre{
       <h1>Thank you for your interest</h1>
       <p>For this round, we&rsquo;re hearing from adults aged 18 and over. If you&rsquo;d like to train at Awaken, come by with a parent or guardian and we&rsquo;ll talk you through the options.</p>
 
-      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengymph" target="_blank" rel="noopener">&#64;awakengymph</a></p>
     </div>
   </section>
 
@@ -1961,9 +1962,6 @@ $("#submitBtn").addEventListener("click", function(){
     btn.textContent = was;
     btn.disabled = false;
     if (status === 409){
-      $("#dupWhy").textContent = (j && j.error === "email")
-        ? "Thank you \u2014 we already have an entry under that email address, so there is nothing more you need to do."
-        : "Thank you \u2014 we already have an entry under that mobile number, so there is nothing more you need to do.";
       goto(96);
       return;
     }
@@ -1995,18 +1993,10 @@ $("#sv").addEventListener("input", paint);
 allGroups();
 conditionals();
 paint();
-/* The server has already looked at this connection. If an entry came
-   off it in the last couple of hours, say so before asking anything -
-   but leave a way through, because one address can be a whole gym. */
-if (CFG.seen_here){
-  var hrs = CFG.ip_hours || 2;
-  $("#dupWhy").textContent = "It looks like an entry has already come from this connection in the last "
-    + hrs + (hrs === 1 ? " hour." : " hours.");
-  $("#notMe").classList.remove("hide");
-  goto(96);
-} else {
-  goto(0);
-}
+/* The server has already decided. The page is told only to show the
+   screen, never why - the way out is on it either way, so the screen
+   gives nothing away about which rule matched. */
+goto(CFG.seen_here ? 96 : 0);
 })();
 </script>
 </body>

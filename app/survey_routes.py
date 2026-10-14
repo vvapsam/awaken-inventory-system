@@ -397,7 +397,6 @@ def register(app, deps):
                 "referred_by": known,
                 "channel": (ch or "")[:24],
                 "seen_here": seen is not None,
-                "ip_hours": hours,
             }),
         })
 

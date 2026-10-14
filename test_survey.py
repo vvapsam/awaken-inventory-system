@@ -284,12 +284,20 @@ with TestClient(app) as c:
     ck("and somebody else on it can still say so and carry on",
        '"seen_here": false' in r.text)
 
+    ck("the page is not told how long the window is", "ip_hours" not in r.text)
+    screen = r.text.split('data-step="96"')[1].split("</section>")[0]
+    ck("the screen says the rule, not which one matched",
+       "Only one survey submission per person" in screen
+       and "disqualification from the raffle" in screen)
+    ck("nor how it was spotted",
+       not any(w in screen for w in
+               ("connection", "mobile number", "email address", "hour", "IP")))
+
     with Session(engine) as db:
-        ck("the window is stated, not hidden", '"ip_hours": 2' in r.text)
         # Push every entry back beyond the window and the connection frees up.
         db.query(_M.SurveyResponse).update(
             {_M.SurveyResponse.created_at:
-             _M.now_utc() - timedelta(hours=3)}, synchronize_session=False)
+             _M.now_utc() - timedelta(hours=5)}, synchronize_session=False)
         db.commit()
     r = c.get("/survey")
     ck("once the window passes the connection is free again",
@@ -299,6 +307,9 @@ with TestClient(app) as c:
         n = db.query(_M.SurveyAttempt).filter(
             _M.SurveyAttempt.matched == "ip").count()
         ck("and the connection refusal was recorded too", n >= 1)
+
+    from app.models import SURVEY_IP_WINDOW_HOURS
+    ck("the window is four hours", SURVEY_IP_WINDOW_HOURS == 4)
 
     # --------------------------------------------------------------- admin
     r = c.get("/admin/survey")

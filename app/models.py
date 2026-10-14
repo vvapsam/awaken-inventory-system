@@ -3969,10 +3969,10 @@ def norm_email(raw):
     return e[:160]
 
 
-#: How long one connection is treated as "already answered". Short on
-#: purpose: an address is a building, not a person, and a gym's wifi hands
-#: the same one to everybody in it.
-SURVEY_IP_WINDOW_HOURS = 2
+#: How long one connection is treated as "already answered". A window
+#: rather than a ban, on purpose: an address is a building, not a person,
+#: and a gym's wifi hands the same one to everybody in it.
+SURVEY_IP_WINDOW_HOURS = 4
 
 
 class SurveySetting(Base):
