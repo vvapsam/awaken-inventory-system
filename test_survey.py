@@ -292,6 +292,8 @@ with TestClient(app) as c:
     ck("nor how it was spotted",
        not any(w in screen for w in
                ("connection", "mobile number", "email address", "hour", "IP")))
+    ck("and nothing on it offers another go",
+       "again=1" not in screen and "someone else" not in screen.lower())
 
     with Session(engine) as db:
         # Push every entry back beyond the window and the connection frees up.
