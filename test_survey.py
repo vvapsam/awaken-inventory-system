@@ -153,6 +153,20 @@ with TestClient(app) as c:
     ck("a remembered device is recognised on arrival",
        "if (alreadyDone()) goto(96); else goto(0);" in r.text)
 
+    # The done screen hands out a code as well as a QR, so a code has to
+    # be typeable. It is asked at 27, of somebody who just said a friend
+    # sent them, and only when one did not already arrive in the link.
+    ck("there is somewhere to type a code", 'name="q27_code"' in r.text)
+    ck("asked only of somebody a friend sent",
+       'picked("q27") === "Friend/family"' in r.text)
+    ck("and not at all if the link already carried one",
+       'show($("#q27codewrap"), !CAME_FROM' in r.text)
+    ck("what is typed is tidied to the shape codes are issued in",
+       'function typedCode()' in r.text
+       and 'toUpperCase().replace(/[^A-Z0-9]/g, "")' in r.text)
+    ck("a link code still wins over a typed one",
+       "CAME_FROM || typedCode() || null" in r.text)
+
     ck("14 is searched, not scrolled",
        'id="q14search"' in r.text and 'role="combobox"' in r.text)
     ck("and what it submits is a hidden field the box sets",

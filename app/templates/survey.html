@@ -1054,6 +1054,16 @@ pre{
           <label class="opt"><input type="radio" name="q27" value="Friend/family"><span>A friend or family member</span></label>
           <label class="opt" data-other="q27"><input type="radio" name="q27" value="Other"><span>Somewhere else</span></label>
         </div>
+        <!-- The done screen hands people a code as well as a QR, so a code
+             has to be typeable somewhere. Here, because they have just
+             said a friend sent them - and not at all if they arrived on
+             that friend's link, since we already have it. -->
+        <div class="sub-q hide" id="q27codewrap">
+          <label class="fl" style="margin-top:0"><span>Did they give you a code? <span style="color:var(--faint)">(optional)</span></span>
+            <input type="text" name="q27_code" maxlength="8" autocapitalize="characters"
+                   autocomplete="off" spellcheck="false" placeholder="e.g. K7M2PQ4X"></label>
+          <p class="hint" id="q27codeNote" style="margin:6px 0 0">It gives them one extra entry. Leave it blank if you don&rsquo;t have one.</p>
+        </div>
         <div class="sub-q hide" data-otherfor="q27">
           <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q27_other"></label>
         </div>
@@ -1525,6 +1535,11 @@ function conditionals(){
   if (noTrain) all('input[name="q20t"]').forEach(function(b){ b.checked = false; });
 
 
+  // A code typed by hand is only asked for when one did not arrive in
+  // the link, and only of somebody who just said a friend sent them.
+  show($("#q27codewrap"), !CAME_FROM && picked("q27") === "Friend/family");
+  if (CAME_FROM || picked("q27") !== "Friend/family") $('[name="q27_code"]').value = "";
+
   otherBoxes();
 }
 
@@ -1642,7 +1657,14 @@ var QRULES = {
   24: function(m){ missOne(m, "q24"); },
   25: function(m){ missMany(m, "q25"); },
   26: function(m){ if (!picked("q26")) m.push(need("q26")); },
-  27: function(m){ missOne(m, "q27"); },
+  27: function(m){
+    missOne(m, "q27");
+    // Optional, but a half-typed code credits nobody and tells them
+    // nothing, so the shape is checked before it is accepted.
+    var code = val("q27_code").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (isShown("#q27codewrap") && code && !/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(code))
+      m.push(need("q27", "a code of 8 letters and numbers, or leave it blank"));
+  },
   28: function(){}                               // the open box is optional
 };
 
@@ -2358,6 +2380,11 @@ $("#saveQrBtn").addEventListener("click", function(){
    person cannot answer differently a minute later, and the screen says
    thank you rather than negotiating.
    --------------------------------------------------------------- */
+/* Whatever they typed, in the shape the server issues them. */
+function typedCode(){
+  return val("q27_code").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 function screenOut(why){
   var payload = {
     seconds_taken: Math.round((Date.now() - started) / 1000),
@@ -2427,7 +2454,7 @@ function submitSurvey(){
     },
     person: { name: val("q4_name"), mobile_raw: val("q4_mobile"),
               email: val("q4_email").toLowerCase() },
-    referral: { referred_by: CAME_FROM || null },
+    referral: { referred_by: CAME_FROM || typedCode() || null },
     channel: CHANNEL || null,
     answers: {
       q1_lives: picked("q1"), q1_city: val("q1_ncr"),
