@@ -133,6 +133,45 @@ h2{margin:0 0 2px;font-size:10px;font-weight:700;letter-spacing:.22em;text-trans
 /* ---- text fields ---- */
 /* The list floats over whatever follows it, including the Back/Next row,
    which sits later in the document and would otherwise paint on top. */
+/* ---- one question at a time ----
+   The sections and their questions stay exactly as they are in the markup;
+   only one question is shown at a time. Keeping the structure means the
+   conditionals, the rules and the payload all still read the same DOM. */
+.oneq .q{display:none;border-top:0;padding-top:4px}
+/* The section banner and its opening line belong to the section card now.
+   Repeating them over every question in the section is just noise. */
+.oneq .step[data-step="1"] > .card > .hero,.oneq .step[data-step="2"] > .card > .hero,
+.oneq .step[data-step="3"] > .card > .hero,.oneq .step[data-step="4"] > .card > .hero,
+.oneq .step[data-step="5"] > .card > .hero,.oneq .step[data-step="6"] > .card > .hero,
+.oneq .step[data-step="7"] > .card > .hero,
+.oneq .step[data-step="1"] > .card > .lede,.oneq .step[data-step="2"] > .card > .lede,
+.oneq .step[data-step="3"] > .card > .lede,.oneq .step[data-step="4"] > .card > .lede,
+.oneq .step[data-step="5"] > .card > .lede,.oneq .step[data-step="6"] > .card > .lede,
+.oneq .step[data-step="7"] > .card > .lede{display:none}
+.oneq .step[data-step="1"] > .card,.oneq .step[data-step="2"] > .card,
+.oneq .step[data-step="3"] > .card,.oneq .step[data-step="4"] > .card,
+.oneq .step[data-step="5"] > .card,.oneq .step[data-step="6"] > .card,
+.oneq .step[data-step="7"] > .card{padding-top:26px}
+.oneq .q.now{display:block}
+/* Retire the per-section nav, but not the welcome screen's Start button
+   and not the finish screen's buttons - those are not part of the walk. */
+.oneq .step[data-step="1"] .nav,.oneq .step[data-step="2"] .nav,
+.oneq .step[data-step="3"] .nav,.oneq .step[data-step="4"] .nav,
+.oneq .step[data-step="5"] .nav,.oneq .step[data-step="6"] .nav,
+.oneq .step[data-step="7"] .nav{display:none}
+.onenav{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;
+  padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+  background:linear-gradient(180deg,rgba(13,16,18,0) 0%,rgba(13,16,18,.92) 38%,var(--bg) 100%);
+  z-index:30}
+.onenav .btn{flex:0 0 auto}
+.onenav #oneNext{flex:1 1 auto;max-width:260px}
+.card.sect{padding-top:52px;padding-bottom:52px;text-align:center}
+.sectnum{margin:0 0 10px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--teal)}
+.card.sect h1{margin:0 0 8px;font-size:clamp(23px,6vw,30px);line-height:1.12;
+  letter-spacing:-.03em;text-transform:none}
+.secthint{margin:0;color:var(--mut);font-size:14px;line-height:1.6}
+@media (min-width:560px){ .onenav{padding-left:0;padding-right:0} }
+
 .combo{position:relative;margin-top:10px;z-index:1}
 .combo.open{z-index:60}
 .comboin{width:100%;box-sizing:border-box;padding:14px 38px 14px 14px;border-radius:12px;
@@ -650,7 +689,7 @@ pre{
         </div>
       </div>
 
-      <div class="q hide" id="q14wrap">
+      <div class="q hide" id="q14wrap" data-noauto>
         <span class="qn">14. Which gym or fitness studio do you currently go to most often? <span class="req">*</span></span>
         <p class="hint">Start typing to search, or pick from the list.</p>
         <div class="combo" id="q14combo">
@@ -1084,6 +1123,17 @@ pre{
     </div>
   </section>
 
+  <!-- ============ SECTION CARD ============ -->
+  <!-- One element, reused for all seven. A breath between topics without
+       seven near-identical blocks of markup to keep in step. -->
+  <section class="step" data-step="sect" data-label="">
+    <div class="card sect">
+      <p class="sectnum" id="sectNum"></p>
+      <h1 id="sectName"></h1>
+      <p class="secthint" id="sectHint"></p>
+    </div>
+  </section>
+
   <!-- ============ ALREADY IN ============ -->
   <!-- One message, whatever caught it. Which rule matched is our business,
        not a hint for somebody working out what to change next time, and
@@ -1109,6 +1159,12 @@ pre{
   </section>
 
 </div>
+<div class="onenav hide" id="onenav">
+  <button type="button" class="btn ghost" id="oneBack">Back</button>
+  <button type="button" class="btn" id="oneNext">Next</button>
+  <span class="navnote" id="oneNote"></span>
+</div>
+
 <script id="cfg" type="application/json">{{ cfg|safe }}</script>
 <script>
 (function(){
@@ -1510,71 +1566,89 @@ function missMany(m, name){
   if (t.indexOf("Other") > -1 && !val(name + "_other")) m.push(need(name, "tell us what"));
 }
 
-var RULES = {
-  1: function(){
-    var m = [];
+/* One validator per question, because one question is what is on screen.
+   The section validators below are built from these, so the two can never
+   disagree about what a complete answer is. */
+var QRULES = {
+  1: function(m){
     var where = picked("q1");
     if (!where) m.push(need("q1"));
     if (where === "Within Metro Manila" && !val("q1_ncr")) m.push(need("q1", "your city"));
-    if (!picked("q2")) m.push(need("q2"));
-    if (!picked("q3")) m.push(need("q3"));
+  },
+  2: function(m){ if (!picked("q2")) m.push(need("q2")); },
+  3: function(m){ if (!picked("q3")) m.push(need("q3")); },
+  4: function(m){
     if (!val("q4_name")) m.push(need("q4_name", "your name"));
     if (!normPH(val("q4_mobile"))) m.push(need("q4_mobile", "a valid mobile number"));
     if (!emailOK(val("q4_email"))) m.push(need("q4_email", "a valid email address"));
-    return m;
   },
-  2: function(){
-    var m = [];
-    missOne(m, "q5");
+  5: function(m){ missOne(m, "q5"); },
+  6: function(m){
     if (!picked("q6")) m.push(need("q6"));
     if (isShown("#s_work") && !val("q6_city")) m.push(need("q6", "the city you work or study in"));
-    if (!picked("q7")) m.push(need("q7"));
-    if (!picked("q8")) m.push(need("q8"));
-    return m;
   },
-  3: function(){
-    var m = [];
-    if (!picked("q9")) m.push(need("q9"));
-    missMany(m, "q10");
-    if (!picked("q11")) m.push(need("q11"));
-    if (!picked("q12")) m.push(need("q12"));
+  7: function(m){ if (!picked("q7")) m.push(need("q7")); },
+  8: function(m){ if (!picked("q8")) m.push(need("q8")); },
+  9: function(m){ if (!picked("q9")) m.push(need("q9")); },
+  10: function(m){ missMany(m, "q10"); },
+  11: function(m){ if (!picked("q11")) m.push(need("q11")); },
+  12: function(m){ if (!picked("q12")) m.push(need("q12")); },
+  13: function(m){
     if (!picked("q13")) m.push(need("q13"));
     if (isShown("#q13wwrap") && !picked("q13_willing"))
       m.push(need("q13", "the follow-up on what you would be willing to spend"));
+  },
+  14: function(m){
     if (isShown("#q14wrap") && !val("q14")) m.push(need("q14"));
-    if (isShown("#q14namewrap") && !val("q14_other"))
-      m.push(need("q14", "what it is called"));
+    if (isShown("#q14namewrap") && !val("q14_other")) m.push(need("q14", "what it is called"));
+  },
+  15: function(m){
     if (isShown("#q15wrap") && !ticked("q15").length) m.push(need("q15"));
     if (ticked("q15").indexOf("Other") > -1 && !val("q15_other")) m.push(need("q15", "tell us what"));
-    return m;
   },
-  4: function(){
-    var m = [];
-    ["q16", "q17", "q18", "q19"].forEach(function(n){ missMany(m, n); });
-    return m;
-  },
-  5: function(){
-    var m = [];
+  16: function(m){ missMany(m, "q16"); },
+  17: function(m){ missMany(m, "q17"); },
+  18: function(m){ missMany(m, "q18"); },
+  19: function(m){ missMany(m, "q19"); },
+  20: function(m){
     if (!ticked("q20d").length) m.push(need("q20d", "the days"));
     if (isShown("#s_times") && !ticked("q20t").length) m.push(need("q20d", "the times"));
-    if (!picked("q21")) m.push(need("q21"));
-    if (!picked("q22")) m.push(need("q22"));
-    return m;
   },
-  6: function(){
-    var m = [];
-    missMany(m, "q23");
-    missOne(m, "q24");
-    missMany(m, "q25");
-    return m;
-  },
-  7: function(){
-    var m = [];
-    if (!picked("q26")) m.push(need("q26"));
-    missOne(m, "q27");
-    return m;
-  }
+  21: function(m){ if (!picked("q21")) m.push(need("q21")); },
+  22: function(m){ if (!picked("q22")) m.push(need("q22")); },
+  23: function(m){ missMany(m, "q23"); },
+  24: function(m){ missOne(m, "q24"); },
+  25: function(m){ missMany(m, "q25"); },
+  26: function(m){ if (!picked("q26")) m.push(need("q26")); },
+  27: function(m){ missOne(m, "q27"); },
+  28: function(){}                               // the open box is optional
 };
+
+/* Which questions sit in which section, read off the markup rather than
+   written down twice. */
+var SECTQ = {};
+all(".step[data-step]").forEach(function(st){
+  var n = parseInt(st.getAttribute("data-step"), 10);
+  if (!(n >= 1 && n <= 7)) return;
+  SECTQ[n] = all(".q", st).map(function(q){
+    return parseInt(q.querySelector(".qn").textContent, 10);
+  });
+});
+
+function askedOn(q){                      // every message for one question
+  var m = [];
+  if (QRULES[q]) QRULES[q](m);
+  return m;
+}
+
+var RULES = {};
+[1,2,3,4,5,6,7].forEach(function(sec){
+  RULES[sec] = function(){
+    var m = [];
+    (SECTQ[sec] || []).forEach(function(q){ if (QRULES[q]) QRULES[q](m); });
+    return m;
+  };
+});
 
 function complain(step, missing){
   var box = $("#e" + step);
@@ -1589,55 +1663,233 @@ function complain(step, missing){
    Stepping
    --------------------------------------------------------------- */
 var LAST = 7;
-function goto(n){
-  all(".step").forEach(function(s){
-    s.classList.toggle("on", s.getAttribute("data-step") === String(n));
+var TOTAL = 28;
+
+/* ---------------------------------------------------------------
+   One question at a time
+
+   Position is either a section card {sec, q:null} or a question
+   {sec, q:<number>}. The questions themselves are never moved in the
+   markup, so a conditional question that is currently hidden is simply
+   not in the walk - visibleQs reads the DOM every time rather than
+   trusting a list made earlier.
+   --------------------------------------------------------------- */
+document.body.classList.add("oneq");
+
+var pos = null;                       // null while on a non-question screen
+
+function qEl(n){
+  var hit = null;
+  all(".q").forEach(function(q){
+    var lab = q.querySelector(".qn");
+    if (lab && parseInt(lab.textContent, 10) === n) hit = q;
   });
-  var pct = (n === 99) ? 100 : (n >= 96 ? 0 : Math.round((n / (LAST + 1)) * 100));
+  return hit;
+}
+
+function visibleQs(sec){
+  return (SECTQ[sec] || []).filter(function(n){
+    var el = qEl(n);
+    return el && !el.classList.contains("hide");
+  });
+}
+
+function showScreen(name){
+  all(".step").forEach(function(st){
+    st.classList.toggle("on", st.getAttribute("data-step") === String(name));
+  });
+}
+
+function paintProgress(){
+  var bar = $("#prog"), lab = $("#plab"), num = $("#pnum");
+  if (!pos){ return; }
+  var el = document.querySelector(".step.on");
+  if (pos.q){
+    bar.style.width = Math.round((pos.q / TOTAL) * 100) + "%";
+    num.textContent = pos.q + " of " + TOTAL;
+    lab.textContent = sectionLabel(pos.sec);
+  } else {
+    bar.style.width = Math.round(((firstOf(pos.sec) - 1) / TOTAL) * 100) + "%";
+    num.textContent = "";
+    lab.textContent = sectionLabel(pos.sec);
+  }
+}
+
+function firstOf(sec){
+  var vs = visibleQs(sec);
+  return vs.length ? vs[0] : 1;
+}
+
+function sectionLabel(sec){
+  var st = document.querySelector('.step[data-step="' + sec + '"]');
+  return st ? st.getAttribute("data-label") : "";
+}
+
+/* Read off each section's own opening line, so the card and the section
+   cannot drift apart. */
+function sectionLede(sec){
+  var st = document.querySelector('.step[data-step="' + sec + '"] > .card > .lede');
+  return st ? st.textContent.trim() : "";
+}
+
+var SECTHINT = {
+  1: "A few details so we can reach you if you win.",
+  2: "Where you are coming from, and how you get there.",
+  3: "What your training looks like at the moment.",
+  4: "What you would want from a gym.",
+  5: "When you would actually train, and how you would pay.",
+  6: "What gets in the way, and what keeps you going.",
+  7: "Almost done \u2014 three short ones."
+};
+
+function showSection(sec){
+  pos = { sec: sec, q: null };
+  $("#sectNum").textContent = "Section " + sec + " of " + LAST;
+  $("#sectName").textContent = sectionLabel(sec);
+  $("#sectHint").textContent = sectionLede(sec) || SECTHINT[sec] || "";
+  showScreen("sect");
+  $("#onenav").classList.remove("hide");
+  $("#oneNext").textContent = "Continue";
+  $("#oneBack").classList.remove("hide");
+  $("#oneNote").textContent = "";
+  paintProgress();
+  top();
+}
+
+function showQ(sec, n){
+  pos = { sec: sec, q: n };
+  showScreen(sec);
+  // Cleared across the whole form, not just this section: a question left
+  // marked current in a section nobody is looking at is a bug waiting to
+  // be read by something that asks "which question is on screen?".
+  all(".q").forEach(function(q){
+    var lab = q.querySelector(".qn");
+    q.classList.toggle("now", !!lab && parseInt(lab.textContent, 10) === n);
+  });
+  $("#onenav").classList.remove("hide");
+  $("#oneNext").textContent = (n === TOTAL) ? "Send my answers" : "Next";
+  $("#oneBack").classList.remove("hide");
+  $("#oneNote").textContent = "";
+  complain(sec, []);
+  paintProgress();
+  top();
+}
+
+function top(){ window.scrollTo({ top: 0, behavior: "smooth" }); }
+
+/* Where the next tap goes, given where we are. */
+function nextFrom(){
+  if (!pos) return null;
+  if (pos.q === null){
+    var vs = visibleQs(pos.sec);
+    return vs.length ? { sec: pos.sec, q: vs[0] } : afterSection(pos.sec);
+  }
+  var list = visibleQs(pos.sec);
+  var at = list.indexOf(pos.q);
+  if (at > -1 && at + 1 < list.length) return { sec: pos.sec, q: list[at + 1] };
+  return afterSection(pos.sec);
+}
+
+function afterSection(sec){
+  return sec < LAST ? { sec: sec + 1, q: null } : { done: true };
+}
+
+function prevFrom(){
+  if (!pos) return null;
+  if (pos.q === null){
+    if (pos.sec === 1) return { welcome: true };
+    var prev = visibleQs(pos.sec - 1);
+    return prev.length ? { sec: pos.sec - 1, q: prev[prev.length - 1] }
+                       : { sec: pos.sec - 1, q: null };
+  }
+  var list = visibleQs(pos.sec);
+  var at = list.indexOf(pos.q);
+  if (at > 0) return { sec: pos.sec, q: list[at - 1] };
+  return { sec: pos.sec, q: null };
+}
+
+function land(to){
+  if (!to) return;
+  if (to.welcome){ pos = null; showScreen(0); $("#onenav").classList.add("hide"); top(); return; }
+  if (to.done){ submitSurvey(); return; }
+  if (to.q === null) showSection(to.sec); else showQ(to.sec, to.q);
+}
+
+/* A screen that is not part of the walk: welcome, the exits, the finish. */
+function goto(n){
+  pos = null;
+  showScreen(n);
+  $("#onenav").classList.add("hide");
+  var pct = (n === 99) ? 100 : (n >= 96 ? 0 : 0);
   $("#prog").style.width = pct + "%";
   var cur = document.querySelector('.step[data-step="' + n + '"]');
   $("#plab").textContent = cur ? cur.getAttribute("data-label") : "";
-  $("#pnum").textContent = (n >= 1 && n <= LAST) ? ("Section " + n + " of " + LAST) : "";
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  $("#pnum").textContent = "";
+  top();
 }
 
+function stepForward(){
+  if (!pos) return;
+  if (pos.q !== null){
+    var missing = askedOn(pos.q);
+    if (missing.length){ complain(pos.sec, missing); return; }
+    complain(pos.sec, []);
+
+    /* Screening waits for question 4, because the number and the address
+       are collected there and a screened-out entry still has to spend
+       them. Same rule as before; only the trigger moved. */
+    if (pos.q === 4){
+      if (picked("q1") === "Outside Metro Manila"){ screenOut("area"); return; }
+      if (picked("q2") === "Under 18"){ screenOut("age"); return; }
+    }
+  }
+  land(nextFrom());
+}
+
+$("#oneNext").addEventListener("click", stepForward);
+$("#oneBack").addEventListener("click", function(){ land(prevFrom()); });
+
+/* The welcome screen and the referral card still use data-go. */
 document.addEventListener("click", function(ev){
   var b = ev.target.closest("[data-go]");
   if (!b) return;
-  var to = parseInt(b.getAttribute("data-go"), 10);
   var from = parseInt(document.querySelector(".step.on").getAttribute("data-step"), 10);
-
-  // going back never asks for anything
-  if (to < from || from === 97 || from === 98){ goto(to); return; }
-
-  if (from === 0){
-    var ok = document.querySelector('[name="c_privacy"]').checked &&
-             document.querySelector('[name="c_promo"]').checked;
-    var e = $("#e_consent");
-    if (!ok){
-      e.textContent = "Please tick both required boxes so we can accept your answers.";
-      e.classList.remove("hide");
-      return;
-    }
-    e.classList.add("hide");
-    goto(1);
+  if (from !== 0) return;
+  var ok = document.querySelector('[name="c_privacy"]').checked &&
+           document.querySelector('[name="c_promo"]').checked;
+  var e = $("#e_consent");
+  if (!ok){
+    e.textContent = "Please tick both required boxes so we can accept your answers.";
+    e.classList.remove("hide");
     return;
   }
-
-  var missing = RULES[from] ? RULES[from]() : [];
-  if (missing.length){ complain(from, missing); return; }
-  complain(from, []);
-
-  if (from === 1){
-    /* Screening only. Whether this entry is a second one is the server's
-       call and is made when it arrives - somebody who gets that far has
-       answered honestly and deserves to be told once, kindly, at the end
-       rather than stopped on the doorstep. */
-    if (picked("q1") === "Outside Metro Manila"){ screenOut("area"); return; }
-    if (picked("q2") === "Under 18"){ screenOut("age"); return; }
-  }
-  goto(to);
+  e.classList.add("hide");
+  showSection(1);
 });
+
+/* ---------------------------------------------------------------
+   Moving on by itself
+
+   A single-choice question with nothing left to fill in advances on its
+   own, after a beat long enough to see what was chosen. Anything with a
+   text box, a second group, or a follow-up that just opened waits to be
+   told - which falls out of asking its own validator whether it is done.
+   --------------------------------------------------------------- */
+var autoTimer = null;
+function maybeAdvance(ev){
+  if (!pos || pos.q === null) return;
+  var el = qEl(pos.q);
+  if (!el || el.hasAttribute("data-noauto")) return;
+  if (el.querySelector("[data-check]")) return;                 // multi-select
+  if (!ev.target || ev.target.type !== "radio") return;
+  if (askedOn(pos.q).length) return;                            // not finished
+  if (pos.q === 4) return;                                      // screening lives here
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(function(){
+    if (pos && pos.q !== null && !askedOn(pos.q).length) stepForward();
+  }, 340);
+}
+$("#sv").addEventListener("change", maybeAdvance);
 
 /* ---------------------------------------------------------------
    The device details, captured for one purpose only: spotting the
@@ -2100,10 +2352,27 @@ function screenOut(why){
 var started = Date.now();
 $("#sv").addEventListener("submit", function(e){ e.preventDefault(); });
 
-$("#submitBtn").addEventListener("click", function(){
-  var missing = RULES[7]();
-  if (missing.length){ complain(7, missing); return; }
-  complain(7, []);
+/* Reached from the last question's Next. Every section is re-checked
+   here, not just the last one: a conditional that opened after somebody
+   had already walked past it would otherwise slip through. */
+function submitSurvey(){
+  var missing = [];
+  [1,2,3,4,5,6,7].forEach(function(sec){
+    (RULES[sec]() || []).forEach(function(x){ missing.push(x); });
+  });
+  if (missing.length){
+    var firstQ = parseInt(String(missing[0]), 10);
+    if (firstQ){
+      var sec = 1;
+      Object.keys(SECTQ).forEach(function(k){
+        if (SECTQ[k].indexOf(firstQ) > -1) sec = parseInt(k, 10);
+      });
+      showQ(sec, firstQ);
+    }
+    complain(pos ? pos.sec : 7, missing);
+    return;
+  }
+  complain(pos ? pos.sec : 7, []);
   if (sending) return;
 
   var n = normPH(val("q4_mobile"));
@@ -2151,7 +2420,7 @@ $("#submitBtn").addEventListener("click", function(){
     device: device()
   };
 
-  var btn = this, was = btn.textContent;
+  var btn = $("#oneNext"), was = btn.textContent;
   sending = true;
   btn.textContent = "Sending\u2026";
   btn.disabled = true;
@@ -2177,7 +2446,7 @@ $("#submitBtn").addEventListener("click", function(){
     window.__lastSurvey = out;
     goto(99);
   });
-});
+}
 
 /* ---------------------------------------------------------------
    One listener for the whole form

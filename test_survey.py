@@ -82,6 +82,25 @@ with TestClient(app) as c:
         ck("question 9 offers %s" % want.split(" (")[0].lower(), want in r.text)
     ck("gender is asked", "3. What is your gender?" in r.text)
 
+    # One question at a time. The markup keeps its seven sections so the
+    # conditionals, the rules and the payload all still read the same DOM;
+    # what changed is that only one question is on screen at once.
+    ck("the form walks one question at a time", '.oneq .q.now{display:block}' in r.text)
+    ck("with one nav bar rather than seven", r.text.count('id="oneNext"') == 1)
+    ck("a section card between groups", 'data-step="sect"' in r.text)
+    ck("and the count is shown", '" of " + TOTAL' in r.text)
+    ck("single choice moves on by itself", "function maybeAdvance" in r.text)
+    ck("but never from question 4, where screening happens",
+       "if (pos.q === 4) return;" in r.text)
+    ck("nor from a question that is not finished",
+       "if (askedOn(pos.q).length) return;" in r.text)
+    ck("every question has its own validator",
+       all(("\n  %d: function" % n) in r.text for n in range(1, 29)))
+    ck("and the section validators are built from them, not written twice",
+       "RULES[sec] = function(){" in r.text)
+    ck("submitting re-checks every section",
+       "[1,2,3,4,5,6,7].forEach(function(sec){" in r.text)
+
     # Question 14 names competitors. Eight are places; the rest are kinds of
     # place and have to be followed by "what is it called?", or the answer
     # is a category and tells you nothing about who you are losing people to.
