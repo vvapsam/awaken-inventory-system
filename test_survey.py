@@ -91,8 +91,8 @@ with TestClient(app) as c:
                   "Snap Fitness", "Philippine Sports Performance (PSP)",
                   "Surge Fitness + Lifestyle", "BeFit"):
         ck("14 lists %s" % brand.split(" (")[0], brand in r.text)
-    ck("and Gold&#39;s Gym, with its apostrophe",
-       "Gold&rsquo;s Gym" in r.text or "Gold's Gym" in r.text)
+    ck("and Gold\u2019s Gym, apostrophe and all",
+       "Gold\u2019s Gym" in r.text)
     for kind in ("Pilates studio", "Yoga studio", "CrossFit gym",
                  "Functional / Hybrid training gym", "Cycling / Spin studio",
                  "Dance / Aerial / Pole studio", "Independent / Local gym",
@@ -100,7 +100,10 @@ with TestClient(app) as c:
         ck("14 offers %s" % kind.lower(), kind in r.text)
     ck("and a way to say they do not go anywhere",
        "currently go to a gym or studio" in r.text)
-    ck("14 is one choice, not several", 'data-radio="q14"' in r.text)
+    ck("14 is searched, not scrolled",
+       'id="q14search"' in r.text and 'role="combobox"' in r.text)
+    ck("and what it submits is a hidden field the box sets",
+       'type="hidden" name="q14"' in r.text)
     ck("the old dropdown is gone", 'select name="q14"' not in r.text
        and "var GYMS" not in r.text)
     ck("the name box only follows a category",

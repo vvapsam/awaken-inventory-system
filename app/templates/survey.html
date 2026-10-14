@@ -131,6 +131,29 @@ h2{margin:0 0 2px;font-size:10px;font-weight:700;letter-spacing:.22em;text-trans
 .opt .sub{display:block;font-size:12px;color:var(--faint);margin-top:1px}
 
 /* ---- text fields ---- */
+/* The list floats over whatever follows it, including the Back/Next row,
+   which sits later in the document and would otherwise paint on top. */
+.combo{position:relative;margin-top:10px;z-index:1}
+.combo.open{z-index:60}
+.comboin{width:100%;box-sizing:border-box;padding:14px 38px 14px 14px;border-radius:12px;
+  border:1px solid var(--fldLine);background:var(--fld);color:var(--ink);font-size:15.5px;
+  font-family:inherit;-webkit-appearance:none}
+.comboin:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(77,182,182,.18)}
+.comboin.has{font-weight:650}
+.comboclr{position:absolute;top:9px;right:8px;width:30px;height:30px;border:0;border-radius:8px;
+  background:transparent;color:var(--mut);font-size:20px;line-height:1;cursor:pointer}
+.comboclr:hover{background:rgba(255,255,255,.07);color:var(--ink)}
+.combolist{position:absolute;z-index:61;left:0;right:0;top:calc(100% + 6px);margin:0;padding:6px;
+  /* flipped above the box when the bottom of the screen is closer */
+  list-style:none;max-height:272px;overflow-y:auto;border-radius:12px;border:1px solid var(--line);
+  background:var(--raise);box-shadow:0 18px 40px rgba(0,0,0,.6)}
+.combolist li{padding:12px 12px;border-radius:9px;font-size:15px;cursor:pointer;color:var(--ink)}
+.combolist li[aria-selected="true"],.combolist li:hover{background:rgba(77,182,182,.16)}
+.combolist li.none{color:var(--mut);cursor:default;background:none}
+.combolist li.head{color:var(--faint);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
+  cursor:default;padding:10px 12px 4px}
+.combolist li.head:hover{background:none}
+.combolist.up{top:auto;bottom:calc(100% + 6px);box-shadow:0 -18px 40px rgba(0,0,0,.6)}
 .fl{display:block;margin-top:13px}
 .fl>span{display:block;font-size:12.5px;color:var(--mut);margin-bottom:5px}
 input[type=text],input[type=tel],input[type=email],select,textarea{
@@ -629,26 +652,14 @@ pre{
 
       <div class="q hide" id="q14wrap">
         <span class="qn">14. Which gym or fitness studio do you currently go to most often? <span class="req">*</span></span>
-        <p class="hint">Select one.</p>
-        <div class="opts" data-radio="q14">
-          <label class="opt"><input type="radio" name="q14" value="Anytime Fitness"><span>Anytime Fitness</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Fitness First"><span>Fitness First</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Gold's Gym"><span>Gold&rsquo;s Gym</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Slimmers World"><span>Slimmers World</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Snap Fitness"><span>Snap Fitness</span></label>
-          <label class="opt"><input type="radio" name="q14" value="PSP"><span>Philippine Sports Performance (PSP)</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Surge Fitness + Lifestyle"><span>Surge Fitness + Lifestyle</span></label>
-          <label class="opt"><input type="radio" name="q14" value="BeFit"><span>BeFit</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Pilates studio"><span>Pilates studio</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Yoga studio"><span>Yoga studio</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Functional / Hybrid gym"><span>Functional / Hybrid training gym</span></label>
-          <label class="opt"><input type="radio" name="q14" value="CrossFit gym"><span>CrossFit gym</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Boxing / Martial arts gym"><span>Boxing / Martial arts gym</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Cycling / Spin studio"><span>Cycling / Spin studio</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Dance / Aerial / Pole studio"><span>Dance / Aerial / Pole studio</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Independent / Local gym"><span>Independent / Local gym</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Other"><span>Other gym or fitness studio</span></label>
-          <label class="opt"><input type="radio" name="q14" value="None"><span>I don&rsquo;t currently go to a gym or studio</span></label>
+        <p class="hint">Start typing to search, or pick from the list.</p>
+        <div class="combo" id="q14combo">
+          <input type="text" id="q14search" class="comboin" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-controls="q14list"
+                 aria-autocomplete="list" placeholder="Search gyms and studios">
+          <button type="button" class="comboclr hide" id="q14clear" aria-label="Clear">&times;</button>
+          <ul class="combolist hide" id="q14list" role="listbox"></ul>
+          <input type="hidden" name="q14" value="">
         </div>
         <div class="sub-q hide" id="q14namewrap">
           <label class="fl" style="margin-top:0"><span>What is it called? <span class="req">*</span></span>
@@ -1231,11 +1242,164 @@ function otherBoxes(){
 /* ---------------------------------------------------------------
    Everything that appears or disappears
    --------------------------------------------------------------- */
-/* The answers that are a gym, not a kind of gym. Everything else is a
-   category and gets asked for a name. */
-var BRAND_ANSWERS = ["Anytime Fitness", "Fitness First", "Gold's Gym",
-                     "Slimmers World", "Snap Fitness", "PSP",
-                     "Surge Fitness + Lifestyle", "BeFit"];
+/* Question 14. The first group are gyms; the second are kinds of gym and
+   get asked for a name; the last is neither. Eighteen rows is too many to
+   read on a phone, so they are searched rather than scrolled. */
+var Q14_BRANDS = ["Anytime Fitness", "Fitness First", "Gold’s Gym", "Slimmers World", "Snap Fitness", "Philippine Sports Performance (PSP)", "Surge Fitness + Lifestyle", "BeFit"];
+var Q14_KINDS  = ["Pilates studio", "Yoga studio", "Functional / Hybrid training gym", "CrossFit gym", "Boxing / Martial arts gym", "Cycling / Spin studio", "Dance / Aerial / Pole studio", "Independent / Local gym", "Other gym or fitness studio"];
+var Q14_NONE   = "I don’t currently go to a gym or studio";
+var Q14_ALL    = Q14_BRANDS.concat(Q14_KINDS, [Q14_NONE]);
+var BRAND_ANSWERS = Q14_BRANDS;
+
+/* ---------------------------------------------------------------
+   The question 14 search box
+   A plain list of eighteen is a lot of thumb on a phone, and a native
+   select hides the options behind a tap. This types to filter, and the
+   value it sets is always one of the eighteen - never whatever was
+   typed - so the brand-or-category rule downstream cannot be fooled.
+   --------------------------------------------------------------- */
+(function comboBox(){
+  var box = $("#q14combo"), input = $("#q14search"),
+      list = $("#q14list"), clear = $("#q14clear"),
+      hidden = box.querySelector('input[name="q14"]');
+  var at = -1, rows = [];
+
+  function norm(t){ return String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+
+  function matches(q){
+    var n = norm(q);
+    if (!n) return Q14_ALL.slice();
+    var words = n.split(" ");
+    return Q14_ALL.filter(function(name){
+      var hay = norm(name);
+      return words.every(function(w){ return hay.indexOf(w) > -1; });
+    });
+  }
+
+  function close(){
+    list.classList.add("hide");
+    box.classList.remove("open");
+    input.setAttribute("aria-expanded", "false");
+    at = -1;
+  }
+
+  function choose(name){
+    hidden.value = name;
+    input.value = name;
+    input.classList.add("has");
+    clear.classList.remove("hide");
+    close();
+    fire();
+  }
+
+  function fire(){
+    $("#sv").dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function draw(q){
+    var hits = matches(q);
+    list.innerHTML = "";
+    rows = [];
+    if (!hits.length){
+      var none = document.createElement("li");
+      none.className = "none";
+      none.textContent = "Nothing matches that \u2014 try fewer words.";
+      list.appendChild(none);
+    } else {
+      var lastGroup = null;
+      hits.forEach(function(name){
+        var group = Q14_BRANDS.indexOf(name) > -1 ? "Gyms and studios"
+                  : (name === Q14_NONE ? "" : "Other kinds of place");
+        if (group && group !== lastGroup){
+          var h = document.createElement("li");
+          h.className = "head"; h.textContent = group;
+          list.appendChild(h);
+          lastGroup = group;
+        }
+        var li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.textContent = name;
+        li.addEventListener("mousedown", function(e){ e.preventDefault(); choose(name); });
+        list.appendChild(li);
+        rows.push(li);
+      });
+    }
+    list.classList.remove("hide");
+    box.classList.add("open");
+    input.setAttribute("aria-expanded", "true");
+    at = -1;
+    place();
+  }
+
+  /* Question 14 sits near the foot of a long section, so there is often
+     no room under the box and no page left to scroll. Measure, and open
+     upwards when that is the roomier side. */
+  function place(){
+    list.classList.remove("up");
+    list.style.maxHeight = "";
+    var box_r = input.getBoundingClientRect();
+    var below = window.innerHeight - box_r.bottom - 14;
+    var above = box_r.top - 14;
+    var want = list.scrollHeight;
+    if (want > below && above > below){
+      list.classList.add("up");
+      list.style.maxHeight = Math.max(140, Math.min(want, above)) + "px";
+    } else {
+      list.style.maxHeight = Math.max(140, Math.min(want, below)) + "px";
+    }
+  }
+
+  function highlight(){
+    rows.forEach(function(li, k){ li.setAttribute("aria-selected", k === at ? "true" : "false"); });
+    if (rows[at]) rows[at].scrollIntoView({ block: "nearest" });
+  }
+
+  input.addEventListener("focus", function(){ draw(hidden.value ? "" : input.value); });
+  input.addEventListener("input", function(){
+    // Typing over a chosen answer un-chooses it: what is in the box and
+    // what the form holds must never disagree.
+    if (hidden.value){
+      hidden.value = "";
+      input.classList.remove("has");
+      fire();
+    }
+    clear.classList.toggle("hide", !input.value);
+    draw(input.value);
+  });
+  input.addEventListener("keydown", function(e){
+    if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      if (list.classList.contains("hide")) return draw(input.value);
+      if (!rows.length) return;
+      at = e.key === "ArrowDown" ? (at + 1) % rows.length
+                                 : (at <= 0 ? rows.length - 1 : at - 1);
+      highlight();
+    } else if (e.key === "Enter"){
+      if (!list.classList.contains("hide")){
+        e.preventDefault();
+        if (rows[at]) choose(rows[at].textContent);
+        else if (rows.length === 1) choose(rows[0].textContent);
+      }
+    } else if (e.key === "Escape"){
+      close();
+    }
+  });
+  input.addEventListener("blur", function(){
+    // Leaving half-typed text in the box would read as an answer. If
+    // nothing was chosen, put the box back to the chosen value or empty.
+    setTimeout(function(){
+      close();
+      input.value = hidden.value;
+      input.classList.toggle("has", !!hidden.value);
+      clear.classList.toggle("hide", !hidden.value);
+    }, 0);
+  });
+  clear.addEventListener("click", function(){
+    hidden.value = ""; input.value = ""; input.classList.remove("has");
+    clear.classList.add("hide");
+    input.focus(); draw(""); fire();
+  });
+})();
 
 function conditionals(){
   var q1 = picked("q1");
@@ -1255,9 +1419,9 @@ function conditionals(){
   // Eight of the options name a place. The rest name a kind of place, so
   // they are followed by "what is it called?" - that answer is the whole
   // point of the question for an independent gym.
-  var gym = picked("q14");
+  var gym = val("q14");          // a hidden field now, set only by the search box
   var named = BRAND_ANSWERS.indexOf(gym) > -1;
-  var goes = !!gym && gym !== "None";
+  var goes = !!gym && gym !== Q14_NONE;
   show($("#q14namewrap"), goes && !named);
   show($("#q14branchwrap"), goes);
   if (!goes || named) $('[name="q14_other"]').value = "";
@@ -1366,7 +1530,7 @@ var RULES = {
     if (!picked("q13")) m.push(need("q13"));
     if (isShown("#q13wwrap") && !picked("q13_willing"))
       m.push(need("q13", "the follow-up on what you would be willing to spend"));
-    if (isShown("#q14wrap") && !picked("q14")) m.push(need("q14"));
+    if (isShown("#q14wrap") && !val("q14")) m.push(need("q14"));
     if (isShown("#q14namewrap") && !val("q14_other"))
       m.push(need("q14", "what it is called"));
     if (isShown("#q15wrap") && !ticked("q15").length) m.push(need("q15"));
@@ -1956,7 +2120,7 @@ $("#submitBtn").addEventListener("click", function(){
       q12_level: picked("q12"),
       q13_budget: picked("q13"),
       q13_willing: picked("q13") === "0" ? picked("q13_willing") : "",
-      q14_gym: picked("q14"), q14_other: val("q14_other"),
+      q14_gym: val("q14"), q14_other: val("q14_other"),
       q14_branch: val("q14_branch"),
       q15_why: ticked("q15"), q15_other: val("q15_other"),
       q16_goals: ticked("q16"), q16_other: val("q16_other"),
