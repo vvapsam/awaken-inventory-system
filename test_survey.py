@@ -33,7 +33,11 @@ DEV = {"user_agent": "Mozilla/5.0 (iPhone)", "screen": "390x844",
 
 def entry(mobile, *, lives="Within Metro Manila", age="25-34", gender="Female",
           name="Maria",
-          email="maria@email.com", ref=None, **extra):
+          email=None, ref=None, **extra):
+    # Each number is a different person, so each one needs its own address:
+    # one entry per person now means one per email as well as one per number.
+    if email is None:
+        email = "m%s@email.com" % "".join(ch for ch in mobile if ch.isdigit())
     a = {"q1_lives": lives, "q1_city": "Pasig", "q2_age": age,
          "q3_gender": gender,
          "q5_occupation": "Employed", "q7_travel": "21-30 min",
@@ -235,6 +239,51 @@ with TestClient(app) as c:
             M.SurveyResponse.mobile == "+639178000002").first()
         ck("and a screened-out person earns nobody anything", g.referred_by is None)
 
+    # --------------------------------------------- what they pay, and would pay
+    c.post("/survey", json=entry("0917 910 0001", email="pays@email.com",
+                                 q13_budget="0", q13_willing="3000-4999"))
+    with Session(engine) as db:
+        row = db.query(M.SurveyResponse).filter(
+            M.SurveyResponse.mobile == "+639179100001").first()
+        a = json.loads(row.answers)
+        ck("nothing today is recorded as nothing", a["q13_budget"] == "0")
+        ck("and what they would pay is kept beside it",
+           a["q13_willing"] == "3000-4999")
+    # ------------------------------------------- one entry per person, both ways
+    r = c.post("/survey", json=entry("0917 900 0001", email="dupe@email.com"))
+    ck("a first entry on a fresh address is taken", r.status_code == 200)
+
+    r = c.post("/survey", json=entry("0917 900 0002", email="dupe@email.com"))
+    ck("the same address a second time is refused", r.status_code == 409)
+    ck("and it says which one clashed", r.json()["error"] == "email")
+
+    r = c.post("/survey", json=entry("0917 900 0003", email="  DUPE@Email.COM "))
+    ck("casing and stray spaces do not get around it", r.status_code == 409)
+
+    r = c.post("/survey", json=entry("0917 900 0001", email="brand@new.com"))
+    ck("and the number is still its own block", r.json()["error"] == "used")
+
+    r = c.post("/survey/check", json={"mobile": "0917 900 0009",
+                                      "email": "dupe@email.com"})
+    ck("the check catches a spent address before the questions",
+       r.json() == {"ok": False, "why": "email"})
+    r = c.post("/survey/check", json={"mobile": "0917 900 0001",
+                                      "email": "brand@new.com"})
+    ck("and a spent number", r.json()["why"] == "used")
+    r = c.post("/survey/check", json={"mobile": "0917 900 0009",
+                                      "email": "brand@new.com"})
+    ck("a clean pair passes", r.json() == {"ok": True, "why": ""})
+    r = c.post("/survey/check", json={"mobile": "0917 900 0009"})
+    ck("and an address is optional there", r.json()["ok"] is True)
+
+    # Somebody turned away keeps no address, so theirs cannot be the thing
+    # that blocks a real entry later.
+    c.post("/survey", json=entry("0917 900 0010", email="away@email.com",
+                                 lives="Outside Metro Manila"))
+    r = c.post("/survey", json=entry("0917 900 0011", email="away@email.com"))
+    ck("an address given by somebody we turned away is not held against anyone",
+       r.status_code == 200)
+
     # --------------------------------------------------------------- admin
     r = c.get("/admin/survey")
     ck("the table needs a login", r.status_code in (200, 303, 307)
@@ -247,7 +296,14 @@ with TestClient(app) as c:
     ck("every question is a column", all(label in r.text for _, label in QUESTIONS))
     ck("the answers are in it", "More evening classes" in r.text)
     ck("and the mobile number", "+639171111111" in r.text)
-    ck("turned-away rows are not mixed in", "+639172222222" not in r.text)
+    # The repeats card below the table does name turned-away entries, on
+    # purpose: somebody filling the form in over and over is exactly what it
+    # is there to show. The table itself is the part that stays clean.
+    body = r.text.split('<table class="list" style="min-width')[-1]
+    ck("turned-away rows are not mixed into the table",
+       "+639172222222" not in body)
+    ck("but the repeats card does account for them",
+       "Worth a look" in r.text and "turned away" in r.text)
     r = c.get("/admin/survey?show=out")
     ck("they have their own view", "+639172222222" in r.text)
     ck("with the reason", "Outside Metro Manila" in r.text)

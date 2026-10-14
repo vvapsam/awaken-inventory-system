@@ -81,6 +81,34 @@
   </div>
 </div>
 
+{% if clusters %}
+<div class="card" style="margin-top:16px">
+  <h3 style="margin:0 0 4px">Worth a look &mdash; {{ clusters|length }} repeat{{ '' if clusters|length == 1 else 's' }}</h3>
+  <p class="muted" style="margin:0 0 12px;font-size:13px">
+    Entries sharing a network or a device. Shared wifi at the gym, an office
+    connection and mobile data all do this honestly, so nothing here is
+    blocked &mdash; it is listed so you can decide.
+  </p>
+  <table class="list" style="margin:0">
+    <thead><tr><th>What they share</th><th>Entries</th><th>Who</th></tr></thead>
+    <tbody>
+      {% for c in clusters %}
+      <tr>
+        <td><b>{{ c.kind }}</b><br><span class="muted" style="font-size:12px">{{ c.value }}</span></td>
+        <td>{{ c.count }}</td>
+        <td style="font-size:13px">
+          {% for p in c.people %}
+            <a href="/admin/survey/{{ p.id }}">{{ p.mobile }}</a>{% if p.nickname %} &middot; {{ p.nickname }}{% endif %}{% if p.out %} <span class="muted">(turned away)</span>{% endif %}
+            <span class="muted">&middot; {{ p.when.strftime('%d %b %H:%M') }}</span>{% if not loop.last %}<br>{% endif %}
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if not rows %}
   <p class="muted" style="margin:22px 0">Nothing here yet.</p>
 {% else %}

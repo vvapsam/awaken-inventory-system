@@ -312,6 +312,8 @@ def startup():
                           "ON survey_responses (mobile); "
                           "CREATE UNIQUE INDEX IF NOT EXISTS ix_survey_code_once "
                           "ON survey_responses (ref_code) WHERE ref_code IS NOT NULL; "
+                          "CREATE UNIQUE INDEX IF NOT EXISTS ix_survey_email_once "
+                          "ON survey_responses (lower(email)) WHERE email IS NOT NULL; "
                           "ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS channel VARCHAR; "
                           "END IF; END $$;"))
         # Everybody picks their own PIN. The UPDATE sits inside the "column is

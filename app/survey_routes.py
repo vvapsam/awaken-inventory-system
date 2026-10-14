@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .models import (
     SURVEY_OUT_AGE, SURVEY_OUT_AREA, SURVEY_REFERRAL_CAP, SurveyResponse,
-    SurveySetting, norm_ph_mobile, now_utc, to_local,
+    SurveySetting, norm_ph_mobile, norm_email, now_utc, to_local,
 )
 
 #: The questions, in the order they are asked, as (payload key, column head).
@@ -67,7 +67,8 @@ QUESTIONS = [
     ("q10_other",           "Activities (other)"),
     ("q11_frequency",       "How often"),
     ("q12_level",           "Level"),
-    ("q13_budget",          "Budget/month"),
+    ("q13_budget",          "Spends now/month"),
+    ("q13_willing",         "Would pay/month"),
     ("q14_gym",             "Current gym"),
     ("q14_other",           "Gym (other)"),
     ("q14_branch",          "Branch"),
@@ -110,7 +111,7 @@ SECTIONS = [
                              "q5_occupation", "q6_where", "q6_city"]),
     ("Getting there",       ["q7_travel", "q8_parking"]),
     ("What they do now",    ["q9_status", "q10_activities", "q11_frequency",
-                             "q12_level", "q13_budget",
+                             "q12_level", "q13_budget", "q13_willing",
                              "q14_gym", "q15_why"]),
     ("What they want",      ["q16_goals", "q17_services",
                              "q18_amenities", "q19_missing"]),
@@ -383,12 +384,21 @@ def register(app, deps):
         ip = _client_ip(request)
         if not _rate_ok(ip):
             return JSONResponse({"error": "slow down"}, status_code=429)
-        data = await request.json()
-        mob = norm_ph_mobile((data or {}).get("mobile"))
+        data = await request.json() or {}
+        mob = norm_ph_mobile(data.get("mobile"))
         if not mob:
             return JSONResponse({"ok": False, "why": "format"})
-        used = db.query(SurveyResponse).filter(SurveyResponse.mobile == mob).first()
-        return JSONResponse({"ok": used is None, "why": "used" if used else ""})
+        if db.query(SurveyResponse).filter(SurveyResponse.mobile == mob).first():
+            return JSONResponse({"ok": False, "why": "used"})
+
+        # The address is checked here too. Finding out at the last screen
+        # that an entry cannot be counted is the thing worth avoiding.
+        mail = norm_email(data.get("email"))
+        if mail and db.query(SurveyResponse).filter(
+                SurveyResponse.email == mail).first():
+            return JSONResponse({"ok": False, "why": "email"})
+
+        return JSONResponse({"ok": True, "why": ""})
 
     @app.post("/survey")
     async def survey_submit(request: Request, db: Session = Depends(get_db)):
@@ -417,6 +427,11 @@ def register(app, deps):
         if db.query(SurveyResponse).filter(SurveyResponse.mobile == mob).first():
             return JSONResponse({"error": "used"}, status_code=409)
 
+        mail = norm_email(person.get("email")) if outcome == "complete" else None
+        if mail and db.query(SurveyResponse).filter(
+                SurveyResponse.email == mail).first():
+            return JSONResponse({"error": "email"}, status_code=409)
+
         # Only the screening answers are kept for somebody we turned away.
         # They did not consent to a market research record and we have no use
         # for one; the number is the only thing that has to survive.
@@ -435,7 +450,7 @@ def register(app, deps):
             outcome=outcome, reason=reason,
             mobile=mob, mobile_raw=(person.get("mobile_raw") or "")[:40] or None,
             nickname=(person.get("name") or "")[:80] or None if outcome == "complete" else None,
-            email=(person.get("email") or "")[:160].lower() or None if outcome == "complete" else None,
+            email=mail,
             ref_code=new_code(db) if outcome == "complete" else None,
             referred_by=came_from,
             channel=((data.get("channel") or "")[:24] or None),
@@ -457,7 +472,12 @@ def register(app, deps):
         except IntegrityError:
             # Two tabs, one number, submitted together. The first one won.
             db.rollback()
-            return JSONResponse({"error": "used"}, status_code=409)
+            dup = "used"
+            if mail and db.query(SurveyResponse).filter(
+                    SurveyResponse.email == mail,
+                    SurveyResponse.mobile != mob).first():
+                dup = "email"
+            return JSONResponse({"error": dup}, status_code=409)
 
         return JSONResponse({
             "outcome": outcome,
@@ -520,6 +540,41 @@ def register(app, deps):
         db.commit()
         return RedirectResponse("/admin/survey", status_code=303)
 
+    def clusters(db):
+        """Entries that share an address or a device.
+
+        This is a review tool, not a gate. An IP address is a poor name for
+        a person: gym wifi, an office network and a mobile carrier's NAT all
+        put dozens of unrelated people behind one address, so blocking on it
+        would turn away real respondents in order to stop one determined
+        one. What it is good for is noticing that eleven entries arrived
+        from one address on one phone in four minutes - which is a thing
+        somebody should look at, and decide about, by hand.
+        """
+        out = []
+        for label, col in (("Same network", SurveyResponse.ip),
+                           ("Same device", SurveyResponse.user_agent)):
+            groups = (db.query(col, func.count(SurveyResponse.id))
+                        .filter(col.isnot(None), col != "")
+                        .group_by(col)
+                        .having(func.count(SurveyResponse.id) > 1)
+                        .order_by(func.count(SurveyResponse.id).desc())
+                        .limit(25).all())
+            for value, n in groups:
+                who = (db.query(SurveyResponse)
+                         .filter(col == value)
+                         .order_by(SurveyResponse.created_at).all())
+                out.append({
+                    "kind": label,
+                    "value": (value[:70] + "\u2026") if len(value) > 70 else value,
+                    "count": n,
+                    "people": [{"id": r.id, "mobile": r.mobile,
+                                "nickname": r.nickname or "",
+                                "out": r.is_out,
+                                "when": to_local(r.created_at)} for r in who],
+                })
+        return out
+
     @app.get("/admin/survey", response_class=HTMLResponse)
     def survey_list(request: Request, show: str = "complete",
                     db: Session = Depends(get_db)):
@@ -548,7 +603,7 @@ def register(app, deps):
         return render(request, "survey_list.html", db, staff, active="survey",
                       rows=packed, questions=QUESTIONS, show=show, tally=tally,
                       cell=cell, cfg=cfg, channels=CHANNELS,
-                      by_channel=by_channel,
+                      by_channel=by_channel, clusters=clusters(db),
                       link=public_link(request, ""),
                       link_for=lambda c: public_link(request, c))
 

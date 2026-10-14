@@ -600,9 +600,10 @@ pre{
       </div>
 
       <div class="q">
-        <span class="qn">13. Roughly how much would you spend per month, in total, on fitness activities? <span class="req">*</span></span>
+        <span class="qn">13. Roughly how much do you currently spend per month, in total, on fitness activities? <span class="req">*</span></span>
         <p class="hint">Include memberships, classes, coaching and court or venue fees. Leave out clothing, equipment and supplements.</p>
         <div class="opts" data-radio="q13">
+          <label class="opt"><input type="radio" name="q13" value="0"><span>Nothing at the moment</span></label>
           <label class="opt"><input type="radio" name="q13" value="<2000"><span>Less than &#8369;2,000</span></label>
           <label class="opt"><input type="radio" name="q13" value="2000-2999"><span>&#8369;2,000 &ndash; &#8369;2,999</span></label>
           <label class="opt"><input type="radio" name="q13" value="3000-4999"><span>&#8369;3,000 &ndash; &#8369;4,999</span></label>
@@ -610,6 +611,18 @@ pre{
           <label class="opt"><input type="radio" name="q13" value="7500-9999"><span>&#8369;7,500 &ndash; &#8369;9,999</span></label>
           <label class="opt"><input type="radio" name="q13" value="10000+"><span>&#8369;10,000 or more</span></label>
           <label class="opt"><input type="radio" name="q13" value="Unsure"><span>I&rsquo;m not sure</span></label>
+        </div>
+        <div class="sub-q hide" id="q13wwrap">
+          <p class="hint" style="margin-top:0">And if you found a place that suited you, what would you be willing to spend per month?</p>
+          <div class="opts" data-radio="q13_willing">
+            <label class="opt"><input type="radio" name="q13_willing" value="0"><span>Nothing &mdash; I&rsquo;d only use free options</span></label>
+            <label class="opt"><input type="radio" name="q13_willing" value="<2000"><span>Less than &#8369;2,000</span></label>
+            <label class="opt"><input type="radio" name="q13_willing" value="2000-2999"><span>&#8369;2,000 &ndash; &#8369;2,999</span></label>
+            <label class="opt"><input type="radio" name="q13_willing" value="3000-4999"><span>&#8369;3,000 &ndash; &#8369;4,999</span></label>
+            <label class="opt"><input type="radio" name="q13_willing" value="5000-7499"><span>&#8369;5,000 &ndash; &#8369;7,499</span></label>
+            <label class="opt"><input type="radio" name="q13_willing" value="7500+"><span>&#8369;7,500 or more</span></label>
+            <label class="opt"><input type="radio" name="q13_willing" value="Unsure"><span>I&rsquo;m not sure</span></label>
+          </div>
         </div>
       </div>
 
@@ -1209,6 +1222,10 @@ function conditionals(){
   var q6 = picked("q6");
   show($("#s_work"), q6 === "At a workplace or school" || q6 === "Mix of home and workplace" || q6 === "Varies");
 
+  // Somebody paying nothing today is asked what they would pay instead.
+  show($("#q13wwrap"), picked("q13") === "0");
+  if (picked("q13") !== "0") all('input[name="q13_willing"]').forEach(function(b){ b.checked = false; });
+
   var q9 = picked("q9");
   var pays = (q9 === "Member" || q9 === "Pay per visit");
   show($("#q14wrap"), pays);
@@ -1313,6 +1330,8 @@ var RULES = {
     if (!picked("q11")) m.push(need("q11"));
     if (!picked("q12")) m.push(need("q12"));
     if (!picked("q13")) m.push(need("q13"));
+    if (isShown("#q13wwrap") && !picked("q13_willing"))
+      m.push(need("q13", "the follow-up on what you would be willing to spend"));
     if (isShown("#q14wrap") && !val("q14")) m.push(need("q14"));
     if (val("q14") === "Other" && !val("q14_other")) m.push(need("q14", "name it"));
     if (isShown("#q15wrap") && !ticked("q15").length) m.push(need("q15"));
@@ -1405,10 +1424,22 @@ document.addEventListener("click", function(ev){
        gives up on us over. */
     if (sending) return;
     sending = true;
-    post("/survey/check", { mobile: val("q4_mobile") }, function(status, j){
+    post("/survey/check",
+         { mobile: val("q4_mobile"), email: val("q4_email") },
+         function(status, j){
       sending = false;
-      if (status === 200 && j.ok === false && j.why === "used"){
-        $("#e1").textContent = "That mobile number has already been entered. One entry per person.";
+
+      /* A check that could not be made is not a pass. Letting somebody
+         through here only to turn them away at the last screen is the
+         version that wastes their evening. */
+      if (status !== 200){
+        $("#e1").textContent = "We couldn\u2019t check your details just now. Please check your connection and try again.";
+        $("#e1").classList.remove("hide");
+        $("#e1").scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (j.ok === false && (j.why === "used" || j.why === "email")){
+        $("#e1").textContent = j.why === "email" ? "That email address has already been entered. One entry per person \u2014 please use your own mobile number and email address." : "That mobile number has already been entered. One entry per person.";
         $("#e1").classList.remove("hide");
         $("#e1").scrollIntoView({ behavior: "smooth", block: "center" });
         return;
@@ -1910,6 +1941,7 @@ $("#submitBtn").addEventListener("click", function(){
       q11_frequency: picked("q11"),
       q12_level: picked("q12"),
       q13_budget: picked("q13"),
+      q13_willing: picked("q13") === "0" ? picked("q13_willing") : "",
       q14_gym: val("q14"), q14_other: val("q14_other"), q14_branch: val("q14_branch"),
       q15_why: ticked("q15"), q15_other: val("q15_other"),
       q16_goals: ticked("q16"), q16_other: val("q16_other"),
@@ -1940,7 +1972,9 @@ $("#submitBtn").addEventListener("click", function(){
     btn.disabled = false;
     if (status === 409){
       complain(7, []);
-      $("#e7").textContent = "That mobile number has already been entered. One entry per person.";
+      $("#e7").textContent = (j && j.error === "email")
+        ? "That email address has already been entered. One entry per person \u2014 please use your own mobile number and email address."
+        : "That mobile number has already been entered. One entry per person.";
       $("#e7").classList.remove("hide");
       return;
     }

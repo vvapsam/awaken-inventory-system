@@ -3956,6 +3956,19 @@ def norm_ph_mobile(raw):
     return None
 
 
+def norm_email(raw):
+    """One shape per address, so a second entry cannot hide behind casing.
+
+    Case and surrounding space are all that is folded. Gmail dots and
+    ``+tags`` are deliberately left alone: stripping them would merge
+    addresses that other providers treat as genuinely different people.
+    """
+    e = str(raw or "").strip().lower()
+    if "@" not in e or "." not in e.split("@")[-1]:
+        return None
+    return e[:160]
+
+
 class SurveySetting(Base):
     """The few things about the survey that change without a deploy.
 
