@@ -82,6 +82,30 @@ with TestClient(app) as c:
         ck("question 9 offers %s" % want.split(" (")[0].lower(), want in r.text)
     ck("gender is asked", "3. What is your gender?" in r.text)
 
+    # Question 14 names competitors. Eight are places; the rest are kinds of
+    # place and have to be followed by "what is it called?", or the answer
+    # is a category and tells you nothing about who you are losing people to.
+    ck("14 asks where they currently go",
+       "Which gym or fitness studio do you currently go to most often?" in r.text)
+    for brand in ("Anytime Fitness", "Fitness First", "Slimmers World",
+                  "Snap Fitness", "Philippine Sports Performance (PSP)",
+                  "Surge Fitness + Lifestyle", "BeFit"):
+        ck("14 lists %s" % brand.split(" (")[0], brand in r.text)
+    ck("and Gold&#39;s Gym, with its apostrophe",
+       "Gold&rsquo;s Gym" in r.text or "Gold's Gym" in r.text)
+    for kind in ("Pilates studio", "Yoga studio", "CrossFit gym",
+                 "Functional / Hybrid training gym", "Cycling / Spin studio",
+                 "Dance / Aerial / Pole studio", "Independent / Local gym",
+                 "Boxing / Martial arts gym", "Other gym or fitness studio"):
+        ck("14 offers %s" % kind.lower(), kind in r.text)
+    ck("and a way to say they do not go anywhere",
+       "currently go to a gym or studio" in r.text)
+    ck("14 is one choice, not several", 'data-radio="q14"' in r.text)
+    ck("the old dropdown is gone", 'select name="q14"' not in r.text
+       and "var GYMS" not in r.text)
+    ck("the name box only follows a category",
+       'id="q14namewrap"' in r.text and "BRAND_ANSWERS" in r.text)
+
     # The numbering drifted once already when gender was inserted, so it is
     # checked rather than trusted: every question's key must equal the number
     # printed beside it, and the run must have no gaps.

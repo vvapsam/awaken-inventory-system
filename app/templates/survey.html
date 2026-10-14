@@ -628,16 +628,36 @@ pre{
       </div>
 
       <div class="q hide" id="q14wrap">
-        <span class="qn">14. Which gym or studio do you use most often?</span>
-        <label class="fl"><span>Gym or studio</span>
-          <select name="q14" data-list="gyms"></select>
-        </label>
-        <div class="sub-q hide" data-otherfor="q14">
-          <label class="fl" style="margin-top:0"><span>Please name it</span><input type="text" name="q14_other"></label>
+        <span class="qn">14. Which gym or fitness studio do you currently go to most often? <span class="req">*</span></span>
+        <p class="hint">Select one.</p>
+        <div class="opts" data-radio="q14">
+          <label class="opt"><input type="radio" name="q14" value="Anytime Fitness"><span>Anytime Fitness</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Fitness First"><span>Fitness First</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Gold's Gym"><span>Gold&rsquo;s Gym</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Slimmers World"><span>Slimmers World</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Snap Fitness"><span>Snap Fitness</span></label>
+          <label class="opt"><input type="radio" name="q14" value="PSP"><span>Philippine Sports Performance (PSP)</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Surge Fitness + Lifestyle"><span>Surge Fitness + Lifestyle</span></label>
+          <label class="opt"><input type="radio" name="q14" value="BeFit"><span>BeFit</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Pilates studio"><span>Pilates studio</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Yoga studio"><span>Yoga studio</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Functional / Hybrid gym"><span>Functional / Hybrid training gym</span></label>
+          <label class="opt"><input type="radio" name="q14" value="CrossFit gym"><span>CrossFit gym</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Boxing / Martial arts gym"><span>Boxing / Martial arts gym</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Cycling / Spin studio"><span>Cycling / Spin studio</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Dance / Aerial / Pole studio"><span>Dance / Aerial / Pole studio</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Independent / Local gym"><span>Independent / Local gym</span></label>
+          <label class="opt"><input type="radio" name="q14" value="Other"><span>Other gym or fitness studio</span></label>
+          <label class="opt"><input type="radio" name="q14" value="None"><span>I don&rsquo;t currently go to a gym or studio</span></label>
         </div>
-        <label class="fl"><span>Which branch? <span style="color:var(--faint)">(optional)</span></span>
-          <input type="text" name="q14_branch" placeholder="e.g. BGC, Katipunan">
-        </label>
+        <div class="sub-q hide" id="q14namewrap">
+          <label class="fl" style="margin-top:0"><span>What is it called? <span class="req">*</span></span>
+            <input type="text" name="q14_other" placeholder="e.g. Hustle Manila"></label>
+        </div>
+        <div class="sub-q hide" id="q14branchwrap">
+          <label class="fl" style="margin-top:0"><span>Which branch? <span style="color:var(--faint)">(optional)</span></span>
+            <input type="text" name="q14_branch" placeholder="e.g. BGC, Katipunan"></label>
+        </div>
       </div>
 
       <div class="q hide" id="q15wrap">
@@ -1110,15 +1130,6 @@ var PROV = ["Rizal","Cavite","Laguna","Bulacan","Batangas","Pampanga","Bataan",
   "Surigao del Sur","Tawi-Tawi","Zamboanga del Norte","Zamboanga del Sur",
   "Zamboanga Sibugay"];
 
-var GYMS = {
-  "Gyms": ["Anytime Fitness","Gold's Gym","Fitness First","Slimmers World",
-           "360 Fitness Club","UFC Gym","Gorilla Fitness","Elorde Boxing Gym",
-           "A CrossFit box","An independent or local gym",
-           "My condo or office building gym"],
-  "Studios": ["Plana Forma","Ride Revolution","Saddle Row","Electric Studio",
-              "Beyond Yoga","A Pilates studio","A yoga studio",
-              "A boxing or martial arts studio"]
-};
 
 /* ---------------------------------------------------------------
    Select population
@@ -1146,13 +1157,6 @@ function fill(sel){
     NEAR.forEach(function(c){ b.appendChild(opt(c)); });
     sel.appendChild(a); sel.appendChild(b);
     sel.appendChild(opt("Somewhere else"));
-  } else if (kind === "gyms"){
-    Object.keys(GYMS).forEach(function(k){
-      var g = document.createElement("optgroup"); g.label = k;
-      GYMS[k].forEach(function(n){ g.appendChild(opt(n)); });
-      sel.appendChild(g);
-    });
-    sel.appendChild(opt("Other", "Other — not listed"));
   }
 }
 [].forEach.call(document.querySelectorAll("select[data-list]"), fill);
@@ -1222,14 +1226,17 @@ function otherBoxes(){
     var box = $('[data-otherfor="'+name+'"]');
     if (box) show(box, inp.checked);
   });
-  // the gym dropdown is a select, not a tick
-  var g = document.querySelector('select[name="q14"]');
-  if (g) show($('[data-otherfor="q14"]'), g.value === "Other");
 }
 
 /* ---------------------------------------------------------------
    Everything that appears or disappears
    --------------------------------------------------------------- */
+/* The answers that are a gym, not a kind of gym. Everything else is a
+   category and gets asked for a name. */
+var BRAND_ANSWERS = ["Anytime Fitness", "Fitness First", "Gold's Gym",
+                     "Slimmers World", "Snap Fitness", "PSP",
+                     "Surge Fitness + Lifestyle", "BeFit"];
+
 function conditionals(){
   var q1 = picked("q1");
   show($("#s_ncr"),  q1 === "Within Metro Manila");
@@ -1244,7 +1251,19 @@ function conditionals(){
   var q9 = picked("q9");
   var pays = (q9 === "Member" || q9 === "Pay per visit");
   show($("#q14wrap"), pays);
-  show($("#q15wrap"), pays && !!val("q14"));
+
+  // Eight of the options name a place. The rest name a kind of place, so
+  // they are followed by "what is it called?" - that answer is the whole
+  // point of the question for an independent gym.
+  var gym = picked("q14");
+  var named = BRAND_ANSWERS.indexOf(gym) > -1;
+  var goes = !!gym && gym !== "None";
+  show($("#q14namewrap"), goes && !named);
+  show($("#q14branchwrap"), goes);
+  if (!goes || named) $('[name="q14_other"]').value = "";
+  if (!goes) $('[name="q14_branch"]').value = "";
+
+  show($("#q15wrap"), pays && goes);
 
   // "I don't plan to train" hides the time choices rather than leaving
   // somebody to answer a question that cannot apply to them.
@@ -1347,8 +1366,9 @@ var RULES = {
     if (!picked("q13")) m.push(need("q13"));
     if (isShown("#q13wwrap") && !picked("q13_willing"))
       m.push(need("q13", "the follow-up on what you would be willing to spend"));
-    if (isShown("#q14wrap") && !val("q14")) m.push(need("q14"));
-    if (val("q14") === "Other" && !val("q14_other")) m.push(need("q14", "name it"));
+    if (isShown("#q14wrap") && !picked("q14")) m.push(need("q14"));
+    if (isShown("#q14namewrap") && !val("q14_other"))
+      m.push(need("q14", "what it is called"));
     if (isShown("#q15wrap") && !ticked("q15").length) m.push(need("q15"));
     if (ticked("q15").indexOf("Other") > -1 && !val("q15_other")) m.push(need("q15", "tell us what"));
     return m;
@@ -1936,7 +1956,8 @@ $("#submitBtn").addEventListener("click", function(){
       q12_level: picked("q12"),
       q13_budget: picked("q13"),
       q13_willing: picked("q13") === "0" ? picked("q13_willing") : "",
-      q14_gym: val("q14"), q14_other: val("q14_other"), q14_branch: val("q14_branch"),
+      q14_gym: picked("q14"), q14_other: val("q14_other"),
+      q14_branch: val("q14_branch"),
       q15_why: ticked("q15"), q15_other: val("q15_other"),
       q16_goals: ticked("q16"), q16_other: val("q16_other"),
       q17_services: ticked("q17"), q17_other: val("q17_other"),

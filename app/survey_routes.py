@@ -70,7 +70,7 @@ QUESTIONS = [
     ("q13_budget",          "Spends now/month"),
     ("q13_willing",         "Would pay/month"),
     ("q14_gym",             "Current gym"),
-    ("q14_other",           "Gym (other)"),
+    ("q14_other",           "Gym name"),
     ("q14_branch",          "Branch"),
     ("q15_why",             "Why that gym"),
     ("q15_other",           "Why (other)"),
