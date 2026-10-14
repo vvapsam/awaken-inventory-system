@@ -88,6 +88,17 @@ with TestClient(app) as c:
     ck("the form walks one question at a time", '.oneq .q.now{display:block}' in r.text)
     ck("with one nav bar rather than seven", r.text.count('id="oneNext"') == 1)
     ck("a section card between groups", 'data-step="sect"' in r.text)
+    ck("and its button says Next like every other one",
+       '$("#oneNext").textContent = "Next";' in r.text
+       and "Continue" not in r.text)
+
+    # The card the question sits in clips its own corners, so a dropdown
+    # positioned inside it gets sliced off at the card's edge. Fixed
+    # positioning takes the list out of that box entirely.
+    ck("the gym list is not clipped by the card",
+       ".combolist{position:fixed" in r.text)
+    ck("and it follows the box when the page moves",
+       'window.addEventListener("scroll", place, true);' in r.text)
     ck("and the count is shown", '" of " + TOTAL' in r.text)
     ck("single choice moves on by itself", "function maybeAdvance" in r.text)
     ck("but never from question 4, where screening happens",

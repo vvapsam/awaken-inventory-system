@@ -182,17 +182,22 @@ h2{margin:0 0 2px;font-size:10px;font-weight:700;letter-spacing:.22em;text-trans
 .comboclr{position:absolute;top:9px;right:8px;width:30px;height:30px;border:0;border-radius:8px;
   background:transparent;color:var(--mut);font-size:20px;line-height:1;cursor:pointer}
 .comboclr:hover{background:rgba(255,255,255,.07);color:var(--ink)}
-.combolist{position:absolute;z-index:61;left:0;right:0;top:calc(100% + 6px);margin:0;padding:6px;
-  /* flipped above the box when the bottom of the screen is closer */
-  list-style:none;max-height:272px;overflow-y:auto;border-radius:12px;border:1px solid var(--line);
-  background:var(--raise);box-shadow:0 18px 40px rgba(0,0,0,.6)}
-.combolist li{padding:12px 12px;border-radius:9px;font-size:15px;cursor:pointer;color:var(--ink)}
+/* Fixed, not absolute. The card it sits in has overflow:hidden so the
+   hero's corners stay round, and an absolutely positioned list inside it
+   gets sliced off at the card's edge - which is exactly what happened.
+   Fixed takes it out of that box; JS puts it under the input. */
+.combolist{position:fixed;z-index:61;margin:0;padding:6px;
+  list-style:none;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  border-radius:12px;border:1px solid var(--line);
+  background:var(--raise);box-shadow:0 18px 44px rgba(0,0,0,.66)}
+.combolist li{padding:14px 12px;border-radius:9px;font-size:15px;line-height:1.35;
+  cursor:pointer;color:var(--ink)}
 .combolist li[aria-selected="true"],.combolist li:hover{background:rgba(77,182,182,.16)}
 .combolist li.none{color:var(--mut);cursor:default;background:none}
 .combolist li.head{color:var(--faint);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
   cursor:default;padding:10px 12px 4px}
 .combolist li.head:hover{background:none}
-.combolist.up{top:auto;bottom:calc(100% + 6px);box-shadow:0 -18px 40px rgba(0,0,0,.6)}
+.combolist.up{box-shadow:0 -18px 44px rgba(0,0,0,.66)}
 .fl{display:block;margin-top:13px}
 .fl>span{display:block;font-size:12.5px;color:var(--mut);margin-bottom:5px}
 input[type=text],input[type=tel],input[type=email],select,textarea{
@@ -1434,19 +1439,32 @@ function alreadyDone(){
      no room under the box and no page left to scroll. Measure, and open
      upwards when that is the roomier side. */
   function place(){
+    if (list.classList.contains("hide")) return;
     list.classList.remove("up");
     list.style.maxHeight = "";
-    var box_r = input.getBoundingClientRect();
-    var below = window.innerHeight - box_r.bottom - 14;
-    var above = box_r.top - 14;
-    var want = list.scrollHeight;
-    if (want > below && above > below){
+    var r = input.getBoundingClientRect();
+    var gap = 6, edge = 10;
+    list.style.left  = Math.round(r.left) + "px";
+    list.style.width = Math.round(r.width) + "px";
+
+    var below = window.innerHeight - r.bottom - gap - edge;
+    var above = r.top - gap - edge;
+    var want  = list.scrollHeight;
+    var up    = want > below && above > below;
+    var room  = Math.max(132, Math.min(want, up ? above : below));
+
+    list.style.maxHeight = room + "px";
+    if (up){
       list.classList.add("up");
-      list.style.maxHeight = Math.max(140, Math.min(want, above)) + "px";
+      list.style.top = Math.round(r.top - gap - room) + "px";
     } else {
-      list.style.maxHeight = Math.max(140, Math.min(want, below)) + "px";
+      list.style.top = Math.round(r.bottom + gap) + "px";
     }
   }
+
+  // The box moves with the page, so the list has to follow it.
+  window.addEventListener("scroll", place, true);
+  window.addEventListener("resize", place);
 
   function highlight(){
     rows.forEach(function(li, k){ li.setAttribute("aria-selected", k === at ? "true" : "false"); });
@@ -1793,7 +1811,7 @@ function showSection(sec){
   $("#sectHint").textContent = sectionLede(sec) || SECTHINT[sec] || "";
   showScreen("sect");
   $("#onenav").classList.remove("hide");
-  $("#oneNext").textContent = "Continue";
+  $("#oneNext").textContent = "Next";
   $("#oneBack").classList.remove("hide");
   $("#oneNote").textContent = "";
   paintProgress();
