@@ -275,6 +275,7 @@ pre{
 .ig{
   margin:16px 0 0;font-size:12.5px;color:var(--faint);text-align:center;
 }
+.end a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}
 .ig a{color:var(--teal);text-decoration:none;font-weight:650}
 .ig a:hover{text-decoration:underline;text-underline-offset:2px}
 .foot{margin-top:22px;font-size:11.5px;color:var(--faint);text-align:center;line-height:1.6}
@@ -1046,6 +1047,20 @@ pre{
     </div>
   </section>
 
+  <!-- ============ ALREADY IN ============ -->
+  <section class="step" data-step="96" data-label="Already in">
+    <div class="card end">
+      <h1>We already have your response</h1>
+      <p id="dupWhy">Thank you &mdash; your entry is already in, so there is nothing more you need to do.</p>
+      <p>It is one entry per person. Entering more than once may forfeit your entry or disqualify it from the draw, so please leave it with us.</p>
+      <p class="muted">If you think this is a mistake, email <a href="mailto:admin@awakengym.com">admin@awakengym.com</a> and we will sort it out.</p>
+      <p class="ig">Follow us on Instagram <a href="https://instagram.com/awakengym" target="_blank" rel="noopener">&#64;awakengym</a></p>
+      <p id="notMe" class="muted hide" style="margin-top:18px">
+        Not you? <a href="/survey?again=1">Someone else can answer here.</a>
+      </p>
+    </div>
+  </section>
+
   <!-- ============ UNDER 18 ============ -->
   <section class="step" data-step="98" data-label="Thank you">
     <div class="card end">
@@ -1383,7 +1398,7 @@ function goto(n){
   all(".step").forEach(function(s){
     s.classList.toggle("on", s.getAttribute("data-step") === String(n));
   });
-  var pct = (n === 99) ? 100 : (n >= 97 ? 0 : Math.round((n / (LAST + 1)) * 100));
+  var pct = (n === 99) ? 100 : (n >= 96 ? 0 : Math.round((n / (LAST + 1)) * 100));
   $("#prog").style.width = pct + "%";
   var cur = document.querySelector('.step[data-step="' + n + '"]');
   $("#plab").textContent = cur ? cur.getAttribute("data-label") : "";
@@ -1419,37 +1434,12 @@ document.addEventListener("click", function(ev){
   complain(from, []);
 
   if (from === 1){
-    /* Ask the server once, here, whether this number is already spent.
-       Finding that out after thirty questions is the version somebody
-       gives up on us over. */
-    if (sending) return;
-    sending = true;
-    post("/survey/check",
-         { mobile: val("q4_mobile"), email: val("q4_email") },
-         function(status, j){
-      sending = false;
-
-      /* A check that could not be made is not a pass. Letting somebody
-         through here only to turn them away at the last screen is the
-         version that wastes their evening. */
-      if (status !== 200){
-        $("#e1").textContent = "We couldn\u2019t check your details just now. Please check your connection and try again.";
-        $("#e1").classList.remove("hide");
-        $("#e1").scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
-      }
-      if (j.ok === false && (j.why === "used" || j.why === "email")){
-        $("#e1").textContent = j.why === "email" ? "That email address has already been entered. One entry per person \u2014 please use your own mobile number and email address." : "That mobile number has already been entered. One entry per person.";
-        $("#e1").classList.remove("hide");
-        $("#e1").scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
-      }
-      // screened out, and that is the end of it
-      if (picked("q1") === "Outside Metro Manila"){ screenOut("area"); return; }
-      if (picked("q2") === "Under 18"){ screenOut("age"); return; }
-      goto(to);
-    });
-    return;
+    /* Screening only. Whether this entry is a second one is the server's
+       call and is made when it arrives - somebody who gets that far has
+       answered honestly and deserves to be told once, kindly, at the end
+       rather than stopped on the doorstep. */
+    if (picked("q1") === "Outside Metro Manila"){ screenOut("area"); return; }
+    if (picked("q2") === "Under 18"){ screenOut("age"); return; }
   }
   goto(to);
 });
@@ -1971,11 +1961,10 @@ $("#submitBtn").addEventListener("click", function(){
     btn.textContent = was;
     btn.disabled = false;
     if (status === 409){
-      complain(7, []);
-      $("#e7").textContent = (j && j.error === "email")
-        ? "That email address has already been entered. One entry per person \u2014 please use your own mobile number and email address."
-        : "That mobile number has already been entered. One entry per person.";
-      $("#e7").classList.remove("hide");
+      $("#dupWhy").textContent = (j && j.error === "email")
+        ? "Thank you \u2014 we already have an entry under that email address, so there is nothing more you need to do."
+        : "Thank you \u2014 we already have an entry under that mobile number, so there is nothing more you need to do.";
+      goto(96);
       return;
     }
     if (status !== 200){
@@ -2006,7 +1995,18 @@ $("#sv").addEventListener("input", paint);
 allGroups();
 conditionals();
 paint();
-goto(0);
+/* The server has already looked at this connection. If an entry came
+   off it in the last couple of hours, say so before asking anything -
+   but leave a way through, because one address can be a whole gym. */
+if (CFG.seen_here){
+  var hrs = CFG.ip_hours || 2;
+  $("#dupWhy").textContent = "It looks like an entry has already come from this connection in the last "
+    + hrs + (hrs === 1 ? " hour." : " hours.");
+  $("#notMe").classList.remove("hide");
+  goto(96);
+} else {
+  goto(0);
+}
 })();
 </script>
 </body>

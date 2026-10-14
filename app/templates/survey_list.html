@@ -81,6 +81,30 @@
   </div>
 </div>
 
+{% if refusals %}
+<div class="card" style="margin-top:16px">
+  <h3 style="margin:0 0 4px">Turned down &mdash; {{ refused_total }} second attempt{{ '' if refused_total == 1 else 's' }}</h3>
+  <p class="muted" style="margin:0 0 12px;font-size:13px">
+    Every entry the one-per-person rule refused, newest first. A connection
+    counts as already answered for {{ ip_hours }} hour{{ '' if ip_hours == 1 else 's' }}.
+  </p>
+  <table class="list" style="margin:0">
+    <thead><tr><th>When</th><th>Caught by</th><th>Mobile</th><th>Email</th><th>Network</th></tr></thead>
+    <tbody>
+      {% for a in refusals %}
+      <tr>
+        <td>{{ a.when.strftime('%d %b %H:%M') }}</td>
+        <td><b>{{ a.matched }}</b></td>
+        <td>{{ a.mobile }}</td>
+        <td>{{ a.email }}</td>
+        <td class="muted" style="font-size:12px">{{ a.ip }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if clusters %}
 <div class="card" style="margin-top:16px">
   <h3 style="margin:0 0 4px">Worth a look &mdash; {{ clusters|length }} repeat{{ '' if clusters|length == 1 else 's' }}</h3>

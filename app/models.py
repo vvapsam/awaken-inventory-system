@@ -3969,6 +3969,12 @@ def norm_email(raw):
     return e[:160]
 
 
+#: How long one connection is treated as "already answered". Short on
+#: purpose: an address is a building, not a person, and a gym's wifi hands
+#: the same one to everybody in it.
+SURVEY_IP_WINDOW_HOURS = 2
+
+
 class SurveySetting(Base):
     """The few things about the survey that change without a deploy.
 
@@ -3980,6 +3986,23 @@ class SurveySetting(Base):
     id = Column(Integer, primary_key=True)
     key = Column(String, nullable=False, unique=True)
     value = Column(Text, nullable=False, default="")
+
+
+class SurveyAttempt(Base):
+    """A second go that was turned down, and what matched.
+
+    Kept because "it did not stop me" and "it stopped me" are otherwise
+    one person's word against a log nobody wrote. Every refusal lands here
+    with the time, what was typed and which of the three rules caught it.
+    """
+    __tablename__ = "survey_attempts"
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime(timezone=True), default=now_utc, index=True)
+    matched = Column(String, nullable=False)        # mobile | email | ip
+    mobile = Column(String, index=True)
+    email = Column(String)
+    ip = Column(String, index=True)
+    user_agent = Column(String)
 
 
 class SurveyResponse(Base):

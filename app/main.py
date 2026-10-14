@@ -315,6 +315,8 @@ def startup():
                           "CREATE UNIQUE INDEX IF NOT EXISTS ix_survey_email_once "
                           "ON survey_responses (lower(email)) WHERE email IS NOT NULL; "
                           "ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS channel VARCHAR; "
+                          "CREATE INDEX IF NOT EXISTS ix_survey_ip_recent "
+                          "ON survey_responses (ip, created_at); "
                           "END IF; END $$;"))
         # Everybody picks their own PIN. The UPDATE sits inside the "column is
         # not there yet" branch so it runs exactly once, on the deploy that

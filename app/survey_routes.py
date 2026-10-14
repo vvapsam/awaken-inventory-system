@@ -28,10 +28,9 @@ import io
 import json
 import io
 import secrets
-import time
 
 import qrcode
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import Depends, Request
 from fastapi.responses import (
@@ -44,7 +43,8 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .models import (
     SURVEY_OUT_AGE, SURVEY_OUT_AREA, SURVEY_REFERRAL_CAP, SurveyResponse,
-    SurveySetting, norm_ph_mobile, norm_email, now_utc, to_local,
+    SurveySetting, SurveyAttempt, SURVEY_IP_WINDOW_HOURS,
+    norm_ph_mobile, norm_email, now_utc, to_local,
 )
 
 #: The questions, in the order they are asked, as (payload key, column head).
@@ -179,14 +179,6 @@ def median_seconds(rows):
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CODE_LEN = 8
 
-#: Checking a number before the survey is filled in saves somebody answering
-#: thirty questions only to be told their number is spent. It also answers
-#: "has this number entered?" to anybody who asks, so it is held to a few
-#: tries per address per hour.
-CHECK_PER_HOUR = 40
-_checks = {}
-
-
 #: What the survey does before anybody changes anything. Dates as plain ISO;
 #: the form prints them, so the office moves a date here rather than in a
 #: template and a release.
@@ -269,14 +261,6 @@ def _client_ip(request):
     return getattr(getattr(request, "client", None), "host", None)
 
 
-def _rate_ok(ip):
-    now = time.time()
-    hits = [t for t in _checks.get(ip or "", []) if now - t < 3600]
-    hits.append(now)
-    _checks[ip or ""] = hits
-    return len(hits) <= CHECK_PER_HOUR
-
-
 def new_code(db):
     """A code nobody else holds. Random, never derived from the number."""
     for _ in range(40):
@@ -341,9 +325,43 @@ def register(app, deps):
 
     # ---------------------------------------------------------------- public
 
+    def ip_window(db):
+        try:
+            return max(0, int(settings(db).get("ip_hours") or SURVEY_IP_WINDOW_HOURS))
+        except (TypeError, ValueError):
+            return SURVEY_IP_WINDOW_HOURS
+
+    def ip_recently_entered(db, ip, hours):
+        """Did an entry come off this connection in the last few hours?
+
+        Deliberately a window rather than a ban. One address can be a whole
+        gym floor, an office or a carrier's mobile pool, so holding it
+        forever would lock out everybody who came after the first person.
+        A couple of hours catches the person going straight round again
+        and lets the next honest one through this afternoon.
+        """
+        if not ip or hours <= 0:
+            return None
+        since = now_utc() - timedelta(hours=hours)
+        return (db.query(SurveyResponse)
+                  .filter(SurveyResponse.ip == ip,
+                          SurveyResponse.created_at >= since)
+                  .order_by(SurveyResponse.created_at.desc())
+                  .first())
+
+    def log_attempt(db, matched, *, mobile=None, email=None,
+                    ip=None, user_agent=None):
+        """Write down every refusal, so next time there is a record."""
+        db.add(SurveyAttempt(matched=matched, mobile=mobile, email=email,
+                             ip=ip, user_agent=(user_agent or "")[:400] or None))
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
     @app.get("/survey", response_class=HTMLResponse)
     def survey_form(request: Request, ref: str = "", ch: str = "",
-                    db: Session = Depends(get_db)):
+                    again: int = 0, db: Session = Depends(get_db)):
         """The form. No login — this is the whole point of it."""
         cfg = settings(db)
         if cfg.get("open") == "0":
@@ -358,6 +376,14 @@ def register(app, deps):
                      .first())
             if hit is not None and not hit.is_out:
                 known = hit.ref_code
+        # Checked here rather than in the page: it needs no JavaScript, it
+        # cannot be skipped, and it happens the instant the link is opened.
+        hours = ip_window(db)
+        seen = None if again else ip_recently_entered(db, _client_ip(request), hours)
+        if seen is not None:
+            log_attempt(db, "ip", ip=_client_ip(request),
+                        user_agent=request.headers.get("user-agent"))
+
         base = str(request.base_url).rstrip("/")
         return templates.TemplateResponse("survey.html", {
             "request": request,
@@ -370,35 +396,10 @@ def register(app, deps):
                 "cap": cap_of(db),
                 "referred_by": known,
                 "channel": (ch or "")[:24],
+                "seen_here": seen is not None,
+                "ip_hours": hours,
             }),
         })
-
-    @app.post("/survey/check")
-    async def survey_check(request: Request, db: Session = Depends(get_db)):
-        """Has this number been used? Asked once, as section one is left.
-
-        It does tell a caller whether a given number has entered, which is why
-        it is rate limited. The alternative - finding out after thirty
-        questions - is worse for the honest majority.
-        """
-        ip = _client_ip(request)
-        if not _rate_ok(ip):
-            return JSONResponse({"error": "slow down"}, status_code=429)
-        data = await request.json() or {}
-        mob = norm_ph_mobile(data.get("mobile"))
-        if not mob:
-            return JSONResponse({"ok": False, "why": "format"})
-        if db.query(SurveyResponse).filter(SurveyResponse.mobile == mob).first():
-            return JSONResponse({"ok": False, "why": "used"})
-
-        # The address is checked here too. Finding out at the last screen
-        # that an entry cannot be counted is the thing worth avoiding.
-        mail = norm_email(data.get("email"))
-        if mail and db.query(SurveyResponse).filter(
-                SurveyResponse.email == mail).first():
-            return JSONResponse({"ok": False, "why": "email"})
-
-        return JSONResponse({"ok": True, "why": ""})
 
     @app.post("/survey")
     async def survey_submit(request: Request, db: Session = Depends(get_db)):
@@ -424,12 +425,20 @@ def register(app, deps):
 
         outcome, reason = decide(answers)
 
+        ip = _client_ip(request)
+        ua = dev.get("user_agent") or request.headers.get("user-agent")
+        mail = norm_email(person.get("email")) if outcome == "complete" else None
+
+        # One entry per person, decided here and nowhere else. The page is
+        # allowed to ask all the questions and press send; what it is not
+        # allowed to do is be the thing that says yes.
         if db.query(SurveyResponse).filter(SurveyResponse.mobile == mob).first():
+            log_attempt(db, "mobile", mobile=mob, email=mail, ip=ip, user_agent=ua)
             return JSONResponse({"error": "used"}, status_code=409)
 
-        mail = norm_email(person.get("email")) if outcome == "complete" else None
         if mail and db.query(SurveyResponse).filter(
                 SurveyResponse.email == mail).first():
+            log_attempt(db, "email", mobile=mob, email=mail, ip=ip, user_agent=ua)
             return JSONResponse({"error": "email"}, status_code=409)
 
         # Only the screening answers are kept for somebody we turned away.
@@ -457,7 +466,7 @@ def register(app, deps):
             answers=json.dumps(keep, ensure_ascii=False),
             consent_privacy=bool(consent.get("privacy")),
             consent_promo=bool(consent.get("promo_rules")),
-            ip=_client_ip(request),
+            ip=ip,
             user_agent=(dev.get("user_agent") or "")[:400] or None,
             screen=(dev.get("screen") or "")[:40] or None,
             viewport=(dev.get("viewport") or "")[:40] or None,
@@ -477,6 +486,7 @@ def register(app, deps):
                     SurveyResponse.email == mail,
                     SurveyResponse.mobile != mob).first():
                 dup = "email"
+            log_attempt(db, dup, mobile=mob, email=mail, ip=ip, user_agent=ua)
             return JSONResponse({"error": dup}, status_code=409)
 
         return JSONResponse({
@@ -575,6 +585,14 @@ def register(app, deps):
                 })
         return out
 
+    def refusals(db, limit=40):
+        rows = (db.query(SurveyAttempt)
+                  .order_by(SurveyAttempt.created_at.desc())
+                  .limit(limit).all())
+        return [{"when": to_local(r.created_at), "matched": r.matched,
+                 "mobile": r.mobile or "", "email": r.email or "",
+                 "ip": r.ip or ""} for r in rows]
+
     @app.get("/admin/survey", response_class=HTMLResponse)
     def survey_list(request: Request, show: str = "complete",
                     db: Session = Depends(get_db)):
@@ -604,6 +622,9 @@ def register(app, deps):
                       rows=packed, questions=QUESTIONS, show=show, tally=tally,
                       cell=cell, cfg=cfg, channels=CHANNELS,
                       by_channel=by_channel, clusters=clusters(db),
+                      refusals=refusals(db),
+                      refused_total=db.query(func.count(SurveyAttempt.id)).scalar() or 0,
+                      ip_hours=ip_window(db),
                       link=public_link(request, ""),
                       link_for=lambda c: public_link(request, c))
 

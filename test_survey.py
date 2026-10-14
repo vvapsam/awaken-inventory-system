@@ -9,6 +9,7 @@ os.environ["DATABASE_URL"] = ("postgresql+psycopg2://postgres@/surv"
                               "?host=/home/claude/pgrun&port=5433")
 os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("ADMIN_INITIAL_PIN", "123456")
+from datetime import timedelta
 import json
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -166,12 +167,8 @@ with TestClient(app) as c:
            db.query(M.SurveyResponse).filter(
                M.SurveyResponse.mobile == "+639171111111").count() == 1)
 
-    r = c.post("/survey/check", json={"mobile": "09171111111"})
-    ck("the check says a used number is used", r.json()["ok"] is False and r.json()["why"] == "used")
-    r = c.post("/survey/check", json={"mobile": "09172222222"})
-    ck("and a fresh one is free", r.json()["ok"] is True)
-    r = c.post("/survey/check", json={"mobile": "nonsense"})
-    ck("and junk is neither", r.json()["ok"] is False and r.json()["why"] == "format")
+    r = c.post("/survey", json=entry("nonsense"))
+    ck("junk in the number field is refused outright", r.status_code == 400)
 
     # ----------------------------------------------------------- screenouts
     r = c.post("/survey", json=entry("0917 222 2222", lives="Outside Metro Manila"))
@@ -212,7 +209,6 @@ with TestClient(app) as c:
     code = first["code"]
     for i in range(3):
         c.post("/survey", json=entry("09176%06d" % i, ref=code))
-    r = c.post("/survey/check", json={"mobile": "09171111111"})
     with Session(engine) as db:
         from app.survey_routes import entries_for
         me = db.query(M.SurveyResponse).filter(
@@ -263,18 +259,13 @@ with TestClient(app) as c:
     r = c.post("/survey", json=entry("0917 900 0001", email="brand@new.com"))
     ck("and the number is still its own block", r.json()["error"] == "used")
 
-    r = c.post("/survey/check", json={"mobile": "0917 900 0009",
-                                      "email": "dupe@email.com"})
-    ck("the check catches a spent address before the questions",
-       r.json() == {"ok": False, "why": "email"})
-    r = c.post("/survey/check", json={"mobile": "0917 900 0001",
-                                      "email": "brand@new.com"})
-    ck("and a spent number", r.json()["why"] == "used")
-    r = c.post("/survey/check", json={"mobile": "0917 900 0009",
-                                      "email": "brand@new.com"})
-    ck("a clean pair passes", r.json() == {"ok": True, "why": ""})
-    r = c.post("/survey/check", json={"mobile": "0917 900 0009"})
-    ck("and an address is optional there", r.json()["ok"] is True)
+    # Every refusal leaves a record, so "it let me through" is checkable
+    # rather than arguable.
+    with Session(engine) as db:
+        caught = [a.matched for a in db.query(M.SurveyAttempt).all()]
+        ck("the refused attempts were written down", len(caught) >= 3)
+        ck("and say which rule caught each one",
+           "mobile" in caught and "email" in caught)
 
     # Somebody turned away keeps no address, so theirs cannot be the thing
     # that blocks a real entry later.
@@ -283,6 +274,31 @@ with TestClient(app) as c:
     r = c.post("/survey", json=entry("0917 900 0011", email="away@email.com"))
     ck("an address given by somebody we turned away is not held against anyone",
        r.status_code == 200)
+
+    # ------------------------------------------ one connection, a short window
+    from app import models as _M
+    r = c.get("/survey")
+    ck("opening the link again names this connection as already answered",
+       '"seen_here": true' in r.text)
+    r = c.get("/survey?again=1")
+    ck("and somebody else on it can still say so and carry on",
+       '"seen_here": false' in r.text)
+
+    with Session(engine) as db:
+        ck("the window is stated, not hidden", '"ip_hours": 2' in r.text)
+        # Push every entry back beyond the window and the connection frees up.
+        db.query(_M.SurveyResponse).update(
+            {_M.SurveyResponse.created_at:
+             _M.now_utc() - timedelta(hours=3)}, synchronize_session=False)
+        db.commit()
+    r = c.get("/survey")
+    ck("once the window passes the connection is free again",
+       '"seen_here": false' in r.text)
+
+    with Session(engine) as db:
+        n = db.query(_M.SurveyAttempt).filter(
+            _M.SurveyAttempt.matched == "ip").count()
+        ck("and the connection refusal was recorded too", n >= 1)
 
     # --------------------------------------------------------------- admin
     r = c.get("/admin/survey")
