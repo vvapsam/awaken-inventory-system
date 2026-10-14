@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block body %}
+{# Correcting a response by hand. Every answer is editable as text, with
+   what other people have already picked offered as suggestions - the
+   option lists live in the form's markup, so repeating them here would
+   mean two lists drifting apart. #}
+<div class="row-between">
+  <div>
+    <h1 style="margin:0">Edit &mdash; {{ row.nickname or row.mobile }}</h1>
+    <p class="muted small" style="margin:2px 0 0">
+      Answered {{ when.strftime('%d %b %Y, %H:%M') if when else '' }} &middot;
+      <a href="/admin/survey/{{ row.id }}">back without saving</a></p>
+  </div>
+</div>
+
+{% if edited %}
+<p class="muted small" style="margin:14px 0 0">
+  Last corrected {{ edited.strftime('%d %b %Y, %H:%M') }}{% if row.edit_note %}
+  &mdash; &ldquo;{{ row.edit_note }}&rdquo;{% endif %}
+</p>
+{% endif %}
+
+<form method="post" action="/admin/survey/{{ row.id }}/edit">
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="margin:0 0 4px">Who</h3>
+    <p class="muted small" style="margin:0 0 12px">
+      The mobile number is the identity every rule hangs off &mdash; the
+      one-entry check, the draw, the claim at the desk. It is shown here
+      but cannot be changed; a wrong number is a new response, not an edit.
+    </p>
+    <table class="list" style="margin:0">
+      <tr><th style="width:190px">Mobile</th>
+        <td style="font-family:ui-monospace,monospace">{{ row.mobile }}</td></tr>
+      <tr><th>Nickname</th>
+        <td><input type="text" name="nickname" value="{{ row.nickname or '' }}"
+                   maxlength="80" style="width:100%;max-width:340px"></td></tr>
+      <tr><th>Email</th>
+        <td><input type="email" name="email" value="{{ row.email or '' }}"
+                   maxlength="160" style="width:100%;max-width:340px">
+          <div class="muted small" style="margin-top:4px">
+            Left alone if it is already another response's address.</div></td></tr>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="margin:0 0 4px">Answers</h3>
+    <p class="muted small" style="margin:0 0 14px">
+      Questions that take several answers are comma separated. Start typing
+      to see what other people picked.
+    </p>
+    <table class="list" style="margin:0">
+      {% for f in fields %}
+      <tr>
+        <th style="width:190px;vertical-align:top;padding-top:14px">
+          {{ f.label }}{% if f.many %}<br><span class="muted small">several, comma separated</span>{% endif %}
+        </th>
+        <td>
+          {% if f.long %}
+            <textarea name="{{ f.key }}" rows="3" style="width:100%">{{ f.value }}</textarea>
+          {% else %}
+            <input type="text" name="{{ f.key }}" value="{{ f.value }}"
+                   list="seen_{{ f.key }}" autocomplete="off" style="width:100%">
+            {% if f.seen %}
+              <datalist id="seen_{{ f.key }}">
+                {% for v in f.seen %}<option value="{{ v }}"></option>{% endfor %}
+              </datalist>
+            {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="margin:0 0 4px">Why</h3>
+    <p class="muted small" style="margin:0 0 10px">
+      Kept with the response. A draw with a permit behind it should be able
+      to say what was changed after the fact, and why.
+    </p>
+    <input type="text" name="edit_note" maxlength="400" style="width:100%"
+           placeholder="e.g. caller corrected their age over the phone"
+           value="{{ row.edit_note or '' }}">
+    <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
+      <button type="submit" class="btn">Save corrections</button>
+      <a class="btn ghost" href="/admin/survey/{{ row.id }}">Cancel</a>
+    </div>
+  </div>
+
+</form>
+{% endblock %}

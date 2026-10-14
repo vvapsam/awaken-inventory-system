@@ -7,8 +7,10 @@
     <h1 style="margin:0">{{ row.nickname or row.mobile }}</h1>
     <p class="muted small" style="margin:2px 0 0">
       {{ when.strftime('%d %b %Y, %H:%M') if when else '' }} &middot;
-      <a href="/admin/survey">back to all responses</a></p>
+      <a href="/admin/survey">back to all responses</a>
+      {% if row.edited_at %}&middot; <span class="muted">corrected by hand</span>{% endif %}</p>
   </div>
+  <a class="btn ghost" href="/admin/survey/{{ row.id }}/edit">Edit answers</a>
 </div>
 
 <div class="card" style="margin-top:16px">

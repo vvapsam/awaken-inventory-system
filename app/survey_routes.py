@@ -102,6 +102,13 @@ QUESTIONS = [
 
 #: Questions whose answers are sentences, not options. Counting these would
 #: produce a bar chart of one-per-person, so they are listed instead.
+#: The questions that take more than one answer. Needed when correcting a
+#: response by hand: an empty one gives no clue from the stored value
+#: whether it is a list or a single choice.
+MULTI = {"q10_activities", "q15_why", "q16_goals", "q17_services",
+         "q18_amenities", "q19_missing", "q20_days", "q20_times",
+         "q23_barriers", "q25_keeps_going"}
+
 FREE_TEXT = {"q6_area", "q14_branch", "q28_anything_else"} | {
     k for k, _ in QUESTIONS if k.endswith("_other")}
 
@@ -835,6 +842,91 @@ def register(app, deps):
             buf.getvalue(), media_type="text/csv",
             headers={"Content-Disposition":
                      'attachment; filename="awaken-survey.csv"'})
+
+    #: Answers already given, per question, gathered from everybody else.
+    #: The options live in the form's markup, not here, so repeating them
+    #: in Python would mean two lists that drift. Reading them back out of
+    #: the data keeps the suggestions true to what the form actually
+    #: offered, and a new option appears the moment somebody picks it.
+    def seen_values(db, key, limit=40):
+        out, rows = set(), db.query(SurveyResponse.answers).limit(4000).all()
+        for (blob,) in rows:
+            try:
+                v = (json.loads(blob or "{}") or {}).get(key)
+            except ValueError:
+                continue
+            if isinstance(v, list):
+                out.update(str(x) for x in v if str(x).strip())
+            elif v not in (None, ""):
+                out.add(str(v))
+        return sorted(out)[:limit]
+
+    @app.get("/admin/survey/{rid}/edit", response_class=HTMLResponse)
+    def survey_edit_form(request: Request, rid: int, db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        row = db.query(SurveyResponse).get(rid)
+        if row is None:
+            return RedirectResponse("/admin/survey", status_code=303)
+        a = _answers(row)
+        fields = []
+        for key, label in QUESTIONS:
+            raw = a.get(key)
+            fields.append({
+                "key": key, "label": label,
+                "value": ", ".join(str(x) for x in raw) if isinstance(raw, list)
+                         else ("" if raw is None else str(raw)),
+                "many": isinstance(raw, list) or key in MULTI,
+                "long": key in FREE_TEXT,
+                "seen": seen_values(db, key),
+            })
+        return fresh(render(request, "survey_edit.html", db, staff, active="survey",
+                      row=row, fields=fields, when=to_local(row.created_at),
+                      edited=to_local(row.edited_at) if row.edited_at else None))
+
+    @app.post("/admin/survey/{rid}/edit")
+    async def survey_edit_save(request: Request, rid: int,
+                               db: Session = Depends(get_db)):
+        staff, redir = guard(request, db)
+        if redir:
+            return redir
+        row = db.query(SurveyResponse).get(rid)
+        if row is None:
+            return RedirectResponse("/admin/survey", status_code=303)
+        form = await request.form()
+
+        a = _answers(row)
+        for key, _label in QUESTIONS:
+            if key not in form:
+                continue
+            text = (form.get(key) or "").strip()
+            if isinstance(a.get(key), list) or key in MULTI:
+                a[key] = [p.strip() for p in text.split(",") if p.strip()]
+            else:
+                a[key] = text
+        row.answers = json.dumps(a, ensure_ascii=False)
+
+        # The nickname and the address are typed by hand and get typed
+        # wrong. The mobile number is the identity every rule hangs off,
+        # so it is shown and not editable.
+        nick = (form.get("nickname") or "").strip()
+        row.nickname = nick[:80] or None
+        mail = norm_email(form.get("email"))
+        if mail and mail != row.email:
+            clash = (db.query(SurveyResponse)
+                       .filter(SurveyResponse.email == mail,
+                               SurveyResponse.id != row.id).first())
+            if clash is None:
+                row.email = mail
+        elif not (form.get("email") or "").strip():
+            row.email = None
+
+        row.edited_at = now_utc()
+        row.edited_by_id = getattr(staff, "id", None)
+        row.edit_note = (form.get("edit_note") or "").strip()[:400] or None
+        db.commit()
+        return RedirectResponse("/admin/survey/%d" % rid, status_code=303)
 
     @app.get("/admin/survey/{rid}", response_class=HTMLResponse)
     def survey_one(request: Request, rid: int, db: Session = Depends(get_db)):

@@ -4073,6 +4073,14 @@ class SurveyResponse(Base):
     platform = Column(String)
     seconds_taken = Column(Integer)
 
+    #: Somebody corrected this by hand. Kept because a prize draw with a
+    #: permit behind it should be able to say which answers were changed
+    #: after the fact, by whom, and when.
+    edited_at = Column(DateTime(timezone=True))
+    edited_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))
+    edited_by = relationship("Staff", foreign_keys=[edited_by_id])
+    edit_note = Column(Text)
+
     #: Set when the prize is handed over at the desk.
     claimed_at = Column(DateTime(timezone=True))
     claimed_by_id = Column(Integer, ForeignKey("entity.id", ondelete="SET NULL"))

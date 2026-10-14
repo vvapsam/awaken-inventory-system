@@ -321,6 +321,11 @@ def startup():
         conn.execute(text("DO $$ BEGIN IF to_regclass('public.survey_attempts') IS NOT NULL THEN "
                           "ALTER TABLE survey_attempts ADD COLUMN IF NOT EXISTS "
                           "blocked BOOLEAN NOT NULL DEFAULT TRUE; "
+                          "END IF; "
+                          "IF to_regclass('public.survey_responses') IS NOT NULL THEN "
+                          "ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ; "
+                          "ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS edited_by_id INTEGER; "
+                          "ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS edit_note TEXT; "
                           "END IF; END $$;"))
         # Everybody picks their own PIN. The UPDATE sits inside the "column is
         # not there yet" branch so it runs exactly once, on the deploy that

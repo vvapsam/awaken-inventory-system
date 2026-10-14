@@ -549,6 +549,58 @@ with TestClient(app) as c:
            follow_redirects=False)
     r = c.get("/admin/survey")
     ck("an admin sees the table", r.status_code == 200)
+
+    # ------------------------------------------ correcting one by hand
+    c.post("/survey", json=entry("0917 970 0001", email="fix@email.com",
+                                 q2_age="25-34",
+                                 q10_activities=["CrossFit", "Yoga"]))
+    with Session(engine) as db:
+        rid = db.query(M.SurveyResponse).filter(
+            M.SurveyResponse.mobile == "+639179700001").first().id
+
+    r = c.get("/admin/survey/%d/edit" % rid)
+    ck("there is a form for correcting a response", r.status_code == 200)
+    ck("with a field for every answer",
+       all(('name="%s"' % k) in r.text for k, _ in QUESTIONS))
+    ck("the mobile number is shown but not editable",
+       "+639179700001" in r.text and 'name="mobile"' not in r.text)
+    ck("several answers come back comma separated",
+       'value="CrossFit, Yoga"' in r.text)
+    ck("and what others picked is offered as suggestions",
+       "<datalist" in r.text)
+
+    r = c.post("/admin/survey/%d/edit" % rid, data={
+        "nickname": "Corrected", "email": "fix@email.com",
+        "q2_age": "35-44", "q10_activities": "CrossFit, Pilates",
+        "edit_note": "fixed over the phone"}, follow_redirects=False)
+    ck("saving sends you back to the response", r.status_code == 303)
+    with Session(engine) as db:
+        row = db.query(M.SurveyResponse).get(rid)
+        a = json.loads(row.answers)
+        ck("a single answer is corrected", a["q2_age"] == "35-44")
+        ck("a multiple one comes back a list, not a string",
+           a["q10_activities"] == ["CrossFit", "Pilates"])
+        ck("the nickname follows", row.nickname == "Corrected")
+        ck("and who changed it, when, and why is kept",
+           row.edited_at is not None and row.edited_by_id is not None
+           and row.edit_note == "fixed over the phone")
+        ck("answers nobody touched are left alone",
+           a.get("q1_lives") == "Within Metro Manila")
+
+    # An address already spent by somebody else cannot be moved onto this
+    # one, or the unique index would be the thing that said no.
+    c.post("/survey", json=entry("0917 970 0002", email="taken@email.com"))
+    c.post("/admin/survey/%d/edit" % rid, data={
+        "nickname": "Corrected", "email": "taken@email.com"},
+        follow_redirects=False)
+    with Session(engine) as db:
+        ck("an address another response holds is refused",
+           db.query(M.SurveyResponse).get(rid).email == "fix@email.com")
+
+    r = c.get("/admin/survey/%d/edit" % 99999)
+    ck("editing a response that is not there goes back to the list",
+       r.status_code in (200, 303, 307))
+
     ck("and never a cached copy of it",
        "no-store" in r.headers.get("cache-control", ""))
     for page in ("/admin/survey/results", "/admin/survey/1"):
