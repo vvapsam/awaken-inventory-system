@@ -38,8 +38,8 @@ def entry(mobile, *, lives="Within Metro Manila", age="25-34", gender="Female",
          "q3_gender": gender,
          "q5_occupation": "Employed", "q7_travel": "21-30 min",
          "q10_activities": ["CrossFit", "Hybrid - HYROX/DEKA"],
-         "q14_budget": "5000-7499", "q17_goals": ["Strength"],
-         "q31_anything_else": "More evening classes"}
+         "q13_budget": "5000-7499", "q16_goals": ["Strength"],
+         "q28_anything_else": "More evening classes"}
     a.update(extra)
     return {"seconds_taken": 412,
             "consent": {"privacy": True, "promo_rules": True},
@@ -76,6 +76,37 @@ with TestClient(app) as c:
                  "Outdoor activities (such as hiking or climbing)"):
         ck("question 9 offers %s" % want.split(" (")[0].lower(), want in r.text)
     ck("gender is asked", "3. What is your gender?" in r.text)
+
+    # The numbering drifted once already when gender was inserted, so it is
+    # checked rather than trusted: every question's key must equal the number
+    # printed beside it, and the run must have no gaps.
+    import re as _re
+    nums = [int(x) for x in _re.findall(r'class="qn">(\d+)\.', r.text)]
+    ck("twenty-eight questions (got %d)" % len(nums), len(nums) == 28)
+    ck("numbered 1 to 28 with no gaps", nums == list(range(1, 29)))
+    # must not run past the next question, or a block with no radios (the
+    # contact fields, the gym dropdown) borrows the following one's key
+    pairs = _re.findall(
+        r'<span class="qn">(\d+)\.(?:(?!<span class="qn">).)*?'
+        r'(?:data-radio|data-check)="q(\d+)[dt]?"', r.text, _re.S)
+    odd = [x for x in pairs if x[0] != x[1]]
+    ck("every key matches the number beside it%s" % (" (%s)" % odd[:3] if odd else ""),
+       not odd and len(pairs) >= 20)
+
+    ck("the training-history question is gone",
+       "How long have you been training regularly" not in r.text)
+    ck("the would-join question is gone",
+       "What would actually get you to join" not in r.text)
+    ck("cancelling is one question now",
+       "Have you ever stopped a gym membership or class package?" in r.text
+       and "What was the main reason, the last time" not in r.text)
+    ck("with never-had-one as an answer",
+       'value="Never had one"' in r.text and 'value="Never stopped"' in r.text)
+    ck("and it is no longer hidden behind a yes/no",
+       'id="q24wrap"' not in r.text)
+    ck("what keeps you going stayed",
+       "what makes you keep going to a gym" in r.text)
+    ck("occupation stayed", "current occupation" in r.text)
     for g in ("Female", "Male", "Non-binary", "Prefer not to say"):
         ck("gender offers %s" % g.lower(), ('value="%s"' % g) in r.text)
     ck("and it is question 3, beside age",
@@ -112,7 +143,7 @@ with TestClient(app) as c:
             M.SurveyResponse.mobile == "+639171111111").first()
         ck("stored against the normalised number", row is not None)
         ck("what they typed is kept too", row.mobile_raw == "0917 111 1111")
-        ck("answers stored as JSON", json.loads(row.answers)["q14_budget"] == "5000-7499")
+        ck("answers stored as JSON", json.loads(row.answers)["q13_budget"] == "5000-7499")
         ck("gender stored", json.loads(row.answers)["q3_gender"] == "Female")
         ck("a list answer survives", json.loads(row.answers)["q10_activities"] == ["CrossFit", "Hybrid - HYROX/DEKA"])
         ck("IP recorded", bool(row.ip))
@@ -301,8 +332,8 @@ with TestClient(app) as c:
                             "answers": {**entry("09196660002")["answers"],
                                         "q2_age": "45-54", "q1_city": "Makati",
                                         "q5_occupation": "Student",
-                                        "q14_budget": "3000-4999",
-                                        "q17_goals": ["Lose fat", "Mobility"]}})
+                                        "q13_budget": "3000-4999",
+                                        "q16_goals": ["Lose fat", "Mobility"]}})
     r = c.get("/admin/survey/results")
     ck("the results page opens", r.status_code == 200)
     ck("it leads with how many answered", "Completed" in r.text and "In the draw" in r.text)

@@ -587,73 +587,62 @@ pre{
         </div>
       </div>
 
-      <div class="q">
-        <span class="qn">12. How long have you been training regularly? <span class="req">*</span></span>
-        <div class="opts" data-radio="q12">
-          <label class="opt"><input type="radio" name="q12" value="Not started"><span>I haven&rsquo;t started yet</span></label>
-          <label class="opt"><input type="radio" name="q12" value="<6 months"><span>Less than 6 months</span></label>
-          <label class="opt"><input type="radio" name="q12" value="6mo-2yr"><span>6 months to 2 years</span></label>
-          <label class="opt"><input type="radio" name="q12" value="2-5yr"><span>2 to 5 years</span></label>
-          <label class="opt"><input type="radio" name="q12" value="5yr+"><span>More than 5 years</span></label>
-          <label class="opt"><input type="radio" name="q12" value="Lapsed"><span>I used to train regularly, but not now</span></label>
-        </div>
-      </div>
 
       <div class="q">
-        <span class="qn">13. How would you describe yourself in a gym? <span class="req">*</span></span>
+        <span class="qn">12. How would you describe yourself in a gym? <span class="req">*</span></span>
         <p class="hint">There&rsquo;s no wrong answer &mdash; it tells us what level to pitch classes at.</p>
-        <div class="opts" data-radio="q13">
-          <label class="opt"><input type="radio" name="q13" value="Beginner"><span>New to it &mdash; I&rsquo;d want someone to show me the basics</span></label>
-          <label class="opt"><input type="radio" name="q13" value="Improver"><span>Some experience &mdash; I can get through a workout on my own, but I&rsquo;d want guidance on technique or what to do</span></label>
-          <label class="opt"><input type="radio" name="q13" value="Confident"><span>Confident &mdash; I follow my own program and know my way around the equipment</span></label>
-          <label class="opt"><input type="radio" name="q13" value="Advanced"><span>Advanced &mdash; I train to a competition or performance standard</span></label>
+        <div class="opts" data-radio="q12">
+          <label class="opt"><input type="radio" name="q12" value="Beginner"><span>New to it &mdash; I&rsquo;d want someone to show me the basics</span></label>
+          <label class="opt"><input type="radio" name="q12" value="Improver"><span>Some experience &mdash; I can get through a workout on my own, but I&rsquo;d want guidance on technique or what to do</span></label>
+          <label class="opt"><input type="radio" name="q12" value="Confident"><span>Confident &mdash; I follow my own program and know my way around the equipment</span></label>
+          <label class="opt"><input type="radio" name="q12" value="Advanced"><span>Advanced &mdash; I train to a competition or performance standard</span></label>
         </div>
       </div>
 
       <div class="q">
-        <span class="qn">14. Roughly how much would you spend per month, in total, on fitness activities? <span class="req">*</span></span>
+        <span class="qn">13. Roughly how much would you spend per month, in total, on fitness activities? <span class="req">*</span></span>
         <p class="hint">Include memberships, classes, coaching and court or venue fees. Leave out clothing, equipment and supplements.</p>
-        <div class="opts" data-radio="q14">
-          <label class="opt"><input type="radio" name="q14" value="<2000"><span>Less than &#8369;2,000</span></label>
-          <label class="opt"><input type="radio" name="q14" value="2000-2999"><span>&#8369;2,000 &ndash; &#8369;2,999</span></label>
-          <label class="opt"><input type="radio" name="q14" value="3000-4999"><span>&#8369;3,000 &ndash; &#8369;4,999</span></label>
-          <label class="opt"><input type="radio" name="q14" value="5000-7499"><span>&#8369;5,000 &ndash; &#8369;7,499</span></label>
-          <label class="opt"><input type="radio" name="q14" value="7500-9999"><span>&#8369;7,500 &ndash; &#8369;9,999</span></label>
-          <label class="opt"><input type="radio" name="q14" value="10000+"><span>&#8369;10,000 or more</span></label>
-          <label class="opt"><input type="radio" name="q14" value="Unsure"><span>I&rsquo;m not sure</span></label>
+        <div class="opts" data-radio="q13">
+          <label class="opt"><input type="radio" name="q13" value="<2000"><span>Less than &#8369;2,000</span></label>
+          <label class="opt"><input type="radio" name="q13" value="2000-2999"><span>&#8369;2,000 &ndash; &#8369;2,999</span></label>
+          <label class="opt"><input type="radio" name="q13" value="3000-4999"><span>&#8369;3,000 &ndash; &#8369;4,999</span></label>
+          <label class="opt"><input type="radio" name="q13" value="5000-7499"><span>&#8369;5,000 &ndash; &#8369;7,499</span></label>
+          <label class="opt"><input type="radio" name="q13" value="7500-9999"><span>&#8369;7,500 &ndash; &#8369;9,999</span></label>
+          <label class="opt"><input type="radio" name="q13" value="10000+"><span>&#8369;10,000 or more</span></label>
+          <label class="opt"><input type="radio" name="q13" value="Unsure"><span>I&rsquo;m not sure</span></label>
         </div>
+      </div>
+
+      <div class="q hide" id="q14wrap">
+        <span class="qn">14. Which gym or studio do you use most often?</span>
+        <label class="fl"><span>Gym or studio</span>
+          <select name="q14" data-list="gyms"></select>
+        </label>
+        <div class="sub-q hide" data-otherfor="q14">
+          <label class="fl" style="margin-top:0"><span>Please name it</span><input type="text" name="q14_other"></label>
+        </div>
+        <label class="fl"><span>Which branch? <span style="color:var(--faint)">(optional)</span></span>
+          <input type="text" name="q14_branch" placeholder="e.g. BGC, Katipunan">
+        </label>
       </div>
 
       <div class="q hide" id="q15wrap">
-        <span class="qn">15. Which gym or studio do you use most often?</span>
-        <label class="fl"><span>Gym or studio</span>
-          <select name="q15" data-list="gyms"></select>
-        </label>
-        <div class="sub-q hide" data-otherfor="q15">
-          <label class="fl" style="margin-top:0"><span>Please name it</span><input type="text" name="q15_other"></label>
-        </div>
-        <label class="fl"><span>Which branch? <span style="color:var(--faint)">(optional)</span></span>
-          <input type="text" name="q15_branch" placeholder="e.g. BGC, Katipunan">
-        </label>
-      </div>
-
-      <div class="q hide" id="q16wrap">
-        <span class="qn">16. What made you choose that one?</span>
+        <span class="qn">15. What made you choose that one?</span>
         <p class="hint">Select up to three.</p>
-        <div class="opts" data-check="q16" data-max="3">
-          <label class="opt"><input type="checkbox" name="q16" value="Location"><span>Convenient location</span></label>
-          <label class="opt"><input type="checkbox" name="q16" value="Price"><span>Affordable price</span></label>
-          <label class="opt"><input type="checkbox" name="q16" value="Equipment"><span>Equipment or facilities</span></label>
-          <label class="opt"><input type="checkbox" name="q16" value="Coaching"><span>Quality of coaching</span></label>
-          <label class="opt"><input type="checkbox" name="q16" value="Classes"><span>Classes or programs</span></label>
-          <label class="opt"><input type="checkbox" name="q16" value="Schedule"><span>Opening hours or class times that suit me</span></label>
-          <label class="opt"><input type="checkbox" name="q16" value="Community"><span>Friends or community</span></label>
-          <label class="opt"><input type="checkbox" name="q16" value="Flexible terms"><span>Flexible membership options</span></label>
-          <label class="opt" data-other="q16"><input type="checkbox" name="q16" value="Other"><span>Something else</span></label>
+        <div class="opts" data-check="q15" data-max="3">
+          <label class="opt"><input type="checkbox" name="q15" value="Location"><span>Convenient location</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Price"><span>Affordable price</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Equipment"><span>Equipment or facilities</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Coaching"><span>Quality of coaching</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Classes"><span>Classes or programs</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Schedule"><span>Opening hours or class times that suit me</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Community"><span>Friends or community</span></label>
+          <label class="opt"><input type="checkbox" name="q15" value="Flexible terms"><span>Flexible membership options</span></label>
+          <label class="opt" data-other="q15"><input type="checkbox" name="q15" value="Other"><span>Something else</span></label>
         </div>
-        <div class="cnt" data-cntfor="q16">0 of 3 chosen</div>
-        <div class="sub-q hide" data-otherfor="q16">
-          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q16_other"></label>
+        <div class="cnt" data-cntfor="q15">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q15">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q15_other"></label>
         </div>
       </div>
 
@@ -678,20 +667,46 @@ pre{
       <p class="lede">What you&rsquo;d want out of a gym.</p>
 
       <div class="q">
-        <span class="qn">17. What are your main fitness goals? <span class="req">*</span></span>
+        <span class="qn">16. What are your main fitness goals? <span class="req">*</span></span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q16" data-max="3">
+          <label class="opt"><input type="checkbox" name="q16" value="General health"><span>Improve general health</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Lose fat"><span>Lose body fat or manage weight</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Build muscle"><span>Build muscle or gain weight</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Strength"><span>Get stronger</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Endurance"><span>Improve endurance</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Mobility"><span>Improve mobility and everyday movement</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Stress"><span>Manage stress</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Social"><span>Enjoy activities and meet people</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="Event prep"><span>Prepare for a sport or fitness event</span></label>
+          <label class="opt" data-other="q16"><input type="checkbox" name="q16" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q16" value="No goal" data-alone><span>No fitness goal right now</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q16">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q16">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q16_other"></label>
+        </div>
+      </div>
+
+
+      <div class="q">
+        <span class="qn">17. Which of these would you realistically use? <span class="req">*</span></span>
         <p class="hint">Select up to three.</p>
         <div class="opts" data-check="q17" data-max="3">
-          <label class="opt"><input type="checkbox" name="q17" value="General health"><span>Improve general health</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="Lose fat"><span>Lose body fat or manage weight</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="Build muscle"><span>Build muscle or gain weight</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="Strength"><span>Get stronger</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="Endurance"><span>Improve endurance</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="Mobility"><span>Improve mobility and everyday movement</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="Stress"><span>Manage stress</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="Social"><span>Enjoy activities and meet people</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="Event prep"><span>Prepare for a sport or fitness event</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Open gym"><span>Open gym &mdash; equipment for my own training</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Beginner on-ramp"><span>A beginner course that shows me the basics</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Strength classes"><span>Coached strength classes</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Functional / HIIT classes"><span>Functional training / HIIT classes</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Hybrid classes"><span>Hybrid classes (HYROX or DEKA preparation)</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Pilates or yoga"><span>Pilates or yoga classes</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Boxing / martial arts"><span>Boxing or martial arts classes</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Mobility / stretching"><span>Mobility or stretching sessions</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Personal training"><span>Personal training, one to one</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Small group coaching"><span>Small group coaching, two to four people</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Program for my goal"><span>A program written for my goal</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="Nutrition guidance"><span>Nutrition guidance</span></label>
           <label class="opt" data-other="q17"><input type="checkbox" name="q17" value="Other"><span>Something else</span></label>
-          <label class="opt"><input type="checkbox" name="q17" value="No goal" data-alone><span>No fitness goal right now</span></label>
+          <label class="opt"><input type="checkbox" name="q17" value="None" data-alone><span>None of these</span></label>
         </div>
         <div class="cnt" data-cntfor="q17">0 of 3 chosen</div>
         <div class="sub-q hide" data-otherfor="q17">
@@ -700,21 +715,17 @@ pre{
       </div>
 
       <div class="q">
-        <span class="qn">18. What would actually get you to join a gym? <span class="req">*</span></span>
+        <span class="qn">18. Which amenities would you want? <span class="req">*</span></span>
         <p class="hint">Select up to three.</p>
         <div class="opts" data-check="q18" data-max="3">
-          <label class="opt"><input type="checkbox" name="q18" value="Specific goal"><span>A specific health or fitness goal</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Equipment access"><span>Equipment or facilities I don&rsquo;t have elsewhere</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Coaching"><span>Coaching and guidance on how to train</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Program/accountability"><span>A structured program and accountability</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Enjoyable classes"><span>Classes or activities I&rsquo;d enjoy</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Friends/family"><span>Encouragement from friends or family</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Community"><span>A welcoming, supportive community</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Location/schedule"><span>A convenient location and schedule</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Affordable offer"><span>An affordable offer or trial</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Event prep"><span>Preparing for a sport or fitness event</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Co-working"><span>Co-working space</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Cafe"><span>Caf&eacute;</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Sauna"><span>Sauna</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Cold plunge"><span>Cold plunge</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Showers"><span>Showers and changing rooms</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Lockers"><span>Lockers</span></label>
           <label class="opt" data-other="q18"><input type="checkbox" name="q18" value="Other"><span>Something else</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Not interested" data-alone><span>I&rsquo;m not interested in joining a gym</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="None" data-alone><span>None of these</span></label>
         </div>
         <div class="cnt" data-cntfor="q18">0 of 3 chosen</div>
         <div class="sub-q hide" data-otherfor="q18">
@@ -723,72 +734,28 @@ pre{
       </div>
 
       <div class="q">
-        <span class="qn">19. Which of these would you realistically use? <span class="req">*</span></span>
-        <p class="hint">Select up to three.</p>
+        <span class="qn">19. What&rsquo;s missing from your current gym or fitness options? <span class="req">*</span></span>
+        <p class="hint">Select up to three. This is the one we most want to hear about.</p>
         <div class="opts" data-check="q19" data-max="3">
-          <label class="opt"><input type="checkbox" name="q19" value="Open gym"><span>Open gym &mdash; equipment for my own training</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Beginner on-ramp"><span>A beginner course that shows me the basics</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Strength classes"><span>Coached strength classes</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Functional / HIIT classes"><span>Functional training / HIIT classes</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Hybrid classes"><span>Hybrid classes (HYROX or DEKA preparation)</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Pilates or yoga"><span>Pilates or yoga classes</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Boxing / martial arts"><span>Boxing or martial arts classes</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Mobility / stretching"><span>Mobility or stretching sessions</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Personal training"><span>Personal training, one to one</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Small group coaching"><span>Small group coaching, two to four people</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Program for my goal"><span>A program written for my goal</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="Nutrition guidance"><span>Nutrition guidance</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Affordable options"><span>Affordable options</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Convenient locations"><span>Convenient locations</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Hours/schedules"><span>Opening hours or class times that suit me</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Equipment/space"><span>Enough equipment or floor space</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Coaching"><span>Good coaching or personal guidance</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Beginner support"><span>Support for beginners</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Goal programs"><span>Structured programs for my goals</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Variety"><span>A wider variety of activities</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Community"><span>A welcoming, supportive community</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Cleanliness"><span>Clean, well-kept facilities</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Amenities"><span>Amenities I&rsquo;d actually use</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Flexible payment"><span>Flexible membership or payment options</span></label>
           <label class="opt" data-other="q19"><input type="checkbox" name="q19" value="Other"><span>Something else</span></label>
-          <label class="opt"><input type="checkbox" name="q19" value="None" data-alone><span>None of these</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="Nothing" data-alone><span>Nothing &mdash; I&rsquo;m happy as it is</span></label>
+          <label class="opt"><input type="checkbox" name="q19" value="N/A" data-alone><span>Doesn&rsquo;t apply to me</span></label>
         </div>
         <div class="cnt" data-cntfor="q19">0 of 3 chosen</div>
         <div class="sub-q hide" data-otherfor="q19">
           <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q19_other"></label>
-        </div>
-      </div>
-
-      <div class="q">
-        <span class="qn">20. Which amenities would you want? <span class="req">*</span></span>
-        <p class="hint">Select up to three.</p>
-        <div class="opts" data-check="q20" data-max="3">
-          <label class="opt"><input type="checkbox" name="q20" value="Co-working"><span>Co-working space</span></label>
-          <label class="opt"><input type="checkbox" name="q20" value="Cafe"><span>Caf&eacute;</span></label>
-          <label class="opt"><input type="checkbox" name="q20" value="Sauna"><span>Sauna</span></label>
-          <label class="opt"><input type="checkbox" name="q20" value="Cold plunge"><span>Cold plunge</span></label>
-          <label class="opt"><input type="checkbox" name="q20" value="Showers"><span>Showers and changing rooms</span></label>
-          <label class="opt"><input type="checkbox" name="q20" value="Lockers"><span>Lockers</span></label>
-          <label class="opt" data-other="q20"><input type="checkbox" name="q20" value="Other"><span>Something else</span></label>
-          <label class="opt"><input type="checkbox" name="q20" value="None" data-alone><span>None of these</span></label>
-        </div>
-        <div class="cnt" data-cntfor="q20">0 of 3 chosen</div>
-        <div class="sub-q hide" data-otherfor="q20">
-          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q20_other"></label>
-        </div>
-      </div>
-
-      <div class="q">
-        <span class="qn">21. What&rsquo;s missing from your current gym or fitness options? <span class="req">*</span></span>
-        <p class="hint">Select up to three. This is the one we most want to hear about.</p>
-        <div class="opts" data-check="q21" data-max="3">
-          <label class="opt"><input type="checkbox" name="q21" value="Affordable options"><span>Affordable options</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Convenient locations"><span>Convenient locations</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Hours/schedules"><span>Opening hours or class times that suit me</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Equipment/space"><span>Enough equipment or floor space</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Coaching"><span>Good coaching or personal guidance</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Beginner support"><span>Support for beginners</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Goal programs"><span>Structured programs for my goals</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Variety"><span>A wider variety of activities</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Community"><span>A welcoming, supportive community</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Cleanliness"><span>Clean, well-kept facilities</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Amenities"><span>Amenities I&rsquo;d actually use</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Flexible payment"><span>Flexible membership or payment options</span></label>
-          <label class="opt" data-other="q21"><input type="checkbox" name="q21" value="Other"><span>Something else</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="Nothing" data-alone><span>Nothing &mdash; I&rsquo;m happy as it is</span></label>
-          <label class="opt"><input type="checkbox" name="q21" value="N/A" data-alone><span>Doesn&rsquo;t apply to me</span></label>
-        </div>
-        <div class="cnt" data-cntfor="q21">0 of 3 chosen</div>
-        <div class="sub-q hide" data-otherfor="q21">
-          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q21_other"></label>
         </div>
       </div>
 
@@ -813,50 +780,50 @@ pre{
       <p class="lede">When you&rsquo;d train, and how you&rsquo;d want to pay.</p>
 
       <div class="q">
-        <span class="qn">22. What days and times would you realistically train? <span class="req">*</span></span>
+        <span class="qn">20. What days and times would you realistically train? <span class="req">*</span></span>
         <p class="hint">Days &mdash; select all that apply.</p>
-        <div class="opts" data-check="q22d">
-          <label class="opt"><input type="checkbox" name="q22d" value="Weekdays"><span>Weekdays</span></label>
-          <label class="opt"><input type="checkbox" name="q22d" value="Weekends"><span>Weekends</span></label>
-          <label class="opt"><input type="checkbox" name="q22d" value="Varies" data-alone><span>My schedule varies</span></label>
-          <label class="opt"><input type="checkbox" name="q22d" value="Not training" data-alone id="q22none"><span>I don&rsquo;t plan to train</span></label>
+        <div class="opts" data-check="q20d">
+          <label class="opt"><input type="checkbox" name="q20d" value="Weekdays"><span>Weekdays</span></label>
+          <label class="opt"><input type="checkbox" name="q20d" value="Weekends"><span>Weekends</span></label>
+          <label class="opt"><input type="checkbox" name="q20d" value="Varies" data-alone><span>My schedule varies</span></label>
+          <label class="opt"><input type="checkbox" name="q20d" value="Not training" data-alone id="q20none"><span>I don&rsquo;t plan to train</span></label>
         </div>
         <div id="s_times">
           <p class="hint" style="margin-top:16px">Times &mdash; select all that apply.</p>
-          <div class="opts" data-check="q22t">
-            <label class="opt"><input type="checkbox" name="q22t" value="Before 7am"><span>Before 7 AM</span></label>
-            <label class="opt"><input type="checkbox" name="q22t" value="7-10am"><span>7 AM to before 10 AM</span></label>
-            <label class="opt"><input type="checkbox" name="q22t" value="10am-1pm"><span>10 AM to before 1 PM</span></label>
-            <label class="opt"><input type="checkbox" name="q22t" value="1-5pm"><span>1 PM to before 5 PM</span></label>
-            <label class="opt"><input type="checkbox" name="q22t" value="5-8pm"><span>5 PM to before 8 PM</span></label>
-            <label class="opt"><input type="checkbox" name="q22t" value="8pm+"><span>8 PM onward</span></label>
-            <label class="opt"><input type="checkbox" name="q22t" value="Varies" data-alone><span>My training times vary</span></label>
+          <div class="opts" data-check="q20t">
+            <label class="opt"><input type="checkbox" name="q20t" value="Before 7am"><span>Before 7 AM</span></label>
+            <label class="opt"><input type="checkbox" name="q20t" value="7-10am"><span>7 AM to before 10 AM</span></label>
+            <label class="opt"><input type="checkbox" name="q20t" value="10am-1pm"><span>10 AM to before 1 PM</span></label>
+            <label class="opt"><input type="checkbox" name="q20t" value="1-5pm"><span>1 PM to before 5 PM</span></label>
+            <label class="opt"><input type="checkbox" name="q20t" value="5-8pm"><span>5 PM to before 8 PM</span></label>
+            <label class="opt"><input type="checkbox" name="q20t" value="8pm+"><span>8 PM onward</span></label>
+            <label class="opt"><input type="checkbox" name="q20t" value="Varies" data-alone><span>My training times vary</span></label>
           </div>
         </div>
       </div>
 
       <div class="q">
-        <span class="qn">23. Which arrangement would fit your routine best? <span class="req">*</span></span>
-        <div class="opts" data-radio="q23">
-          <label class="opt"><input type="radio" name="q23" value="One gym, one focus"><span>One gym focused on my main type of training</span></label>
-          <label class="opt"><input type="radio" name="q23" value="One gym, many activities"><span>One gym offering several types of activities</span></label>
-          <label class="opt"><input type="radio" name="q23" value="Mix of places"><span>A mix of gyms, studios and sports</span></label>
-          <label class="opt"><input type="radio" name="q23" value="Mostly home/outdoor"><span>Mainly training at home or outdoors, with occasional gym visits</span></label>
-          <label class="opt"><input type="radio" name="q23" value="No paid gym"><span>No paid gym use</span></label>
-          <label class="opt"><input type="radio" name="q23" value="Unsure"><span>I&rsquo;m not sure</span></label>
+        <span class="qn">21. Which arrangement would fit your routine best? <span class="req">*</span></span>
+        <div class="opts" data-radio="q21">
+          <label class="opt"><input type="radio" name="q21" value="One gym, one focus"><span>One gym focused on my main type of training</span></label>
+          <label class="opt"><input type="radio" name="q21" value="One gym, many activities"><span>One gym offering several types of activities</span></label>
+          <label class="opt"><input type="radio" name="q21" value="Mix of places"><span>A mix of gyms, studios and sports</span></label>
+          <label class="opt"><input type="radio" name="q21" value="Mostly home/outdoor"><span>Mainly training at home or outdoors, with occasional gym visits</span></label>
+          <label class="opt"><input type="radio" name="q21" value="No paid gym"><span>No paid gym use</span></label>
+          <label class="opt"><input type="radio" name="q21" value="Unsure"><span>I&rsquo;m not sure</span></label>
         </div>
       </div>
 
       <div class="q">
-        <span class="qn">24. Which payment option would you prefer? <span class="req">*</span></span>
-        <div class="opts" data-radio="q24">
-          <label class="opt"><input type="radio" name="q24" value="Per visit"><span>Pay per visit</span></label>
-          <label class="opt"><input type="radio" name="q24" value="Session package"><span>A package of sessions or class credits</span></label>
-          <label class="opt"><input type="radio" name="q24" value="Monthly, no commitment"><span>Monthly membership, no long commitment</span></label>
-          <label class="opt"><input type="radio" name="q24" value="Longer term, lower rate"><span>A longer membership at a lower monthly rate</span></label>
-          <label class="opt"><input type="radio" name="q24" value="Short program"><span>A short program with a set start and end</span></label>
-          <label class="opt"><input type="radio" name="q24" value="Won't pay"><span>I don&rsquo;t plan to pay for gym services</span></label>
-          <label class="opt"><input type="radio" name="q24" value="Unsure"><span>I&rsquo;m not sure</span></label>
+        <span class="qn">22. Which payment option would you prefer? <span class="req">*</span></span>
+        <div class="opts" data-radio="q22">
+          <label class="opt"><input type="radio" name="q22" value="Per visit"><span>Pay per visit</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Session package"><span>A package of sessions or class credits</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Monthly, no commitment"><span>Monthly membership, no long commitment</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Longer term, lower rate"><span>A longer membership at a lower monthly rate</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Short program"><span>A short program with a set start and end</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Won't pay"><span>I don&rsquo;t plan to pay for gym services</span></label>
+          <label class="opt"><input type="radio" name="q22" value="Unsure"><span>I&rsquo;m not sure</span></label>
         </div>
       </div>
 
@@ -881,83 +848,78 @@ pre{
       <p class="lede">What gets in the way, and what keeps you going.</p>
 
       <div class="q">
-        <span class="qn">25. What would be your biggest barriers to joining or using a gym regularly? <span class="req">*</span></span>
+        <span class="qn">23. What would be your biggest barriers to joining or using a gym regularly? <span class="req">*</span></span>
+        <p class="hint">Select up to three.</p>
+        <div class="opts" data-check="q23" data-max="3">
+          <label class="opt"><input type="checkbox" name="q23" value="Cost"><span>Cost</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Travel/location"><span>Travel time or an inconvenient location</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Commitments"><span>Work, school or family commitments</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Hours/schedules"><span>Opening hours or class times that don&rsquo;t suit me</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Don't know how"><span>Not knowing where to start</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Intimidated"><span>Feeling intimidated or out of place</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Energy/routine"><span>Low energy, or trouble keeping a routine</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Health/injury"><span>Health concerns or injury</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Other activities"><span>I&rsquo;d rather do other activities</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="Long commitments"><span>Long membership commitments</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="No interest"><span>No interest right now</span></label>
+          <label class="opt" data-other="q23"><input type="checkbox" name="q23" value="Other"><span>Something else</span></label>
+          <label class="opt"><input type="checkbox" name="q23" value="No barriers" data-alone><span>No major barriers</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q23">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q23">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q23_other"></label>
+        </div>
+      </div>
+
+
+      <div class="q">
+        <span class="qn">24. Have you ever stopped a gym membership or class package? <span class="req">*</span></span>
+        <p class="hint">If you have, what was the main reason the last time?</p>
+        <div class="opts" data-radio="q24">
+          <label class="opt"><input type="radio" name="q24" value="Never had one"><span>I&rsquo;ve never had one</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Never stopped"><span>I&rsquo;ve had one and never stopped</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Too expensive"><span>It became too expensive</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Not using enough"><span>I wasn&rsquo;t using it enough to justify the cost</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Moved/location"><span>I moved, or the location became inconvenient</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Commitments changed"><span>My work, school or family commitments changed</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Schedule didn't suit"><span>The hours or class times didn&rsquo;t suit me</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Lost motivation"><span>I lost motivation or struggled to keep a routine</span></label>
+          <label class="opt"><input type="radio" name="q24" value="No results"><span>I wasn&rsquo;t seeing the results I wanted</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Poor coaching/service"><span>I wasn&rsquo;t happy with the coaching or service</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Equipment/facilities"><span>The equipment or facilities didn&rsquo;t meet my needs</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Too crowded"><span>It was too crowded</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Not welcome"><span>I didn&rsquo;t feel comfortable or welcome</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Health/injury"><span>I had a health concern or injury</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Switched"><span>I switched to another gym or activity</span></label>
+          <label class="opt"><input type="radio" name="q24" value="Program ended"><span>My program or event prep ended</span></label>
+          <label class="opt" data-other="q24"><input type="radio" name="q24" value="Other"><span>Something else</span></label>
+        </div>
+        <div class="sub-q hide" data-otherfor="q24">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q24_other"></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <span class="qn">25. From your experience, what makes you keep going to a gym? <span class="req">*</span></span>
         <p class="hint">Select up to three.</p>
         <div class="opts" data-check="q25" data-max="3">
-          <label class="opt"><input type="checkbox" name="q25" value="Cost"><span>Cost</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Travel/location"><span>Travel time or an inconvenient location</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Commitments"><span>Work, school or family commitments</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Hours/schedules"><span>Opening hours or class times that don&rsquo;t suit me</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Don't know how"><span>Not knowing where to start</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Intimidated"><span>Feeling intimidated or out of place</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Energy/routine"><span>Low energy, or trouble keeping a routine</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Health/injury"><span>Health concerns or injury</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Other activities"><span>I&rsquo;d rather do other activities</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="Long commitments"><span>Long membership commitments</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="No interest"><span>No interest right now</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Location"><span>A convenient location</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Schedule fit"><span>Hours or class times that fit my routine</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Value"><span>Affordable pricing and good value</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Coaching/program"><span>Coaching, or a clear program</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Friendly staff"><span>Friendly staff and coaches</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Seeing progress"><span>Seeing progress toward my goals</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Enjoyment"><span>Actually enjoying the workouts</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Community"><span>Friends, or a community I like</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Event goal"><span>Preparing for an event or goal</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Equipment/amenities"><span>The equipment and amenities</span></label>
           <label class="opt" data-other="q25"><input type="checkbox" name="q25" value="Other"><span>Something else</span></label>
-          <label class="opt"><input type="checkbox" name="q25" value="No barriers" data-alone><span>No major barriers</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="Nothing has" data-alone><span>Nothing has kept me consistent</span></label>
+          <label class="opt"><input type="checkbox" name="q25" value="N/A" data-alone><span>I&rsquo;ve never used a gym</span></label>
         </div>
         <div class="cnt" data-cntfor="q25">0 of 3 chosen</div>
         <div class="sub-q hide" data-otherfor="q25">
           <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q25_other"></label>
-        </div>
-      </div>
-
-      <div class="q">
-        <span class="qn">26. Have you ever cancelled or not renewed a gym membership or class package? <span class="req">*</span></span>
-        <div class="opts" data-radio="q26">
-          <label class="opt"><input type="radio" name="q26" value="Yes"><span>Yes</span></label>
-          <label class="opt"><input type="radio" name="q26" value="No"><span>No</span></label>
-          <label class="opt"><input type="radio" name="q26" value="Never purchased"><span>I&rsquo;ve never bought one</span></label>
-        </div>
-      </div>
-
-      <div class="q hide" id="q27wrap">
-        <span class="qn">27. What was the main reason, the last time?</span>
-        <div class="opts" data-radio="q27">
-          <label class="opt"><input type="radio" name="q27" value="Too expensive"><span>It became too expensive</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Not using enough"><span>I wasn&rsquo;t using it enough to justify the cost</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Moved/location"><span>I moved, or the location became inconvenient</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Commitments changed"><span>My work, school or family commitments changed</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Schedule didn't suit"><span>The hours or class times didn&rsquo;t suit me</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Lost motivation"><span>I lost motivation or struggled to keep a routine</span></label>
-          <label class="opt"><input type="radio" name="q27" value="No results"><span>I wasn&rsquo;t seeing the results I wanted</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Poor coaching/service"><span>I wasn&rsquo;t happy with the coaching or service</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Equipment/facilities"><span>The equipment or facilities didn&rsquo;t meet my needs</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Too crowded"><span>It was too crowded</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Not welcome"><span>I didn&rsquo;t feel comfortable or welcome</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Health/injury"><span>I had a health concern or injury</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Switched"><span>I switched to another gym or activity</span></label>
-          <label class="opt"><input type="radio" name="q27" value="Program ended"><span>My program or event prep ended</span></label>
-          <label class="opt" data-other="q27"><input type="radio" name="q27" value="Other"><span>Something else</span></label>
-        </div>
-        <div class="sub-q hide" data-otherfor="q27">
-          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q27_other"></label>
-        </div>
-      </div>
-
-      <div class="q">
-        <span class="qn">28. From your experience, what makes you keep going to a gym? <span class="req">*</span></span>
-        <p class="hint">Select up to three.</p>
-        <div class="opts" data-check="q28" data-max="3">
-          <label class="opt"><input type="checkbox" name="q28" value="Location"><span>A convenient location</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Schedule fit"><span>Hours or class times that fit my routine</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Value"><span>Affordable pricing and good value</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Coaching/program"><span>Coaching, or a clear program</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Friendly staff"><span>Friendly staff and coaches</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Seeing progress"><span>Seeing progress toward my goals</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Enjoyment"><span>Actually enjoying the workouts</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Community"><span>Friends, or a community I like</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Event goal"><span>Preparing for an event or goal</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Equipment/amenities"><span>The equipment and amenities</span></label>
-          <label class="opt" data-other="q28"><input type="checkbox" name="q28" value="Other"><span>Something else</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="Nothing has" data-alone><span>Nothing has kept me consistent</span></label>
-          <label class="opt"><input type="checkbox" name="q28" value="N/A" data-alone><span>I&rsquo;ve never used a gym</span></label>
-        </div>
-        <div class="cnt" data-cntfor="q28">0 of 3 chosen</div>
-        <div class="sub-q hide" data-otherfor="q28">
-          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q28_other"></label>
         </div>
       </div>
 
@@ -982,36 +944,36 @@ pre{
       <p class="lede">Two questions and an open box.</p>
 
       <div class="q">
-        <span class="qn">29. What&rsquo;s your connection to Awaken? <span class="req">*</span></span>
-        <div class="opts" data-radio="q29">
-          <label class="opt"><input type="radio" name="q29" value="Current member"><span>Current member</span></label>
-          <label class="opt"><input type="radio" name="q29" value="Former member"><span>Former member</span></label>
-          <label class="opt"><input type="radio" name="q29" value="Attended once"><span>I&rsquo;ve been to a class or event, but I&rsquo;m not a member</span></label>
-          <label class="opt"><input type="radio" name="q29" value="Know of it"><span>I know about Awaken but have never been</span></label>
-          <label class="opt"><input type="radio" name="q29" value="Never heard"><span>I hadn&rsquo;t heard of Awaken before this survey</span></label>
+        <span class="qn">26. What&rsquo;s your connection to Awaken? <span class="req">*</span></span>
+        <div class="opts" data-radio="q26">
+          <label class="opt"><input type="radio" name="q26" value="Current member"><span>Current member</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Former member"><span>Former member</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Attended once"><span>I&rsquo;ve been to a class or event, but I&rsquo;m not a member</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Know of it"><span>I know about Awaken but have never been</span></label>
+          <label class="opt"><input type="radio" name="q26" value="Never heard"><span>I hadn&rsquo;t heard of Awaken before this survey</span></label>
         </div>
       </div>
 
       <div class="q">
-        <span class="qn">30. Where did you find this survey? <span class="req">*</span></span>
-        <div class="opts" data-radio="q30">
-          <label class="opt"><input type="radio" name="q30" value="Awaken social/gym"><span>Awaken&rsquo;s social media or at the gym</span></label>
-          <label class="opt"><input type="radio" name="q30" value="Neighborhood/condo"><span>A neighbourhood or condo community</span></label>
-          <label class="opt"><input type="radio" name="q30" value="Fitness/sports group"><span>A fitness or sports group</span></label>
-          <label class="opt"><input type="radio" name="q30" value="Work/school"><span>Work or school</span></label>
-          <label class="opt"><input type="radio" name="q30" value="Friend/family"><span>A friend or family member</span></label>
-          <label class="opt" data-other="q30"><input type="radio" name="q30" value="Other"><span>Somewhere else</span></label>
+        <span class="qn">27. Where did you find this survey? <span class="req">*</span></span>
+        <div class="opts" data-radio="q27">
+          <label class="opt"><input type="radio" name="q27" value="Awaken social/gym"><span>Awaken&rsquo;s social media or at the gym</span></label>
+          <label class="opt"><input type="radio" name="q27" value="Neighborhood/condo"><span>A neighbourhood or condo community</span></label>
+          <label class="opt"><input type="radio" name="q27" value="Fitness/sports group"><span>A fitness or sports group</span></label>
+          <label class="opt"><input type="radio" name="q27" value="Work/school"><span>Work or school</span></label>
+          <label class="opt"><input type="radio" name="q27" value="Friend/family"><span>A friend or family member</span></label>
+          <label class="opt" data-other="q27"><input type="radio" name="q27" value="Other"><span>Somewhere else</span></label>
         </div>
-        <div class="sub-q hide" data-otherfor="q30">
-          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q30_other"></label>
+        <div class="sub-q hide" data-otherfor="q27">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q27_other"></label>
         </div>
       </div>
 
       <div class="q">
-        <span class="qn">31. Anything else you&rsquo;d want from a gym that we didn&rsquo;t ask about?</span>
+        <span class="qn">28. Anything else you&rsquo;d want from a gym that we didn&rsquo;t ask about?</span>
         <p class="hint">Optional, and there&rsquo;s no wrong answer. This is often the most useful box on the whole form.</p>
         <label class="fl" style="margin-top:9px">
-          <textarea name="q31" placeholder="Tell us anything&hellip;"></textarea>
+          <textarea name="q28" placeholder="Tell us anything&hellip;"></textarea>
         </label>
       </div>
 
@@ -1233,8 +1195,8 @@ function otherBoxes(){
     if (box) show(box, inp.checked);
   });
   // the gym dropdown is a select, not a tick
-  var g = document.querySelector('select[name="q15"]');
-  if (g) show($('[data-otherfor="q15"]'), g.value === "Other");
+  var g = document.querySelector('select[name="q14"]');
+  if (g) show($('[data-otherfor="q14"]'), g.value === "Other");
 }
 
 /* ---------------------------------------------------------------
@@ -1249,16 +1211,15 @@ function conditionals(){
 
   var q9 = picked("q9");
   var pays = (q9 === "Member" || q9 === "Pay per visit");
-  show($("#q15wrap"), pays);
-  show($("#q16wrap"), pays && !!val("q15"));
+  show($("#q14wrap"), pays);
+  show($("#q15wrap"), pays && !!val("q14"));
 
   // "I don't plan to train" hides the time choices rather than leaving
   // somebody to answer a question that cannot apply to them.
-  var noTrain = $("#q22none").checked;
+  var noTrain = $("#q20none").checked;
   show($("#s_times"), !noTrain);
-  if (noTrain) all('input[name="q22t"]').forEach(function(b){ b.checked = false; });
+  if (noTrain) all('input[name="q20t"]').forEach(function(b){ b.checked = false; });
 
-  show($("#q27wrap"), picked("q26") === "Yes");
 
   otherBoxes();
 }
@@ -1295,77 +1256,93 @@ mob.addEventListener("input", function(){
 /* ---------------------------------------------------------------
    What each step insists on
    --------------------------------------------------------------- */
+/* The number a person reads, looked up from the question itself rather than
+   written out here. Hard-coding it is how an error message ends up naming
+   question 24 when it means question 25 - which is exactly what happened
+   when gender was inserted and every number below it shifted. */
+function qnum(name){
+  var el = document.querySelector('[name="' + name + '"]');
+  var q = el && el.closest(".q");
+  var lab = q && q.querySelector(".qn");
+  var m = lab && /^\s*(\d+)\./.exec(lab.textContent || "");
+  return m ? m[1] : "";
+}
+function need(name, extra){
+  return qnum(name) + (extra ? " \u2014 " + extra : "");
+}
+function isShown(id){
+  var el = $(id);
+  return el && !el.classList.contains("hide");
+}
+function missOne(m, name, label){
+  if (!picked(name)) m.push(need(name));
+  if (picked(name) === "Other" && !val(name + "_other")) m.push(need(name, "tell us what"));
+}
+function missMany(m, name){
+  var t = ticked(name);
+  if (!t.length) m.push(need(name));
+  if (t.indexOf("Other") > -1 && !val(name + "_other")) m.push(need(name, "tell us what"));
+}
+
 var RULES = {
   1: function(){
     var m = [];
     var where = picked("q1");
-    if (!where) m.push("1");
-    if (where === "Within Metro Manila" && !val("q1_ncr")) m.push("1 \u2014 your city");
-    if (!picked("q2")) m.push("2");
-    if (!picked("q3")) m.push("3");
-    if (!val("q4_name")) m.push("3 \u2014 your name");
-    if (!normPH(val("q4_mobile"))) m.push("3 \u2014 a valid mobile number");
-    if (!emailOK(val("q4_email"))) m.push("3 \u2014 a valid email address");
+    if (!where) m.push(need("q1"));
+    if (where === "Within Metro Manila" && !val("q1_ncr")) m.push(need("q1", "your city"));
+    if (!picked("q2")) m.push(need("q2"));
+    if (!picked("q3")) m.push(need("q3"));
+    if (!val("q4_name")) m.push(need("q4_name", "your name"));
+    if (!normPH(val("q4_mobile"))) m.push(need("q4_mobile", "a valid mobile number"));
+    if (!emailOK(val("q4_email"))) m.push(need("q4_email", "a valid email address"));
     return m;
   },
   2: function(){
     var m = [];
-    if (!picked("q5")) m.push("4");
-    if (picked("q5") === "Other" && !val("q5_other")) m.push("4 \u2014 tell us what");
-    if (!picked("q6")) m.push("5");
-    if (!$("#s_work").classList.contains("hide") && !val("q6_city")) m.push("5 \u2014 the city you work or study in");
-    if (!picked("q7")) m.push("6");
-    if (!picked("q8")) m.push("7");
+    missOne(m, "q5");
+    if (!picked("q6")) m.push(need("q6"));
+    if (isShown("#s_work") && !val("q6_city")) m.push(need("q6", "the city you work or study in"));
+    if (!picked("q7")) m.push(need("q7"));
+    if (!picked("q8")) m.push(need("q8"));
     return m;
   },
   3: function(){
     var m = [];
-    if (!picked("q9")) m.push("8");
-    if (!ticked("q10").length) m.push("9");
-    if (ticked("q10").indexOf("Other") > -1 && !val("q10_other")) m.push("9 \u2014 tell us what");
-    if (!picked("q11")) m.push("10");
-    if (!picked("q12")) m.push("11");
-    if (!picked("q13")) m.push("12");
-    if (!picked("q14")) m.push("13");
-    if (!$("#q15wrap").classList.contains("hide") && !val("q15")) m.push("14");
-    if (val("q15") === "Other" && !val("q15_other")) m.push("14 \u2014 name it");
-    if (!$("#q16wrap").classList.contains("hide") && !ticked("q16").length) m.push("15");
-    if (ticked("q16").indexOf("Other") > -1 && !val("q16_other")) m.push("15 \u2014 tell us what");
+    if (!picked("q9")) m.push(need("q9"));
+    missMany(m, "q10");
+    if (!picked("q11")) m.push(need("q11"));
+    if (!picked("q12")) m.push(need("q12"));
+    if (!picked("q13")) m.push(need("q13"));
+    if (isShown("#q14wrap") && !val("q14")) m.push(need("q14"));
+    if (val("q14") === "Other" && !val("q14_other")) m.push(need("q14", "name it"));
+    if (isShown("#q15wrap") && !ticked("q15").length) m.push(need("q15"));
+    if (ticked("q15").indexOf("Other") > -1 && !val("q15_other")) m.push(need("q15", "tell us what"));
     return m;
   },
   4: function(){
     var m = [];
-    [16,17,18,19,20].forEach(function(n){
-      var q = "q" + n, t = ticked(q);
-      if (!t.length) m.push(String(n));
-      if (t.indexOf("Other") > -1 && !val(q + "_other")) m.push(n + " \u2014 tell us what");
-    });
+    ["q16", "q17", "q18", "q19"].forEach(function(n){ missMany(m, n); });
     return m;
   },
   5: function(){
     var m = [];
-    if (!ticked("q22d").length) m.push("21 \u2014 the days");
-    if (!$("#s_times").classList.contains("hide") && !ticked("q22t").length) m.push("21 \u2014 the times");
-    if (!picked("q23")) m.push("22");
-    if (!picked("q24")) m.push("23");
+    if (!ticked("q20d").length) m.push(need("q20d", "the days"));
+    if (isShown("#s_times") && !ticked("q20t").length) m.push(need("q20d", "the times"));
+    if (!picked("q21")) m.push(need("q21"));
+    if (!picked("q22")) m.push(need("q22"));
     return m;
   },
   6: function(){
     var m = [];
-    if (!ticked("q25").length) m.push("24");
-    if (ticked("q25").indexOf("Other") > -1 && !val("q25_other")) m.push("24 \u2014 tell us what");
-    if (!picked("q26")) m.push("25");
-    if (!$("#q27wrap").classList.contains("hide") && !picked("q27")) m.push("26");
-    if (picked("q27") === "Other" && !val("q27_other")) m.push("26 \u2014 tell us what");
-    if (!ticked("q28").length) m.push("27");
-    if (ticked("q28").indexOf("Other") > -1 && !val("q28_other")) m.push("27 \u2014 tell us what");
+    missMany(m, "q23");
+    missOne(m, "q24");
+    missMany(m, "q25");
     return m;
   },
   7: function(){
     var m = [];
-    if (!picked("q29")) m.push("28");
-    if (!picked("q30")) m.push("29");
-    if (picked("q30") === "Other" && !val("q30_other")) m.push("29 \u2014 tell us what");
+    if (!picked("q26")) m.push(need("q26"));
+    missOne(m, "q27");
     return m;
   }
 };
@@ -1931,26 +1908,23 @@ $("#submitBtn").addEventListener("click", function(){
       q9_status: picked("q9"),
       q10_activities: ticked("q10"), q10_other: val("q10_other"),
       q11_frequency: picked("q11"),
-      q12_training_since: picked("q12"),
-      q13_level: picked("q13"),
-      q14_budget: picked("q14"),
-      q15_gym: val("q15"), q15_other: val("q15_other"), q15_branch: val("q15_branch"),
-      q16_why: ticked("q16"), q16_other: val("q16_other"),
-      q17_goals: ticked("q17"), q17_other: val("q17_other"),
-      q18_motivation: ticked("q18"), q18_other: val("q18_other"),
-      q19_services: ticked("q19"), q19_other: val("q19_other"),
-      q20_amenities: ticked("q20"), q20_other: val("q20_other"),
-      q21_missing: ticked("q21"), q21_other: val("q21_other"),
-      q22_days: ticked("q22d"), q22_times: ticked("q22t"),
-      q23_arrangement: picked("q23"),
-      q24_payment: picked("q24"),
-      q25_barriers: ticked("q25"), q25_other: val("q25_other"),
-      q26_cancelled: picked("q26"),
-      q27_reason: picked("q27"), q27_other: val("q27_other"),
-      q28_keeps_going: ticked("q28"), q28_other: val("q28_other"),
-      q29_awaken: picked("q29"),
-      q30_found_via: picked("q30"), q30_other: val("q30_other"),
-      q31_anything_else: val("q31")
+      q12_level: picked("q12"),
+      q13_budget: picked("q13"),
+      q14_gym: val("q14"), q14_other: val("q14_other"), q14_branch: val("q14_branch"),
+      q15_why: ticked("q15"), q15_other: val("q15_other"),
+      q16_goals: ticked("q16"), q16_other: val("q16_other"),
+      q17_services: ticked("q17"), q17_other: val("q17_other"),
+      q18_amenities: ticked("q18"), q18_other: val("q18_other"),
+      q19_missing: ticked("q19"), q19_other: val("q19_other"),
+      q20_days: ticked("q20d"), q20_times: ticked("q20t"),
+      q21_arrangement: picked("q21"),
+      q22_payment: picked("q22"),
+      q23_barriers: ticked("q23"), q23_other: val("q23_other"),
+      q24_reason: picked("q24"), q24_other: val("q24_other"),
+      q25_keeps_going: ticked("q25"), q25_other: val("q25_other"),
+      q26_awaken: picked("q26"),
+      q27_found_via: picked("q27"), q27_other: val("q27_other"),
+      q28_anything_else: val("q28")
     },
     device: device()
   };
