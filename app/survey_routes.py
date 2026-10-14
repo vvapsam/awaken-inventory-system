@@ -359,6 +359,24 @@ def register(app, deps):
         except Exception:
             db.rollback()
 
+    #: Nothing the survey serves may come out of a cache. The public page
+    #: carries the questions, the wording and the answer to "has this
+    #: connection already entered?"; the admin pages carry live counts and
+    #: the list of refusals. A stale copy of either looks exactly like the
+    #: duplicate check failing - old questions, old wording, a refusal that
+    #: happened but is not on the page - and sends you hunting a bug that
+    #: is not there. It cost an evening once.
+    NO_CACHE = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
+
+    def fresh(response):
+        for k, v in NO_CACHE.items():
+            response.headers[k] = v
+        return response
+
     @app.get("/survey", response_class=HTMLResponse)
     def survey_form(request: Request, ref: str = "", ch: str = "",
                     again: int = 0, db: Session = Depends(get_db)):
@@ -368,7 +386,7 @@ def register(app, deps):
             return templates.TemplateResponse("survey_closed.html", {
                 "request": request,
                 "announces": say_date(cfg.get("announces_on"), long=True),
-            }, status_code=200)
+            }, status_code=200, headers=NO_CACHE)
         known = ""
         if ref:
             hit = (db.query(SurveyResponse)
@@ -398,7 +416,7 @@ def register(app, deps):
                 "channel": (ch or "")[:24],
                 "seen_here": seen is not None,
             }),
-        })
+        }, headers=NO_CACHE)
 
     @app.post("/survey")
     async def survey_submit(request: Request, db: Session = Depends(get_db)):
@@ -617,7 +635,7 @@ def register(app, deps):
                        .scalar() or 0)
                       for code, label in CHANNELS]
         cfg = settings(db)
-        return render(request, "survey_list.html", db, staff, active="survey",
+        return fresh(render(request, "survey_list.html", db, staff, active="survey",
                       rows=packed, questions=QUESTIONS, show=show, tally=tally,
                       cell=cell, cfg=cfg, channels=CHANNELS,
                       by_channel=by_channel, clusters=clusters(db),
@@ -625,7 +643,7 @@ def register(app, deps):
                       refused_total=db.query(func.count(SurveyAttempt.id)).scalar() or 0,
                       ip_hours=ip_window(db),
                       link=public_link(request, ""),
-                      link_for=lambda c: public_link(request, c))
+                      link_for=lambda c: public_link(request, c)))
 
     @app.get("/admin/survey/results", response_class=HTMLResponse)
     def survey_results(request: Request, ch: str = "",
@@ -685,7 +703,7 @@ def register(app, deps):
                     .filter(SurveyResponse.outcome != "complete").scalar() or 0)
         med = median_seconds(rows)
         draw = sum(entries_for(db, r) for r in rows)
-        return render(request, "survey_results.html", db, staff, active="survey",
+        return fresh(render(request, "survey_results.html", db, staff, active="survey",
                       blocks=blocks, singles=singles, total=total, turned=turned,
                       median_mins=(round(med / 60.0, 1) if med else None),
                       draw=draw, channels=CHANNELS, ch=ch,
@@ -694,7 +712,7 @@ def register(app, deps):
                                      .filter(SurveyResponse.outcome == "complete",
                                              SurveyResponse.channel == (code or None))
                                      .scalar() or 0)
-                                  for code, label in CHANNELS])
+                                  for code, label in CHANNELS]))
 
     @app.get("/admin/survey.csv")
     def survey_csv(request: Request, show: str = "complete",
@@ -731,13 +749,13 @@ def register(app, deps):
             return redir
         row = db.query(SurveyResponse).get(rid)
         if row is None:
-            return render(request, "survey_list.html", db, staff, active="survey",
+            return fresh(render(request, "survey_list.html", db, staff, active="survey",
                           rows=[], questions=QUESTIONS, show="complete",
-                          tally={"complete": 0, "out": 0}, cell=cell)
-        return render(request, "survey_one.html", db, staff, active="survey",
+                          tally={"complete": 0, "out": 0}, cell=cell))
+        return fresh(render(request, "survey_one.html", db, staff, active="survey",
                       row=row, answers=_answers(row), questions=QUESTIONS,
                       entries=entries_for(db, row), when=to_local(row.created_at),
                       cell=cell,
                       friends=(db.query(SurveyResponse)
                                  .filter(SurveyResponse.referred_by == (row.ref_code or "\x00"))
-                                 .order_by(SurveyResponse.created_at).all()))
+                                 .order_by(SurveyResponse.created_at).all())))

@@ -295,6 +295,15 @@ with TestClient(app) as c:
     ck("and nothing on it offers another go",
        "again=1" not in screen and "someone else" not in screen.lower())
 
+    # A cached survey page is indistinguishable from a broken duplicate
+    # check: stale questions, stale wording, and JavaScript calling an
+    # endpoint that has since been removed. It cost an evening once.
+    r = c.get("/survey")
+    ck("the survey page refuses to be cached",
+       "no-store" in r.headers.get("cache-control", ""))
+    ck("and says so the old way too, for older proxies",
+       r.headers.get("pragma") == "no-cache")
+
     with Session(engine) as db:
         # Push every entry back beyond the window and the connection frees up.
         db.query(_M.SurveyResponse).update(
@@ -322,6 +331,11 @@ with TestClient(app) as c:
            follow_redirects=False)
     r = c.get("/admin/survey")
     ck("an admin sees the table", r.status_code == 200)
+    ck("and never a cached copy of it",
+       "no-store" in r.headers.get("cache-control", ""))
+    for page in ("/admin/survey/results", "/admin/survey/1"):
+        ck("nor of %s" % page,
+           "no-store" in c.get(page).headers.get("cache-control", ""))
     ck("every question is a column", all(label in r.text for _, label in QUESTIONS))
     ck("the answers are in it", "More evening classes" in r.text)
     ck("and the mobile number", "+639171111111" in r.text)
