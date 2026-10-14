@@ -100,6 +100,28 @@ with TestClient(app) as c:
         ck("14 offers %s" % kind.lower(), kind in r.text)
     ck("and a way to say they do not go anywhere",
        "currently go to a gym or studio" in r.text)
+
+    # Question 18 is about what a gym sells beyond the floor, so showers and
+    # lockers came out: nobody chooses a gym for having them, and either
+    # would have eaten one of the three picks.
+    ck("18 asks about facilities and services",
+       "Beyond workouts, which facilities and services" in r.text)
+    for want in ("Member lounge / Social space", "Sports massage",
+                 "Assisted stretching", "Physiotherapy services",
+                 "Nutrition consultations", "Body composition assessments",
+                 "Recovery equipment (such as compression boots)",
+                 "Sauna / Steam room", "Cold plunge", "Co-working space"):
+        ck("18 offers %s" % want.split(" (")[0].lower(), want in r.text)
+    ck("and child-minding, apostrophe and all",
+       "Child-minding / Supervised kids&rsquo; area" in r.text)
+    ck("the table-stakes options are gone",
+       "Showers and changing rooms" not in r.text and "Lockers" not in r.text)
+    ck("18 is still capped at three", 'data-check="q18" data-max="3"' in r.text)
+    ck("paying only for a membership is an answer on its own",
+       'value="None" data-alone' in r.text
+       and "pay only for my membership" in r.text)
+    ck("and the cap never closes an escape option",
+       'if (!b.checked && !b.hasAttribute("data-alone")){' in r.text)
     ck("14 is searched, not scrolled",
        'id="q14search"' in r.text and 'role="combobox"' in r.text)
     ck("and what it submits is a hidden field the box sets",

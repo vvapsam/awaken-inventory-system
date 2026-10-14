@@ -760,17 +760,23 @@ pre{
       </div>
 
       <div class="q">
-        <span class="qn">18. Which amenities would you want? <span class="req">*</span></span>
+        <span class="qn">18. Beyond workouts, which facilities and services would you like to have at your gym? <span class="req">*</span></span>
         <p class="hint">Select up to three.</p>
         <div class="opts" data-check="q18" data-max="3">
           <label class="opt"><input type="checkbox" name="q18" value="Co-working"><span>Co-working space</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Cafe"><span>Caf&eacute;</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Sauna"><span>Sauna</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Cafe"><span>Caf&eacute; / Healthy meals and drinks</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Lounge"><span>Member lounge / Social space</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Sauna"><span>Sauna / Steam room</span></label>
           <label class="opt"><input type="checkbox" name="q18" value="Cold plunge"><span>Cold plunge</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Showers"><span>Showers and changing rooms</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="Lockers"><span>Lockers</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Sports massage"><span>Sports massage</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Assisted stretching"><span>Assisted stretching</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Recovery kit"><span>Recovery equipment (such as compression boots)</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Physiotherapy"><span>Physiotherapy services</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Nutrition"><span>Nutrition consultations</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Body composition"><span>Body composition assessments</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="Child-minding"><span>Child-minding / Supervised kids&rsquo; area</span></label>
           <label class="opt" data-other="q18"><input type="checkbox" name="q18" value="Other"><span>Something else</span></label>
-          <label class="opt"><input type="checkbox" name="q18" value="None" data-alone><span>None of these</span></label>
+          <label class="opt"><input type="checkbox" name="q18" value="None" data-alone><span>None &mdash; I prefer to pay only for my membership</span></label>
         </div>
         <div class="cnt" data-cntfor="q18">0 of 3 chosen</div>
         <div class="sub-q hide" data-otherfor="q18">
@@ -1210,7 +1216,12 @@ function groupRules(grp){
       var n = boxes.filter(function(b){ return b.checked; }).length;
       if (n >= max){
         boxes.forEach(function(b){
-          if (!b.checked){ b.disabled = true; b.closest(".opt").classList.add("lock"); }
+          // "None of these" is a way out, not a pick, so the cap never
+          // closes it. Somebody who chose three and then decided none of
+          // them really apply would otherwise have to untick three first.
+          if (!b.checked && !b.hasAttribute("data-alone")){
+            b.disabled = true; b.closest(".opt").classList.add("lock");
+          }
         });
       }
     }
