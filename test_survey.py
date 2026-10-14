@@ -156,6 +156,14 @@ with TestClient(app) as c:
     # The done screen hands out a code as well as a QR, so a code has to
     # be typeable. It is asked at 27, of somebody who just said a friend
     # sent them, and only when one did not already arrive in the link.
+    # Every question that is enforced says so. 14 and 15 are required
+    # whenever they appear and were being enforced without the mark.
+    import re as _re2
+    for n, star in _re2.findall(r'<span class="qn">(\d+)\.(.{0,200}?)</span>', r.text, _re2.S):
+        if int(n) == 28:
+            continue
+        ck("question %s shows it is required" % n, 'class="req"' in star)
+
     ck("there is somewhere to type a code", 'name="q27_code"' in r.text)
     ck("asked only of somebody a friend sent",
        'picked("q27") === "Friend/family"' in r.text)
