@@ -72,7 +72,7 @@ with TestClient(app) as c:
     ck("no code is minted in the browser", "function newCode" not in r.text)
     ck("and nothing is said about keeping the number", "is noted so you" not in r.text)
     ck("the word exercise appears nowhere", "exercis" not in r.text.lower())
-    for want in ("Calisthenics / bodyweight training",
+    for want in ("Calisthenics, streetlifting or bodyweight training",
                  "Functional training / HIIT classes",
                  "Obstacle course racing / OCR (such as Spartan)",
                  "Aerial / pole fitness (including aerial hoop)",
@@ -188,8 +188,9 @@ with TestClient(app) as c:
         ck("only the screening answers are kept", sorted(kept) == ["q1_lives", "q2_age"])
         ck("and gender is not one of them", "q3_gender" not in kept)
         ck("no nickname kept for somebody turned away", out.nickname is None)
-        ck("no email either", out.email is None)
         ck("but the number is", out.mobile == "+639172222222")
+        ck("and the address, so the same person cannot come back on a new "
+           "number", out.email is not None)
         ck("and the IP, for spotting repeats", bool(out.ip))
 
     # ------------------------------------- the browser does not get a vote
@@ -267,13 +268,44 @@ with TestClient(app) as c:
         ck("and say which rule caught each one",
            "mobile" in caught and "email" in caught)
 
-    # Somebody turned away keeps no address, so theirs cannot be the thing
-    # that blocks a real entry later.
+    # Being turned away spends the number and the address both. Otherwise
+    # the second attempt is simply a different number.
     c.post("/survey", json=entry("0917 900 0010", email="away@email.com",
                                  lives="Outside Metro Manila"))
     r = c.post("/survey", json=entry("0917 900 0011", email="away@email.com"))
-    ck("an address given by somebody we turned away is not held against anyone",
-       r.status_code == 200)
+    ck("an address spent by somebody turned away cannot be used again",
+       r.status_code == 409)
+
+    # ------------------------------------------------- under 18 stays out
+    r = c.post("/survey", json=entry("0917 920 0001", email="minor@email.com",
+                                     age="Under 18"))
+    ck("an under-18 answer is screened out", r.json()["outcome"] == "screened_out")
+    ck("on age", r.json()["reason"] == "age")
+    ck("with no referral code, so nothing to share", r.json()["code"] == "")
+    ck("and no entries in the draw", r.json()["entries"] == 0)
+
+    r = c.post("/survey", json=entry("0917 920 0001", email="brandnew@email.com"))
+    ck("that number cannot be reused by claiming to be older",
+       r.status_code == 409)
+    r = c.post("/survey", json=entry("0917 920 0002", email="minor@email.com"))
+    ck("nor the address on a second number", r.status_code == 409)
+
+    # The page is not trusted on this. A browser claiming to qualify is
+    # still read off the answers it sent.
+    sneaky_age = entry("0917 920 0003", email="minor2@email.com", age="Under 18")
+    sneaky_age["outcome"] = "complete"
+    r = c.post("/survey", json=sneaky_age)
+    ck("a page claiming an under-18 qualifies is overruled",
+       r.json()["outcome"] == "screened_out" and r.json()["reason"] == "age")
+
+    with Session(engine) as db:
+        from app.survey_routes import entries_for as _ef
+        minors = db.query(M.SurveyResponse).filter(
+            M.SurveyResponse.reason == "age").all()
+        ck("every under-18 row counts for nothing in the draw",
+           minors and all(_ef(db, m) == 0 for m in minors))
+        ck("and none of them holds a code that could be claimed",
+           all(m.ref_code is None for m in minors))
 
     # ------------------------------------------ one connection, a short window
     from app import models as _M
@@ -321,6 +353,55 @@ with TestClient(app) as c:
 
     from app.models import SURVEY_IP_WINDOW_HOURS
     ck("the window is four hours", SURVEY_IP_WINDOW_HOURS == 4)
+
+    # -------------------------------------------- closing time, not closing day
+    from app.survey_routes import say_clock, say_date, deadline, is_open
+    ck("11:59pm reads as 11:59pm", say_clock("23:59") == "11:59pm")
+    ck("3pm reads as 3pm, not 3:00pm", say_clock("15:00") == "3pm")
+    ck("midnight reads as 12am", say_clock("00:00") == "12am")
+    ck("the date carries the hour",
+       say_date("2026-10-25", at="23:59").endswith(", 11:59pm"))
+    ck("and still works with no hour given",
+       "," not in say_date("2026-10-25"))
+
+    r = c.get("/survey")
+    ck("the form prints the closing time", "11:59pm" in r.text)
+    ck("and the announcement time", "3pm" in r.text)
+    ck("and says which clock", "Manila time" in r.text)
+
+    # The deadline closes the form by itself; nobody has to flip a switch.
+    with Session(engine) as db:
+        from app.survey_routes import put as _put, settings as _settings
+        _put(db, "closes_on", "2020-01-01")
+        db.commit()
+        ck("a past deadline closes it", is_open(db) is False)
+        _put(db, "closes_on", "2099-01-01")
+        db.commit()
+        ck("a future one leaves it open", is_open(db) is True)
+        _put(db, "open", "0")
+        db.commit()
+        ck("and the switch still wins on its own", is_open(db) is False)
+        _put(db, "open", "1")
+        _put(db, "closes_on", "2026-10-25")
+        db.commit()
+
+    with Session(engine) as db:
+        _put(db, "closes_on", "2020-01-01")
+        db.commit()
+    r = c.post("/survey", json=entry("0917 950 0001", email="late@email.com"))
+    ck("an entry after the deadline is refused", r.status_code == 403)
+    ck("and told the survey is closed", r.json()["error"] == "closed")
+    r = c.get("/survey")
+    ck("and the link shows the closed page", "the survey is closed" in r.text)
+    ck("which still says when the winner is named", "3pm" in r.text)
+    with Session(engine) as db:
+        _put(db, "closes_on", "2026-10-25")
+        db.commit()
+    ck("putting the date back reopens it", c.get("/survey").status_code == 200)
+
+    # ------------------------------------------------- streetlifting is offered
+    r = c.get("/survey")
+    ck("streetlifting is one of the activities", "streetlifting" in r.text)
 
     # --------------------------------------------------------------- admin
     r = c.get("/admin/survey")

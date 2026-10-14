@@ -318,7 +318,7 @@ pre{
         <div class="pz">Win a free 1-year membership</div>
         <p>As a thank-you for completing the survey, you&rsquo;ll be entered into the draw. The membership is transferrable.</p>
         <p>One entry per person. Invite friends through your referral QR code for up to <b id="capWords">5 extra</b> entries.</p>
-        <p class="when">Entries close <b>{{ closes_short }}</b> &middot; winner announced <b>{{ announces_short }}</b></p>
+        <p class="when">Entries close <b>{{ closes_short }}</b> &middot; winner announced by <b>{{ announces_short }}</b> <span class="muted">(Manila time)</span></p>
       </div>
 
 
@@ -328,7 +328,7 @@ pre{
           <h4>The prize</h4>
           <ul>
             <li><b>What</b> &mdash; one free 1-year Awaken membership. Transferrable to another person. Not exchangeable for cash.</li>
-            <li><b>When</b> &mdash; entries close <b>{{ closes_long }}</b>. One winner drawn at random and announced <b>{{ announces_long }}</b>.</li>
+            <li><b>When</b> &mdash; entries close <b>{{ closes_long }}</b>. One winner drawn at random and announced by <b>{{ announces_long }}</b>. All times are Manila time.</li>
             <li><b>Entries</b> &mdash; one per mobile number. Your referral QR earns one extra entry for every friend who completes the survey and qualifies, up to five.</li>
             <li><b>One person, one entry</b> &mdash; entering more than once using different mobile numbers is not allowed. Duplicate or fraudulent entries, including referring yourself or using numbers you do not hold, may be disqualified along with any other entries connected to them. Awaken&rsquo;s decision on any disqualification is final.</li>
             <li><b>Who can join</b> &mdash; adults aged 18 and over living in Metro Manila.</li>
@@ -553,7 +553,7 @@ pre{
         <p class="hint">Select all that apply.</p>
         <div class="opts" data-check="q10">
           <label class="opt"><input type="checkbox" name="q10" value="Gym - weights and cardio"><span>Traditional gym workouts (weights and cardio machines)</span></label>
-          <label class="opt"><input type="checkbox" name="q10" value="Calisthenics / bodyweight"><span>Calisthenics / bodyweight training</span></label>
+          <label class="opt"><input type="checkbox" name="q10" value="Calisthenics / streetlifting"><span>Calisthenics, streetlifting or bodyweight training</span></label>
           <label class="opt"><input type="checkbox" name="q10" value="Functional / HIIT"><span>Functional training / HIIT classes</span></label>
           <label class="opt"><input type="checkbox" name="q10" value="CrossFit"><span>CrossFit</span></label>
           <label class="opt"><input type="checkbox" name="q10" value="Hybrid - HYROX/DEKA"><span>Hybrid fitness (such as HYROX or DEKA)</span></label>
@@ -1879,7 +1879,11 @@ function screenOut(why){
       privacy: document.querySelector('[name="c_privacy"]').checked,
       promo_rules: document.querySelector('[name="c_promo"]').checked
     },
-    person: { mobile_raw: val("q4_mobile") },
+    // The address goes with it. Somebody turned away on age has to stay
+    // turned away, and a new number with the same address is the obvious
+    // second attempt.
+    person: { mobile_raw: val("q4_mobile"),
+              email: val("q4_email").toLowerCase() },
     answers: { q1_lives: picked("q1"), q2_age: picked("q2") },
     referral: { referred_by: CAME_FROM || null },
     channel: CHANNEL || null,

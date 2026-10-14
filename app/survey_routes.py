@@ -44,7 +44,7 @@ from .db import get_db
 from .models import (
     SURVEY_OUT_AGE, SURVEY_OUT_AREA, SURVEY_REFERRAL_CAP, SurveyResponse,
     SurveySetting, SurveyAttempt, SURVEY_IP_WINDOW_HOURS,
-    norm_ph_mobile, norm_email, now_utc, to_local,
+    norm_ph_mobile, norm_email, now_utc, to_local, from_local,
 )
 
 #: The questions, in the order they are asked, as (payload key, column head).
@@ -185,7 +185,9 @@ CODE_LEN = 8
 DEFAULTS = {
     "open": "1",
     "closes_on": "2026-10-25",
+    "closes_time": "23:59",
     "announces_on": "2026-11-06",
+    "announces_time": "15:00",
     "cap": str(SURVEY_REFERRAL_CAP),
 }
 
@@ -221,16 +223,50 @@ def put(db, key, value):
 
 
 def is_open(db):
-    return settings(db).get("open") != "0"
+    """Open only while the switch is on *and* the deadline has not passed.
+
+    The switch alone was not enough. "Entries close Saturday 11:59pm" has to
+    be true without somebody remembering to flip something at midnight, or
+    the first late entry is a fairness problem in a prize draw with a permit
+    behind it.
+    """
+    cfg = settings(db)
+    if cfg.get("open") == "0":
+        return False
+    ends = deadline(cfg.get("closes_on"), cfg.get("closes_time"))
+    return ends is None or now_utc() < ends
 
 
-def say_date(iso, long=False):
-    """``2026-10-25`` as somebody would read it aloud."""
+def say_clock(hhmm):
+    """``23:59`` as 11:59pm, and ``15:00`` as 3pm."""
+    try:
+        t = datetime.strptime(hhmm, "%H:%M").time()
+    except (ValueError, TypeError):
+        return ""
+    hour = t.hour % 12 or 12
+    suffix = "am" if t.hour < 12 else "pm"
+    return ("%d:%02d%s" % (hour, t.minute, suffix)) if t.minute else ("%d%s" % (hour, suffix))
+
+
+def say_date(iso, long=False, at=None):
+    """``2026-10-25`` as somebody would read it aloud, with the hour if given."""
     try:
         d = datetime.strptime(iso, "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return iso or ""
-    return d.strftime("%A %-d %B %Y" if long else "%a %-d %B")
+    said = d.strftime("%A %-d %B %Y" if long else "%a %-d %B")
+    clock = say_clock(at) if at else ""
+    return ("%s, %s" % (said, clock)) if clock else said
+
+
+def deadline(iso, hhmm):
+    """The closing instant, read as gym time and returned as a real one."""
+    try:
+        d = datetime.strptime(iso, "%Y-%m-%d").date()
+        t = datetime.strptime(hhmm or "23:59", "%H:%M").time()
+    except (ValueError, TypeError):
+        return None
+    return from_local(datetime.combine(d, t))
 
 
 def cap_of(db):
@@ -382,10 +418,14 @@ def register(app, deps):
                     again: int = 0, db: Session = Depends(get_db)):
         """The form. No login — this is the whole point of it."""
         cfg = settings(db)
-        if cfg.get("open") == "0":
+        # The deadline has to shut the door, not just the switch - otherwise
+        # somebody answers twenty-eight questions after closing and is told
+        # on the last screen.
+        if not is_open(db):
             return templates.TemplateResponse("survey_closed.html", {
                 "request": request,
-                "announces": say_date(cfg.get("announces_on"), long=True),
+                "announces": say_date(cfg.get("announces_on"), long=True,
+                                      at=cfg.get("announces_time")),
             }, status_code=200, headers=NO_CACHE)
         known = ""
         if ref:
@@ -405,10 +445,14 @@ def register(app, deps):
         base = str(request.base_url).rstrip("/")
         return templates.TemplateResponse("survey.html", {
             "request": request,
-            "closes_short": say_date(cfg.get("closes_on")),
-            "closes_long": say_date(cfg.get("closes_on"), long=True),
-            "announces_short": say_date(cfg.get("announces_on")),
-            "announces_long": say_date(cfg.get("announces_on"), long=True),
+            "closes_short": say_date(cfg.get("closes_on"),
+                                     at=cfg.get("closes_time")),
+            "closes_long": say_date(cfg.get("closes_on"), long=True,
+                                    at=cfg.get("closes_time")),
+            "announces_short": say_date(cfg.get("announces_on"),
+                                        at=cfg.get("announces_time")),
+            "announces_long": say_date(cfg.get("announces_on"), long=True,
+                                       at=cfg.get("announces_time")),
             "cfg": json.dumps({
                 "share_base": base + "/survey",
                 "cap": cap_of(db),
@@ -444,7 +488,11 @@ def register(app, deps):
 
         ip = _client_ip(request)
         ua = dev.get("user_agent") or request.headers.get("user-agent")
-        mail = norm_email(person.get("email")) if outcome == "complete" else None
+        # The address is held for everybody, including the people we turn
+        # away. Age is the reason: somebody under 18 cannot enter and cannot
+        # claim, and if we forgot their address the same person comes back
+        # with a second number and we would have no way to know.
+        mail = norm_email(person.get("email"))
 
         # One entry per person, decided here and nowhere else. The page is
         # allowed to ask all the questions and press send; what it is not
@@ -557,7 +605,8 @@ def register(app, deps):
             return redir
         form = await request.form()
         put(db, "open", "1" if form.get("open") else "0")
-        for key in ("closes_on", "announces_on"):
+        for key in ("closes_on", "closes_time",
+                    "announces_on", "announces_time"):
             val = (form.get(key) or "").strip()
             if val:
                 put(db, key, val)

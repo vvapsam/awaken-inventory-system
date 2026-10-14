@@ -50,12 +50,16 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <label style="flex:1 1 140px">Entries close
           <input type="date" name="closes_on" value="{{ cfg.closes_on }}"></label>
+        <label style="flex:0 0 110px">at
+          <input type="time" name="closes_time" value="{{ cfg.closes_time }}"></label>
         <label style="flex:1 1 140px">Winner announced
           <input type="date" name="announces_on" value="{{ cfg.announces_on }}"></label>
+        <label style="flex:0 0 110px">by
+          <input type="time" name="announces_time" value="{{ cfg.announces_time }}"></label>
       </div>
       <label style="display:block;margin-top:8px">Extra entries per person, at most
         <input type="number" name="cap" min="0" max="50" value="{{ cfg.cap }}" style="width:90px"></label>
-      <p class="muted small" style="margin:8px 0 10px">The dates print on the form. Zero means no cap on referrals.</p>
+      <p class="muted small" style="margin:8px 0 10px">Manila time. The form stops taking entries at the closing time on its own &mdash; you do not have to switch it off. Zero means no cap on referrals.</p>
       <button class="btn primary" type="submit">Save</button>
     </form>
   </div>
