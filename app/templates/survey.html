@@ -1835,12 +1835,29 @@ function stepForward(){
     if (missing.length){ complain(pos.sec, missing); return; }
     complain(pos.sec, []);
 
-    /* Screening waits for question 4, because the number and the address
-       are collected there and a screened-out entry still has to spend
-       them. Same rule as before; only the trigger moved. */
+    /* Question 4 is where the number and the address arrive, so it is
+       where both decisions can finally be made. Screening first - a
+       screened-out entry still has to spend them - and then, for anybody
+       who qualifies, whether we already have them. Asking any earlier is
+       asking about nobody; asking any later means twenty-four more
+       questions before a refusal that was always going to come. */
     if (pos.q === 4){
       if (picked("q1") === "Outside Metro Manila"){ screenOut("area"); return; }
       if (picked("q2") === "Under 18"){ screenOut("age"); return; }
+      if (sending) return;
+      sending = true;
+      $("#oneNext").disabled = true;
+      post("/survey/seen",
+           { mobile: val("q4_mobile"), email: val("q4_email") },
+           function(status, j){
+        sending = false;
+        $("#oneNext").disabled = false;
+        if (status === 200 && j && j.seen === true){ goto(96); return; }
+        // A check that could not be made is not a refusal. They carry on,
+        // and the server has the last word when the answers arrive.
+        land(nextFrom());
+      });
+      return;
     }
   }
   land(nextFrom());
@@ -2340,8 +2357,11 @@ function screenOut(why){
   sending = true;
   // They are shown the door either way. If the write failed, that is ours
   // to notice, not something to hold a stranger on a spinner for.
-  post("/survey", payload, function(){
+  post("/survey", payload, function(status){
     sending = false;
+    // Already on file: say so, rather than thanking them for an entry we
+    // did not just take.
+    if (status === 409){ goto(96); return; }
     goto(why === "area" ? 97 : 98);
   });
 }

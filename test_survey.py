@@ -452,6 +452,37 @@ with TestClient(app) as c:
     r = c.get("/survey")
     ck("streetlifting is one of the activities", "streetlifting" in r.text)
 
+    # ------------------------------- asked at question 4, where the pair is known
+    c.post("/survey", json=entry("0917 960 0001", email="seen@email.com"))
+    r = c.post("/survey/seen", json={"mobile": "0917 960 0001",
+                                     "email": "nothing@else.com"})
+    ck("a spent number is seen", r.json() == {"seen": True})
+    r = c.post("/survey/seen", json={"mobile": "0917 960 9999",
+                                     "email": "seen@email.com"})
+    ck("a spent address is seen", r.json() == {"seen": True})
+    r = c.post("/survey/seen", json={"mobile": "0917 960 9999",
+                                     "email": "nothing@else.com"})
+    ck("a clean pair is not", r.json() == {"seen": False})
+
+    # It answers one bit, and only to somebody who already holds both
+    # halves - so it cannot be used to ask "has this number entered?"
+    # about a stranger.
+    ck("it never says which of the two matched",
+       set(r.json().keys()) == {"seen"})
+    r = c.post("/survey/seen", json={"mobile": "0917 960 0001"})
+    ck("and will not answer on a number alone", r.json() == {"seen": False})
+    r = c.post("/survey/seen", json={"email": "seen@email.com"})
+    ck("nor on an address alone", r.json() == {"seen": False})
+
+    # Somebody turned away is on file, so the same person coming back is
+    # recognised - which is the whole point of spending their details.
+    c.post("/survey", json=entry("0917 960 0002", email="away2@email.com",
+                                 lives="Outside Metro Manila"))
+    r = c.post("/survey/seen", json={"mobile": "0917 960 0002",
+                                     "email": "away2@email.com"})
+    ck("somebody turned away is recognised if they come back",
+       r.json() == {"seen": True})
+
     # --------------------------------------------------------------- admin
     r = c.get("/admin/survey")
     ck("the table needs a login", r.status_code in (200, 303, 307)

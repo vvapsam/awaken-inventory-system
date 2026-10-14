@@ -27,6 +27,7 @@ import csv
 import io
 import json
 import io
+import time as _time
 import secrets
 
 import qrcode
@@ -36,7 +37,7 @@ from fastapi import Depends, Request
 from fastapi.responses import (
     HTMLResponse, JSONResponse, RedirectResponse, Response,
 )
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -455,6 +456,37 @@ def register(app, deps):
                 "channel": (ch or "")[:24],
             }),
         }, headers=NO_CACHE)
+
+    #: Asked once, the moment the number and the address are known, so
+    #: somebody already recorded is told then rather than after another
+    #: twenty-four questions. It answers one bit and never says which of
+    #: the two matched, and it needs the pair to answer at all - so it is
+    #: not a way to ask "has this number entered?" about a stranger.
+    SEEN_PER_HOUR = 30
+    _seen_hits = {}
+
+    def _seen_ok(ip):
+        now = _time.time()
+        hits = [t for t in _seen_hits.get(ip or "", []) if now - t < 3600]
+        hits.append(now)
+        _seen_hits[ip or ""] = hits
+        return len(hits) <= SEEN_PER_HOUR
+
+    @app.post("/survey/seen")
+    async def survey_seen(request: Request, db: Session = Depends(get_db)):
+        ip = _client_ip(request)
+        if not _seen_ok(ip):
+            return JSONResponse({"seen": False}, status_code=429)
+        data = await request.json() or {}
+        mob = norm_ph_mobile(data.get("mobile"))
+        mail = norm_email(data.get("email"))
+        if not mob or not mail:
+            return JSONResponse({"seen": False})
+        hit = (db.query(SurveyResponse)
+                 .filter(or_(SurveyResponse.mobile == mob,
+                             SurveyResponse.email == mail))
+                 .first())
+        return JSONResponse({"seen": hit is not None})
 
     @app.post("/survey")
     async def survey_submit(request: Request, db: Session = Depends(get_db)):
