@@ -61,11 +61,52 @@
     <div class="s">entries, referrals counted</div>
   </div>
   <div class="kpi">
+    <div class="k">Brought in by friends</div>
+    <div class="v">{{ reach }}</div>
+    <div class="s">of {{ total }}, by {{ sharer_total }} sharer{{ '' if sharer_total == 1 else 's' }}</div>
+  </div>
+  <div class="kpi">
     <div class="k">Typical time</div>
     <div class="v">{{ median_mins if median_mins else '—' }}<span style="font-size:16px;font-weight:600">{{ ' min' if median_mins }}</span></div>
     <div class="s">median, start to submit</div>
   </div>
 </div>
+
+{% if sharers %}
+{# What a code did and what the draw counted are different numbers once
+   somebody passes the cap. Showing only the capped one would hide the
+   people doing the most work. #}
+<div class="qsec">
+  <h2>Who shared it</h2>
+  <div class="qcard">
+    <p class="base" style="margin-top:0">
+      A code never stops working &mdash; any number of friends can use it.
+      The cap of {{ cap }} limits how far it moves somebody&rsquo;s odds, not how
+      many people they bring.
+    </p>
+    <table class="list" style="margin:0">
+      <thead><tr>
+        <th>Who</th>
+        <th style="text-align:right">Used it</th>
+        <th style="text-align:right">Qualified</th>
+        <th style="text-align:right">Counted</th>
+      </tr></thead>
+      <tbody>
+        {% for sh in sharers %}
+        <tr>
+          <td><a href="/admin/survey/{{ sh.id }}">{{ sh.who }}</a>
+            <span class="muted small" style="font-family:ui-monospace,monospace">{{ sh.code }}</span></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums"><b>{{ sh.used }}</b></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">{{ sh.qualified }}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">{{ sh.counted }}{% if sh.capped %}
+            <span class="muted" title="past the cap">&#9650;</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 
 {# Reading one channel at a time is the point of having separate links: if the
    front desk and Instagram disagree, the sample is skewed and this is where

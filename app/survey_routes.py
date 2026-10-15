@@ -327,6 +327,31 @@ def decide(answers):
     return "complete", None
 
 
+def referral_stats(db, row, cap=None):
+    """Three different numbers, and they are routinely not the same.
+
+    ``used``      everybody who entered on this code, including the ones we
+                  turned away. What the code actually did.
+    ``qualified`` those who completed. What the sharing was worth.
+    ``counted``   qualified, capped. What the draw uses.
+
+    The code itself is never spent - a hundred friends may use it. The cap
+    only limits how far it moves the odds, so these have to be reported
+    separately or the real reach disappears behind the cap.
+    """
+    if not row.ref_code:
+        return {"used": 0, "qualified": 0, "counted": 0, "capped": False}
+    used = (db.query(func.count(SurveyResponse.id))
+              .filter(SurveyResponse.referred_by == row.ref_code).scalar() or 0)
+    qualified = (db.query(func.count(SurveyResponse.id))
+                   .filter(SurveyResponse.referred_by == row.ref_code,
+                           SurveyResponse.outcome == "complete").scalar() or 0)
+    cap = cap_of(db) if cap is None else cap
+    counted = min(qualified, cap) if cap else qualified
+    return {"used": used, "qualified": qualified, "counted": counted,
+            "capped": bool(cap) and qualified > counted}
+
+
 def entries_for(db, row, cap=None):
     """One entry, plus one per friend who finished on their code.
 
@@ -335,14 +360,7 @@ def entries_for(db, row, cap=None):
     """
     if row.is_out or not row.ref_code:
         return 0
-    n = (db.query(func.count(SurveyResponse.id))
-           .filter(SurveyResponse.referred_by == row.ref_code,
-                   SurveyResponse.outcome == "complete")
-           .scalar() or 0)
-    cap = cap_of(db) if cap is None else cap
-    if cap:
-        n = min(n, cap)
-    return 1 + n
+    return 1 + referral_stats(db, row, cap)["counted"]
 
 
 def cell(value):
@@ -722,6 +740,7 @@ def register(app, deps):
             "row": r,
             "answers": _answers(r),
             "entries": entries_for(db, r),
+            "refs": referral_stats(db, r),
             "when": to_local(r.created_at),
         } for r in rows]
         by_channel = [(label, code, db.query(func.count(SurveyResponse.id))
@@ -804,7 +823,23 @@ def register(app, deps):
                     .filter(SurveyResponse.outcome != "complete").scalar() or 0)
         med = median_seconds(rows)
         draw = sum(entries_for(db, r) for r in rows)
+        # Who actually shared it, by what the code did rather than by what
+        # the draw counted - five is where the odds stop moving, not where
+        # the sharing stops.
+        sharers = []
+        for r in (db.query(SurveyResponse)
+                    .filter(SurveyResponse.outcome == "complete",
+                            SurveyResponse.ref_code.isnot(None)).all()):
+            st = referral_stats(db, r)
+            if st["used"]:
+                sharers.append({"who": r.nickname or r.mobile, "id": r.id,
+                                "code": r.ref_code, **st})
+        sharers.sort(key=lambda x: (-x["used"], -x["qualified"]))
+        reach = sum(x["qualified"] for x in sharers)
+
         return fresh(render(request, "survey_results.html", db, staff, active="survey",
+                      sharers=sharers[:25], reach=reach, cap=cap_of(db),
+                      sharer_total=len(sharers),
                       blocks=blocks, singles=singles, total=total, turned=turned,
                       median_mins=(round(med / 60.0, 1) if med else None),
                       draw=draw, channels=CHANNELS, ch=ch,
@@ -824,16 +859,19 @@ def register(app, deps):
         buf = io.StringIO()
         w = csv.writer(buf)
         head = ["When", "Outcome", "Reason", "Nickname", "Mobile", "Email",
-                "Entries", "Code", "Referred by", "Channel", "Seconds", "IP",
+                "Entries", "Code", "Referrals used", "Referrals qualified",
+                "Referrals counted", "Referred by", "Channel", "Seconds", "IP",
                 "Device", "Screen", "Timezone"]
         w.writerow(head + [label for _, label in QUESTIONS])
         for r in _rows(db, show):
             a = _answers(r)
+            rs = referral_stats(db, r)
             when = to_local(r.created_at)
             w.writerow([
                 when.strftime("%Y-%m-%d %H:%M") if when else "",
                 r.outcome, r.reason or "", r.nickname or "", r.mobile,
                 r.email or "", entries_for(db, r), r.ref_code or "",
+                rs["used"], rs["qualified"], rs["counted"],
                 r.referred_by or "", r.channel or "", r.seconds_taken or "",
                 r.ip or "",
                 r.user_agent or "", r.screen or "", r.timezone_name or "",
@@ -940,7 +978,8 @@ def register(app, deps):
                           tally={"complete": 0, "out": 0}, cell=cell))
         return fresh(render(request, "survey_one.html", db, staff, active="survey",
                       row=row, answers=_answers(row), questions=QUESTIONS,
-                      entries=entries_for(db, row), when=to_local(row.created_at),
+                      entries=entries_for(db, row), refs=referral_stats(db, row),
+                      cap=cap_of(db), when=to_local(row.created_at),
                       cell=cell,
                       friends=(db.query(SurveyResponse)
                                  .filter(SurveyResponse.referred_by == (row.ref_code or "\x00"))

@@ -173,6 +173,7 @@
         <th style="white-space:nowrap">Who</th>
         <th style="white-space:nowrap">Mobile</th>
         <th style="text-align:right">Entries</th>
+        <th style="text-align:right">Referrals<br><span class="muted small" style="font-weight:400">used / counted</span></th>
         <th style="white-space:nowrap">Code</th>
         <th style="white-space:nowrap">Via</th>
         <th style="white-space:nowrap">From</th>
@@ -194,6 +195,9 @@
         <td style="white-space:nowrap">{{ r.row.nickname or '—' }}</td>
         <td style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ r.row.mobile }}</td>
         <td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.entries or '' }}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap">
+          {% if r.refs.used %}{{ r.refs.used }} / {{ r.refs.counted }}{% if r.refs.capped %}
+            <span class="muted" title="past the cap">&#9650;</span>{% endif %}{% endif %}</td>
         <td style="white-space:nowrap;font-family:ui-monospace,monospace;font-size:12px">{{ r.row.ref_code or '' }}</td>
         <td style="white-space:nowrap;font-family:ui-monospace,monospace;font-size:12px">{{ r.row.referred_by or '' }}</td>
         <td style="white-space:nowrap">{{ r.row.channel or '—' }}</td>

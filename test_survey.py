@@ -550,6 +550,50 @@ with TestClient(app) as c:
     r = c.get("/admin/survey")
     ck("an admin sees the table", r.status_code == 200)
 
+    # ---------------------------- a code never runs out, only the odds do
+    from app.survey_routes import referral_stats
+    star = c.post("/survey", json=entry("0917 980 0000", email="star@email.com"))
+    scode = star.json()["code"]
+    for i in range(7):
+        c.post("/survey", json=entry("0917 981 %04d" % i,
+                                     email="fan%d@email.com" % i, ref=scode))
+    for i in range(2):
+        c.post("/survey", json=entry("0917 982 %04d" % i,
+                                     email="away%d@email.com" % i, ref=scode,
+                                     lives="Outside Metro Manila"))
+    with Session(engine) as db:
+        row = db.query(M.SurveyResponse).filter(
+            M.SurveyResponse.mobile == "+639179800000").first()
+        st = referral_stats(db, row)
+        ck("the code kept working past the cap", st["used"] == 9)
+        ck("seven of the nine qualified", st["qualified"] == 7)
+        ck("but only five move the odds", st["counted"] == 5)
+        ck("so the draw sees six entries", entries_for(db, row) == 6)
+        ck("and it is marked as past the cap", st["capped"] is True)
+
+        # Somebody under the cap is not marked, and counts everything.
+        plain = db.query(M.SurveyResponse).filter(
+            M.SurveyResponse.mobile == "+639179810000").first()
+        ck("a referred friend refers nobody themselves",
+           referral_stats(db, plain)["used"] == 0)
+
+    r = c.get("/admin/survey/%d" % row.id)
+    ck("the response says what the code actually did",
+       "used their code" in r.text and "counted toward the draw" in r.text)
+    ck("and says the cap is only about the odds", "Past the cap" in r.text)
+
+    r = c.get("/admin/survey.csv")
+    head = r.text.splitlines()[0]
+    ck("the export carries all three numbers",
+       all(h in head for h in ("Referrals used", "Referrals qualified",
+                               "Referrals counted")))
+    ck("and 9,7,5 are in it", ",9,7,5," in r.text)
+
+    r = c.get("/admin/survey/results")
+    ck("there is a board of who shared it", "Who shared it" in r.text)
+    ck("counting reach by who qualified, not by what the draw used",
+       "Brought in by friends" in r.text)
+
     # ------------------------------------------ correcting one by hand
     c.post("/survey", json=entry("0917 970 0001", email="fix@email.com",
                                  q2_age="25-34",

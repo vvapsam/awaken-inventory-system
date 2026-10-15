@@ -24,8 +24,20 @@
         Turned away &mdash; {{ 'outside Metro Manila' if row.reason == 'area' else 'under 18' }}
       {% else %}Completed{% endif %}</td></tr>
     {% if not row.is_out %}
-      <tr><th>Entries</th><td>{{ entries }}
-        {% if friends %}<span class="muted small">(1 + {{ friends|length }} referred)</span>{% endif %}</td></tr>
+      <tr><th>Entries in the draw</th><td>{{ entries }}
+        <span class="muted small">(1 of their own + {{ refs.counted }} referred)</span></td></tr>
+      <tr><th>Referrals</th><td>
+        {% if refs.used %}
+          <b>{{ refs.used }}</b> used their code &middot;
+          {{ refs.qualified }} qualified &middot;
+          {{ refs.counted }} counted toward the draw
+          {% if refs.capped %}
+            <div class="muted small" style="margin-top:3px">
+              Past the cap of {{ cap }} &mdash; the code still works for everybody,
+              it just stops moving their odds.
+            </div>
+          {% endif %}
+        {% else %}&mdash;{% endif %}</td></tr>
       <tr><th>Their code</th><td style="font-family:ui-monospace,monospace">{{ row.ref_code }}</td></tr>
     {% endif %}
     <tr><th>Came in on</th><td style="font-family:ui-monospace,monospace">{{ row.referred_by or '—' }}</td></tr>
