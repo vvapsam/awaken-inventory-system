@@ -519,6 +519,29 @@ with TestClient(app) as c:
     r = c.get("/survey")
     ck("and the link shows the closed page", "the survey is closed" in r.text)
     ck("which still says when the winner is named", "3pm" in r.text)
+    # The Longevity Labs link keeps its own date, so it is still open while
+    # the main link is closed, and closes on its own date.
+    r = c.get("/survey?ch=llabs")
+    ck("the llabs link stays open after the main deadline",
+       r.status_code == 200 and "the survey is closed" not in r.text)
+    ck("and shows its own closing date", "30 October" in r.text)
+    e = entry("0917 950 0002", email="ll@email.com")
+    e["channel"] = "llabs"
+    ck("and lists Kerry Sports as a gym, on that link only",
+       'if (VARIANT === "llabs") Q14_BRANDS.push("Kerry Sports")' in r.text)
+    ck("and offers Longevity Labs as where they found it, on that link only",
+       'data-only="llabs"><input type="radio" name="q27" value="Longevity Labs"' in r.text)
+    ck("and still takes an entry", c.post("/survey", json=e).status_code == 200)
+    with Session(engine) as db:
+        _put(db, "llabs_closes_on", "2020-01-01")
+        db.commit()
+        ck("until its own date passes", is_open(db, "llabs") is False)
+        _put(db, "llabs_closes_on", "2026-10-30")
+        _put(db, "open", "0")
+        db.commit()
+        ck("and the switch closes it too", is_open(db, "llabs") is False)
+        _put(db, "open", "1")
+        db.commit()
     with Session(engine) as db:
         _put(db, "closes_on", "2026-10-25")
         db.commit()

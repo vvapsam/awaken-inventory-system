@@ -201,6 +201,10 @@ DEFAULTS = {
     "open": "1",
     "closes_on": "2026-10-25",
     "closes_time": "23:59",
+    # The Longevity Labs link (?ch=llabs) runs on its own closing date, so it
+    # can stay open after the main link has closed.
+    "llabs_closes_on": "2026-10-30",
+    "llabs_closes_time": "23:59",
     "announces_on": "2026-11-06",
     "announces_time": "15:00",
     "cap": str(SURVEY_REFERRAL_CAP),
@@ -238,8 +242,24 @@ def put(db, key, value):
     row.value = value
 
 
-def is_open(db):
+#: Links that close on a date of their own rather than the main one.
+OWN_DEADLINE = {"llabs"}
+
+
+def closing(cfg, ch=""):
+    """The closing date and time that apply to this link."""
+    ch = (ch or "").strip().lower()
+    if ch in OWN_DEADLINE:
+        return (cfg.get(ch + "_closes_on") or cfg.get("closes_on"),
+                cfg.get(ch + "_closes_time") or cfg.get("closes_time"))
+    return cfg.get("closes_on"), cfg.get("closes_time")
+
+
+def is_open(db, ch=""):
     """Open only while the switch is on *and* the deadline has not passed.
+
+    The deadline is the link's own where it has one (see OWN_DEADLINE). The
+    switch is the master: off closes every link.
 
     The switch alone was not enough. "Entries close Saturday 11:59pm" has to
     be true without somebody remembering to flip something at midnight, or
@@ -249,7 +269,7 @@ def is_open(db):
     cfg = settings(db)
     if cfg.get("open") == "0":
         return False
-    ends = deadline(cfg.get("closes_on"), cfg.get("closes_time"))
+    ends = deadline(*closing(cfg, ch))
     return ends is None or now_utc() < ends
 
 
@@ -458,7 +478,7 @@ def register(app, deps):
         # The deadline has to shut the door, not just the switch - otherwise
         # somebody answers twenty-eight questions after closing and is told
         # on the last screen.
-        if not is_open(db):
+        if not is_open(db, ch):
             return templates.TemplateResponse("survey_closed.html", {
                 "request": request,
                 "announces": say_date(cfg.get("announces_on"), long=True,
@@ -474,10 +494,10 @@ def register(app, deps):
         base = str(request.base_url).rstrip("/")
         return templates.TemplateResponse("survey.html", {
             "request": request,
-            "closes_short": say_date(cfg.get("closes_on"),
-                                     at=cfg.get("closes_time")),
-            "closes_long": say_date(cfg.get("closes_on"), long=True,
-                                    at=cfg.get("closes_time")),
+            "closes_short": say_date(closing(cfg, ch)[0],
+                                     at=closing(cfg, ch)[1]),
+            "closes_long": say_date(closing(cfg, ch)[0], long=True,
+                                    at=closing(cfg, ch)[1]),
             "announces_short": say_date(cfg.get("announces_on"),
                                         at=cfg.get("announces_time")),
             "announces_long": say_date(cfg.get("announces_on"), long=True,
@@ -532,9 +552,9 @@ def register(app, deps):
         answers; it does not get a say in whether they qualify, what their
         code is, or how many entries they end up with.
         """
-        if not is_open(db):
-            return JSONResponse({"error": "closed"}, status_code=403)
         data = await request.json() or {}
+        if not is_open(db, data.get("channel") or ""):
+            return JSONResponse({"error": "closed"}, status_code=403)
         answers = data.get("answers") or {}
         person = data.get("person") or {}
         consent = data.get("consent") or {}
@@ -677,6 +697,7 @@ def register(app, deps):
         form = await request.form()
         put(db, "open", "1" if form.get("open") else "0")
         for key in ("closes_on", "closes_time",
+                    "llabs_closes_on", "llabs_closes_time",
                     "announces_on", "announces_time"):
             val = (form.get(key) or "").strip()
             if val:
