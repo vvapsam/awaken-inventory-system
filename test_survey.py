@@ -211,9 +211,28 @@ with TestClient(app) as c:
     # checked rather than trusted: every question's key must equal the number
     # printed beside it, and the run must have no gaps.
     import re as _re
-    nums = [int(x) for x in _re.findall(r'class="qn">(\d+)\.', r.text)]
+    # Questions that belong to one link are in the markup for every link and
+    # removed by the page before it numbers what is left, so the check strips
+    # them the same way first.
+    def _numbers(html, variant):
+        html = _re.sub(r'<div class="q" data-only="(\w+)">.*?(?=\n      <div class="q"|\n      <div id="e)',
+                       lambda m: m.group(0) if m.group(1) == variant else "",
+                       html, flags=_re.S)
+        html = _re.sub(r'<div class="q" data-not="(\w+)">.*?(?=\n      <div class="q"|\n      <div id="e)',
+                       lambda m: "" if m.group(1) == variant else m.group(0),
+                       html, flags=_re.S)
+        return [int(x) for x in _re.findall(r'class="qn">(\d+)\.', html)]
+    nums = _numbers(r.text, "")
     ck("twenty-eight questions (got %d)" % len(nums), len(nums) == 28)
     ck("numbered 1 to 28 with no gaps", nums == list(range(1, 29)))
+    ll = _numbers(c.get("/survey?ch=llabs").text, "llabs")
+    ck("the Longevity Labs link swaps 17 for two of its own (got %d)" % len(ll),
+       len(ll) == 29 and 17 not in ll and ll[-3:] == [29, 30, 28])
+    ck("and the page numbers what is left with no gaps",
+       "SHOWN_TOTAL" in r.text and "var TOTAL = SHOWN_TOTAL" in r.text)
+    ck("its price brackets are stored apart from the standard ones",
+       'q13_budget_ll: VARIANT === "llabs"' in r.text
+       and 'value="15000+"' in r.text and 'data-only="llabs"' in r.text)
     # must not run past the next question, or a block with no radios (the
     # contact fields, the gym dropdown) borrows the following one's key
     pairs = _re.findall(
