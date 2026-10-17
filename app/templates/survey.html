@@ -1403,6 +1403,8 @@ function otherBoxes(){
    read on a phone, so they are searched rather than scrolled. */
 var Q14_BRANDS = ["Anytime Fitness", "Fitness First", "Gold’s Gym", "Slimmers World", "Snap Fitness", "Philippine Sports Performance (PSP)", "Surge Fitness + Lifestyle", "BeFit"];
 var Q14_KINDS  = ["Pilates studio", "Yoga studio", "Functional / Hybrid training gym", "CrossFit gym", "Boxing / Martial arts gym", "Cycling / Spin studio", "Dance / Aerial / Pole studio", "Independent / Local gym", "Other gym or fitness studio"];
+// Asked about on the Longevity Labs link only.
+if (VARIANT === "llabs") Q14_BRANDS.push("Kerry Sports");
 var Q14_NONE   = "I don’t currently go to a gym or studio";
 var Q14_ALL    = Q14_BRANDS.concat(Q14_KINDS, [Q14_NONE]);
 var BRAND_ANSWERS = Q14_BRANDS;
