@@ -529,6 +529,8 @@ with TestClient(app) as c:
     e["channel"] = "llabs"
     ck("and lists Kerry Sports as a gym, on that link only",
        'if (VARIANT === "llabs") Q14_BRANDS.push("Kerry Sports")' in r.text)
+    ck("and offers Longevity Labs as where they found it, on that link only",
+       'data-only="llabs"><input type="radio" name="q27" value="Longevity Labs"' in r.text)
     ck("and still takes an entry", c.post("/survey", json=e).status_code == 200)
     with Session(engine) as db:
         _put(db, "llabs_closes_on", "2020-01-01")
