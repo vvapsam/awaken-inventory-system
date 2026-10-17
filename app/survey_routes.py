@@ -70,6 +70,7 @@ QUESTIONS = [
     ("q12_level",           "Level"),
     ("q13_budget",          "Spends now/month"),
     ("q13_willing",         "Would pay/month"),
+    ("q13_budget_ll",       "Spends now/month (LL)"),
     ("q14_gym",             "Current gym"),
     ("q14_other",           "Gym name"),
     ("q14_branch",          "Branch"),
@@ -96,6 +97,10 @@ QUESTIONS = [
     ("q26_awaken",          "Knows Awaken"),
     ("q27_found_via",       "Found via"),
     ("q27_other",           "Found via (other)"),
+    # Asked only on the Longevity Labs link (?ch=llabs).
+    ("q29_ll_join",         "LL: how they would join"),
+    ("q30_ll_offerings",    "LL: offerings wanted"),
+    ("q30_other",           "LL offerings (other)"),
     ("q28_anything_else",   "Anything else"),
 ]
 
@@ -107,7 +112,7 @@ QUESTIONS = [
 #: whether it is a list or a single choice.
 MULTI = {"q10_activities", "q15_why", "q16_goals", "q17_services",
          "q18_amenities", "q19_missing", "q20_days", "q20_times",
-         "q23_barriers", "q25_keeps_going"}
+         "q23_barriers", "q25_keeps_going", "q30_ll_offerings"}
 
 FREE_TEXT = {"q6_area", "q14_branch", "q28_anything_else"} | {
     k for k, _ in QUESTIONS if k.endswith("_other")}
@@ -120,6 +125,7 @@ SECTIONS = [
     ("Getting there",       ["q7_travel", "q8_parking"]),
     ("What they do now",    ["q9_status", "q10_activities", "q11_frequency",
                              "q12_level", "q13_budget", "q13_willing",
+                             "q13_budget_ll",
                              "q14_gym", "q15_why"]),
     ("What they want",      ["q16_goals", "q17_services",
                              "q18_amenities", "q19_missing"]),
@@ -128,6 +134,7 @@ SECTIONS = [
     ("Sticking with it",    ["q23_barriers", "q24_reason",
                              "q25_keeps_going"]),
     ("Awaken",              ["q26_awaken", "q27_found_via"]),
+    ("Longevity Labs",      ["q29_ll_join", "q30_ll_offerings"]),
     ("In their words",      ["q19_other", "q23_other", "q6_area", "q14_branch",
                              "q28_anything_else"]),
 ]
@@ -210,6 +217,7 @@ CHANNELS = [
     ("email", "Email"),
     ("condo", "Neighbourhood / condo"),
     ("event", "Event"),
+    ("llabs", "Longevity Labs"),
 ]
 
 
