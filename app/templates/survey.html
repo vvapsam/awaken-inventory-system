@@ -671,14 +671,22 @@ pre{
         <span class="qn">13. Roughly how much do you currently spend per month, in total, on fitness activities? <span class="req">*</span></span>
         <p class="hint">Include memberships, classes, coaching and court or venue fees. Leave out clothing, equipment and supplements.</p>
         <div class="opts" data-radio="q13">
-          <label class="opt"><input type="radio" name="q13" value="0"><span>Nothing at the moment</span></label>
-          <label class="opt"><input type="radio" name="q13" value="<2000"><span>Less than &#8369;2,000</span></label>
-          <label class="opt"><input type="radio" name="q13" value="2000-2999"><span>&#8369;2,000 &ndash; &#8369;2,999</span></label>
-          <label class="opt"><input type="radio" name="q13" value="3000-4999"><span>&#8369;3,000 &ndash; &#8369;4,999</span></label>
-          <label class="opt"><input type="radio" name="q13" value="5000-7499"><span>&#8369;5,000 &ndash; &#8369;7,499</span></label>
-          <label class="opt"><input type="radio" name="q13" value="7500-9999"><span>&#8369;7,500 &ndash; &#8369;9,999</span></label>
-          <label class="opt"><input type="radio" name="q13" value="10000+"><span>&#8369;10,000 or more</span></label>
-          <label class="opt"><input type="radio" name="q13" value="Unsure"><span>I&rsquo;m not sure</span></label>
+          <label class="opt" data-not="llabs"><input type="radio" name="q13" value="0"><span>Nothing at the moment</span></label>
+          <label class="opt" data-not="llabs"><input type="radio" name="q13" value="<2000"><span>Less than &#8369;2,000</span></label>
+          <label class="opt" data-not="llabs"><input type="radio" name="q13" value="2000-2999"><span>&#8369;2,000 &ndash; &#8369;2,999</span></label>
+          <label class="opt" data-not="llabs"><input type="radio" name="q13" value="3000-4999"><span>&#8369;3,000 &ndash; &#8369;4,999</span></label>
+          <label class="opt" data-not="llabs"><input type="radio" name="q13" value="5000-7499"><span>&#8369;5,000 &ndash; &#8369;7,499</span></label>
+          <label class="opt" data-not="llabs"><input type="radio" name="q13" value="7500-9999"><span>&#8369;7,500 &ndash; &#8369;9,999</span></label>
+          <label class="opt" data-not="llabs"><input type="radio" name="q13" value="10000+"><span>&#8369;10,000 or more</span></label>
+          <label class="opt" data-not="llabs"><input type="radio" name="q13" value="Unsure"><span>I&rsquo;m not sure</span></label>
+          <!-- The Longevity Labs link asks the same question on a higher
+               scale. Stored as q13_budget_ll so it never mixes with the
+               standard brackets in the export. -->
+          <label class="opt" data-only="llabs"><input type="radio" name="q13" value="Below 5000"><span>Below &#8369;5,000</span></label>
+          <label class="opt" data-only="llabs"><input type="radio" name="q13" value="5000-7999"><span>&#8369;5,000&ndash;&#8369;7,999</span></label>
+          <label class="opt" data-only="llabs"><input type="radio" name="q13" value="8000-11999"><span>&#8369;8,000&ndash;&#8369;11,999</span></label>
+          <label class="opt" data-only="llabs"><input type="radio" name="q13" value="12000-14999"><span>&#8369;12,000&ndash;&#8369;14,999</span></label>
+          <label class="opt" data-only="llabs"><input type="radio" name="q13" value="15000+"><span>&#8369;15,000 or more</span></label>
         </div>
         <div class="sub-q hide" id="q13wwrap">
           <!-- No "not sure" here, unlike question 13 itself. What somebody
@@ -782,7 +790,7 @@ pre{
       </div>
 
 
-      <div class="q">
+      <div class="q" data-not="llabs">
         <span class="qn">17. Which of these would you realistically use? <span class="req">*</span></span>
         <p class="hint">Select up to three.</p>
         <div class="opts" data-check="q17" data-max="3">
@@ -1040,7 +1048,7 @@ pre{
           <h1>Nearly done</h1>
         </div>
       </div>
-      <p class="lede">Two questions and an open box.</p>
+      <p class="lede"><span data-not="llabs">Two questions</span><span data-only="llabs">Four questions</span> and an open box.</p>
 
       <div class="q">
         <span class="qn">26. What&rsquo;s your connection to Awaken? <span class="req">*</span></span>
@@ -1075,6 +1083,42 @@ pre{
         </div>
         <div class="sub-q hide" data-otherfor="q27">
           <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q27_other"></label>
+        </div>
+      </div>
+
+      <!-- Longevity Labs link only. Numbered 29 and 30 here so their rules
+           have ids of their own; the page renumbers what it shows. -->
+      <div class="q" data-only="llabs">
+        <span class="qn">29. If a fitness space opened within Longevity Labs, how would you be most likely to join? <span class="req">*</span></span>
+        <div class="opts" data-radio="q29">
+          <label class="opt"><input type="radio" name="q29" value="Main gym"><span>As my main gym for regular training</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Additional option"><span>As an additional option alongside my current gym or activities</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Specific classes or coaching"><span>For specific classes or coaching sessions</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Occasionally while visiting"><span>Occasionally, when I&rsquo;m already visiting Longevity Labs</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Depends on services, schedule, price"><span>I&rsquo;m interested, but it would depend on the services, schedule, and price</span></label>
+          <label class="opt"><input type="radio" name="q29" value="Wouldn't use it"><span>I wouldn&rsquo;t use it</span></label>
+        </div>
+      </div>
+
+      <div class="q" data-only="llabs">
+        <span class="qn">30. Which fitness offerings would you be interested in? <span class="req">*</span></span>
+        <p class="hint">Choose up to three.</p>
+        <div class="opts" data-check="q30" data-max="3">
+          <label class="opt"><input type="checkbox" name="q30" value="Open gym"><span>Open gym / independent training</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="Group strength and conditioning"><span>Group strength and conditioning classes</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="Hybrid / HYROX-style classes"><span>Hybrid fitness / HYROX-style classes</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="Personal training"><span>One-on-one personal training</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="Small-group personal training"><span>Small-group personal training</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="Beginner program"><span>Beginner program to learn equipment and training basics</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="Program for a specific goal"><span>Structured training program for a specific goal</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="Mobility and stretching"><span>Mobility and stretching sessions</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="Pilates or yoga"><span>Pilates or yoga</span></label>
+          <label class="opt" data-other="q30"><input type="checkbox" name="q30" value="Other"><span>Other</span></label>
+          <label class="opt"><input type="checkbox" name="q30" value="None" data-alone><span>None at this time</span></label>
+        </div>
+        <div class="cnt" data-cntfor="q30">0 of 3 chosen</div>
+        <div class="sub-q hide" data-otherfor="q30">
+          <label class="fl" style="margin-top:0"><span>Please tell us</span><input type="text" name="q30_other"></label>
         </div>
       </div>
 
@@ -1191,6 +1235,32 @@ pre{
 var CFG = {};
 try { CFG = JSON.parse(document.getElementById("cfg").textContent) || {}; }
 catch (e) { CFG = {}; }
+
+/* ---------------------------------------------------------------
+   One form, more than one link. A few questions belong to one link
+   only (data-only="llabs") or are left off it (data-not="llabs").
+   They are removed before anything else reads the page, then what
+   is left is numbered 1, 2, 3... so the numbers a person sees have
+   no gaps. Each question keeps its written number as data-q, and
+   the rules below are keyed by that, not by what is on screen.
+   --------------------------------------------------------------- */
+var VARIANT = String(CFG.channel || "").toLowerCase() === "llabs" ? "llabs" : "";
+[].slice.call(document.querySelectorAll("[data-only]")).forEach(function(el){
+  if (el.getAttribute("data-only") !== VARIANT) el.parentNode.removeChild(el);
+});
+[].slice.call(document.querySelectorAll("[data-not]")).forEach(function(el){
+  if (el.getAttribute("data-not") === VARIANT) el.parentNode.removeChild(el);
+});
+var SHOWN_TOTAL = 0;
+[].slice.call(document.querySelectorAll(".step .q")).forEach(function(q){
+  var lab = q.querySelector(".qn");
+  var t = lab && lab.firstChild;
+  var m = t && t.nodeType === 3 && /^(\s*)(\d+)\./.exec(t.nodeValue);
+  if (!m) return;
+  q.setAttribute("data-q", m[2]);
+  SHOWN_TOTAL += 1;
+  t.nodeValue = t.nodeValue.replace(/^(\s*)\d+\./, "$1" + SHOWN_TOTAL + ".");
+});
 
 /* ---------------------------------------------------------------
    Lists. Kept here, not in the HTML, so they are the one place to
@@ -1687,8 +1757,18 @@ var QRULES = {
     if (isShown("#q27codewrap") && code && !/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(code))
       m.push(need("q27", "a code of 8 letters and numbers, or leave it blank"));
   },
-  28: function(){}                               // the open box is optional
+  28: function(){},                              // the open box is optional
+  29: function(m){ if (!picked("q29")) m.push(need("q29")); },
+  30: function(m){ missMany(m, "q30"); }
 };
+(function(){
+  var byShown = {};
+  all(".step .q[data-q]").forEach(function(q){
+    var n = parseInt(q.querySelector(".qn").textContent, 10);
+    byShown[n] = QRULES[q.getAttribute("data-q")];
+  });
+  QRULES = byShown;
+})();
 
 /* Which questions sit in which section, read off the markup rather than
    written down twice. */
@@ -1729,7 +1809,7 @@ function complain(step, missing){
    Stepping
    --------------------------------------------------------------- */
 var LAST = 7;
-var TOTAL = 28;
+var TOTAL = SHOWN_TOTAL || 28;
 
 /* ---------------------------------------------------------------
    One question at a time
@@ -2490,7 +2570,8 @@ function submitSurvey(){
       q10_activities: ticked("q10"), q10_other: val("q10_other"),
       q11_frequency: picked("q11"),
       q12_level: picked("q12"),
-      q13_budget: picked("q13"),
+      q13_budget: VARIANT ? "" : picked("q13"),
+      q13_budget_ll: VARIANT === "llabs" ? picked("q13") : "",
       q13_willing: picked("q13") === "0" ? picked("q13_willing") : "",
       q14_gym: val("q14"), q14_other: val("q14_other"),
       q14_branch: val("q14_branch"),
@@ -2507,6 +2588,8 @@ function submitSurvey(){
       q25_keeps_going: ticked("q25"), q25_other: val("q25_other"),
       q26_awaken: picked("q26"),
       q27_found_via: picked("q27"), q27_other: val("q27_other"),
+      q29_ll_join: picked("q29"),
+      q30_ll_offerings: ticked("q30"), q30_other: val("q30_other"),
       q28_anything_else: val("q28")
     },
     device: device()
