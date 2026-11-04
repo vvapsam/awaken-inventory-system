@@ -49,6 +49,7 @@ from .models import (
     CommissionStatementLink, STATEMENT_LINK_DAYS, Staff,
     # A payout a bill has claimed is a payout this run cannot let go of.
     PaymentVoucher,
+    person_by_name,
 )
 
 MONTHS = ("January February March April May June July August September "
@@ -1629,7 +1630,7 @@ def register(app, deps):
 
     def _coach_email(db: Session, coach: str):
         """The address on the coach's person record, if it looks usable."""
-        person = db.query(Staff).filter(Staff.name == coach).first()
+        person = person_by_name(db, coach)
         email = (person.email or "").strip() if person and person.email else ""
         return email if looks_like_email(email) else ""
 
@@ -2050,7 +2051,7 @@ def register(app, deps):
             links[ln.coach] = ln          # ordered ascending, so newest wins
         rows = []
         for c in coach_summary(run):
-            person = (db.query(Staff).filter(Staff.name == c["coach"]).first())
+            person = person_by_name(db, c["coach"])
             rows.append({**c, "signoff": signed.get(c["coach"]),
                          "link": links.get(c["coach"]),
                          "email": (person.email if person else None)})
@@ -3341,7 +3342,17 @@ def register(app, deps):
                 if dg_pick:
                     dg_detail = _delegator_detail(run, dg_pick["delegator"].id)
         summary = coach_summary(run)
-        emails = {p.name: p.email for p in db.query(Staff).all() if p.email}
+        # Keyed on the name flattened, not on the name as typed. The coach
+        # string on this row was copied from the run when it was imported;
+        # the person record is what gets corrected later. Comparing the two
+        # exactly is how a coach with an address on file is shown as having
+        # none. An active record wins a clash, as person_by_name does.
+        emails = {}
+        for p in (db.query(Staff)
+                  .order_by(Staff.is_active.desc().nullslast(),
+                            Staff.id.asc())):
+            if p.email and (p.name or "").strip():
+                emails.setdefault(p.name.strip().lower(), p.email)
         # Newest link per coach — the coach table offers Send or Resend from
         # the row, so it needs to know whether one has gone out already.
         links = {}
@@ -3351,7 +3362,7 @@ def register(app, deps):
         counts, unread = _comment_counts(db, run.id), _unread_by_coach(db, run.id)
         for row in summary:
             row["signoff"] = signed.get(row["coach"])
-            row["email"] = emails.get(row["coach"])
+            row["email"] = emails.get((row["coach"] or "").strip().lower())
             row["link"] = links.get(row["coach"])
             n, last, from_coach = counts.get(row["coach"], (0, None, False))
             row["comments"] = n

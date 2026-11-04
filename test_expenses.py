@@ -1015,6 +1015,94 @@ with TestClient(app) as c:                      # startup seeds the chart
         r = c.get(path)
         ck("page draws: %s" % path, r.status_code == 200)
 
+    # ── a name spelled two ways is still one person ────────────────────
+    # The failure this guards: a run imported while a coach was recorded in
+    # lower case keeps that spelling on the payout for good, because the
+    # payout's copy of the name is taken once and never revisited. Correcting
+    # the person record afterwards left the two disagreeing, and an exact
+    # comparison read that as nothing owed — a coach with a finalized run and
+    # real money behind it offered nothing to bill, and no email either.
+    with Session(engine) as db:
+        lau = M.Staff(name="Laurent Javier", person_type="coach",
+                      email="laurent@awakengym.test", is_active=True)
+        db.add(lau); db.flush()
+        LAU = lau.id
+        run3 = M.CommissionRun(period="Oct 2026", status=M.RUN_FINALIZED)
+        db.add(run3); db.flush()
+        # coach_id deliberately left empty: the id is the easy case, and the
+        # bookings this came from had no person linked. The name has to carry
+        # it on its own, which is the case that was broken.
+        db.add(M.CommissionPayout(run_id=run3.id, number="COM-0003",
+                                  coach="laurent javier", coach_id=None,
+                                  period_label="October 2026", sessions=58,
+                                  commission_total=Decimal("36663.36"),
+                                  total=Decimal("36663.36")))
+        db.add(M.CommissionAdjustment(
+            coach="  LAURENT JAVIER ", coach_id=None,
+            occurred_on=date(2026, 9, 2), title="Shirt at cost",
+            amount=Decimal("-450"), account_id=acc["Commissions"]))
+        db.commit()
+
+    build = c.get("/admin/vouchers/new?who=Laurent%20Javier").text
+    ck("a payout stored in the wrong case is still offered",
+       "COM-0003" in build)
+    ck("an adjustment stored in the wrong case is still offered",
+       "Shirt at cost" in build)
+    ck("the picker lists the person once, not once per spelling",
+       build.count(">Laurent Javier<") <= 1)
+
+    with Session(engine) as db:
+        LAUADJ = (db.query(M.CommissionAdjustment)
+                  .filter_by(title="Shirt at cost").one().id)
+        LAUPAY = (db.query(M.CommissionPayout)
+                  .filter_by(number="COM-0003").one().id)
+    c.post("/admin/vouchers/new",
+           data={"who": "Laurent Javier", "payout": [str(LAUPAY)],
+                 "adjustment": [str(LAUADJ)]}, follow_redirects=False)
+    with Session(engine) as db:
+        lv = (db.query(M.PaymentVoucher)
+              .filter(M.PaymentVoucher.person == "Laurent Javier").one())
+        ck("issuing it claims the mis-cased payout",
+           db.get(M.CommissionPayout, LAUPAY).voucher_id == lv.id)
+        ck("and the mis-cased adjustment",
+           db.get(M.CommissionAdjustment, LAUADJ).voucher_id == lv.id)
+        ck("the bill carries both figures",
+           lv.commission_total == Decimal("36663.36")
+           and lv.adjustment_total == Decimal("-450"))
+        LAUVID = lv.id
+
+    page = c.get("/admin/vouchers/%d" % LAUVID).text
+    ck("his address is found despite the case",
+       "There's no email address on" not in page)
+
+    # ── and a person with no record of their own is still only themselves ──
+    # ``staff_id`` is empty for somebody who exists only as a coach rate, and
+    # ``staff_id == None`` becomes IS NULL in SQL. Unguarded, that matches
+    # every unlinked claim in the table rather than none of them, and bills
+    # one person for another's money.
+    with Session(engine) as db:
+        db.add(M.CommissionCoachRate(coach="Ghost Coach", coach_id=None,
+                                     staff_raw="Ghost", rate_type="percent",
+                                     rate_value=0.4))
+        orphan = M.ExpenseReport(number="ER-9600", staff_id=None,
+                                 person="Nobody In Particular",
+                                 occurred_on=date(2026, 9, 9),
+                                 status=M.EXPENSE_APPROVED)
+        db.add(orphan); db.flush()
+        db.add(M.ExpenseLine(report_id=orphan.id, occurred_on=date(2026, 9, 9),
+                             account_id=TRANSPORT, amount=Decimal("300"),
+                             note="Someone else's taxi", receipt=JPEG,
+                             receipt_mime="image/jpeg",
+                             receipt_name="taxi.jpg"))
+        db.commit()
+
+    build = c.get("/admin/vouchers/new?who=Ghost%20Coach").text
+    ck("an unlinked claim is not offered to an unlinked stranger",
+       "ER-9600" not in build)
+    build = c.get("/admin/vouchers/new?who=Nobody%20In%20Particular").text
+    ck("it is offered to the person whose name is on it",
+       "ER-9600" in build)
+
 bad = [n for n, ok in res if not ok]
 print("\n%d/%d passed" % (len(res) - len(bad), len(res)))
 if bad:

@@ -34,7 +34,7 @@ def from_local(dt):
 
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer,
-    LargeBinary, Numeric, String, Text, UniqueConstraint,
+    LargeBinary, Numeric, String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.orm import relationship, backref
 from .db import Base
@@ -227,6 +227,35 @@ class Staff(Base):
     __table_args__ = (
         CheckConstraint("role IN ('admin','staff')", name="staff_role_check"),
     )
+
+
+def person_by_name(db, name):
+    """The person record behind a display name, or ``None``.
+
+    Money rows — payouts, adjustments, claims, bills — each keep a copy of
+    the name they were made out to, taken at the moment they were made. The
+    person record is the one that gets corrected afterwards, so the two
+    spellings drift: a run imported while a coach was recorded in lower case
+    still says so months later, long after the record itself was tidied.
+
+    So the match ignores case and stray spacing. An exact comparison here
+    does not fail loudly, which is the danger — it quietly reports that the
+    person does not exist, and the page above it says there is no email and
+    nothing to pay.
+
+    It stays deliberately narrow: case and spacing only, never a guess at a
+    near-miss. Two records really spelled differently are two people until
+    somebody says otherwise, and paying the wrong one is worse than saying
+    nothing.
+    """
+    want = (name or "").strip().lower()
+    if not want:
+        return None
+    return (db.query(Staff)
+            .filter(func.lower(func.trim(func.coalesce(Staff.name, "")))
+                    == want)
+            .order_by(Staff.is_active.desc().nullslast(), Staff.id.asc())
+            .first())
 
 
 class Product(Base):

@@ -57,7 +57,7 @@ from .models import (
     EXPENSE_SUBMITTED, ExpenseLine, ExpenseReport,
     PaymentVoucher, Staff,
     VOUCHER_LINK_DAYS, VOUCHER_PAID, VOUCHER_UNPAID, VOUCHER_VOID, VoucherLink,
-    VOUCHER_STATUSES, from_local, now_utc,
+    VOUCHER_STATUSES, from_local, now_utc, person_by_name,
 )
 
 #: How many bills a page of the list holds, and what else may be asked for.
@@ -646,18 +646,34 @@ def register(app, deps):
         Three sources, because there is no one table of "people we pay": staff
         with a login, coaches with a rate, and anybody who already has a claim
         or a voucher. Missing a name here means a person nobody can pay.
+
+        The three can disagree about how a name is spelled, because each one
+        kept its copy at a different moment. Offering both spellings would be
+        offering the same person twice, so they collapse: the first spelling
+        seen is the one shown — staff records are read first, and that is the
+        record somebody corrects — and an id is taken from whichever source
+        has one, because the id is what matching prefers.
         """
         names = {}
+
+        def add(raw, ident):
+            text = (raw or "").strip()
+            if not text:
+                return
+            key = text.lower()
+            seen = names.get(key)
+            if seen is None:
+                names[key] = (text, ident)
+            elif seen[1] is None and ident is not None:
+                names[key] = (seen[0], ident)
+
         for s in db.query(Staff).filter(Staff.is_active.is_(True)):
-            if (s.name or "").strip():
-                names[s.name.strip()] = s.id
+            add(s.name, s.id)
         for r in db.query(CommissionCoachRate):
-            if (r.coach or "").strip():
-                names.setdefault(r.coach.strip(), r.coach_id)
+            add(r.coach, r.coach_id)
         for r in db.query(ExpenseReport):
-            if (r.person or "").strip():
-                names.setdefault(r.person.strip(), r.staff_id)
-        return sorted(names.items())
+            add(r.person, r.staff_id)
+        return sorted(names.values())
 
     def _claimable(db, who: str, staff_id):
         """The three stacks a bill is built from, for one person.
@@ -665,25 +681,44 @@ def register(app, deps):
         Each is "finished, and nothing has claimed it yet". A run still open, a
         report still waiting on approval and an adjustment already on a payout
         are all absent — not hidden, simply not yet owed or already settled.
+
+        A person is found by id wherever one was recorded, and otherwise by
+        name ignoring case and stray spacing. The name on a payout is a copy
+        taken when the run was imported, so correcting the spelling on a
+        person record afterwards leaves the two disagreeing — and an exact
+        comparison then reads that as nothing being owed, which is how a coach
+        with a finalized run and real money behind it offers nothing to bill.
         """
+        want = (who or "").strip().lower()
+
+        def theirs(name_col, id_col):
+            """Them, by id if we have one, by name however it was typed."""
+            same = func.lower(func.trim(func.coalesce(name_col, ""))) == want
+            # Guarded, because ``id_col == None`` becomes IS NULL in SQL: for
+            # a person with no record of their own that would sweep in every
+            # unlinked row in the table, and bill them somebody else's money.
+            return same if staff_id is None else (same | (id_col == staff_id))
+
         # Only payouts from a run that is actually finalized. A payout on a
         # draft run is a figure still being argued about, and a bill is not
         # the place to settle that argument.
         live = {r.id for r in db.query(CommissionRun)
                 .filter(CommissionRun.status != RUN_DRAFT)}
         payouts = [p for p in db.query(CommissionPayout)
-                   .filter(CommissionPayout.coach == who,
+                   .filter(theirs(CommissionPayout.coach,
+                                  CommissionPayout.coach_id),
                            CommissionPayout.voucher_id.is_(None))
                    .order_by(CommissionPayout.id.desc()).all()
                    if p.run_id in live]
         reports = (db.query(ExpenseReport)
                    .filter(ExpenseReport.status == EXPENSE_APPROVED,
                            ExpenseReport.voucher_id.is_(None))
-                   .filter((ExpenseReport.person == who)
-                           | (ExpenseReport.staff_id == staff_id))
+                   .filter(theirs(ExpenseReport.person,
+                                  ExpenseReport.staff_id))
                    .order_by(ExpenseReport.id.desc()).all())
         adjustments = (db.query(CommissionAdjustment)
-                       .filter(CommissionAdjustment.coach == who,
+                       .filter(theirs(CommissionAdjustment.coach,
+                                      CommissionAdjustment.coach_id),
                                CommissionAdjustment.payout_id.is_(None),
                                CommissionAdjustment.voucher_id.is_(None))
                        .order_by(CommissionAdjustment.occurred_on.asc()
@@ -1304,12 +1339,18 @@ def register(app, deps):
         return link
 
     def _their_email(db, voucher) -> str:
-        """The address on their person record, if it looks usable."""
+        """The address on their person record, if it looks usable.
+
+        The name is matched ignoring case, because the one on the bill was
+        copied from whatever the run carried and the one on the person record
+        may since have been tidied. An exact comparison reports "no email on
+        record" for somebody whose address is sitting right there.
+        """
         person = None
         if voucher.staff_id:
             person = db.get(Staff, voucher.staff_id)
         if person is None:
-            person = db.query(Staff).filter(Staff.name == voucher.person).first()
+            person = person_by_name(db, voucher.person)
         email = (person.email or "").strip() if person and person.email else ""
         return email if looks_like_email(email) else ""
 
