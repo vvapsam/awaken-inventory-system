@@ -73,6 +73,7 @@ from .models import (
     race_totals, station_field, rank_in, station_shorts,
     parse_clock, CLOCK_MAX,
     CATEGORIES, CATEGORY_LABELS, CATEGORY_DEFAULT, category_key,
+    QUESTION_KINDS_NO_ANSWER, ParticipantAnswer,
 )
 from .countries import country_code, country_name, flag as country_flag
 # The sponsor strip is cut and sized once, for the finisher card. The
@@ -614,6 +615,37 @@ EVENT_COLUMNS = [
 COLUMN_SCOPES = {"people": "cols", "gone": "gone_cols"}
 
 
+#: A question on the form can be shown as a column too. The key is the
+#: question's id, never its title: renaming "Parent's Name" to "Guardian"
+#: would otherwise switch the column off on every event that had it on, and
+#: the saved list is a row in the database that nobody is going to go and fix.
+QUESTION_COL_PREFIX = "q"
+
+
+def question_columns(event: Event) -> list:
+    """The gym's own questions, as columns this event could show.
+
+    Only the questions somebody wrote. The built-ins are already columns, or
+    are the name itself, and a section asks nothing to show. The answers are
+    already stored a row at a time - this reads them, it does not collect
+    anything new, which is the same rule the fixed list above follows.
+
+    Every one of them is off until it is ticked. A form with nine questions
+    would otherwise turn up tomorrow as nine new columns on a table that was
+    the right width yesterday.
+
+    Returns (key, label, question) so the caller can build both the chooser
+    and the table from one list and neither can drift from the other.
+    """
+    out = []
+    for q in sorted(event.questions or [], key=lambda x: (x.position, x.id)):
+        if q.builtin or q.hidden or q.kind in QUESTION_KINDS_NO_ANSWER:
+            continue
+        out.append(("%s%d" % (QUESTION_COL_PREFIX, q.id),
+                    (q.title or "").strip() or "Untitled question", q))
+    return out
+
+
 def columns_for(event: Event, scope: str = "people") -> list:
     """The columns this tab could show, in table order.
 
@@ -630,6 +662,12 @@ def columns_for(event: Event, scope: str = "people") -> list:
             continue
         out.append((key, label,
                     defaults[scope] if chosen is None else key in chosen))
+    # Only on the participant list. Offering them on Can't make it as well
+    # would put a tick box on a tab that does not draw them, and a chooser
+    # that lies about what it will show is worse than a missing column.
+    if scope == "people":
+        for key, label, _q in question_columns(event):
+            out.append((key, label, False if chosen is None else key in chosen))
     return out
 
 
@@ -1762,12 +1800,33 @@ def register(app, deps):
         # Longest-stalled first — the row id is the order they arrived in.
         unfinished = sorted([x for x in rest if x.pay_status == PAY_DRAFT],
                             key=lambda x: x.id)
+        people_cols = visible_cols(ev)
+        # The question columns actually ticked, in the order the form asks
+        # them. Everything below is skipped entirely when none is on, which
+        # is every event that has never touched the chooser.
+        qcols = [{"key": k, "label": l, "qid": q.id}
+                 for k, l, q in question_columns(ev) if k in people_cols]
+        qanswers = {}
+        if qcols:
+            # One query for the lot. Reading p.answers per person instead
+            # would be a round trip per row, and the roster is the page that
+            # gets opened twenty times on the morning of an event.
+            wanted = {x["qid"] for x in qcols}
+            for a in (db.query(ParticipantAnswer)
+                      .join(EventParticipant,
+                            ParticipantAnswer.participant_id
+                            == EventParticipant.id)
+                      .filter(EventParticipant.event_id == ev.id,
+                              ParticipantAnswer.question_id.in_(wanted))
+                      .all()):
+                qanswers.setdefault(a.participant_id, {})[a.question_id] = a.shown
         return render(request, "event_detail.html", db, staff, active="events",
                       ev=ev, tab=tab, people=people, waiting=waiting,
                       gone=gone, review=review, unfinished=unfinished,
                       templates=sendable_templates(ev), money=money,
                       pay_labels=PAY_LABELS, status_moves=STATUS_MOVES,
-                      col_list=columns_for(ev), cols=visible_cols(ev),
+                      col_list=columns_for(ev), cols=people_cols,
+                      qcols=qcols, qanswers=qanswers,
                       gone_col_list=columns_for(ev, "gone"),
                       gone_cols=visible_cols(ev, "gone"),
                       upload=request.session.pop("event_upload", None),

@@ -465,6 +465,9 @@
     {% if 'added' in cols %}<th style="width:130px">Added</th>{% endif %}
     {% if 'updated' in cols %}<th style="width:150px">Last update</th>{% endif %}
     {% if 'link' in cols %}<th>Link</th>{% endif %}
+    {# The gym's own questions, last and in form order, so switching one on
+       never moves a column somebody had learned the position of. #}
+    {% for qc in qcols %}<th>{{ qc.label }}</th>{% endfor %}
     <th style="width:1%"></th>
   </tr></thead>
   <tbody>
@@ -672,6 +675,13 @@
         title="Their QR pass"
         data-copy="{{ base }}/e/{{ p.token }}/pass">Copy</button></td>
     {% endif %}
+    {# Their answer, read from the map the page was handed. Somebody added by
+       hand never filled the form in, so a blank here is ordinary rather than
+       a fault, and it reads as a dash like every other empty cell. #}
+    {% for qc in qcols %}
+    {% set ans = qanswers.get(p.id, {}).get(qc.qid) %}
+    <td>{% if ans %}{{ ans }}{% else %}<span class="muted small">—</span>{% endif %}</td>
+    {% endfor %}
     <td style="white-space:nowrap">
       <button type="button" class="btn" style="padding:5px 9px"
               data-modal="pp-{{ p.id }}" title="Edit their details">&#9998;</button>
