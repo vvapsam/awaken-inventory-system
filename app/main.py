@@ -1212,6 +1212,26 @@ def startup():
                 "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
                 "  maps_to VARCHAR; "
                 "END IF; END $$;"))
+            # One station, different work per category. The table is new, so
+            # create_all makes it; these two widen columns that already hold
+            # rows. A sled lane is 12.5 m, which a whole number cannot say,
+            # and a count that could not reach 12.5 would leave that station
+            # open with the athlete standing at the end of it.
+            #
+            # numeric(8,2) from integer is a widening cast in Postgres: every
+            # existing value survives it exactly, and a target of 300 keeps
+            # reading 300 because `tidy` strips the places back off.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.event_stations') "
+                "IS NOT NULL THEN "
+                "ALTER TABLE event_stations "
+                "  ALTER COLUMN target TYPE numeric(8,2); "
+                "END IF; "
+                "IF to_regclass('public.station_runs') IS NOT NULL THEN "
+                "ALTER TABLE station_runs "
+                "  ALTER COLUMN count TYPE numeric(8,2); "
+                "END IF; END $$;"))
+
             # What somebody actually agreed to, kept on the agreement itself.
             conn.execute(text(
                 "DO $$ BEGIN IF to_regclass('public.participant_answers') "

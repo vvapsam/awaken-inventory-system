@@ -2742,7 +2742,7 @@ def board_rows(event, now=None):
             # only count rows from the second.
             "st_name": st_row.name if st_row is not None else "",
             "st_short": shorts.get(st_row.id, "") if st_row is not None else "",
-            "st_count": open_run.count if open_run is not None else None,
+            "st_count": tidy(open_run.count) if open_run is not None else None,
             "st_target": st_row.target if st_row is not None else None,
             "st_unit": st_row.unit if st_row is not None else "",
         })
@@ -2829,8 +2829,7 @@ def station_splits(p, now=None):
     a split because it belongs to nobody's station, and hiding it inside one
     would quietly make that station look slower than it was raced.
     """
-    stations = sorted(p.event.stations, key=lambda s: (s.position, s.id)) \
-        if p.event else []
+    stations = stations_for(p)
     runs = {r.station_id: r for r in (p.runs or [])}
     now = now or datetime.now(timezone.utc)
     out = []
@@ -2845,8 +2844,8 @@ def station_splits(p, now=None):
             live = max(0, int((now - r.started_at).total_seconds()))
         out.append({
             "station": st, "name": st.name, "unit": st.unit,
-            "target": st.target,
-            "count": r.count if r else None,
+            "target": st.target, "load": st.load,
+            "count": tidy(r.count) if r else None,
             "secs": r.seconds if r else None,
             # A station still counting has no split yet, but it has a clock.
             "open_secs": live,
@@ -3386,7 +3385,11 @@ class EventStation(Base):
     #: 'distance' or 'reps'. Only changes the unit shown; everything
     #: downstream compares two plain numbers, so there is no second code path.
     measure = Column(String, nullable=False, default="reps")
-    target = Column(Integer, nullable=False, default=0)
+    #: Decimal, because a sled lane is 12.5 m and a whole number cannot say
+    #: so. Everything downstream compares two numbers and does not care which
+    #: kind, and `tidy` is what keeps 300 printing as "300" rather than
+    #: "300.00" now that the column can hold halves.
+    target = Column(Numeric(8, 2), nullable=False, default=0)
     increment = Column(Integer, nullable=False, default=1)
 
     event = relationship("Event", backref=backref(
@@ -3401,7 +3404,151 @@ class EventStation(Base):
     def taps(self) -> int:
         """How many times a coach will press the button to finish this."""
         inc = max(1, self.increment or 1)
-        return max(0, -(-(self.target or 0) // inc))
+        return max(0, math.ceil(float(self.target or 0) / inc))
+
+
+def tidy(v):
+    """A number as a person writes it: 300, not 300.00; 12.5, not 12.50.
+
+    The targets are decimal now because one lane is 12.5 m long. Almost none
+    of the others are, so printing every distance to two places would be nine
+    stations paying for one.
+    """
+    if v is None:
+        return None
+    f = float(v)
+    return int(f) if f == int(f) else round(f, 2)
+
+
+class StationVariant(Base):
+    """One station's numbers for one category — and, if it needs it, one sex.
+
+    A kids' test is the same nine stations for everybody and nowhere near the
+    same work: the 13-15s push 102 kg over 30 m where the 5-8s push 35 kg over
+    12.5, and station five is a Frogger for the little ones and a burpee broad
+    jump for everyone else. Before this, that was nine stations or four events.
+
+    Three things vary, not one:
+
+    * `target`  — the number the phone counts to;
+    * `name`    — because Frogger and BBJ are different movements, not
+                  different distances, and so are squats and wall balls;
+    * `load`    — free text, shown and never counted: "35 kg", "3 kg at 8 ft",
+                  "25 kg (stepback)", "Bodyweight". The coach reads it to set
+                  the lane up. Keeping it out of the number is what lets one
+                  station be 35 kg / 12.5 m and 102 kg / 30 m at once.
+
+    `sex` is empty for a category that races the same work either way, and set
+    only where the gym splits one — Super Hero Girls and Super Hero Boys off a
+    single Super Hero rate. Storing a split as a second row rather than as two
+    rates keeps the entry categories the thing people sign up for, which is
+    what the slots and the money are counted against.
+
+    A station with no rows here behaves exactly as it always did, which is why
+    every event that does not need this is untouched by it.
+    """
+
+    __tablename__ = "station_variants"
+    __table_args__ = (UniqueConstraint("station_id", "rate_id", "sex",
+                                       name="uq_variant_station_rate_sex"),)
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("event_stations.id",
+                                            ondelete="CASCADE"),
+                        nullable=False, index=True)
+    #: The entry category this is for. Deleting a category takes its variants
+    #: with it — a target for a category nobody can enter is noise.
+    rate_id = Column(Integer, ForeignKey("event_rates.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    #: "" for everyone in the category, or one of SEX_KEYS where it splits.
+    #: Not nullable, because a unique index does not constrain NULLs and two
+    #: "everyone" rows is the one state with no honest answer.
+    sex = Column(String, nullable=False, default="", server_default="")
+    name = Column(String)
+    target = Column(Numeric(8, 2))
+    increment = Column(Integer)
+    load = Column(String)
+
+    station = relationship("EventStation", backref=backref(
+        "variants", cascade="all, delete-orphan"))
+    rate = relationship("EventRate")
+
+
+class StationSpec:
+    """One station as one athlete actually races it.
+
+    The coach's phone, the splits, the board and the finisher card all read
+    name, target, increment and unit off a station and nothing else. So the
+    category's numbers are applied once, here, and every one of those readers
+    goes on reading exactly what it read before.
+
+    `id` is the real station's, never this object's: a run points at a
+    station, and two athletes in different categories are still running the
+    same lane.
+    """
+
+    __slots__ = ("station", "name", "target", "increment", "measure", "load")
+
+    def __init__(self, station, variant=None):
+        v = variant
+        self.station = station
+        self.name = (v.name if v is not None and (v.name or "").strip()
+                     else station.name)
+        self.target = tidy(v.target if v is not None and v.target is not None
+                           else station.target)
+        self.increment = int(v.increment if v is not None and v.increment
+                             else station.increment or 1)
+        self.measure = station.measure
+        self.load = (v.load or "").strip() if v is not None else ""
+
+    @property
+    def id(self):
+        return self.station.id
+
+    @property
+    def position(self):
+        return self.station.position
+
+    @property
+    def unit(self) -> str:
+        return "m" if self.measure == "distance" else "reps"
+
+    @property
+    def taps(self) -> int:
+        inc = max(1, self.increment or 1)
+        return max(0, math.ceil(float(self.target or 0) / inc))
+
+    def __repr__(self):
+        return "<StationSpec %s %s%s>" % (self.name, self.target, self.unit)
+
+
+def variant_for(station, rate_id, sex):
+    """The row that applies, most specific first.
+
+    A split row beats the category's own row, which beats nothing at all. So
+    a gym can set Super Hero once and then say "except the boys push 102".
+    """
+    if not rate_id:
+        return None
+    rows = [v for v in (station.variants or []) if v.rate_id == rate_id]
+    return (next((v for v in rows if v.sex and v.sex == sex), None)
+            or next((v for v in rows if not v.sex), None))
+
+
+def stations_for(p):
+    """Every station on this person's event, as they will race them.
+
+    One place resolves it, so the screen a coach reads and the endpoint that
+    acts on their tap can never disagree about what the target was.
+    """
+    ev = p.event if p is not None else None
+    sts = sorted(ev.stations, key=lambda s: (s.position, s.id)) if ev else []
+    try:
+        rate_id = int(p.tier) if p is not None and p.tier else None
+    except (TypeError, ValueError):
+        rate_id = None
+    sex = (getattr(p, "sex", "") or "") if p is not None else ""
+    return [StationSpec(s, variant_for(s, rate_id, sex)) for s in sts]
 
 
 class StationRun(Base):
@@ -3425,7 +3572,9 @@ class StationRun(Base):
                                        ondelete="CASCADE"), nullable=False)
     station_id = Column(Integer, ForeignKey("event_stations.id",
                                             ondelete="CASCADE"), nullable=False)
-    count = Column(Integer, nullable=False, default=0)
+    #: Matches the target's kind. An integer count could never reach 12.5,
+    #: so the station would stay open forever on the one lane that needed it.
+    count = Column(Numeric(8, 2), nullable=False, default=0)
     started_at = Column(DateTime(timezone=True))
     ended_at = Column(DateTime(timezone=True))
 

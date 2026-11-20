@@ -48,7 +48,9 @@ from .models import (
     can_coach, h12, heat_open_mins, is_test_athlete,
     EVENT_CLOSED, EVENT_DRAFT, Event, EventParticipant, EventStation,
     RSVP_NO, Staff, StationRun, to_local,
+    stations_for, tidy,
 )
+from decimal import Decimal
 
 def hhmm_key(t: str) -> str:
     """'10:20' -> '1020'. Used in URLs so a heat is one clean path segment."""
@@ -134,7 +136,7 @@ def register(app, deps):
         One place decides, so the page and the endpoint that acts on it can
         never disagree about which station is open.
         """
-        sts = stations_of(p.event)
+        sts = stations_for(p)
         runs = runs_of(p)
         state = {"stations": sts, "runs": runs, "open": None, "open_run": None,
                  "next": None, "closed": [], "done": False, "index": 0}
@@ -490,15 +492,19 @@ def register(app, deps):
             run = open_station(db, p, station)
         count = body.get("count")
         try:
-            count = int(count)
+            count = float(count)
         except (TypeError, ValueError):
             return JSONResponse({"ok": False, "error": "bad count"}, 400)
-        run.count = max(0, min(int(station.target or 0), count))
-        if run.count >= (station.target or 0) and run.ended_at is None:
+        # Not ints. A 12.5 m lane clamped to 12 is a station that can never be
+        # reached, so it would sit open with the athlete standing at the end
+        # of it. The target is whatever this athlete's category says.
+        target = float(station.target or 0)
+        run.count = Decimal(str(max(0.0, min(target, count))))
+        if float(run.count) >= target and run.ended_at is None:
             close_run(db, p, station, run, _moment(body.get("at_ms"), run, now))
         db.commit()
         return JSONResponse({
-            "ok": True, "count": run.count, "target": station.target,
+            "ok": True, "count": tidy(run.count), "target": station.target,
             "closed": run.ended_at is not None,
             "station_secs": run.seconds,
             "finished": bool(p.finished_at),
@@ -536,7 +542,8 @@ def register(app, deps):
         if st["open"] is None and st["closed"]:
             s, r = st["closed"][-1]
             r.ended_at = None
-            r.count = max(0, min(r.count, (s.target or 1) - 1))
+            back = max(0.0, min(float(r.count), float(s.target or 1) - 1))
+            r.count = Decimal(str(back))
             p.finished_at = None
             db.commit()
         return RedirectResponse("/race/p/%d" % p.id, status_code=303)

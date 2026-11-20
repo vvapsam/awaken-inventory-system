@@ -69,6 +69,7 @@ from .models import (
     RACE_STATUSES, RACE_STATUS_KEYS, RACE_STATUS_LABELS, RACE_STATUS_MANUAL,
     HEAT_OPEN_MINS, HEAT_OPEN_MIN, HEAT_OPEN_MAX,
     station_splits, has_race, race_status, is_test_athlete,
+    stations_for, tidy, StationVariant, variant_for,
     board_rows, RACE_STATUS_OUT, h12, Staff, wants_reels,
     race_totals, station_field, rank_in, station_shorts,
     parse_clock, CLOCK_MAX,
@@ -2020,8 +2021,7 @@ def register(app, deps):
                           rows=_edit_rows(p, vals), finish=vals.get("finish", ""),
                           start=p.heat_start(), err=msg)
 
-        stations = sorted(p.event.stations, key=lambda s: (s.position, s.id)) \
-            if p.event else []
+        stations = stations_for(p)
         runs = {r.station_id: r for r in (p.runs or [])}
 
         # Read the whole form before writing anything. A page that saved the
@@ -2766,9 +2766,20 @@ def register(app, deps):
         # What a reset would actually throw away, so the confirm can name it
         # rather than asking "are you sure?" about an unknown quantity.
         finished = sum(1 for p in ev.participants if p.finished_at)
+        # The entry categories, and every variant already set, keyed so the
+        # page can ask for one without searching a list per cell.
+        cats = ev.rate_rows()
+        vmap = {}
+        for st in rows:
+            for v in (st.variants or []):
+                vmap[(st.id, v.rate_id, v.sex or "")] = v
         return render(request, "event_stations.html", db, staff, active="events",
                       ev=ev, rows=rows, measures=MEASURES, locked=bool(racing),
                       racing=racing, finished=finished,
+                      cats=cats, vmap=vmap, sexes=SEXES, tidy=tidy,
+                      # Which stations already differ, so the page can open
+                      # those and leave the ones that don't folded shut.
+                      varied={st.id for st in rows if st.variants},
                       taps=sum(r.taps for r in rows))
 
     @app.post("/events/{eid}/stations/reset")
@@ -2837,6 +2848,16 @@ def register(app, deps):
             except (TypeError, ValueError):
                 return fallback
 
+        def dec(raw, lo, hi, fallback):
+            """A target. Decimal, because one lane is 12.5 m long."""
+            try:
+                v = round(float(str(raw).strip()), 2)
+            except (TypeError, ValueError):
+                return fallback
+            if v != v or v in (float("inf"), float("-inf")):
+                return fallback
+            return Decimal(str(max(lo, min(hi, v))))
+
         keep = set()
         for i, raw_id in enumerate(ids):
             name = (names[i] if i < len(names) else "").strip()
@@ -2851,13 +2872,73 @@ def register(app, deps):
             row.name = name[:80]
             m = measures[i] if i < len(measures) else "reps"
             row.measure = m if m in MEASURES else "reps"
-            row.target = num(targets[i] if i < len(targets) else 0, 1, 100000, 1)
+            row.target = dec(targets[i] if i < len(targets) else 0,
+                             0.01, 100000, Decimal("1"))
             row.increment = num(incs[i] if i < len(incs) else 1, 1, 10000, 1)
             db.flush()
             keep.add(row.id)
         for row in list(ev.stations):
             if row.id not in keep:
                 db.delete(row)
+        db.flush()
+
+        # The per-category rows. Posted as one flat list of fields named
+        # v_<station>_<rate>_<sex>_<what>, because the station ids are only
+        # known once the loop above has flushed the new ones — a brand new
+        # station and its variants can then be saved in the same press.
+        #
+        # A row with nothing filled in is not a row. That is what "same for
+        # everyone" is: the absence of a variant, not a variant repeating the
+        # station. It means switching the split off leaves nothing behind.
+        rate_ids = {r.id for r in ev.rate_rows()}
+        # Gather by which row each box belongs to, not by one field of it. A
+        # category that only changes the load — Super Hero pushing 70 kg over
+        # the same 30 m — fills in no target at all, and keying off the target
+        # would drop it on the floor.
+        seen = {}
+        for key in form.keys():
+            m = re.fullmatch(r"v_(\d+)_(\d+)_([a-z]*)_([tlni])", key)
+            if not m:
+                continue
+            sid, rid, sx, what = int(m.group(1)), int(m.group(2)), \
+                m.group(3), m.group(4)
+            if sid not in keep or rid not in rate_ids:
+                continue
+            if sx and sx not in SEX_KEYS:
+                continue
+            seen.setdefault((sid, rid, sx), {})[what] = \
+                (form.get(key) or "").strip()
+
+        live = {}
+        for k, got in seen.items():
+            raw_t, nm = got.get("t", ""), got.get("n", "")
+            ld, inc_raw = got.get("l", ""), got.get("i", "")
+            # Nothing filled in is not a row. That is what "same for everyone"
+            # is: the absence of a variant, not one repeating the station.
+            if not (raw_t or nm or ld or inc_raw):
+                continue
+            live[k] = {
+                "target": dec(raw_t, 0.01, 100000, None) if raw_t else None,
+                "name": nm[:80] or None,
+                "load": ld[:80] or None,
+                "increment": num(inc_raw, 1, 10000, None) if inc_raw else None,
+            }
+
+        have = {}
+        for st in ev.stations:
+            for v in list(st.variants or []):
+                have[(st.id, v.rate_id, v.sex or "")] = v
+        for k, v in have.items():
+            if k not in live:
+                db.delete(v)
+        for (sid, rid, sx), vals in live.items():
+            v = have.get((sid, rid, sx))
+            if v is None:
+                v = StationVariant(station_id=sid, rate_id=rid, sex=sx)
+                db.add(v)
+            for field, val in vals.items():
+                setattr(v, field, val)
+
         db.commit()
         return RedirectResponse("/events/%d/stations?saved=1" % eid,
                                 status_code=303)

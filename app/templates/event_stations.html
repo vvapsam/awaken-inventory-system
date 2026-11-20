@@ -1,5 +1,39 @@
 {% extends "base.html" %}
 {% block body %}
+{# One category's line on one station. Every box is optional: what is left
+   empty falls back to the station itself, which is what keeps "the same for
+   everyone" free of rows nobody has to maintain. #}
+{% macro vfields(r, cat, sx, v, locked) %}
+{% set pre = 'v_%d_%d_%s' % (r.id, cat.id, sx) %}
+<input class="vnum" name="{{ pre }}_t" value="{{ tidy(v.target) if v and v.target is not none else '' }}"
+       placeholder="{{ tidy(r.target) }}" {{ 'disabled' if locked }}>
+<span class="vu">{{ r.unit }}</span>
+<input class="vtxt" name="{{ pre }}_l" value="{{ v.load if v and v.load else '' }}"
+       placeholder="load / note — 35 kg, Bodyweight" {{ 'disabled' if locked }}>
+<input class="vtxt" name="{{ pre }}_n" value="{{ v.name if v and v.name else '' }}"
+       placeholder="{{ r.name }}" {{ 'disabled' if locked }}>
+<input class="vnum sm" name="{{ pre }}_i" value="{{ v.increment if v and v.increment else '' }}"
+       placeholder="+{{ r.increment }}" title="Each tap adds" {{ 'disabled' if locked }}>
+{% endmacro %}
+<style>
+  .st tr.vpanel > td{background:var(--panel);padding:0}
+  .st .vwrap{padding:12px 16px 16px 46px}
+  .st .vhead{font-size:.8rem;color:var(--muted);margin-bottom:10px}
+  .st .vcat{padding:5px 0}
+  .st .vcat + .vcat{border-top:1px solid var(--line)}
+  .st .vrow{display:flex;align-items:center;gap:8px;padding:3px 0}
+  .st .vlbl{width:170px;font-size:.84rem;font-weight:600;flex:none}
+  .st .vlbl.sub{font-weight:400;color:var(--muted);padding-left:16px}
+  .st .vsub{padding-left:12px;border-left:2px solid var(--line);margin:2px 0 2px 6px}
+  .st .vnum{width:76px;flex:none;text-align:center;font-weight:600}
+  .st .vnum.sm{width:58px;font-weight:400}
+  .st .vtxt{flex:1;min-width:110px;width:auto}
+  .st .vu{font-size:.78rem;color:var(--muted);width:26px;flex:none}
+  .st .vsplit{font-size:.78rem;color:var(--muted);display:flex;
+    align-items:center;gap:5px;flex:none;white-space:nowrap}
+  .st .vsplit input{width:16px;flex:none;padding:0}
+  .st button.vtog{padding:4px 10px;font-size:.76rem;width:auto}
+</style>
 {#
   The stations, in race order. Everything about a station is configuration
   rather than code, so a fitness test with different stations next month is
@@ -83,6 +117,7 @@
       <th style="width:118px">Target</th>
       <th style="width:126px">Each tap adds</th>
       <th style="width:160px">On the coach's phone</th>
+      {% if cats %}<th style="width:150px">Per category</th>{% endif %}
       <th style="width:40px"></th>
     </tr></thead>
     <tbody id="strows">
@@ -95,11 +130,59 @@
           {% for k, u in measures.items() %}
           <option value="{{ k }}" {{ 'selected' if r.measure == k }}>{{ k|capitalize }}</option>
           {% endfor %}</select></td>
-        <td><input class="num" name="target" value="{{ r.target }}" {{ 'disabled' if locked }}></td>
+        <td><input class="num" name="target" value="{{ tidy(r.target) }}" {{ 'disabled' if locked }}></td>
         <td><input class="num" name="inc" value="{{ r.increment }}" {{ 'disabled' if locked }}></td>
         <td><span class="pv">+{{ r.increment }} {{ r.unit }} · {{ r.taps }} taps</span></td>
+        {% if cats %}
+        <td>
+          {# A station with no rows of its own behaves exactly as it always
+             did. That is what "same for everyone" is here: the absence of a
+             variant, not a variant repeating the station. #}
+          <button type="button" class="vtog btn" data-for="{{ r.id }}">
+            {% if r.id in varied %}{{ r.variants|length }} set{% else %}Same for all{% endif %} ▸
+          </button>
+        </td>
+        {% endif %}
         <td>{% if not locked %}<button type="button" class="x" title="Remove">×</button>{% endif %}</td>
       </tr>
+      {% if cats %}
+      <tr class="vpanel" data-panel="{{ r.id }}" {{ '' if r.id in varied else 'hidden' }}>
+        <td colspan="{{ 8 if cats else 7 }}">
+          <div class="vwrap">
+            <div class="vhead">{{ r.name }} — leave a box empty and that
+              category races the station as it is set above
+              ({{ tidy(r.target) }} {{ r.unit }}).</div>
+            {% for cat in cats %}
+            {% set base = vmap.get((r.id, cat.id, '')) %}
+            {% set vm = vmap.get((r.id, cat.id, 'm')) %}
+            {% set vf = vmap.get((r.id, cat.id, 'f')) %}
+            <div class="vcat">
+              <div class="vrow">
+                <span class="vlbl">{{ cat.label }}</span>
+                {{ vfields(r, cat, '', base, locked) }}
+                {% if not locked %}
+                <label class="vsplit"><input type="checkbox" class="splitck"
+                  data-split="{{ r.id }}-{{ cat.id }}"
+                  {{ 'checked' if vm or vf }}> split</label>
+                {% endif %}
+              </div>
+              <div class="vsub" data-sub="{{ r.id }}-{{ cat.id }}"
+                   {{ '' if (vm or vf) else 'hidden' }}>
+                <div class="vrow">
+                  <span class="vlbl sub">↳ {{ cat.label }} · Female</span>
+                  {{ vfields(r, cat, 'f', vf, locked) }}
+                </div>
+                <div class="vrow">
+                  <span class="vlbl sub">↳ {{ cat.label }} · Male</span>
+                  {{ vfields(r, cat, 'm', vm, locked) }}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </td>
+      </tr>
+      {% endif %}
       {% else %}
       <tr id="empty"><td colspan="7" class="muted" style="padding:16px">
         No stations yet. Add the first one below.</td></tr>
@@ -153,15 +236,42 @@
     if (e) e.hidden = rows.length > 0;
   }
   // Mark what is already there so the same code handles old rows and new.
+  // The per-category panels are rows in the same tbody but are not stations,
+  // so they must not be counted, numbered, or turned into one by this.
   Array.prototype.forEach.call(body.querySelectorAll("tr"), function(tr){
-    if (tr.id !== "empty") tr.setAttribute("data-st", "1");
+    if (tr.id !== "empty" && !tr.hasAttribute("data-panel"))
+      tr.setAttribute("data-st", "1");
   });
   body.addEventListener("input", renumber);
   body.addEventListener("change", renumber);
   body.addEventListener("click", function(e){
+    var t = e.target.closest(".vtog");
+    if (t){
+      var panel = body.querySelector('tr[data-panel="' + t.dataset.for + '"]');
+      if (panel){
+        panel.hidden = !panel.hidden;
+        t.textContent = t.textContent.replace(panel.hidden ? "▾" : "▸",
+                                              panel.hidden ? "▸" : "▾");
+      }
+      return;
+    }
+    var ck = e.target.closest(".splitck");
+    if (ck){
+      var sub = body.querySelector('[data-sub="' + ck.dataset.split + '"]');
+      if (sub) sub.hidden = !ck.checked;
+      return;
+    }
     var b = e.target.closest(".x");
     if (!b) return;
-    b.closest("tr").remove();
+    var tr = b.closest("tr");
+    // A station's own panel goes with it, or its boxes keep posting values
+    // for a station that is no longer on the page.
+    var sid = tr.querySelector("[name=sid]");
+    if (sid){
+      var p = body.querySelector('tr[data-panel="' + sid.value + '"]');
+      if (p) p.remove();
+    }
+    tr.remove();
     renumber();
   });
   add.onclick = function(){
@@ -177,6 +287,8 @@
       '<td><input class="num" name="target" value="20"></td>' +
       '<td><input class="num" name="inc" value="1"></td>' +
       '<td><span class="pv"></span></td>' +
+      ({{ 'true' if cats else 'false' }} ?
+        '<td><span class="muted small">Save first</span></td>' : '') +
       '<td><button type="button" class="x" title="Remove">×</button></td>';
     body.appendChild(tr);
     renumber();
