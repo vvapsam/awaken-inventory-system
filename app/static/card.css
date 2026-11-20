@@ -101,6 +101,13 @@ body.cardpage .save b{color:#88EAE0;font-weight:700}
  * not change between shapes.
  */
 .evcard{
+  /* CardSans ships at 400 and 700 and nothing else. Asking for 600 or 800
+   * does not fail — the browser smears the 700 face into a fake one, which
+   * thickens every stroke and closes the counters, and the bar stops looking
+   * like the posters. So every weight below is one the font actually has,
+   * and synthesis is off so a missing one shows up as wrong rather than as
+   * subtly heavy. */
+  font-synthesis-weight:none; font-synthesis:none;
   --hk-navy:#0C1D27; --hk-navy2:#0A1620;
   --hk-mint:#5FE3D4; --hk-mint2:#3FD8C8; --hk-paper:#F4F8F9;
   justify-content:space-between;
@@ -125,21 +132,21 @@ body.cardpage .save b{color:#88EAE0;font-weight:700}
 .ev-lock img{display:block;height:auto}
 .ev-bar{display:flex;align-items:stretch;width:100%}
 .ev-bar .t{
-  background:var(--hk-mint);color:#06161C;font-weight:800;flex:1;
+  background:var(--hk-mint);color:#06161C;font-weight:700;flex:1;
   display:flex;align-items:center;justify-content:center;line-height:1;
   white-space:nowrap
 }
 .ev-bar .n{
-  background:var(--hk-paper);color:#06161C;font-weight:800;flex:none;
+  background:var(--hk-paper);color:#06161C;font-weight:700;flex:none;
   display:flex;align-items:center;justify-content:center;line-height:1
 }
-.ev-name{color:#fff;font-weight:600;line-height:1.04;letter-spacing:-.015em}
+.ev-name{color:#fff;font-weight:700;line-height:1.04;letter-spacing:-.015em}
 .ev-label{color:var(--hk-mint);font-weight:700;text-transform:uppercase;line-height:1}
 .ev-time{
-  color:var(--hk-mint);font-weight:800;line-height:.86;letter-spacing:-.035em;
+  color:var(--hk-mint);font-weight:700;line-height:.86;letter-spacing:-.035em;
   font-variant-numeric:tabular-nums;white-space:nowrap
 }
 .ev-foot{
-  color:rgba(244,248,249,.5);font-weight:600;text-transform:uppercase;
+  color:rgba(244,248,249,.5);font-weight:700;text-transform:uppercase;
   line-height:1
 }
