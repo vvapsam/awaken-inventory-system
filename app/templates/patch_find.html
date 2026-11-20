@@ -39,7 +39,13 @@
          dropped in a car park often enough — but says so, because the queue is
          where a second one reaches somebody who already has one. #}
       {% for who in people %}
-        <tr data-name="{{ who.full_name|lower }}" {% if who.patch_at %}class="low"{% endif %}>
+        {# The whole row opens their card — clicking a name is what anybody
+           tries first, and the button at the end is for whoever does not.
+           base.html already carries the handler; a row only has to say where
+           it goes. Buttons inside are left alone by it. #}
+        <tr data-name="{{ who.full_name|lower }}"
+            data-href="/patch/p/{{ who.id }}/card"
+            {% if who.patch_at %}class="low"{% endif %}>
           <td><b>{{ who.full_name }}</b></td>
           <td class="muted">{{ h12(who.heat_time) or '—' }}</td>
           <td>

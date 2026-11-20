@@ -128,9 +128,12 @@ with TestClient(app) as c:
     ck("the waitlist is not racing", "On The List" not in page)
     ck("nor is somebody who pulled out", "Pulled Out" not in page)
     ck("the unraced row says so", "Not raced yet" in page)
-    ck("everyone gets a card button",
-       page.count('/patch/p/%d/card' % WAIT) == 1
-       and page.count('/patch/p/%d/card' % DONE) == 1)
+    # Twice each: once on the row, once on the button at the end.
+    ck("everyone's card is reachable",
+       page.count('/patch/p/%d/card' % WAIT) == 2
+       and page.count('/patch/p/%d/card' % DONE) == 2)
+    ck("the row itself opens the card",
+       'data-href="/patch/p/%d/card"' % WAIT in page)
     ck("an event with its own card offers no patch",
        'href="/patch/p/%d"' % DONE not in page)
 
