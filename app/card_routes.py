@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from .auth import current_staff
 from .db import get_db
-from .models import EventParticipant
+from .models import EventParticipant, to_local
 
 #: The ten sponsor marks, in the order they run on the card, with their native
 #: pixel widths. They were cut out of the single strip artwork so they can be
@@ -75,11 +75,94 @@ SHAPES = {
 }
 DEFAULT_SHAPE = "square"
 
+#: The event card's own shapes. Square and story match the PFT card above so
+#: an export from either drops into the same slot; landscape is the square's
+#: width on the story's height, which is the one a screen at the venue wants.
+EVENT_SHAPES = {
+    "square": {"key": "square", "title": "Square", "note": "1920 x 1920",
+               "cw": 1920, "ch": 1920, "type": 1.00},
+    "story": {"key": "story", "title": "Story", "note": "1080 x 1920",
+              "cw": 1080, "ch": 1920, "type": 1.00},
+    #: Type is pegged to the short side or a 1920-wide card sets a name
+    #: taller than the room beneath it. The nudge back up is because 1080 of
+    #: type on a 1920 canvas reads small beside a lockup half the width.
+    "landscape": {"key": "landscape", "title": "Landscape",
+                  "note": "1920 x 1080", "cw": 1920, "ch": 1080,
+                  "type": 1.16},
+}
 
-def mmss(secs) -> str:
-    """A finish time the way it is said out loud."""
+#: How wide the HYBRID KIDS bar runs, as a share of the card. One number
+#: drives the whole lockup: the wordmark sits at 80% of the bar, which is
+#: roughly how the posters stack the two.
+LOGO_PCT = 42
+#: static/card/awaken_word.png, 1108 x 229. Held here rather than measured at
+#: request time: it is a fixed asset, and opening a PNG to draw a card would
+#: be a file read on every view to learn a number that never changes.
+WORDMARK_AR = 4.8384
+
+
+def fit_time(text: str, want: int, avail: int) -> int:
+    """A type size that keeps the time inside the card.
+
+    "24:18" and "1:04:09" are not the same number of characters, and a card
+    that runs its own time off the edge is worse than one with a smaller time
+    on it. The digits are tabular, so a width per character is arithmetic
+    rather than a guess.
+    """
+    em = 0.0
+    for ch in str(text or ""):
+        em += 0.30 if ch == ":" else 0.26 if ch == "." else 0.56
+    return int(min(want, avail / max(0.8, em)))
+
+
+def event_card_context(ev, shape_key: str, clock: str,
+                       chrome: int = 0) -> dict:
+    """Every number the event card is drawn from, at native size.
+
+    Worked out here rather than in the template for the same reason the PFT
+    card does it: these are design decisions, and a template full of
+    arithmetic is a template nobody can tell is wrong.
+    """
+    shape = EVENT_SHAPES.get(shape_key) or EVENT_SHAPES[DEFAULT_SHAPE]
+    c = dict(shape)
+    w, h = c["cw"], c["ch"]
+    base = min(w, h) * c["type"]
+    bar_w = round(w * (LOGO_PCT / 100.0))
+    logo_w = round(bar_w * 0.80)
+    bar_h = round(bar_w * 0.148)
+    title, badge = ev.card_words if ev is not None else ("", "")
+    c.update({
+        "chrome": chrome,
+        "pad": round(w * 0.044 + base * 0.030),
+        "barw": bar_w, "barh": bar_h,
+        "logow": logo_w, "logoh": round(logo_w / WORDMARK_AR),
+        "bargap": round(bar_h * 0.34),
+        "hkfs": round(bar_h * 0.62),
+        "badgew": round(bar_h * 1.08),
+        "name": round(base * 0.050),
+        "label": round(base * 0.0232),
+        "labelgap": round(base * 0.020),
+        "timegap": round(base * 0.011),
+        "foot": round(base * 0.0204),
+        "title": title, "badge": badge,
+    })
+    c["time"] = fit_time(clock, round(base * 0.207),
+                         w - c["pad"] * 2)
+    return c
+
+
+
+
+def mmss(secs, blank: str = "--:--") -> str:
+    """A finish time the way it is said out loud.
+
+    ``blank`` is what no time at all reads as. The PFT card keeps the dashes —
+    it is only ever drawn for somebody who finished. The event card is opened
+    before the race to check a name, so there it reads 0:00 rather than a row
+    of punctuation nobody can screenshot with a straight face.
+    """
     if secs is None:
-        return "--:--"
+        return blank
     secs = max(0, int(secs))
     h, rem = divmod(secs, 3600)
     m, s = divmod(rem, 60)
@@ -113,9 +196,23 @@ def register(app, deps):
             return None, RedirectResponse("/login", status_code=303)
         return staff, None
 
-    def _shape(request) -> str:
+    def _shapes_for(ev):
+        return EVENT_SHAPES if (ev is not None
+                                and ev.card_style == "event") else SHAPES
+
+    def _shape(request, ev=None) -> str:
         want = (request.query_params.get("shape") or "").strip().lower()
-        return want if want in SHAPES else DEFAULT_SHAPE
+        table = _shapes_for(ev)
+        return want if want in table else DEFAULT_SHAPE
+
+    def _foot_text(ev) -> str:
+        """"Finisher · 2026" — the year off the event, not off today.
+
+        A card opened in January for a race held in December should not
+        quietly relabel itself.
+        """
+        when = to_local(ev.starts_at) if (ev and ev.starts_at) else None
+        return "Finisher · %d" % when.year if when else "Finisher"
 
     def _share_url(request, who) -> str:
         return str(request.base_url).rstrip("/") + "/c/" + who.token
@@ -132,18 +229,29 @@ def register(app, deps):
         who = db.get(EventParticipant, pid)
         if not who:
             return RedirectResponse("/patch", status_code=303)
-        # Somebody who has not finished has no time to put on a card. Send
-        # them back rather than drawing "--:--" and letting it be screenshotted.
-        if not who.finished_at:
+        ev = who.event
+        event_style = ev is not None and ev.card_style == "event"
+        # The PFT card is only ever drawn for a finisher: it has a patch and a
+        # sponsor wall on it, and "--:--" under all that is not a card anybody
+        # should be able to screenshot. The event card is different — it is
+        # opened the week before to check a name reads right, so it draws with
+        # the clock at zero and says so.
+        if not who.finished_at and not event_style:
             return RedirectResponse("/patch/p/%d/result" % pid,
                                     status_code=303)
-        shape = _shape(request)
+        shape = _shape(request, ev)
+        clock = mmss(who.race_seconds, blank="0:00") if event_style \
+            else mmss(who.race_seconds)
+        card = (event_card_context(ev, shape, clock, chrome=330)
+                if event_style else card_context(shape, chrome=330))
+        if event_style:
+            card["foot_text"] = _foot_text(ev)
         return render(
             request, "card_staff.html", db, staff, active="events",
-            who=who, ev=who.event, shape=shape, shapes=SHAPES,
-            card=card_context(shape, chrome=330),
-            clock=mmss(who.race_seconds),
-            share=_share_url(request, who))
+            who=who, ev=ev, shape=shape, shapes=_shapes_for(ev),
+            card=card, event_style=event_style,
+            raced=bool(who.finished_at),
+            clock=clock, share=_share_url(request, who))
 
     # --------------------------------------------------------------- public
 
@@ -159,10 +267,16 @@ def register(app, deps):
                 "<title>Not found</title>"
                 "<body style='font:16px system-ui;padding:40px'>"
                 "<p>That link is not a finisher card.</p>", status_code=404)
-        shape = _shape(request)
+        ev = who.event
+        event_style = ev is not None and ev.card_style == "event"
+        shape = _shape(request, ev)
+        clock = mmss(who.race_seconds)
+        card = (event_card_context(ev, shape, clock, chrome=110)
+                if event_style else card_context(shape, chrome=110))
+        if event_style:
+            card["foot_text"] = _foot_text(ev)
         return templates.TemplateResponse("card_public.html", {
             "request": request, "who": who.full_name,
-            "clock": mmss(who.race_seconds),
-            "card": card_context(shape, chrome=110),
-            "shape": shape,
+            "clock": clock, "card": card, "shape": shape,
+            "event_style": event_style,
         })

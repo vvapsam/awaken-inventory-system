@@ -1,14 +1,18 @@
 {% extends "base.html" %}
 {% block body %}
 {#
-  The awarding table. Search a finisher, confirm their age, and the standard
-  decides the patch — so nobody is holding a table of times in their head at
-  the end of a long morning.
+  The awarding table, and the way to anybody's card. Search a name: if they
+  have raced you can award a patch, and either way you can open their card.
+
+  Everybody racing is listed rather than finishers only, because the card is
+  worth opening before the race to check a name reads right — and a page that
+  hides people until they have finished cannot answer that.
 #}
 <div class="row-between">
   <div><h1 style="margin:0">Patches</h1>
+    {% set raced = people|selectattr('finished_at')|list|length %}
     <p class="muted small" style="margin:2px 0 0">{{ ev.name }} —
-      {{ people|length }} finished{% if people %},
+      {{ people|length }} racing, {{ raced }} finished{% if not event_style %},
       {{ people|selectattr('patch_at')|list|length }} collected{% endif %}.</p></div>
   <div class="hdact"><a class="btn" href="/events/{{ ev.id }}">← The event</a></div>
 </div>
@@ -22,8 +26,9 @@
   <input type="search" id="q" placeholder="Search a participant name…"
          autocomplete="off" spellcheck="false" autofocus
          aria-label="Search a participant name">
-  <div class="muted small" style="margin-top:8px">Only people who have
-    finished appear here.</div>
+  <div class="muted small" style="margin-top:8px">Everybody racing is here,
+    whether they have finished or not. A card for somebody still out on the
+    course reads 0:00.</div>
 </div>
 
 <div class="card" style="margin-top:12px;padding:0;overflow:auto">
@@ -40,14 +45,24 @@
           <td>
             {%- if who.patch_at %}<span class="chip">Collected{% if who.patch %} ·
               {{ emoji[who.patch] }} {{ labels[who.patch] }}{% endif %}</span>
-            {%- else %}<span class="muted">Not yet</span>{% endif -%}
+            {%- elif who.finished_at %}<span class="chip">{{ mmss(who.race_seconds) }}</span>
+            {%- else %}<span class="muted">Not raced yet</span>{% endif -%}
           </td>
-          <td style="text-align:right">
-            <a class="btn primary small" href="/patch/p/{{ who.id }}">Award →</a></td>
+          <td style="text-align:right;white-space:nowrap">
+            {# The card is the one thing that works whether or not they have
+               raced, so it is the button that is always here. Awarding needs
+               a finish time to read a band off, so it only appears once there
+               is one — and not at all on an event with its own card, which
+               does not hand out PFT patches. #}
+            <a class="btn small" href="/patch/p/{{ who.id }}/card">Card</a>
+            {% if who.finished_at and not event_style %}
+            <a class="btn primary small" href="/patch/p/{{ who.id }}">Award →</a>
+            {% endif %}
+          </td>
         </tr>
       {% endfor %}
       <tr id="nohits" hidden><td colspan="4" class="muted"
-        style="text-align:center;padding:22px">Nobody by that name has finished.</td></tr>
+        style="text-align:center;padding:22px">Nobody by that name is racing.</td></tr>
     </tbody>
   </table>
 </div>
@@ -70,6 +85,6 @@
 </script>
 {% else %}
 <div class="card" style="margin-top:14px"><p class="muted" style="margin:0">
-  Nobody has finished yet.</p></div>
+  Nobody is racing this one yet.</p></div>
 {% endif %}
 {% endblock %}

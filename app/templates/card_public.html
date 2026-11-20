@@ -12,7 +12,7 @@
 <body class="cardpage">
 
 {% with c = card, card_name = who %}
-  {% include "_finisher_card.html" %}
+  {% if event_style %}{% include "_event_card.html" %}{% else %}{% include "_finisher_card.html" %}{% endif %}
 {% endwith %}
 
 <p class="save">Press and hold the card to <b>save the picture</b>.</p>

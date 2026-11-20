@@ -1212,6 +1212,19 @@ def startup():
                 "ALTER TABLE event_questions ADD COLUMN IF NOT EXISTS "
                 "  maps_to VARCHAR; "
                 "END IF; END $$;"))
+            # Which finisher card an event hands out, and what the bar on
+            # it reads. Every existing row keeps the PFT card, which is what
+            # it was already drawing.
+            conn.execute(text(
+                "DO $$ BEGIN IF to_regclass('public.events') IS NOT NULL THEN "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  card_style VARCHAR NOT NULL DEFAULT 'pft'; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  card_title VARCHAR; "
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS "
+                "  card_badge VARCHAR; "
+                "END IF; END $$;"))
+
             # One station, different work per category. The table is new, so
             # create_all makes it; these two widen columns that already hold
             # rows. A sled lane is 12.5 m, which a whole number cannot say,

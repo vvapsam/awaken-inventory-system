@@ -99,20 +99,28 @@ def register(app, deps):
         ctx.setdefault("emoji", PATCH_EMOJI)
         return render(request, name, db, staff, active="events", **ctx)
 
-    def finishers(ev):
-        """Everybody who has actually finished, by name.
+    def roster(ev):
+        """Everybody racing, by name — finished or not.
 
-        Only finishers: the table exists to hand somebody a patch for a race
-        they completed, and a name on this list who has not finished is a name
-        somebody will try to award.
+        It used to be finishers only, on the reasoning that a name here is a
+        name somebody will try to award a patch to. That was right about the
+        patch and wrong about the page: this is also the way to a person's
+        card, and the card is worth opening the week before to check a name
+        reads properly. So everyone is listed and whether they have raced is
+        on the row, which is a better answer than hiding them.
+
+        Still only people actually in the room: somebody on the waitlist, or
+        who pulled out, or whose slot went back, is not racing.
         """
-        rows = [p for p in ev.participants if p.finished_at]
+        rows = [p for p in ev.participants
+                if not p.waitlist and not p.declined and not p.released_at]
         rows.sort(key=lambda p: (p.full_name or "").lower())
         return rows
 
     def live_events(db):
+        """Events with anybody to look at, newest first."""
         evs = db.query(Event).order_by(Event.starts_at.desc()).all()
-        return [e for e in evs if any(p.finished_at for p in e.participants)]
+        return [e for e in evs if roster(e)]
 
     @app.get("/patch", response_class=HTMLResponse)
     def patch_home(request: Request, db: Session = Depends(get_db)):
@@ -133,21 +141,37 @@ def register(app, deps):
         if not ev:
             return RedirectResponse("/patch", status_code=303)
         return _shell(request, "patch_find.html", db, staff, ev=ev,
-                      people=finishers(ev))
+                      people=roster(ev),
+                      event_style=(ev.card_style == "event"),
+                      done=request.query_params.get("done"))
 
     def _person(request, db, pid):
         staff, redir = guard(request, db)
         if redir:
             return None, None, redir
         p = db.get(EventParticipant, pid)
-        if not p or not p.finished_at:
+        if not p:
             return None, None, RedirectResponse("/patch", status_code=303)
+        return staff, p, None
+
+    def _raced(request, db, pid):
+        """For the steps that genuinely need a time on the clock.
+
+        Awarding a patch is one: the band is worked out from a finish time,
+        and there is no honest answer without one.
+        """
+        staff, p, redir = _person(request, db, pid)
+        if redir:
+            return None, None, redir
+        if not p.finished_at:
+            return None, None, RedirectResponse(
+                "/patch/e/%d" % p.event_id, status_code=303)
         return staff, p, None
 
     @app.get("/patch/p/{pid}", response_class=HTMLResponse)
     def patch_age(request: Request, pid: int, db: Session = Depends(get_db)):
         """Their age. Pre-filled if we have been told once already."""
-        staff, p, redir = _person(request, db, pid)
+        staff, p, redir = _raced(request, db, pid)
         if redir:
             return redir
         # Not `p`: base.html does {% set p = request.url.path %}, so a
@@ -159,7 +183,7 @@ def register(app, deps):
     @app.post("/patch/p/{pid}")
     def patch_age_save(request: Request, pid: int, age: str = Form(""),
                        db: Session = Depends(get_db)):
-        staff, p, redir = _person(request, db, pid)
+        staff, p, redir = _raced(request, db, pid)
         if redir:
             return redir
         try:
@@ -179,7 +203,7 @@ def register(app, deps):
     @app.get("/patch/p/{pid}/result", response_class=HTMLResponse)
     def patch_result(request: Request, pid: int,
                      db: Session = Depends(get_db)):
-        staff, p, redir = _person(request, db, pid)
+        staff, p, redir = _raced(request, db, pid)
         if redir:
             return redir
         if p.age is None:
@@ -198,7 +222,7 @@ def register(app, deps):
         car park — but the queue is where a second patch gets handed to
         somebody who already has one, and the screen should say so.
         """
-        staff, p, redir = _person(request, db, pid)
+        staff, p, redir = _raced(request, db, pid)
         if redir:
             return redir
         p.patch_at = datetime.now(timezone.utc)

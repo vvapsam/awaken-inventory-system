@@ -82,6 +82,43 @@
         </div>
       </div>
     </div>
+    {# Which finisher card this event hands out. The PFT card carries the
+       HYROX mark, the PFT badge and the sponsor wall, which is right for the
+       fitness test and wrong for a kids' class — so an event can draw its
+       own instead, off its name and the AWAKEN wordmark. #}
+    <div style="grid-column:1/-1">
+      <label class="small" style="font-weight:600">Finisher card</label>
+      <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:230px">
+          <select name="card_style">
+            <option value="pft" {{ 'selected' if ev.card_style != 'event' }}>
+              HYROX PFT — the badge and the sponsor wall</option>
+            <option value="event" {{ 'selected' if ev.card_style == 'event' }}>
+              This event's own — AWAKEN over the event name</option>
+          </select>
+          <div class="muted small" style="margin:4px 0 0">The PFT card is the
+            one every event drew before there was a choice. Pick the event's
+            own for anything that is not the fitness test.</div>
+        </div>
+        <div style="flex:1;min-width:230px;display:flex;gap:8px">
+          <div style="flex:1">
+            <input name="card_title" value="{{ ev.card_title or '' }}"
+                   placeholder="{{ ev.card_words[0] }}" maxlength="40">
+            <div class="muted small" style="margin:4px 0 0">The bar</div>
+          </div>
+          <div style="width:88px">
+            <input name="card_badge" value="{{ ev.card_badge or '' }}"
+                   placeholder="{{ ev.card_words[1] or '—' }}" maxlength="4">
+            <div class="muted small" style="margin:4px 0 0">Badge</div>
+          </div>
+        </div>
+      </div>
+      <div class="muted small" style="margin:6px 0 0">Leave both empty and the
+        event's name is used, split on a short number at the end &mdash;
+        &ldquo;Hybrid Kids 2&rdquo; draws as <b>HYBRID KIDS</b> and
+        <b>2</b>.</div>
+    </div>
+
     {# The photo behind the live leaderboard. On the event rather than in the
        static folder, for the same reason the sponsor's mark is: the arena that
        belongs on a November race is not the one that belongs on a Tuesday

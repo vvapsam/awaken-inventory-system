@@ -2196,6 +2196,8 @@ def register(app, deps):
             sponsor_logo: UploadFile = None, drop_logo: str = Form(""),
             banner: UploadFile = None, drop_banner: str = Form(""),
             board_bg: UploadFile = None, drop_board_bg: str = Form(""),
+            card_style: str = Form("pft"), card_title: str = Form(""),
+            card_badge: str = Form(""),
             reward_amount: str = Form(""), reward_by: str = Form(""),
             db: Session = Depends(get_db)):
         staff, redir = guard(request, db)
@@ -2336,6 +2338,12 @@ def register(app, deps):
             if raw and len(raw) <= 3 * 1024 * 1024:
                 ev.banner = raw
                 ev.banner_mime = (banner.content_type or "image/png")
+        # Which card, and what the bar on it reads. Blank is meaningful here:
+        # it means "work it out from the name", so an empty box is stored as
+        # NULL rather than as an empty string that would draw a blank bar.
+        ev.card_style = card_style if card_style in ("pft", "event") else "pft"
+        ev.card_title = (card_title or "").strip()[:40] or None
+        ev.card_badge = (card_badge or "").strip()[:4] or None
         if drop_board_bg == "on":
             ev.board_bg, ev.board_bg_mime = None, None
         elif board_bg is not None and getattr(board_bg, "filename", ""):

@@ -1,0 +1,69 @@
+{# The event's own finisher card.
+
+   One piece of markup, three shapes. Everything that changes between them
+   arrives in `c` as plain pixel numbers worked out in
+   card_routes.event_card_context — so the card staff preview and the card the
+   athlete opens are the same object drawn at a different size, and cannot
+   drift. Same contract the PFT card has had.
+
+   Drawn at native size and then scaled by a transform, which keeps the type
+   and the artwork crisp at any display size.
+
+   No HYROX mark and no PFT badge: this is the card for an event that is not
+   the fitness test, which is the whole reason it exists. #}
+<div class="fcwrap" id="fcwrap-{{ c.key }}">
+  <div class="fcard evcard" id="fcard-{{ c.key }}"
+       style="--cw:{{ c.cw }}px;--ch:{{ c.ch }}px;padding:{{ c.pad }}px">
+
+    <div class="ev-lock" style="width:{{ c.barw }}px">
+      <img src="/static/card/awaken_word.png" alt="AWAKEN"
+           style="width:{{ c.logow }}px;height:{{ c.logoh }}px">
+      {% if c.title or c.badge %}
+      <div class="ev-bar" style="height:{{ c.barh }}px;margin-top:{{ c.bargap }}px">
+        {% if c.title %}
+        <span class="t" style="font-size:{{ c.hkfs }}px">{{ c.title }}</span>
+        {% endif %}
+        {% if c.badge %}
+        <span class="n" style="font-size:{{ (c.hkfs * 1.12)|round|int }}px;
+              width:{{ c.badgew }}px">{{ c.badge }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="ev-mid">
+      <div class="ev-name" style="font-size:{{ c.name }}px">{{ card_name }}</div>
+      <div class="ev-label" style="font-size:{{ c.label }}px;
+           letter-spacing:{{ (c.label * 0.28)|round(2) }}px;
+           margin-top:{{ c.labelgap }}px">Finish Time</div>
+      <div class="ev-time" style="font-size:{{ c.time }}px;
+           margin-top:{{ c.timegap }}px">{{ clock }}</div>
+    </div>
+
+    <div class="ev-foot" style="font-size:{{ c.foot }}px;
+         letter-spacing:{{ (c.foot * 0.23)|round(2) }}px">{{ c.foot_text }}</div>
+  </div>
+</div>
+
+{# The same fit script the PFT card uses: draw at native size, then scale to
+   whatever room the page has. Kept beside the markup it scales so the two
+   cannot be included separately. #}
+<script>
+(function(){
+  var card = document.getElementById('fcard-{{ c.key }}'),
+      wrap = document.getElementById('fcwrap-{{ c.key }}');
+  if (!card || !wrap) return;
+  function fit(){
+    var avail = wrap.clientWidth,
+        room  = Math.max(220, window.innerHeight - {{ c.chrome }}),
+        s     = Math.min(avail / {{ c.cw }}, room / {{ c.ch }});
+    card.style.transform = 'scale(' + s + ')';
+    wrap.style.height = ({{ c.ch }} * s) + 'px';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+  document.addEventListener('fullscreenchange', function(){
+    setTimeout(fit, 60);
+  });
+})();
+</script>

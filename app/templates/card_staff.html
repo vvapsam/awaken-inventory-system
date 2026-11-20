@@ -7,7 +7,7 @@
     <p class="muted small" style="margin:2px 0 0">{{ clock }} &middot;
       {{ ev.name }}</p></div>
   <div class="hdact">
-    <a class="btn" href="/patch/p/{{ who.id }}/result">&larr; Back</a>
+    <a class="btn" href="{{ '/patch/e/%d' % ev.id if event_style else '/patch/p/%d/result' % who.id }}">&larr; Back</a>
   </div>
 </div>
 
@@ -29,7 +29,7 @@
    the fit script simply gets a bigger box to scale into. #}
 <div id="stage" style="display:flex;justify-content:center">
   {% with c = card, card_name = who.full_name %}
-    {% include "_finisher_card.html" %}
+    {% if event_style %}{% include "_event_card.html" %}{% else %}{% include "_finisher_card.html" %}{% endif %}
   {% endwith %}
 </div>
 

@@ -2211,6 +2211,24 @@ class Event(Base):
     #: that belongs on a November race in Pasig is not the one that belongs on
     #: a Tuesday morning foundation class, and an event with none gets the
     #: plain dark board it has always had.
+    #: Which finisher card this event hands out.
+    #:
+    #: "pft" is the HYROX Physical Fitness Test card — the AWAKEN and HYROX
+    #: marks, the PFT badge and the sponsor wall — and is what every event
+    #: drew before there was a choice, so it stays the default.
+    #:
+    #: "event" is the event's own: the AWAKEN wordmark over a two-tone bar
+    #: carrying `card_title` and `card_badge`, on the navy-into-teal wash.
+    #: A kids' class should not hand a seven-year-old a card with a PFT badge
+    #: on it, and a gym that runs anything but the PFT had the same problem.
+    card_style = Column(String, nullable=False, default="pft",
+                        server_default="pft")
+    #: What the bar reads. Split in two because that is how the artwork is
+    #: drawn — a coloured block and a white one — and because the second is
+    #: usually an edition number that wants to stay its own shape no matter
+    #: how long the first gets. Blank falls back to the event's name.
+    card_title = Column(String)
+    card_badge = Column(String)
     board_bg = Column(LargeBinary)
     board_bg_mime = Column(String)
 
@@ -2321,6 +2339,25 @@ class Event(Base):
         return now >= closes
 
     # ---------------------------------------------------------------- rates
+    @property
+    def card_words(self) -> tuple:
+        """The two halves of the bar on the event card.
+
+        Set them and they are used. Leave them and the name is split on its
+        last word when that word is short and numeric-ish — "Hybrid Kids 2"
+        becomes "HYBRID KIDS" and "2", which is how the artwork is drawn and
+        saves typing the obvious on every event.
+        """
+        title = (self.card_title or "").strip()
+        badge = (self.card_badge or "").strip()
+        if title or badge:
+            return title.upper(), badge.upper()
+        bits = (self.name or "").strip().split()
+        if len(bits) > 1 and len(bits[-1]) <= 3 and any(
+                ch.isdigit() for ch in bits[-1]):
+            return " ".join(bits[:-1]).upper(), bits[-1].upper()
+        return (self.name or "").strip().upper(), ""
+
     def rate_rows(self) -> list:
         """Every rate this event has, in the order they are drawn."""
         return sorted(self.rates or [], key=lambda r: (r.position, r.id))

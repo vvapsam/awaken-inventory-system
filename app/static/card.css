@@ -92,3 +92,54 @@ body.cardpage .save{
   line-height:1.6;max-width:34ch
 }
 body.cardpage .save b{color:#88EAE0;font-weight:700}
+
+/* ---- the event's own card ----
+ *
+ * Same frame as the PFT card above — native pixel size, one transform — with
+ * its own palette and no fixed marks. Everything positional arrives as an
+ * inline pixel value from event_card_context; what is here is only what does
+ * not change between shapes.
+ */
+.evcard{
+  --hk-navy:#0C1D27; --hk-navy2:#0A1620;
+  --hk-mint:#5FE3D4; --hk-mint2:#3FD8C8; --hk-paper:#F4F8F9;
+  justify-content:space-between;
+  background:
+    radial-gradient(118% 88% at 88% 104%, rgba(95,227,212,.62) 0%,
+                    rgba(63,216,200,.30) 34%, rgba(12,29,39,0) 68%),
+    radial-gradient(86% 66% at 8% 100%, rgba(63,216,200,.22) 0%,
+                    rgba(12,29,39,0) 62%),
+    linear-gradient(170deg,#0E2029 0%,var(--hk-navy) 46%,var(--hk-navy2) 100%);
+  color:var(--hk-paper);
+}
+/* The weave the posters carry. Two hairline repeats rather than an image, so
+   the card stays one file and nothing has to load before it can be screenshot. */
+.evcard::after{
+  content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:
+    repeating-linear-gradient(0deg,rgba(255,255,255,.022) 0 1px,transparent 1px 3px),
+    repeating-linear-gradient(90deg,rgba(255,255,255,.016) 0 1px,transparent 1px 3px);
+}
+.evcard > *{position:relative;z-index:2}
+.ev-lock{display:flex;flex-direction:column;align-items:center}
+.ev-lock img{display:block;height:auto}
+.ev-bar{display:flex;align-items:stretch;width:100%}
+.ev-bar .t{
+  background:var(--hk-mint);color:#06161C;font-weight:800;flex:1;
+  display:flex;align-items:center;justify-content:center;line-height:1;
+  white-space:nowrap
+}
+.ev-bar .n{
+  background:var(--hk-paper);color:#06161C;font-weight:800;flex:none;
+  display:flex;align-items:center;justify-content:center;line-height:1
+}
+.ev-name{color:#fff;font-weight:600;line-height:1.04;letter-spacing:-.015em}
+.ev-label{color:var(--hk-mint);font-weight:700;text-transform:uppercase;line-height:1}
+.ev-time{
+  color:var(--hk-mint);font-weight:800;line-height:.86;letter-spacing:-.035em;
+  font-variant-numeric:tabular-nums;white-space:nowrap
+}
+.ev-foot{
+  color:rgba(244,248,249,.5);font-weight:600;text-transform:uppercase;
+  line-height:1
+}
